@@ -7,12 +7,10 @@ Wir benötigen folgende zusätzliche Funktionen die mit cao-xt umgesetzt wurden 
 - Übernahme von Kassenbelegen in Lieferscheine, damit über die Kasse eingekaufte Waren per Lastschrift eingezogen werden können
 - Kassensturz
 
-##
-Haftungsausschluss:
+## Haftungsausschluss:
 Weder die Autoren noch die Habacher Dorfladen UG oder einer ihrer Angestellten übernimmt irgendeine Art der Haftung für die Folgen der Verwendung dieser Software. Die Installation und Verwendng erfolgt auf eigenes Risiko. Datenverluste oder andere Schäden werden vom Benutzer der Software selst verantwortet. Vermutlich ist keine der Funktionen 1:1 auf andere Konstellationen übertragbar...
 
-##
-PS
+## PS
 Um Verwechslungen zu vermeiden: Mit xt ist nicht xt-commerce gemeint. Vielmehr steht xt für eXTension, also Erweiterung.
 Das ist eine Remineszenz an die Grundlage für unsere CAO-Erweiterung. Vor über 10 Jahren gab es eine interessante webbasierte Erweiterung für CAO-Faktura namens 'CAO-XTensions' von Daniel Marcus (Black Heartware OHG). Die letzte Anpassung wurde meines Wissens von Wolfgang Schwarz im Jahr 2007 vorgenommen. Auf seiner Seite http://www.imc-media.com sind die CAO-XTensions zum download verfügbar. Die in meinen Augen wichtigste Funktion war ein RMA workflow. 
 Aus meiner Sicht sind die Module mit der aktuellen Version von CAO-Faktura NICHT mehr verwendbar. Eine Anpassung ist nicht geplant.
