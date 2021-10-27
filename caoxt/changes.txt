@@ -1,0 +1,567 @@
+CAO-XTensions
+-------------
+
+PHP-basierte Erweiterungen für das
+freie Warenwirtschaftssystem CAO-Faktura.
+
+Versionshistorie:
+
+0.1.0
+
+ - Designentwurf, basierend auf dem Windows-basierten Programm
+   CAO-Faktura, dessen Datenbank diesem Projekt zugrunde liegt.
+
+ - Anpassung des Black Heartware CMS für das Projekt.
+
+ - Dummies für geplante Module.
+
+
+ 0.2.0
+
+ - Modul: Lagerbestand
+
+ - Modul: Wareneingangsjournal
+
+
+ 0.2.5
+
+ - Modul: RMA
+
+ - Modul: RMA-Journal
+
+
+
+ 0.3.0
+
+ - Bugfixes RMA-Modul
+
+ - Modul: Eigenbestand
+
+ - Modul: Reparaturbestand
+
+
+ 0.3.1
+
+ - Design überarbeitet
+
+
+ 0.4.0 (Calisto)
+
+ - Datenbank-Konfiguration über Textdatei (caoxt.ini)
+
+ - Flexibleres Modulsystem (über scandir())
+
+ - Logout-Button in Home-Modul
+
+ - .htaccess hinzugefügt
+
+ - Modul: Preis-Kalkulation
+
+ - RMA-Modul überarbeitet und erweitert:
+    - Bugfixes
+    - Anpassung an neue Datenbankstruktur
+    - Verschachtelung der Plausibilitätsprüfungen
+      soweit möglich aufgehoben. Effekte:
+      - Alle Eingabe- / Plausibilitätsfehler
+        werden nun angezeigt.
+      - Formular merkt sich korrekte Eingaben,
+        erneute Eingabe nicht mehr nötig
+    - Fremd-RMA eingebaut (für Kunden an Hersteller)
+    - RMA-Nummer des Lieferanten
+      ist nachträglich änderbar
+    - Nun deutlich über 1000 Zeilen Sourcecode
+
+ - Erweiterung und Umstellung der Datenbank:
+   Module sind nicht mehr von
+   Userfeldern der Artikel abhängig.
+
+ - Modul: Reparaturbestand an neues
+   Datenbankdesign angepasst
+
+ - Modul: Eigenbestand an neues
+   Datenbankdesign angepasst
+
+ - Modul: RMA-Journal an neues
+   Datenbankdesign angepasst
+
+ - Unfertige Module für Release
+   ersteinmal rausgeschmissen
+
+ - System komplett unter die GPL gestellt
+
+
+
+ 0.4.1 (Calisto)
+
+ - error_reporting() ausgeschaltet, um
+   Verwirrungen und unnötige
+   Ausgaben zu vermeiden.
+
+ - SQL-Abfragen geändert,
+   TABELLENNAMEN werden nun
+   GROSS abgefragt.
+   Danke an JanP für den
+   Hinweis zur Linux-
+   Kompatibilität
+
+ - Passwortabfrage hinzu-
+   gefügt. Danke an
+   Christian (hhcm) für
+   den entsprechenden
+   Sourcecode
+
+ - PHP4-Support.
+   Danke an Christian
+   (hhcm) für den
+   Sourcecode
+
+
+ 0.4.2 (Calisto)
+
+ - Bug im Umgang mit alphanumerischen
+   Artikelnummern im RMA-Modul
+   behoben
+
+ - Bug im Setup-Script behoben, der
+   Probleme mit einigen MySQL-Versionen
+   machen kann: Danke an Tom (diabolo2k)
+   für den entsprechenden Code
+
+
+ 0.4.3 (Calisto)
+
+ - Bugfix: In Fehlerbeschreibung, Kommentar
+   und Statuskommentaren kann jetzt
+   mit Anführungsstrichen (" und ')
+   gearbeitet werden.
+
+
+ 0.4.4 (Calisto)
+
+ - Ein Fall aus dem RMA-Journal kann
+   in eine aktive RMA kopiert
+   werden, um einen vermeintlich
+   abgeschlossenen Fall erneut
+   bearbeiten zu können.
+   Jedes Datum ist in das übliche
+   Formular zum Erstellen eines
+   RMA-Falls vorgegeben, kann aber
+   geändert werden.
+   Der Link dazu findet sich rechts neben
+   jedem Fall im RMA-Journal ("Kopie erstellen").
+
+ - Im RMA-Journal wird nun der Artikel-
+   name in der Übersicht angezeigt.
+
+ - Bugfix: RMA-Bestand wird nun
+   korrekt verwaltet. Neue RMA-Artikel
+   wurden u.U. nicht angelegt.
+
+ - Bugfix: Anzeige des Kundennamens
+   in RMA-Übersicht bei Fremd-RMA
+   funktioniert nun.
+
+ - Bugfix: Anzeige des Kundennamens
+   in Übersicht des RMA-Journal bei
+   Fremd-RMA funktioniert nun.
+
+ - Bugfix: Anzeigeproblem bei
+   Strings mit Anführungszeichen im
+   RMA-Journal behoben.
+
+
+0.4.5 (Calisto)
+
+ - Bugfix: Logindaten mussten unter
+   Umständen doppelt eingegeben werden.
+   Fehlerhafte Passwortprüfung, die den
+   Effekt produzierte, wurde korrigiert.
+
+
+0.5.0 (Chameleon)
+
+ - Modul: Bestände (Bestandsänderungen)
+   Es ist nun möglich, Ware aus dem Lager
+   auszubuchen (und wieder zurück).
+   Ziele dieser Umbuchungen können
+   "Lager", "Eigenbestand", "Verlust"
+   oder auch der "Reparaturbestand" sein.
+   Zudem muss die Buchung kommentiert
+   werden.
+   Jede Buchung wirkt sich auf die ent-
+   sprechenden Lager aus, zudem können
+   Buchungen für die FiBu generiert werden,
+   das Gegenkonto ist frei definierbar.
+   Im Prinzip ähnlich der "CAO-Kasse".
+
+ - Modul: Bestandsänderungsjournal.
+   Alle Bestandsänderungen können
+   als monatliche Liste eingesehen werden.
+
+ - Modul: Rechnungsjournal.
+   Erweiterte Anzeige zum Rechnungsjournal.
+   Möglichkeit, aus alter Rechnung eine neue
+   Rechnung oder ein Angebot zu kopieren.
+   Möglichkeit, einen Artikel aus Rechnung
+   (ggf. samt Seriennummer) direkt in RMA-Fall zu
+   übernehmen (Kunden-RMA).
+
+ - Modul: Wareneingangsjournal (Erweiterung)
+   Möglichkeit, einen Artikel aus WE (ggf. samt
+   Seriennummer) direkt in einen RMA-Fall
+   zu übernehmen (Eigen-RMA).
+
+ - Modul: RMA (Erweiterungen)
+    - Möglichkeit, die eingegebene Seriennummer
+      aus dem S/N-Bestand "auszubuchen", da dies
+      bei einer Gutschrift oder Austausch nicht
+      möglich ist.
+      Über die Konfiguration abschaltbar.
+    - Es können Quittungen für den
+      reklamierenden Kunden erstellt
+      werden (siehe "Reports").
+    - Neue Möglichkeiten, einen RMA-Fall
+      abzuschliessen:
+       - Austausch abgelehnt
+       - Kein Fehler feststellbar
+
+ - Modul: Home / Info (Erweiterung)
+   Homepage, Lizenz und
+   Readme verlinkt, Kontaktdaten,
+   sowie ein Online-Versionsabgleich.
+   Die Online-Funktion ist in der
+   Konfiguration abschaltbar.
+
+ - Modul: Seriennummernverwaltung
+   Ausbuchen von Seriennummern, die
+   noch als Leiche im System hängen,
+   Buchen von S/N nach RMA, etc..
+   Benutzer und Datum werden
+   protokolliert.
+
+ - Modul: Seriennummernprotokoll
+   Monatliche Liste der Änderungen
+   am S/N-Bestand.
+
+ - Modul: Konfiguration
+   Die Werte der caoxt.ini können
+   und sollten nun über das
+   Konfigurationsmodul geändert werden.
+   Dazu ist ein spezielles Supervisor-
+   Passwort nötig, welches in der
+   caoxt.ini verschlüsselt abgelegt ist.
+   Datenbankzugang, Moduloptionen
+   und DB-Tabellensetup (s.u.).
+
+ - Neues Fehlerhandling:
+   Ist die Datenbank nicht erreichbar
+   oder die Logininformationen fehlen,
+   so wird man nun auf das neue
+   Konfigurationsmodul weitergeleitet.
+   Nach Eingabe des Supervisorpassworts
+   ist die Änderung der Einstellungen
+   auch offline möglich.
+
+ - Stark vereinfachtes Datenbanksetup:
+   Nach Einrichtung der Zugangsdaten
+   können über das Konfigurationsmodul
+   fehlende Datenbanktabellen automatisch
+   angelegt werden. Ein Update von einer
+   Vorversion (0.4.X) oder eine
+   Neuinstallation laufen über dieselbe
+   Installationsroutine ab.
+
+ - includes/dbase.php entfernt. Erweiterte
+   Funktionen der caoxt.ini werden nun
+   von der includes/ini.php gemanaged.
+
+ - "pref" in der caoxt.ini aktiviert.
+   Über den Wert wird das Prefix der
+   CAO-XT Datenbanktabellen definiert.
+   Sollte nach dem erstmaligen Setup
+   nicht mehr geändert werden.
+
+ - Neue Monats-/Jahresnavigation für die
+   Journale. Um komfortabler arbeiten
+   zu können, wurden Dropdown-Listen, wie
+   bei Webanwendungen üblich, für die
+   Navigation in den Journalen implementiert.
+   Die "klassische" Navigation kann allerdings
+   weiter genutzt werden. Dazu lediglich
+   in der Konfiguration den Wert
+   "navstyle=classic" setzen.
+
+ - Modulnavigation überarbeitet:
+   - Sektion "Hilfe" eingebaut
+   - Info nach Hilfe verschoben
+   - Einheitliche Höhe des Menüs
+     durch Nutzung von Dummiebuttons
+   - Sektion "Werkzeuge" eingebaut
+
+ - In allen Journalmodulen kann
+   die Belegliste jetzt nach mehreren
+   (aber nicht allen!) Kriterien sortiert
+   werden, z.B. Belegnummer, Datum, Kunde, etc.
+   Dazu auf den entsprechenden Spalten-
+   kopf klicken.
+
+ - Es können nun "Reports" generiert
+   werden. Zunächst ist das Feature
+   im RMA-Modul implementiert. Dem Kunden
+   kann ein "Werkstattauftrag" mit den
+   für ihn relevanten Daten als Beleg
+   ausgedruckt werden.
+   Die Vorlage befindet sich als HTML-Datei
+   im Ordner "reports" und kann an die
+   persönlichen Gegebenheiten angepasst werden.
+   Die Platzhalter "@@wert@@" müssen
+   erhalten bleiben, da dort vom Programm
+   die entsprechenden Falldaten eingetragen
+   werden. Der Dateiname darf ebenfalls nicht
+   geändert werden.
+   Hilfe zu HTML: http://de.selfhtml.org
+
+ - Bugfix: Bei Abschluss von "Fremd-RMA"
+   werden nun keine Bestandsbuchungen
+   am eigenen Lager mehr durchgeführt.
+
+ - Bugfix: Paletten der Navigations-
+   Symbole korrigiert.
+
+ - Bugfix: Fehler im RMA-Bestand und
+   Eigenbestand behoben, wenn keine
+   Daten vorhanden sind.
+   Einem array_multisort() wurden
+   in diesem Fall keine initialisierten
+   Arrays als Parameter übergeben, was
+   zu Fehlermeldungen führte.
+   Danke an Andreas T. für den Hinweis.
+
+
+ 0.5.1 (Chameleon)
+
+ - In den Bestandsmodulen werden nun
+   auch Artikel mit negativem Bestand
+   angezeigt. Einzig Artikel mit Bestand
+   "null" werden ausgeblendet.
+
+ - Bugfix: Bestandsbuchungen auf das Lager
+   werden nun korrekt durchgeführt.
+   Der alte Lagerbestand wurde als
+   Berechnungsgrundlage nicht
+   berücksichtigt.
+
+
+ 0.5.2 (Chameleon)
+
+ - Bugfix: Falsch eingegebene Zugangsdaten
+   für die Datenbank werden vom Konfigurations-
+   modul nun ausgewertet und ausgegeben.
+   Danke an Oli (Onkel_Poppi) für die
+   entsprechenden Hinweise.
+
+ - Einige Sicherheitsabfragen in Datenbankzugriffe
+   verschiedener Module eingebaut.
+
+
+  0.5.3 (Chameleon)
+
+ - Kompatibilität zu neueren Versionen von
+   PHP5 verbessert. Wenn in der php.ini
+   "register_long_arrays=Off" gesetzt ist,
+   konnten $HTTP_GET_VARS und $HTTP_POST_VARS
+   nicht verwendet werden, was das komplette
+   System lahmlegte.
+   Die entsprechenden Variablen werden nun
+   mit ihren neuen Varianten $_GET und
+   $_POST angesprochen.
+   Mindestsystemanforderung ist damit
+   PHP 4.1.0!
+
+ - Modul: Sammler
+   Es kann nun zu einer Bestellung (Rechnung
+   in Bearbeitung) ein Formular für die
+   Materialsammlung im Lager erstellt werden.
+   Zudem kann der Status des "Sammlers" über
+   das Modul gesetzt werden, der in CAO als
+   Präfix im Bereich "Projekt/Kommentar"
+   angezeigt wird:
+   SA -> Sammler in Arbeit
+   SF -> Sammler fertig
+   Wie beim "RMA-Beleg" wird ein neues
+   Fenster mit dem Beleg geöffnet, wo
+   dieser dann ausgedruckt werden kann.
+   Eine Modifikation des Formulars ist
+   an der Datei "reports/sammler.html"
+   vorzunehmen.
+
+
+  0.5.4 (Chameleon)
+
+ - Die offenen Fälle im RMA-Modul können nun
+   nach mehreren Kriterien sortiert werden:
+   RMA-Nummer, Kunde, Lieferant, Lief.-RMA,
+   erstellt am, erstellt von.
+
+ - Bugfix: Für die in 0.5 eingeführten End-
+   Stadien wird nun das korrekte Icon
+   in der RMA-Liste angezeigt.
+
+ - Kleine Änderungen am RMA-Journal.
+
+
+  0.5.6 (Chameleon)
+
+ - Bugfix: Beim manuellen Erstellen
+   von RMA-Belegen geht der Status
+   der Navigationsleiste nun nicht
+   mehr verloren.
+
+ - Bugfix: Diverse Kompatibilitäts-
+   Probleme mit Linux-Servern und
+   PHP4-Installationen behoben.
+   Der Einsatz unter solchen Systemen
+   sollte nun problemfrei sein.
+
+ - Etwa ein dutzend kleinere Fehler
+   behoben.
+
+ - Das System prüft nun beim Start,
+   ob die notwendige MySQL-Erweiterung
+   für PHP geladen ist.
+   Ist dies nicht der Fall, versucht es
+   diese selbstständig zu laden.
+   Gelingt dies ebenfalls nicht, wird
+   eine entsprechende Fehlermeldung
+   vom Konfigurationsmodul angezeigt.
+
+ - Falls der Browser dies unterstützt,
+   werden die anzuzeigenden dynamischen
+   Webseiten mittels gzip komprimiert
+   an den Client übertragen, um schnellere
+   Ladezeiten bei langen Tabellen zu erreichen
+   und die Abschaltung des Browsercaches
+   (Sicherheitsfeature, Dritte können
+   keine eingesehenen Daten aus dem Cache
+   rekonstruieren) für das System
+   auszugleichen.
+
+ - In den Wizard für das manuelle Erstellen
+   von RMA-Belegen wird nun ein Hinweis
+   für die simplere Generierung von
+   Kunden- und Eigen-RMA aus den
+   entsprechenden Journalen angezeigt.
+
+ - Einem RMA-Fall können nun Ersatzteile
+   zugeordnet werden. Zum Abschluss des Falls
+   kann eine Kundenrechnung automatisch
+   generiert werden, folgende Optionen
+   sind bei Kunden- und Fremd-RMA möglich:
+    - keine Kundenrechnung erstellen
+    - kostenfreie Garantieleistung
+    - kostenpflichtige Garantieleistung
+   Neben evtl. verbauten Ersatzteilen werden
+   auch ausgetauschte Teile zwecks S/N-Erfassung
+   in den Beleg generiert.
+
+ - Neue RMA-Abschlussmöglichkeiten hinzugefügt:
+    - Reparierte Ware eingetroffen
+    - Ware selbst repariert
+   Diese Optionen dienen vorwiegend der korrekten
+   Dokumentation und ggf. Seriennummerverwaltung.
+
+ - RMA-Kommentarfunktion erweitert. Es sind nun
+   mehrzeilige Kommentare im Verlauf möglich um
+   Sachverhalte oder Testergebnisse genauer
+   festhalten zu können.
+
+ - Für Formulare benötigte Adress- und
+   Artikelnummern können nun über
+   Popup-Fenster gesucht und ausgewählt werden.
+   Die Arbeitsweise ähnelt der von CAO,
+   allerdings muss auf den gewünschten Datensatz
+   geklickt werden; Nur in der Detailansicht
+   ist eine Übernahme der Kunden-, Lieferanten-
+   oder Artikelnummer möglich.
+   Das Verändern vorhandener und Anlegen neuer
+   Datensätze in Adress- und Artikelstamm ist
+   möglich.
+
+ - Modul: Rechnungen. Belegerstellung
+   wie unter CAO, mit leichten Verbesserungen
+   auf der einen und leichten Einschränkungen
+   auf der anderen Seite.
+   Beispielsweise werden in der Positions-
+   bearbeitung Kontaktdaten wie Telefonnummern
+   angezeit.
+
+
+  0.5.7 (Chameleon)
+
+ - Bugfix: fatal error bei verschiedenen Popup-
+   Modulen unter PHP4.X behoben. Das System sollte nun
+   unter PHP4.x ebenso stabil laufen wie unter PHP5.x.
+
+ - Modulerweiterung: Rechnungen. Die erstellten Belege
+   können nun auch gebucht und über ein HTML-Formular
+   ausgegeben und gedruckt werden. Bei der Buchung werden
+   (wie im CAO-Hauptprogramm) die Lagerbestände und
+   Seriennummern angepasst. Der Abschluss der Rechnung
+   entspricht damit voll dem des Hauptprogramms.
+   Es sollte allerdings beachtet werden, dass eine Rechnung
+   im HTML-Format den Empfänger nicht zum Vorsteuer-Abzug
+   berechtigt! Dazu ist eine signierte PDF-Rechnung oder eine
+   Rechnung in Papierform notwendig!
+   Das HTML-Formular befindet sich im Ordner "reports"
+   und kann den eigenen Bedürfnissen angepasst werden.
+
+ - Modulerweiterung: Rechnungsjournal. Es können bereits
+   erstellte Rechnungen als HTML-Formular ausgegeben werden
+   (siehe Rechnungsmodul). Das Erstellen von Angeboten
+   und Rechnungen wurde etwas übersichtlicher gemacht,
+   es wird nun eine CAO-konforme "interne Nummer" für den
+   Beleg generiert.
+
+ - Modul: Angebote. Es können nun analog zum Rechnungsmodul
+   auch Angebote über das Webinterface erstellt werden.
+   Die Angebote können wie in CAO selbst bearbeitet, gespeichert
+   und als HTML-Formular ausgegeben werden.
+   Das HTML-Formular befindet sich im Ordner "reports"
+   und kann den eigenen Bedürfnissen angepasst werden.
+
+ - Modul: Angebotsjournal. Analog zum Rechnungsjournal
+   existiert nun ein Angebotsjournal. Gespeicherte Angebote
+   können eingesehen und als HTML-Formular ausgegeben werden
+   (siehe Angebotsmodul). Es können zudem Rechnungen oder
+   Angebotskopien aus dem Angebot erstellt und dann entweder
+   unter CAO oder den entsprechenden CAO-XT-Modulen bearbeitet
+   werden.
+
+ - Abgesehen von Bugfixes letztes Release vor einer 100%
+   CAO 1.4-konformen Version 0.6.x.
+
+
+  0.5.7a (Chameleon)
+
+ - Bugfix: Im Rechnungs- und Angebotsmodul sind nun
+   analog zum CAO-Hauptprogramm alphanumerische
+   Belegnummern möglich.
+
+ - Bugfix: Für die neuen RMA-Stadien werden nun
+   in der Übersicht korrekt die Statusleuchten angezeigt.
+
+ - Bugfix: Aus RMA-Vorgängen generierte Garantierechnungen /
+   Servicerechnungen benutzen für die vorgenerierte Artikel-
+   beschreibung nun den Langnamen statt des Kurznamens.
+
+   
+  0.5.7b (Chameleon)
+
+ - Bugfix: Problem behoben, welches das Anlegen von RMA-
+   Fällen bei Vorhandensein von alphanumerischen
+   Kunden- oder Rechnungsnummern verhindert hat.
+
+
+  0.5.7b (Chameleon für CAO 1.4.x)
+
+ - Anpassung an CAO Version 1.4.x

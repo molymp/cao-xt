@@ -1,0 +1,35 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>BezahlCode Generator</title>
+</head>
+<body>
+
+<form action="bezahlcodetest.php" method="post">
+<p>
+Name:<br /><input type="text" tooltipText="Format: DTAUS Text" name="name" maxlength="27">
+<br />
+</p>
+<p>
+Kontonummer:<br /><input type="text" tooltipText="Format: Ganzzahl z.B. 1234567890" name="konto">
+<br />
+</p>
+<p>
+BLZ:<br /><input type="text" tooltipText="Format: Ganzzahl z.B. 12345678" name="blz">
+<br />
+</p>
+<p>
+Betrag <br /><input type="text" tooltipText="Format: Zahl mit zwei Dezimalstellen, Trennzeichen ',' z.B. 1234,50" name="betrag">
+<br />
+</p>
+<p>
+Verwendungszweck:<br /><input type="text" tooltipText="Format: Text, max 54 Zeichen" name="vwz" maxlength="54">
+<br/><br/>
+</p>
+<p>
+<input type="submit" value="BezahlCode Erstellen">
+</form>
+
+</body>
+</html>

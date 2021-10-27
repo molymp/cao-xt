@@ -1,0 +1,97 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!-- saved from url=(0062)http://www.bergt.de/workshop/javascript/tastatur/tastatur.html -->
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Bildschirm-Tastatur</title>
+    
+    <link rel="stylesheet" type="text/css" href="./Bildschirm-Tastatur_files/tastatur.css" media="screen">
+    <script type="text/javascript" src="./Bildschirm-Tastatur_files/tastatur.js"></script>
+	<meta name="author" content="Wolfgang Bergt">
+</head>
+
+<body style="direction: ltr;" onload="macheKleineBuchstaben()">
+<h1>Bildschirmtastatur</h1>
+<button onclick="ergaenzeZeichen(49)">1</button>
+<button onclick="ergaenzeZeichen(50)">2</button>
+<button onclick="ergaenzeZeichen(51)">3</button>
+<button onclick="ergaenzeZeichen(52)">4</button>
+<button onclick="ergaenzeZeichen(53)">5</button>
+<button onclick="ergaenzeZeichen(54)">6</button>
+<button onclick="ergaenzeZeichen(55)">7</button>
+<button onclick="ergaenzeZeichen(56)">8</button>
+<button onclick="ergaenzeZeichen(57)">9</button>
+<button onclick="ergaenzeZeichen(48)">0</button>
+<button onclick="ergaenzeZeichen(61)">=</button>
+<button colspan="2" onclick="loeschenLetzten()" style="color:red">←</button>
+<br>
+<br>
+<button onclick="ergaenzeZeichen(81)">Q</button>
+<button onclick="ergaenzeZeichen(87)">W</button>
+<button onclick="ergaenzeZeichen(69)">E</button>
+<button onclick="ergaenzeZeichen(82)">R</button>
+<button onclick="ergaenzeZeichen(84)">T</button>
+<button onclick="ergaenzeZeichen(90)">Z</button>
+<button onclick="ergaenzeZeichen(85)">U</button>
+<button onclick="ergaenzeZeichen(73)">I</button>
+<button onclick="ergaenzeZeichen(79)">O</button>
+<button onclick="ergaenzeZeichen(80)">P</button>
+<button onclick="ergaenzeZeichen(220)">Ü</button>
+<button onclick="ergaenzeZeichen(43)">+</button>
+<button onclick="ergaenzeZeichen(42)">*</button>
+<button onclick="ergaenzeZeichen(47)">/</button>
+<br>
+<br>
+<button onclick="ergaenzeZeichen(65)">A</button>
+<button onclick="ergaenzeZeichen(83)">S</button>
+<button onclick="ergaenzeZeichen(68)">D</button>
+<button onclick="ergaenzeZeichen(70)">F</button>
+<button onclick="ergaenzeZeichen(71)">G</button>
+<button onclick="ergaenzeZeichen(72)">H</button>
+<button onclick="ergaenzeZeichen(74)">J</button>
+<button onclick="ergaenzeZeichen(75)">K</button>
+<button onclick="ergaenzeZeichen(76)">L</button>
+<button onclick="ergaenzeZeichen(214)">Ö</button>
+<button onclick="ergaenzeZeichen(196)">Ä</button>
+<button onclick="ergaenzeZeichen(64)">@</button>
+<button onclick="ergaenzeZeichen(33)">!</button>
+<button onclick="ergaenzeZeichen(35)">#</button>
+<button onclick="ergaenzeZeichen(63)">?</button>
+<br>
+<br>
+<button onclick="ergaenzeZeichen(40)">(</button>
+<button onclick="ergaenzeZeichen(41)">)</button>
+<button onclick="ergaenzeZeichen(89)">Y</button>
+<button onclick="ergaenzeZeichen(88)">X</button>
+<button onclick="ergaenzeZeichen(67)">C</button>
+<button onclick="ergaenzeZeichen(86)">V</button>
+<button onclick="ergaenzeZeichen(66)">B</button>
+<button onclick="ergaenzeZeichen(78)">N</button>
+<button onclick="ergaenzeZeichen(77)">M</button>
+<button onclick="ergaenzeZeichen(44)">,</button>
+<button onclick="ergaenzeZeichen(46)">.</button>
+<button onclick="ergaenzeZeichen(45)">-</button>
+<button onclick="ergaenzeZeichen(95)">_</button>
+<br>
+<br>
+<button style="color:red" onclick="loescheText()">Löschen</button>
+<button style="color:green" onclick="zeigeText()">Anzeigen</button>
+<button onclick="ergaenzeZeichen(32)">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</button>
+<button style="color:green" onclick="zeigeListe()">In die Liste nehmen</button>
+<button style="color:red" onclick="loescheListe()">Liste löschen</button>
+<br>
+<br>
+<p>Noch besser wird es mit kleinen Buchstaben.</p>
+<div id="kleine">
+
+<button onclick="ergaenzeZeichen(97)">a</button><button onclick="ergaenzeZeichen(98)">b</button><button onclick="ergaenzeZeichen(99)">c</button><button onclick="ergaenzeZeichen(100)">d</button><button onclick="ergaenzeZeichen(101)">e</button><button onclick="ergaenzeZeichen(102)">f</button><button onclick="ergaenzeZeichen(103)">g</button><button onclick="ergaenzeZeichen(104)">h</button><button onclick="ergaenzeZeichen(105)">i</button><button onclick="ergaenzeZeichen(106)">j</button><button onclick="ergaenzeZeichen(107)">k</button><button onclick="ergaenzeZeichen(108)">l</button><button onclick="ergaenzeZeichen(109)">m</button><button onclick="ergaenzeZeichen(110)">n</button><button onclick="ergaenzeZeichen(111)">o</button><button onclick="ergaenzeZeichen(112)">p</button><button onclick="ergaenzeZeichen(113)">q</button><button onclick="ergaenzeZeichen(114)">r</button><button onclick="ergaenzeZeichen(115)">s</button><button onclick="ergaenzeZeichen(116)">t</button><button onclick="ergaenzeZeichen(117)">u</button><button onclick="ergaenzeZeichen(118)">v</button><button onclick="ergaenzeZeichen(119)">w</button><button onclick="ergaenzeZeichen(120)">x</button><button onclick="ergaenzeZeichen(121)">y</button><button onclick="ergaenzeZeichen(122)">z</button><button onclick="ergaenzeZeichen(223)">ß</button><button onclick="ergaenzeZeichen(228)">ä</button><button onclick="ergaenzeZeichen(246)">ö</button><button onclick="ergaenzeZeichen(252)">ü</button></div>
+
+<p>&nbsp;</p>
+<div id="text_box">
+
+</div>
+
+<div id="listen_box">
+Liste:<br><br>
+</div>
+
+
+</body></html>

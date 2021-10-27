@@ -1,0 +1,34 @@
+body {font-size: 10pt; color: #000; font-family: Verdana, Arial, Helvetica, sans-serif; text-align: center;}
+h1 {font-size: 20pt; color: #930; font-family: Verdana, Arial, Helvetica, sans-serif;}
+h2 {font-size: 18pt; color: #000; font-family: Verdana, Arial, Helvetica, sans-serif;}
+h3 {font-size: 16pt; color: #903; font-family: Verdana, Arial, Helvetica, sans-serif;}
+h4 {font-size: 12pt; color: #000; font-family: Verdana, Arial, Helvetica, sans-serif;}
+h5 {font-size: 10pt; color: #903; font-family: Verdana, Arial, Helvetica, sans-serif;}
+h6 {font-size: 8pt; color: #000; font-family: Verdana, Arial, Helvetica, sans-serif;}
+a:link { color: #903; }
+a:visited { color: #603; }
+a:hover {text-decoration: none; color: #fff;}
+a:active { color: #0cc; font-style: italic; }
+td {font-size:10pt; color: #000; font-family:V erdana, Arial, Helvetica, sans-serif;}
+ol {font-size:10pt; color: #000; font-family: Verdana, Arial, Helvetica, sans-serif;}
+ul {font-size:9pt; color: #000; font-family: Verdana, Arial, Helvetica, sans-serif;}
+p {font-size: 10pt; color: #930; font-family: Verdana, Arial, Helvetica, sans-serif; text-align: center}
+p:first-letter {font-size: 12pt; color: #600;}
+
+div#kleine {
+     font-size: 10pt; 
+     color: #000; 
+     font-family: Verdana, Arial, Helvetica, sans-serif; 
+   }
+
+div#text_box {
+     font-size: 20pt; 
+     color: #930; 
+     font-family: Verdana, Arial, Helvetica, sans-serif; 
+   }
+   
+div#listen_box {
+     font-size: 16pt; 
+     color: #c63; 
+     font-family: Verdana, Arial, Helvetica, sans-serif; 
+   }
