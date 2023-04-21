@@ -6,7 +6,10 @@
 ###            Wir berücksichtigen alle Adressen, außer Kundengruppe 998 (Versorger). Diese werden in Teil 1.e behandelt.
 
 ##
-##  Teil 1.d - Buchungen mit 10,7% USt.
+##  Teil 1.d - Buchungen mit 9% USt.
+##
+##  2023-04-21 - Geänderter Steuersatz - ist: 9% war: 10,7%
+##
 $sqlquery .= "
 UNION
 select 
@@ -24,7 +27,7 @@ j4.GEGENKONTO as Kostfeld1,
 '' as Kostfeld2,
 '' as Kostmenge,
 '' as Skonto,
-concat(j4.KUN_NAME1, ' 10,7%') as Buchungstext,
+concat(j4.KUN_NAME1, ' 9%') as Buchungstext,
 ".$Festschreibungskennzeichen." as Festschreibung
 from journal j4
 	 left outer JOIN ADRESSEN A on j4.ADDR_ID=A.REC_ID
