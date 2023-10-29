@@ -5,17 +5,17 @@
 ##   Teil 7.b 19% USt.
 $sqlquery .= "
 UNION
-select 
+select
 'EUR' as 'Waehrungskennung',
 IF(SUM(j12.BSUMME_1)<0,'S','H') as SollHabenKennzeichen,
 replace(ABS(SUM(j12.BSUMME_1)),'.',',') as Umsatz,
 '' as 'BUSchluessel',
 ".$ECTransit." as Gegenkonto,
-concat(date_format(j12.RDATUM,'%d%m'),'-',".$WA19.",'-',MIN(j12.VRENUM),'-',MAX(j12.VRENUM)) as Belegfeld1, 
+concat(date_format(j12.RDATUM,'%d%m'),'-',".$WA19.",'-',MIN(j12.VRENUM),'-',MAX(j12.VRENUM)) as Belegfeld1,
 '' as Belegfeld2,
 date_format(j12.RDATUM,'%d%m') as Datum,
 ".$WA19." as Konto,
-j12.gegenkonto as Kostfeld1,
+j12.GEGENKONTO as Kostfeld1,
 '' as Kostfeld2,
 '' as Kostmenge,
 '' as Skonto,

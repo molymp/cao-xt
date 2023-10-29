@@ -5,13 +5,13 @@
 ##   Teil 5.c 7% USt.
 $sqlquery .= "
 UNION
-select 
+select
 'EUR' as 'Waehrungskennung',
 IF(SUM(j10.BSUMME_2)<0,'S','H') as SollHabenKennzeichen,
 replace(ABS(SUM(j10.BSUMME_2)),'.',',') as Umsatz,
 '' as 'BUSchluessel',
 ".$Kasse." as Gegenkonto,
-concat(date_format(j10.RDATUM,'%d%m'),'-',".$WA7.",'-',MIN(j10.VRENUM),'-',MAX(j10.VRENUM)) as Belegfeld1, 
+concat(date_format(j10.RDATUM,'%d%m'),'-',".$WA7.",'-',MIN(j10.VRENUM),'-',MAX(j10.VRENUM)) as Belegfeld1,
 '' as Belegfeld2,
 date_format(j10.RDATUM,'%d%m') as Datum,
 ".$WA7." as Konto,

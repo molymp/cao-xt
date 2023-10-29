@@ -5,13 +5,13 @@
 ##   Teil 5.b 19% USt.
 $sqlquery .= "
 UNION
-select 
+select
 'EUR' as 'Waehrungskennung',
 IF(SUM(j9.BSUMME_1)<0,'S','H') as SollHabenKennzeichen,
 replace(ABS(SUM(j9.BSUMME_1)),'.',',') as Umsatz,
 '' as 'BUSchluessel',
 ".$Kasse." as Gegenkonto,
-concat(date_format(j9.RDATUM,'%d%m'),'-',".$WA19.",'-',MIN(j9.VRENUM),'-',MAX(j9.VRENUM)) as Belegfeld1, 
+concat(date_format(j9.RDATUM,'%d%m'),'-',".$WA19.",'-',MIN(j9.VRENUM),'-',MAX(j9.VRENUM)) as Belegfeld1,
 '' as Belegfeld2,
 date_format(j9.RDATUM,'%d%m') as Datum,
 ".$WA19." as Konto,
@@ -23,6 +23,6 @@ concat(date_format(j9.RDATUM,'%d%m'),'-',cast(".$WA19." as char),'-',MIN(j9.VREN
 ".$Festschreibungskennzeichen." as Festschreibung
 from JOURNAL j9
 where year(j9.RDATUM) = ".$year." and month(j9.RDATUM) = ".$month."
-AND QUELLE_SUB=2 AND QUELLE=3 and j9.ZAHLART = 1 
+AND QUELLE_SUB=2 AND QUELLE=3 and j9.ZAHLART = 1
 Group by day(RDATUM)";
 ?>

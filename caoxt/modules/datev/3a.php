@@ -7,14 +7,14 @@
 
 $sqlquery .= "
 UNION
-select 
+select
 'EUR' as 'Waehrungskennung',
 IF (j5.BSUMME_0<0,'S','H') as SollHabenKennzeichen,
 replace(ABS(j5.BSUMME_0),'.',',') as Umsatz,
 '' as 'BUSchluessel',
 j5.GEGENKONTO as Gegenkonto,
-j5.vrenum as Belegfeld1, 
-## right(j5.ORGNUM,12) 
+j5.VRENUM as Belegfeld1,
+## right(j5.ORGNUM,12)
 '' as Belegfeld2,
 date_format(j5.RDATUM,'%d%m') as Datum,
 ".$WA0." as Konto,
@@ -24,8 +24,8 @@ j5.GEGENKONTO as Kostfeld1,
 '' as Skonto,
 concat(j5.KUN_NAME1, ' 0%') as Buchungstext,
 ".$Festschreibungskennzeichen." as Festschreibung
-from journal j5
-where year(j5.rdatum) = ".$year." and month(j5.RDATUM) = ".$month."
+from JOURNAL j5
+where year(j5.RDATUM) = ".$year." and month(j5.RDATUM) = ".$month."
 and j5.QUELLE in (3) and j5.QUELLE_SUB!=2
 and j5.BSUMME_0 != 0 and j5.STADIUM < 127";
 
