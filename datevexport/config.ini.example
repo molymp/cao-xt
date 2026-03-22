@@ -1,0 +1,6 @@
+[Datenbank]
+db_loc=localhost
+db_port=3306
+db_name=cao_REMOVED_DB_PASSWORD
+db_user=dein_datenbankbenutzer
+db_pass=dein_passwort
