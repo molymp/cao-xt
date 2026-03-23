@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .queries import DATEV_COLUMNS
 
-ENCODING = 'iso-8859-1'
+ENCODING = 'utf-8-sig'  # UTF-8 mit BOM, damit Excel Umlaute korrekt erkennt
 DELIMITER = '\t'
 
 

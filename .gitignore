@@ -1,0 +1,11 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Konfiguration mit Zugangsdaten
+config.ini
+
+# Export-Ausgabe
+export/
