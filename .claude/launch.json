@@ -4,7 +4,7 @@
     {
       "name": "baeckerei-kiosk",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["app.py"],
+      "runtimeArgs": ["kiosk-app/app/app.py"],
       "port": 5001
     }
   ]
