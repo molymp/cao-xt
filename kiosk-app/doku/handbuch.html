@@ -1,0 +1,1853 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Habacher Dorfladen – Mitarbeiter-Handbuch Kiosk</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+/* ── Grundlayout ──────────────────────────────────────── */
+:root {
+  --gruen:      #2d5a27;
+  --gruen-hell: #4a8a3f;
+  --creme:      #faf7f2;
+  --creme-dark: #ede8df;
+  --text:       #1a1a1a;
+  --text-hell:  #555;
+  --blau:       #1e40af;
+  --gelb:       #854d0e;
+  --rot:        #991b1b;
+  --sidebar-w:  260px;
+  --radius:     10px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--creme);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 15px;
+}
+
+/* ── Seitenstruktur ───────────────────────────────────── */
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Sidebar ──────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--gruen);
+  color: white;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 0 0 2rem;
+}
+
+.sidebar-logo {
+  background: rgba(0,0,0,0.25);
+  padding: 1.4rem 1.2rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-logo small {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+.sidebar nav { padding: 0.5rem 0; }
+
+.nav-group-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.5);
+  padding: 1rem 1.2rem 0.3rem;
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 0.5rem 1.2rem 0.5rem 1.4rem;
+  color: rgba(255,255,255,0.85);
+  text-decoration: none;
+  font-size: 0.88rem;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a.aktiv {
+  background: rgba(255,255,255,0.12);
+  color: white;
+  border-left-color: #8bc34a;
+}
+
+.sidebar nav a.kapitel {
+  font-weight: 700;
+  font-size: 0.92rem;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.sidebar nav a.unter {
+  padding-left: 2.2rem;
+  font-size: 0.83rem;
+}
+
+/* ── Hauptinhalt ──────────────────────────────────────── */
+.inhalt {
+  flex: 1;
+  padding: 2.5rem 3rem 4rem;
+  max-width: 860px;
+}
+
+/* ── Kapitel-Header ───────────────────────────────────── */
+.kapitel-header {
+  background: var(--gruen);
+  color: white;
+  border-radius: var(--radius);
+  padding: 1.8rem 2rem;
+  margin-bottom: 2.2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.kapitel-nr {
+  font-size: 2.2rem;
+  font-weight: 900;
+  opacity: 0.5;
+  line-height: 1;
+}
+
+.kapitel-header h1 {
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.kapitel-header .untertitel {
+  font-size: 0.9rem;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+/* ── Titelseite ───────────────────────────────────────── */
+.titelseite {
+  text-align: center;
+  padding: 3rem 2rem 2rem;
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  margin-bottom: 2.5rem;
+}
+
+.titelseite h1 {
+  font-size: 2.2rem;
+  color: var(--gruen);
+  font-weight: 900;
+  margin-bottom: 0.5rem;
+}
+
+.titelseite .sub {
+  font-size: 1.1rem;
+  color: var(--text-hell);
+  margin-bottom: 1.5rem;
+}
+
+.version-info {
+  display: inline-flex;
+  gap: 1.5rem;
+  background: var(--creme-dark);
+  border-radius: 8px;
+  padding: 0.7rem 1.5rem;
+  font-size: 0.85rem;
+  color: var(--text-hell);
+}
+
+/* ── Übersichts-Tabelle (Kapitel-TOC) ─────────────────── */
+.kapitel-liste {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2.5rem;
+}
+
+.kapitel-karte {
+  background: white;
+  border-radius: var(--radius);
+  padding: 1.2rem 1.4rem;
+  border-left: 4px solid var(--gruen-hell);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+  text-decoration: none;
+  color: var(--text);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.kapitel-karte:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
+}
+
+.kapitel-karte .nr { font-size: 0.72rem; font-weight: 700; color: var(--gruen-hell); text-transform: uppercase; }
+.kapitel-karte .titel { font-size: 1rem; font-weight: 700; margin: 0.2rem 0 0.5rem; }
+.kapitel-karte .beschr { font-size: 0.83rem; color: var(--text-hell); }
+
+/* ── Abschnitte ───────────────────────────────────────── */
+.abschnitt {
+  margin-bottom: 2.5rem;
+}
+
+h2 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--gruen);
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--creme-dark);
+  scroll-margin-top: 20px;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 1.4rem 0 0.6rem;
+  scroll-margin-top: 20px;
+}
+
+h4 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-hell);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 1rem 0 0.4rem;
+}
+
+p { margin-bottom: 0.75rem; }
+
+/* ── Schritt-Liste ────────────────────────────────────── */
+.schritte {
+  counter-reset: schritt;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.8rem 0 1.2rem;
+}
+
+.schritte li {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  background: white;
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.schritte li::before {
+  counter-increment: schritt;
+  content: counter(schritt);
+  background: var(--gruen);
+  color: white;
+  font-weight: 800;
+  font-size: 0.8rem;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Hinweis-Boxen ────────────────────────────────────── */
+.hinweis {
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+  border-left: 4px solid;
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+
+.hinweis .icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+.hinweis.info     { background: #eff6ff; border-color: #3b82f6; color: #1e3a6e; }
+.hinweis.tipp     { background: #f0fdf4; border-color: var(--gruen-hell); color: #14532d; }
+.hinweis.achtung  { background: #fefce8; border-color: #eab308; color: var(--gelb); }
+.hinweis.wichtig  { background: #fef2f2; border-color: #ef4444; color: var(--rot); }
+
+/* ── Screenshot-Platzhalter ───────────────────────────── */
+.screenshot {
+  border: 2px dashed #94a3b8;
+  border-radius: var(--radius);
+  background: #f8fafc;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  margin: 1.2rem 0;
+  color: #64748b;
+}
+
+.screenshot .foto-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.screenshot .beschr { font-weight: 700; font-size: 0.95rem; color: #334155; margin-bottom: 0.3rem; }
+.screenshot .hinweis-text { font-size: 0.8rem; color: #94a3b8; }
+
+/* ── Mermaid-Diagramme: Kontrast-Korrekturen ─────────────── */
+/* Pfeilbeschriftungen (|Ja|, |Nein| usw.) */
+.mermaid .edgeLabel .label p,
+.mermaid .edgeLabel foreignObject div,
+.mermaid span.edgeLabel { color: #1a3a17 !important; font-weight: 700; }
+.mermaid .edgeLabel rect  { fill: #ffffff !important; stroke: none !important; }
+/* Pfeile dunkler */
+.mermaid .edgePath .path  { stroke: #2d5a27 !important; }
+.mermaid marker path      { fill:   #2d5a27 !important; }
+
+/* ── Ablaufdiagramm-Container ─────────────────────────── */
+.diagramm-container {
+  background: white;
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin: 1.2rem 0;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+  overflow-x: auto;
+}
+
+.diagramm-container h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: var(--gruen);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Tastatur/UI-Elemente ─────────────────────────────── */
+.taste {
+  display: inline-block;
+  background: var(--gruen);
+  color: white;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 2px 10px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.taste.grau  { background: #64748b; }
+.taste.rot   { background: var(--rot); }
+.taste.gelb  { background: #d97706; }
+
+/* ── Tabellen ─────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin: 0.8rem 0 1.2rem;
+  background: white;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+
+th {
+  background: var(--gruen);
+  color: white;
+  padding: 9px 14px;
+  text-align: left;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+td { padding: 9px 14px; border-bottom: 1px solid var(--creme-dark); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--creme); }
+
+/* ── Trennlinie ───────────────────────────────────────── */
+hr { border: none; border-top: 2px solid var(--creme-dark); margin: 2.5rem 0; }
+
+/* ── Druck-CSS ────────────────────────────────────────── */
+@media print {
+  .sidebar { display: none; }
+  .inhalt { padding: 1rem; max-width: 100%; }
+  .kapitel-karte:hover { box-shadow: none; transform: none; }
+  .screenshot { border-style: solid; }
+  .diagramm-container { box-shadow: none; border: 1px solid #ccc; }
+  h2, h3 { page-break-after: avoid; }
+  .schritte li { box-shadow: none; border: 1px solid #eee; }
+  .kapitel-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ── Scroll-Verhalten ─────────────────────────────────── */
+html { scroll-behavior: smooth; }
+
+/* ══════════════════════════════════════════════════════
+   EDIT-TOOLBAR
+══════════════════════════════════════════════════════ */
+#edit-toolbar {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 9999;
+  background: white;
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.18);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 0.88rem;
+}
+#toolbar-ansicht, #toolbar-bearbeitung {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tbtn {
+  padding: 7px 15px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.tbtn-zurueck    { background: #f1f5f9; color: var(--text); }
+.tbtn-zurueck:hover    { background: #e2e8f0; }
+.tbtn-bearbeiten { background: var(--gruen); color: white; }
+.tbtn-bearbeiten:hover { background: var(--gruen-hell); }
+.tbtn-speichern  { background: #2563eb; color: white; }
+.tbtn-speichern:hover  { background: #1d4ed8; }
+.tbtn-abbrechen  { background: #f1f5f9; color: var(--text); }
+.tbtn-abbrechen:hover  { background: var(--creme-dark); }
+.edit-badge {
+  background: #fef9c3;
+  color: #854d0e;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid #fde68a;
+  white-space: nowrap;
+}
+
+/* ── Edit-Modus: editierbare Felder ────────────────────── */
+body.edit-mode [contenteditable="true"] {
+  outline: 2px dashed #93c5fd;
+  border-radius: 3px;
+  cursor: text;
+  min-height: 1em;
+  padding: 1px 3px;
+}
+body.edit-mode [contenteditable="true"]:hover { outline-color: #3b82f6; }
+body.edit-mode [contenteditable="true"]:focus {
+  outline: 2px solid #2563eb;
+  background: rgba(37,99,235,0.04);
+}
+
+/* ── Screenshot-Platzhalter im Edit-Modus ──────────────── */
+.screenshot { position: relative; }
+.upload-knopf-leiste {
+  margin-top: 0.8rem;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.upload-knopf {
+  padding: 7px 16px;
+  background: var(--gruen);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+.upload-knopf:hover { background: var(--gruen-hell); }
+.upload-knopf:disabled { opacity: 0.6; cursor: default; }
+.screenshot img {
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+  margin: 0 auto;
+}
+/* Meldungs-Toast */
+#edit-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  pointer-events: none;
+  transition: opacity 0.4s;
+  opacity: 0;
+}
+/* Druck: Toolbar ausblenden */
+@media print { #edit-toolbar { display: none !important; } }
+</style>
+
+
+</head>
+<body class="">
+<script>
+  // Mermaid-Quelltext VOR dem Rendern als data-source sichern,
+  // damit beim Speichern das SVG durch den Quelltext ersetzt werden kann.
+  mermaid.initialize({
+    startOnLoad: false,   // wir rufen run() manuell auf
+    theme: 'base',
+    themeVariables: {
+      // ── Primäre Knoten (runde Terminals [🟢...]) ─────────
+      primaryColor:        '#2d5a27',
+      primaryTextColor:    '#ffffff',
+      primaryBorderColor:  '#1a3a17',
+      // ── Sekundäre Knoten (Rechtecke [...]) ───────────────
+      secondaryColor:      '#e8f5e3',
+      secondaryTextColor:  '#1a3a17',
+      secondaryBorderColor:'#4a8a3f',
+      // ── Tertiäre Knoten (Rauten {...}) ───────────────────
+      tertiaryColor:       '#fef9ee',
+      tertiaryTextColor:   '#2d2d2d',
+      tertiaryBorderColor: '#c8a63a',
+      // ── Pfeile & Pfeilbeschriftungen ─────────────────────
+      lineColor:           '#2d5a27',
+      edgeLabelBackground: '#ffffff',
+      // ──────────────────────────────────────────────────────
+      fontSize: '14px'
+    },
+    flowchart: { curve: 'basis', padding: 20 }
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.mermaid').forEach(el => {
+      if (!el.hasAttribute('data-source')) {
+        el.setAttribute('data-source', el.textContent.trim());
+      }
+    });
+    mermaid.run();
+
+    // ── Terminal-basierte Anpassungen ────────────────────────────
+    const TNR = window.TERMINAL_NR || 1;
+
+    // Terminal-Nummer in der Titelseite aktualisieren
+    const tnrSpan = document.getElementById('terminal-anzeige');
+    if (tnrSpan) tnrSpan.textContent = '🖨 Terminal ' + TNR;
+
+    // Sidebar: data-kap per href-Muster zuweisen
+    document.querySelectorAll('.sidebar nav a').forEach(a => {
+      const m = (a.getAttribute('href') || '').match(/#kap(\d)/);
+      a.dataset.kap = m ? m[1] : '0';
+    });
+    document.querySelectorAll('.sidebar .nav-group-title').forEach(t => {
+      const m = t.textContent.match(/Kapitel (\d)/);
+      t.dataset.kap = m ? m[1] : '0';
+    });
+
+    // Terminal 8 (Superuser): Bearbeiten-Button freischalten
+    if (TNR === 8) {
+      const btn = document.getElementById('btn-bearbeiten');
+      if (btn) btn.style.display = '';
+    }
+
+    // Terminal 9 (Kundenterminal): nur Kapitel 4 – Bestellabwicklung
+    if (TNR === 9) {
+      // Titelseite und Inhaltsverzeichnis ausblenden
+      ['start', 'toc'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      // Alle Kapitel außer 4 ausblenden
+      document.querySelectorAll('.kap-sektion:not([data-kapitel="4"])').forEach(el => {
+        el.style.display = 'none';
+      });
+      // Sidebar: nur Kapitel-4-Einträge zeigen
+      document.querySelectorAll('.sidebar [data-kap]').forEach(el => {
+        if (el.dataset.kap !== '4') el.style.display = 'none';
+      });
+      // Sidebar-Untertitel anpassen
+      const logoSmall = document.querySelector('.sidebar-logo small');
+      if (logoSmall) logoSmall.textContent = 'Hilfe: Bestellabwicklung';
+    }
+  });
+</script>
+
+<!-- ── Toolbar (position: fixed, immer sichtbar) ── -->
+<div id="edit-toolbar">
+  <div id="toolbar-ansicht" style="display: flex;">
+    <button class="tbtn tbtn-zurueck" onclick="zurueckZurApp()">← Zurück</button>
+    <button class="tbtn tbtn-bearbeiten" id="btn-bearbeiten" onclick="startEdit()" style="display: none;">✏️ Bearbeiten</button>
+  </div>
+  <div id="toolbar-bearbeitung" style="display: none;">
+    <button class="tbtn tbtn-zurueck" onclick="abbrechenEdit(); zurueckZurApp()">← Zurück</button>
+    <span class="edit-badge">● Bearbeitungsmodus</span>
+    <button class="tbtn tbtn-speichern" id="btn-speichern" onclick="speichernHandbuch()">💾 Speichern</button>
+    <button class="tbtn tbtn-abbrechen" onclick="abbrechenEdit()">✕ Abbrechen</button>
+  </div>
+</div>
+<div id="edit-toast" style="background: rgb(240, 253, 244); color: rgb(20, 83, 45); border: 1px solid rgb(134, 239, 172); opacity: 0;"></div>
+
+<div class="layout">
+
+<!-- ══════════════════════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    🌾 Habacher Dorfladen
+    <small>Mitarbeiter-Handbuch Kiosk</small>
+  </div>
+  <nav>
+    <div class="nav-group-title" data-kap="0">Übersicht</div>
+    <a href="#start" class="kapitel" data-kap="0">📋 Inhaltsverzeichnis</a>
+
+    <div class="nav-group-title" data-kap="1">Kapitel 1</div>
+    <a href="#kap1" class="kapitel" data-kap="1">🥖 Verkauf Backwaren</a>
+    <a href="#kap1-bildschirm" class="unter" data-kap="1">Bildschirmaufbau</a>
+    <a href="#kap1-verkauf" class="unter" data-kap="1">Verkauf durchführen</a>
+    <a href="#kap1-menge" class="unter" data-kap="1">Mengen anpassen</a>
+    <a href="#kap1-buchen" class="unter" data-kap="1">Buchen &amp; Drucken</a>
+    <a href="#kap1-abbrechen" class="unter" data-kap="1">Abbrechen</a>
+
+    <div class="nav-group-title" data-kap="2">Kapitel 2</div>
+    <a href="#kap2" class="kapitel" data-kap="2">🗂 Parken &amp; Journal</a>
+    <a href="#kap2-parken" class="unter" data-kap="2">Bon parken</a>
+    <a href="#kap2-offen" class="unter" data-kap="2">Offene Körbe</a>
+    <a href="#kap2-journal" class="unter" data-kap="2">Journal</a>
+    <a href="#kap2-nachdruck" class="unter" data-kap="2">Nachdruck</a>
+    <a href="#kap2-storno" class="unter" data-kap="2">Stornieren</a>
+
+    <div class="nav-group-title" data-kap="3">Kapitel 3</div>
+    <a href="#kap3" class="kapitel" data-kap="3">🏷 Artikelverwaltung</a>
+    <a href="#kap3-zugang" class="unter" data-kap="3">Zugang</a>
+    <a href="#kap3-aktiv" class="unter" data-kap="3">Aktiv / Inaktiv</a>
+    <a href="#kap3-wochentage" class="unter" data-kap="3">Wochentage</a>
+    <a href="#kap3-felder" class="unter" data-kap="3">Weitere Felder</a>
+
+    <div class="nav-group-title" data-kap="4">Kapitel 4</div>
+    <a href="#kap4" class="kapitel" data-kap="4">📦 Bestellabwicklung</a>
+    <a href="#kap4-neu" class="unter" data-kap="4">Neue Bestellung</a>
+    <a href="#kap4-einmalig" class="unter" data-kap="4">Einmalige Bestellung</a>
+    <a href="#kap4-wiederkehrend" class="unter" data-kap="4">Wiederkehrende Bestellung</a>
+    <a href="#kap4-uebersicht" class="unter aktiv" data-kap="4">Bestellübersicht</a>
+    <a href="#kap4-drucken" class="unter" data-kap="4">Pickliste drucken</a>
+    <a href="#kap4-bearbeiten" class="unter" data-kap="4">Bestellung bearbeiten</a>
+    <a href="#kap4-pause" class="unter" data-kap="4">Pause (wiederkehrend)</a>
+    <a href="#kap4-storno" class="unter" data-kap="4">Stornieren</a>
+
+    <div class="nav-group-title" data-kap="5">Kapitel 5</div>
+    <a href="#kap5" class="kapitel" data-kap="5">🍽 Mittagstisch</a>
+    <a href="#kap5-zugang" class="unter" data-kap="5">Zugang</a>
+    <a href="#kap5-eingabe" class="unter" data-kap="5">Menü eingeben</a>
+    <a href="#kap5-speichern" class="unter" data-kap="5">Speichern</a>
+  </nav>
+</aside>
+
+<!-- ══════════════════════════════════════════════════════
+     HAUPTINHALT
+══════════════════════════════════════════════════════ -->
+<main class="inhalt">
+
+<!-- ── Titelseite ── -->
+<div class="titelseite" id="start">
+  <div style="font-size:3rem; margin-bottom:1rem;">🌾</div>
+  <h1>Habacher Dorfladen</h1>
+  <p class="sub">Mitarbeiter-Handbuch – Kiosk-System</p>
+  <div class="version-info">
+    <span>📅 Stand: 2026</span>
+    <span>💻 Kiosk-App v1.0</span>
+    <span id="terminal-anzeige">🖨 Terminal 8</span>
+  </div>
+  <p style="margin-top:1.5rem; color:var(--text-hell); font-size:0.88rem;">
+    Dieses Handbuch erklärt die Bedienung des Kiosksystems für alle Mitarbeiter.<br>
+    Bei Fragen: bitte Filialleitung ansprechen.
+  </p>
+</div>
+
+<!-- ── Inhaltsverzeichnis ── -->
+<div class="abschnitt" id="toc">
+  <h2>Inhaltsverzeichnis</h2>
+  <div class="kapitel-liste">
+    <a href="#kap1" class="kapitel-karte">
+      <div class="nr">Kapitel 1</div>
+      <div class="titel">🥖 Verkauf Backwaren</div>
+      <div class="beschr">Artikel erfassen, Warenkorb, Bon drucken, Zahlung abschließen</div>
+    </a>
+    <a href="#kap2" class="kapitel-karte">
+      <div class="nr">Kapitel 2</div>
+      <div class="titel">🗂 Bon parken &amp; Journal</div>
+      <div class="beschr">Kauf unterbrechen, parken, Journal einsehen, Nachdruck, Storno</div>
+    </a>
+    <a href="#kap3" class="kapitel-karte">
+      <div class="nr">Kapitel 3</div>
+      <div class="titel">🏷 Artikelverwaltung</div>
+      <div class="beschr">Artikel aktivieren, Wochentage, Kategorien, Zutaten, Hinweise</div>
+    </a>
+    <a href="#kap4" class="kapitel-karte">
+      <div class="nr">Kapitel 4</div>
+      <div class="titel">📦 Bestellabwicklung</div>
+      <div class="beschr">Vorbestellungen anlegen, drucken, bearbeiten, pausieren, stornieren</div>
+    </a>
+    <a href="#kap5" class="kapitel-karte">
+      <div class="nr">Kapitel 5</div>
+      <div class="titel">🍽 Mittagstisch-Datenpflege</div>
+      <div class="beschr">Wochenmenü erfassen und veröffentlichen</div>
+    </a>
+  </div>
+</div>
+
+<div class="kap-sektion" data-kapitel="1">
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 1 – VERKAUF BACKWAREN
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap1">
+  <div class="kapitel-nr">01</div>
+  <div>
+    <h1>Verkauf Backwaren</h1>
+    <div class="untertitel">Artikel erfassen · Warenkorb prüfen · Bon drucken</div>
+  </div>
+</div>
+
+<!-- Ablaufdiagramm -->
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Verkauf Backwaren</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([🟢 Verkauf starten]) --&gt; B[Artikel antippen]
+    B --&gt; C{Weitere Artikel?}
+    C --&gt;|Ja| B
+    C --&gt;|Nein| D{Menge / Preis korrekt?}
+    D --&gt;|Nein| E[Menge anpassen\noder Artikel entfernen]
+    E --&gt; D
+    D --&gt;|Ja| F{Zahlung?}
+    F --&gt;|Sofort| G[🖨 Buchen &amp; Drucken]
+    F --&gt;|Später parken| H[⏸ Parken]
+    G --&gt; I([✅ Bon druckt · neuer Warenkorb])
+    H --&gt; J([🗂 Bon in 'Offene Körbe'])">flowchart TD
+    A([🟢 Verkauf starten]) --&gt; B[Artikel antippen]
+    B --&gt; C{Weitere Artikel?}
+    C --&gt;|Ja| B
+    C --&gt;|Nein| D{Menge / Preis korrekt?}
+    D --&gt;|Nein| E[Menge anpassen\noder Artikel entfernen]
+    E --&gt; D
+    D --&gt;|Ja| F{Zahlung?}
+    F --&gt;|Sofort| G[🖨 Buchen &amp; Drucken]
+    F --&gt;|Später parken| H[⏸ Parken]
+    G --&gt; I([✅ Bon druckt · neuer Warenkorb])
+    H --&gt; J([🗂 Bon in 'Offene Körbe'])</div>
+</div>
+
+<!-- 1.1 Bildschirmaufbau -->
+<div class="abschnitt" id="kap1-bildschirm">
+  <h2>1.1 Aufbau des Verkaufsbildschirms</h2>
+  <p>Der Startbildschirm ist in zwei Bereiche geteilt:</p>
+  <table>
+    <thead><tr><th>Bereich</th><th>Position</th><th>Funktion</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Produktkatalog</strong></td><td>Linke Seite (ca. 60 %)</td><td>Alle verfügbaren Artikel nach Kategorie sortiert</td></tr>
+      <tr><td><strong>Warenkorb</strong></td><td>Rechte Seite (ca. 40 %)</td><td>Ausgewählte Artikel, Mengen, Gesamtbetrag, Aktionsbuttons</td></tr>
+    </tbody>
+  </table>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Startseite / Verkaufsbildschirm</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Produktkatalog links, leerer Warenkorb rechts, Navigation oben</div>
+  <img src="/doku/screenshot_1774479255929.png?t=1774479255947" alt="Screenshot: Startseite / Verkaufsbildschirm"></div>
+
+  <p>Die <strong>Navigation</strong> oben enthält Links zu allen Bereichen des Systems (Bestellungen, Journal, Admin usw.). Der Badge <span class="taste">📦 N</span> zeigt an, wie viele Bestellungen heute zu bearbeiten sind.</p>
+</div>
+
+<!-- 1.2 Verkauf durchführen -->
+<div class="abschnitt" id="kap1-verkauf">
+  <h2>1.2 Verkauf durchführen</h2>
+  <p>So wird ein Verkauf Schritt für Schritt durchgeführt:</p>
+  <ol class="schritte">
+    <li>Den gewünschten Artikel im Produktkatalog <strong>antippen</strong>. Der Artikel erscheint sofort im Warenkorb auf der rechten Seite.</li>
+    <li>Weitere Artikel auf dieselbe Weise hinzufügen. Artikel derselben Sorte können auch mehrfach angetippt werden – die Menge erhöht sich automatisch.</li>
+    <li>Den Gesamtbetrag unten rechts im Warenkorb prüfen.</li>
+    <li>Bon drucken und Verkauf abschließen → <a href="#kap1-buchen">Kapitel 1.4</a>.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Warenkorb mit mehreren Artikeln</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Produktliste links mit aktiven Artikeln, Warenkorb rechts mit Positionen und Gesamtbetrag</div>
+  <img src="/doku/screenshot_1774476621265.png?t=1774476621286" alt="Screenshot: Warenkorb mit mehreren Artikeln"></div>
+
+  <div class="hinweis tipp">
+    <div class="icon">💡</div>
+    <div>Artikel sind nach Kategorien (z. B. Brote, Brötchen, Kuchen) gruppiert. Mit einem Tipp auf den Kategorienamen klappt die Liste auf oder zu.</div>
+  </div>
+  <div class="hinweis info">
+    <div class="icon">ℹ️</div>
+    <div>Nur Artikel, die für den heutigen Wochentag freigegeben sind, erscheinen im Katalog. Artikel die nicht auf der Lager sind oder inaktiv gesetzt wurden, werden nicht angezeigt.</div>
+  </div>
+</div>
+
+<!-- 1.3 Menge anpassen -->
+<div class="abschnitt" id="kap1-menge">
+  <h2>1.3 Menge anpassen oder Artikel entfernen</h2>
+  <p>Im Warenkorb kann jeder Artikel direkt bearbeitet werden:</p>
+  <table>
+    <thead><tr><th>Aktion</th><th>Schaltfläche</th><th>Ergebnis</th></tr></thead>
+    <tbody>
+      <tr><td>Menge erhöhen</td><td><span class="taste">＋</span></td><td>Menge um 1 erhöhen</td></tr>
+      <tr><td>Menge verringern</td><td><span class="taste">－</span></td><td>Menge um 1 verringern (bei 1 → Artikel wird entfernt)</td></tr>
+      <tr><td>Artikel entfernen</td><td><span class="taste rot">✕</span></td><td>Artikel sofort aus dem Warenkorb löschen</td></tr>
+    </tbody>
+  </table>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Warenkorb-Detail mit +/- Buttons und ✕</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Eine Position im Warenkorb mit Menge, + und – Schaltflächen und dem Entfernen-Button</div>
+  <img src="/doku/screenshot_1774476721667.png?t=1774476721688" alt="Screenshot: Warenkorb-Detail mit +/- Buttons und ✕"></div>
+
+  <div class="hinweis achtung">
+    <div class="icon">⚠️</div>
+    <div>Das Entfernen eines Artikels kann nicht rückgängig gemacht werden. Einfach erneut antippen, um ihn wieder hinzuzufügen.</div>
+  </div>
+</div>
+
+<!-- 1.4 Buchen -->
+<div class="abschnitt" id="kap1-buchen">
+  <h2>1.4 Buchen &amp; Bon drucken</h2>
+  <p>Wenn der Warenkorb vollständig und korrekt ist, wird der Verkauf wie folgt abgeschlossen:</p>
+  <ol class="schritte">
+    <li>Die Schaltfläche <span class="taste">🖨 Buchen &amp; Drucken</span> unten rechts antippen.</li>
+    <li>Der Bondrucker druckt automatisch den Kassenbon mit Barcode.</li>
+    <li>Den Bon an den Kunden übergeben. Wenn der Kunde an der Kasse zahlt, wird der Barcode eingescannt.</li>
+    <li>Ein neuer leerer Warenkorb erscheint sofort – der nächste Kunde kann bedient werden.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Warenkorb – Buchen-Button hervorgehoben</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Gefüllter Warenkorb mit grünem „Buchen &amp; Drucken"-Button unten, Gesamtbetrag sichtbar</div>
+  <img src="/doku/screenshot_1774477166753.png?t=1774477166776" alt="Screenshot: Warenkorb – Buchen-Button hervorgehoben"></div>
+
+  <div class="hinweis info">
+    <div class="icon">ℹ️</div>
+    <div>Der gedruckte Bon enthält einen EAN-13-Barcode. Dieser codiert den genauen Zahlbetrag und wird an der Hauptkasse (CAO) eingescannt.</div>
+  </div>
+  <div class="hinweis wichtig">
+    <div class="icon">🚨</div>
+    <div>Wenn der Drucker nicht reagiert oder ein Fehler erscheint: Filialleitung informieren. Nie einen Verkauf ohne Bon abschließen – der Barcode wird für die Kasse benötigt.</div>
+  </div>
+</div>
+
+<!-- 1.5 Abbrechen -->
+<div class="abschnitt" id="kap1-abbrechen">
+  <h2>1.5 Verkauf abbrechen</h2>
+  <p>Wenn ein Kunde die Ware doch nicht kaufen möchte oder ein Fehler passiert ist:</p>
+  <ol class="schritte">
+    <li>Die Schaltfläche <span class="taste grau">✕ Abbrechen</span> antippen.</li>
+    <li>Eine Bestätigungsabfrage erscheint – erneut bestätigen.</li>
+    <li>Der Warenkorb wird geleert. Es wird kein Bon gedruckt und kein Eintrag ins Journal geschrieben.</li>
+  </ol>
+
+  <div class="hinweis tipp">
+    <div class="icon">💡</div>
+    <div>Wenn der Kunde kurz wartet (z. B. noch etwas holen möchte), lieber <strong>Parken</strong> statt Abbrechen – so gehen die bereits eingetippten Artikel nicht verloren. Siehe <a href="#kap2-parken">Kapitel 2.1</a>.</div>
+  </div>
+</div>
+
+</div>
+
+<div class="kap-sektion" data-kapitel="2">
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 2 – BON PARKEN & JOURNAL
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap2">
+  <div class="kapitel-nr">02</div>
+  <div>
+    <h1>Bon parken &amp; Journal</h1>
+    <div class="untertitel">Kauf unterbrechen · Offene Körbe · Journal einsehen · Nachdruck · Storno</div>
+  </div>
+</div>
+
+<!-- Ablaufdiagramm Parken -->
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Bon parken und wieder aufrufen</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Warenkorb gefüllt]) --&gt; B{Kauf unterbrechen?}
+    B --&gt;|Nein| C[🖨 Buchen &amp; Drucken]
+    C --&gt; D([✅ Fertig])
+    B --&gt;|Ja| E[⏸ Parken antippen]
+    E --&gt; F([Bon geparkt – Terminal frei])
+    F --&gt; G[Andere Kunden bedienen]
+    G --&gt; H[Navigation: Offene Körbe]
+    H --&gt; I[Bon in der Liste finden]
+    I --&gt; J[→ Übernehmen antippen]
+    J --&gt; K([Warenkorb wieder aktiv])
+    K --&gt; C">flowchart TD
+    A([Warenkorb gefüllt]) --&gt; B{Kauf unterbrechen?}
+    B --&gt;|Nein| C[🖨 Buchen &amp; Drucken]
+    C --&gt; D([✅ Fertig])
+    B --&gt;|Ja| E[⏸ Parken antippen]
+    E --&gt; F([Bon geparkt – Terminal frei])
+    F --&gt; G[Andere Kunden bedienen]
+    G --&gt; H[Navigation: Offene Körbe]
+    H --&gt; I[Bon in der Liste finden]
+    I --&gt; J[→ Übernehmen antippen]
+    J --&gt; K([Warenkorb wieder aktiv])
+    K --&gt; C</div>
+</div>
+
+<!-- Ablaufdiagramm Journal -->
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Journal nutzen</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Navigation: Journal]) --&gt; B[Transaktionen durchsuchen]
+    B --&gt; C{Aktion?}
+    C --&gt;|Bon fehlt| D[Nachdruck antippen]
+    D --&gt; E([🖨 Bon druckt erneut])
+    C --&gt;|Kauf rückgängig| F[Stornieren antippen]
+    F --&gt; G{Sicher?}
+    G --&gt;|Ja| H([❌ Transaktion storniert])
+    G --&gt;|Nein| B
+    C --&gt;|Nur ansehen| I([Details anzeigen])">flowchart TD
+    A([Navigation: Journal]) --&gt; B[Transaktionen durchsuchen]
+    B --&gt; C{Aktion?}
+    C --&gt;|Bon fehlt| D[Nachdruck antippen]
+    D --&gt; E([🖨 Bon druckt erneut])
+    C --&gt;|Kauf rückgängig| F[Stornieren antippen]
+    F --&gt; G{Sicher?}
+    G --&gt;|Ja| H([❌ Transaktion storniert])
+    G --&gt;|Nein| B
+    C --&gt;|Nur ansehen| I([Details anzeigen])</div>
+</div>
+
+<!-- 2.1 Parken -->
+<div class="abschnitt" id="kap2-parken">
+  <h2>2.1 Warenkorb parken</h2>
+  <p>Das Parken ermöglicht es, einen laufenden Kauf zu unterbrechen, ohne die bereits eingetippten Artikel zu verlieren. Typische Situationen:</p>
+  <ul style="margin: 0.5rem 0 1rem 1.5rem; line-height:2;">
+    <li>Kunde möchte noch etwas aus dem Regal holen</li>
+    <li>Kurzes Gespräch oder Störung</li>
+    <li>Gleichzeitiges Bedienen mehrerer Kunden</li>
+  </ul>
+  <ol class="schritte">
+    <li>Im Warenkorb die Schaltfläche <span class="taste gelb">⏸ Parken</span> antippen.</li>
+    <li>Der Warenkorb wird gespeichert und das Terminal ist sofort wieder für den nächsten Kunden frei.</li>
+    <li>Ein neuer leerer Warenkorb erscheint automatisch.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Parken-Schaltfläche im Warenkorb</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Warenkorb mit gefüllten Positionen, Parken-Button neben dem Abbrechen-Button</div>
+  <img src="/doku/screenshot_1774477267031.png?t=1774477267046" alt="Screenshot: Parken-Schaltfläche im Warenkorb"></div>
+</div>
+
+<!-- 2.2 Offene Körbe -->
+<div class="abschnitt" id="kap2-offen">
+  <h2>2.2 Geparkten Bon aufrufen (Offene Körbe)</h2>
+  <ol class="schritte">
+    <li>In der oberen Navigation <span class="taste">🗂 Offene Körbe</span> antippen.</li>
+    <li>Eine Liste aller geparkten Körbe erscheint, mit Datum, Uhrzeit und Gesamtbetrag.</li>
+    <li>Den richtigen Bon in der Liste finden und <span class="taste">→ Übernehmen</span> antippen.</li>
+    <li>Der Warenkorb ist wieder aktiv und kann normal weitergeführt oder gebucht werden.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Seite „Offene Körbe"</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Liste geparkter Warenkörbe mit Uhrzeit, Anzahl Positionen, Betrag und Übernehmen-Button</div>
+  <img src="/doku/screenshot_1774477346560.png?t=1774477346587" alt="Screenshot: Seite „Offene Körbe&quot;"></div>
+
+  <div class="hinweis achtung">
+    <div class="icon">⚠️</div>
+    <div>Geparkter Körbe verbleiben dauerhaft in der Liste, bis sie gebucht oder abgebrochen werden. Am Tagesende bitte prüfen, ob offene Körbe noch vorhanden sind.</div>
+  </div>
+</div>
+
+<!-- 2.3 Journal -->
+<div class="abschnitt" id="kap2-journal">
+  <h2>2.3 Das Journal</h2>
+  <p>Das Journal zeigt alle abgeschlossenen Verkäufe des Tages und der Vergangenheit. Es dient zur Kontrolle, zum Nachdruck und bei Bedarf zum Stornieren.</p>
+  <ol class="schritte">
+    <li>In der Navigation <span class="taste">📋 Journal</span> antippen.</li>
+    <li>Die Liste der Transaktionen erscheint, neueste zuerst.</li>
+    <li>Eine Transaktion antippen, um die Einzelpositionen zu sehen.</li>
+    <li>Mit <span class="taste">Mehr laden</span> ältere Einträge nachladen.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Journal-Übersicht</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Tabelle mit Transaktionen (Nr., Datum, Terminal, Betrag, Status), aufklappbare Detailzeile</div>
+  <img src="/doku/screenshot_1774477492995.png?t=1774477493010" alt="Screenshot: Journal-Übersicht"></div>
+
+  <h3>Was wird im Journal angezeigt?</h3>
+  <table>
+    <thead><tr><th>Spalte</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td>Nr.</td><td>Fortlaufende Transaktionsnummer</td></tr>
+      <tr><td>Datum / Uhrzeit</td><td>Zeitpunkt der Buchung</td></tr>
+      <tr><td>Terminal</td><td>Welches Gerät hat gebucht (z.B. Terminal 1)</td></tr>
+      <tr><td>Betrag</td><td>Gesamtbetrag dieser Transaktion</td></tr>
+      <tr><td>Status</td><td><em>gebucht</em> = normal abgeschlossen · <em>storniert</em> = rückgängig gemacht</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 2.4 Nachdruck -->
+<div class="abschnitt" id="kap2-nachdruck">
+  <h2>2.4 Bon nachdruck</h2>
+  <p>Wenn ein Bon verloren gegangen ist oder ein zweites Exemplar benötigt wird:</p>
+  <ol class="schritte">
+    <li>Im Journal die gewünschte Transaktion aufrufen.</li>
+    <li>Die Schaltfläche <span class="taste">🖨 Nachdruck</span> antippen.</li>
+    <li>Der Bon wird erneut gedruckt – mit dem Vermerk <strong>KOPIE</strong>.</li>
+  </ol>
+
+  <div class="hinweis info">
+    <div class="icon">ℹ️</div>
+    <div>Der Barcode auf einem Nachdruck-Bon ist identisch mit dem Original und kann an der Kasse eingescannt werden.</div>
+  </div>
+</div>
+
+<!-- 2.5 Storno -->
+<div class="abschnitt" id="kap2-storno">
+  <h2>2.5 Transaktion stornieren</h2>
+  <p>Wurde ein Verkauf irrtümlich gebucht oder muss er aus einem anderen Grund rückgängig gemacht werden:</p>
+  <ol class="schritte">
+    <li>Im Journal die betreffende Transaktion suchen.</li>
+    <li>Die Schaltfläche <span class="taste rot">✕ Stornieren</span> antippen.</li>
+    <li>Die Sicherheitsabfrage bestätigen.</li>
+    <li>Die Transaktion wird als <em>storniert</em> markiert und erscheint weiterhin im Journal (aber durchgestrichen und in Rot).</li>
+  </ol>
+
+  <div class="hinweis wichtig">
+    <div class="icon">🚨</div>
+    <div>Ein Storno kann nicht rückgängig gemacht werden. Bitte sorgfältig prüfen, bevor die Aktion bestätigt wird. Stornos bitte immer der Filialleitung melden.</div>
+  </div>
+</div>
+
+</div>
+
+<div class="kap-sektion" data-kapitel="3">
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 3 – ARTIKELVERWALTUNG
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap3">
+  <div class="kapitel-nr">03</div>
+  <div>
+    <h1>Artikelverwaltung</h1>
+    <div class="untertitel">Artikel aktivieren · Wochentage · Kategorien · Zutaten &amp; Hinweise</div>
+  </div>
+</div>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Artikel pflegen</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Admin → Artikel aufrufen]) --&gt; B[Artikel in der Liste suchen]
+    B --&gt; C[Felder bearbeiten]
+    C --&gt; D{Was wurde geändert?}
+    D --&gt;|Aktiv-Status| E[Sichtbarkeit im Kiosk geändert]
+    D --&gt;|Wochentage| F[Artikel erscheint nur an diesen Tagen]
+    D --&gt;|Kategorie| G[Einordnung im Produktkatalog geändert]
+    D --&gt;|Zutaten/Hinweis| H[Info für Kunden aktualisiert]
+    E &amp; F &amp; G &amp; H --&gt; I[💾 Speichern antippen]
+    I --&gt; J([✅ Änderung aktiv])">flowchart TD
+    A([Admin → Artikel aufrufen]) --&gt; B[Artikel in der Liste suchen]
+    B --&gt; C[Felder bearbeiten]
+    C --&gt; D{Was wurde geändert?}
+    D --&gt;|Aktiv-Status| E[Sichtbarkeit im Kiosk geändert]
+    D --&gt;|Wochentage| F[Artikel erscheint nur an diesen Tagen]
+    D --&gt;|Kategorie| G[Einordnung im Produktkatalog geändert]
+    D --&gt;|Zutaten/Hinweis| H[Info für Kunden aktualisiert]
+    E &amp; F &amp; G &amp; H --&gt; I[💾 Speichern antippen]
+    I --&gt; J([✅ Änderung aktiv])</div>
+</div>
+
+<!-- 3.1 Zugang -->
+<div class="abschnitt" id="kap3-zugang">
+  <h2>3.1 Zugang zur Artikelverwaltung</h2>
+  <ol class="schritte">
+    <li>In der Navigation <span class="taste">⚙ Admin</span> antippen.</li>
+    <li>Dann <span class="taste">Artikel</span> auswählen.</li>
+    <li>Die vollständige Artikelliste erscheint – alle Produkte aus dem System, gegliedert nach Kategorie.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Artikelverwaltung – Übersicht</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Liste aller Artikel mit Kategorie, Aktiv-Status, Wochentagen und Bearbeiten-Feldern</div>
+  <img src="/doku/screenshot_1774479281942.png?t=1774479281980" alt="Screenshot: Artikelverwaltung – Übersicht"></div>
+
+  <div class="hinweis achtung">
+    <div class="icon">⚠️</div>
+    <div>Neue Artikel können <strong>nicht</strong> hier angelegt werden – das geschieht in der Warenwirtschaft (CAO). Hier werden vorhandene Artikel nur für den Kiosk konfiguriert.</div>
+  </div>
+</div>
+
+<!-- 3.2 Aktiv / Inaktiv -->
+<div class="abschnitt" id="kap3-aktiv">
+  <h2>3.2 Artikel aktivieren oder deaktivieren</h2>
+  <p>Jeder Artikel hat einen <strong>Aktiv-Status</strong>, der bestimmt, ob und wie er im Kiosk erscheint:</p>
+  <table>
+    <thead><tr><th>Status</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Aktiv (1)</strong></td><td>Artikel ist im Kiosk sichtbar und kann verkauft werden</td></tr>
+      <tr><td><strong>Inaktiv (0)</strong></td><td>Artikel erscheint nicht im Kiosk (z. B. saisonaler Artikel außer Saison)</td></tr>
+      <tr><td><strong>Nur Anzeige (2)</strong></td><td>Artikel ist sichtbar, kann aber nicht in den Warenkorb gelegt werden – zeigt stattdessen einen Hinweistext</td></tr>
+    </tbody>
+  </table>
+
+  <ol class="schritte">
+    <li>Den gewünschten Artikel in der Liste finden.</li>
+    <li>Im Feld <strong>Aktiv</strong> den gewünschten Wert auswählen.</li>
+    <li><span class="taste">💾 Speichern</span> antippen.</li>
+  </ol>
+
+  <div class="hinweis tipp">
+    <div class="icon">💡</div>
+    <div>Status „Nur Anzeige (2)" eignet sich z. B. für Artikel die momentan nicht lieferbar sind, aber dennoch im Sortiment stehen sollen. Der Hinweistext (z. B. „Heute leider ausverkauft") erscheint dann auf der Produktkarte.</div>
+  </div>
+</div>
+
+<!-- 3.3 Wochentage -->
+<div class="abschnitt" id="kap3-wochentage">
+  <h2>3.3 Wochentage festlegen</h2>
+  <p>Viele Backwaren sind nur an bestimmten Tagen frisch verfügbar. Über die Wochentage wird gesteuert, an welchen Tagen ein Artikel im Kiosk angezeigt wird.</p>
+  <ol class="schritte">
+    <li>Den Artikel in der Liste suchen.</li>
+    <li>Im Bereich <strong>Wochentage</strong> die gewünschten Tage per Häkchen auswählen (Mo bis So).</li>
+    <li><span class="taste">💾 Speichern</span> antippen.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Wochentage-Auswahl für einen Artikel</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Checkboxen Mo bis So, teilweise ausgewählt (z. B. nur Di, Do, Sa)</div>
+  <img src="/doku/screenshot_1774479295227.png?t=1774479295254" alt="Screenshot: Wochentage-Auswahl für einen Artikel"></div>
+
+  <div class="hinweis info">
+    <div class="icon">ℹ️</div>
+    <div>Wenn keine Wochentage ausgewählt sind, erscheint der Artikel an <strong>keinem</strong> Tag im Kiosk – auch wenn er auf „Aktiv" gesetzt ist.</div>
+  </div>
+</div>
+
+<!-- 3.4 Weitere Felder -->
+<div class="abschnitt" id="kap3-felder">
+  <h2>3.4 Weitere Felder</h2>
+  <table>
+    <thead><tr><th>Feld</th><th>Bedeutung</th><th>Beispiel</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Kategorie</strong></td><td>Einordnung im Produktkatalog (Gruppe im Kiosk)</td><td>Brote, Brötchen, Kuchen</td></tr>
+      <tr><td><strong>Einheit</strong></td><td>Maßeinheit auf dem Bon</td><td>Stck., kg, Bund</td></tr>
+      <tr><td><strong>Zutaten</strong></td><td>Zutatenliste / Allergene (info für Kunden)</td><td>Weizenmehl, Hefe, Salz</td></tr>
+      <tr><td><strong>Hinweistext</strong></td><td>Wird angezeigt wenn Status = „Nur Anzeige (2)"</td><td>Heute leider ausverkauft</td></tr>
+    </tbody>
+  </table>
+
+  <ol class="schritte">
+    <li>Das gewünschte Feld bearbeiten.</li>
+    <li>Mit <span class="taste">💾 Speichern</span> die Änderungen sichern.</li>
+  </ol>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Artikelzeile mit aufgeklappten Bearbeitungsfeldern</div>
+    <div class="hinweis-text">Zeigt: Bearbeitungsformular eines Artikels mit Kategorie-Dropdown, Einheit, Zutaten-Textfeld, Hinweisfeld</div>
+  </div>
+</div>
+
+</div>
+
+<div class="kap-sektion" data-kapitel="4">
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 4 – BESTELLABWICKLUNG
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap4">
+  <div class="kapitel-nr">04</div>
+  <div>
+    <h1>Bestellabwicklung</h1>
+    <div class="untertitel">Vorbestellungen anlegen · drucken · bearbeiten · pausieren · stornieren</div>
+  </div>
+</div>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Neue Bestellung anlegen</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Bestellungen → + Neue Bestellung]) --&gt; B{Bestelltyp?}
+    B --&gt;|Einmalig| C[Abholdatum wählen]
+    B --&gt;|Wiederkehrend| D[Wochentag wählen\noptional Start- und Enddatum]
+    C &amp; D --&gt; E[Kundendaten eingeben\nName + Telefon]
+    E --&gt; F[Artikel auswählen]
+    F --&gt; G{Zahlungsart?}
+    G --&gt;|Sofort zahlen| H[💳 Kassierbon druckt\nBarcode für Kasse]
+    G --&gt;|Bei Abholung| I[📋 Bestellbestätigung druckt\nBetrag bei Abholung]
+    H &amp; I --&gt; J([✅ Bestellung angelegt])">flowchart TD
+    A([Bestellungen → + Neue Bestellung]) --&gt; B{Bestelltyp?}
+    B --&gt;|Einmalig| C[Abholdatum wählen]
+    B --&gt;|Wiederkehrend| D[Wochentag wählen\noptional Start- und Enddatum]
+    C &amp; D --&gt; E[Kundendaten eingeben\nName + Telefon]
+    E --&gt; F[Artikel auswählen]
+    F --&gt; G{Zahlungsart?}
+    G --&gt;|Sofort zahlen| H[💳 Kassierbon druckt\nBarcode für Kasse]
+    G --&gt;|Bei Abholung| I[📋 Bestellbestätigung druckt\nBetrag bei Abholung]
+    H &amp; I --&gt; J([✅ Bestellung angelegt])</div>
+</div>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Bestellung am Liefertag abwickeln</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Bestellungen - Tab Heute]) --&gt; B[Offene Bestellungen prüfen]
+    B --&gt; C{Druck?}
+    C --&gt;|Einzeln| D[🖨 bei Bestellung antippen]
+    C --&gt;|Alle auf einmal| E[🖨 Alle offenen drucken]
+    D &amp; E --&gt; F[Pickliste druckt – Artikel zusammenstellen]
+    F --&gt; G[Ware vorbereiten und lagern]
+    G --&gt; H{Kunde kommt}
+    H --&gt; I[Ware übergeben]
+    I --&gt; J{Zahlung?}
+    J --&gt;|Bei Abholung| K[Barcode an Kasse scannen]
+    J --&gt;|Bereits bezahlt| L[Bon zeigt: bereits bezahlt]
+    K &amp; L --&gt; M([✅ Abwicklung abgeschlossen])">flowchart TD
+    A([Bestellungen - Tab Heute]) --&gt; B[Offene Bestellungen prüfen]
+    B --&gt; C{Druck?}
+    C --&gt;|Einzeln| D[🖨 bei Bestellung antippen]
+    C --&gt;|Alle auf einmal| E[🖨 Alle offenen drucken]
+    D &amp; E --&gt; F[Pickliste druckt – Artikel zusammenstellen]
+    F --&gt; G[Ware vorbereiten und lagern]
+    G --&gt; H{Kunde kommt}
+    H --&gt; I[Ware übergeben]
+    I --&gt; J{Zahlung?}
+    J --&gt;|Bei Abholung| K[Barcode an Kasse scannen]
+    J --&gt;|Bereits bezahlt| L[Bon zeigt: bereits bezahlt]
+    K &amp; L --&gt; M([✅ Abwicklung abgeschlossen])</div>
+</div>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Bestellung bearbeiten / ändern</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Bestellung öffnen]) --&gt; B{Änderung?}
+    B --&gt;|Artikel oder Daten| C[Felder bearbeiten]
+    C --&gt; D[💾 Speichern]
+    D --&gt; E[Änderungsbon druckt automatisch]
+    E --&gt; F{Zahlungsart?}
+    F --&gt;|Sofort bezahlt| G{Differenz?}
+    G --&gt;|Kunde zahlt nach| H[Bon: Nachzahlung + Barcode]
+    G --&gt;|Rückzahlung| I[Bon: Auszuzahlender Betrag]
+    G --&gt;|Keine Differenz| J[Bon: Keine Nachzahlung]
+    F --&gt;|Bei Abholung| K[Bon: Aktualisierte Bestellung + Barcode]
+    B --&gt;|Pause| L[⏸ Pausieren antippen]
+    L --&gt; M[Wochen einstellen oder unbefristet]
+    M --&gt; N[Pausierbon druckt]
+    B --&gt;|Storno| O[✕ Stornieren]
+    O --&gt; P{Bereits bezahlt?}
+    P --&gt;|Ja| Q[Storno-Bon: Auszuzahlender Betrag]
+    P --&gt;|Nein| R[Storno ohne Bon]">flowchart TD
+    A([Bestellung öffnen]) --&gt; B{Änderung?}
+    B --&gt;|Artikel oder Daten| C[Felder bearbeiten]
+    C --&gt; D[💾 Speichern]
+    D --&gt; E[Änderungsbon druckt automatisch]
+    E --&gt; F{Zahlungsart?}
+    F --&gt;|Sofort bezahlt| G{Differenz?}
+    G --&gt;|Kunde zahlt nach| H[Bon: Nachzahlung + Barcode]
+    G --&gt;|Rückzahlung| I[Bon: Auszuzahlender Betrag]
+    G --&gt;|Keine Differenz| J[Bon: Keine Nachzahlung]
+    F --&gt;|Bei Abholung| K[Bon: Aktualisierte Bestellung + Barcode]
+    B --&gt;|Pause| L[⏸ Pausieren antippen]
+    L --&gt; M[Wochen einstellen oder unbefristet]
+    M --&gt; N[Pausierbon druckt]
+    B --&gt;|Storno| O[✕ Stornieren]
+    O --&gt; P{Bereits bezahlt?}
+    P --&gt;|Ja| Q[Storno-Bon: Auszuzahlender Betrag]
+    P --&gt;|Nein| R[Storno ohne Bon]</div>
+</div>
+
+<!-- 4.1 Neue Bestellung -->
+<div class="abschnitt" id="kap4-neu">
+  <h2>4.1 Neue Bestellung anlegen</h2>
+  <ol class="schritte">
+    <li>In der Navigation <span class="taste">📦 Bestellungen</span> antippen.</li>
+    <li>Dann <span class="taste">+ Neue Bestellung</span> antippen.</li>
+    <li>Das Formular für die neue Bestellung erscheint.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Formular „Neue Bestellung"</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Eingabefelder Name, Telefon, Bestelltyp (einmalig/wiederkehrend), Artikel-Auswahl, Zahlungsart-Buttons</div>
+  <img src="/doku/screenshot_1774479321194.png?t=1774479321217" alt="Screenshot: Formular „Neue Bestellung&quot;"></div>
+</div>
+
+<!-- 4.2 Einmalige Bestellung -->
+<div class="abschnitt" id="kap4-einmalig">
+  <h2>4.2 Einmalige Bestellung</h2>
+  <p>Eine einmalige Bestellung gilt für genau einen bestimmten Abholtag.</p>
+  <ol class="schritte">
+    <li>Als Typ <strong>Einmalig</strong> auswählen.</li>
+    <li><strong>Abholdatum</strong> eintragen (z. B. nächster Samstag).</li>
+    <li><strong>Abholzeit</strong> eintragen (optional, wenn der Kunde zu einer bestimmten Uhrzeit kommt).</li>
+    <li>Name und Telefonnummer des Kunden eingeben. Der Name erscheint beim Tippen als Vorschlag, falls der Kunde bereits bekannt ist.</li>
+    <li>Artikel aus der rechten Liste auswählen und Mengen festlegen.</li>
+    <li>Zahlungsart wählen:<br>
+      – <span class="taste">💳 Sofort zahlen</span>: Kunde zahlt jetzt → Kassierbon mit Barcode druckt<br>
+      – <span class="taste">🏠 Bei Abholung</span>: Zahlung am Abholtag → Bestellbestätigung druckt</li>
+    <li><span class="taste">💾 Speichern &amp; Drucken</span> antippen.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Neue einmalige Bestellung – ausgefüllt</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Typ „Einmalig" ausgewählt, Datum eingetragen, Name/Telefon, Artikel mit Menge, Zahlungsart</div>
+  <img src="/doku/screenshot_1774479328978.png?t=1774479329021" alt="Screenshot: Neue einmalige Bestellung – ausgefüllt"></div>
+</div>
+
+<!-- 4.3 Wiederkehrende Bestellung -->
+<div class="abschnitt" id="kap4-wiederkehrend">
+  <h2>4.3 Wiederkehrende Bestellung</h2>
+  <p>Eine wiederkehrende Bestellung erscheint automatisch jeden Woche am gewählten Wochentag in der Heute-Ansicht.</p>
+  <ol class="schritte">
+    <li>Als Typ <strong>Wiederkehrend</strong> auswählen.</li>
+    <li><strong>Wochentag</strong> auswählen (z. B. jeden Dienstag).</li>
+    <li><strong>Startdatum</strong> eintragen (ab wann gilt die Bestellung, optional).</li>
+    <li><strong>Enddatum</strong> eintragen (bis wann gilt die Bestellung, z. B. bis Saisonende, optional).</li>
+    <li>Name, Telefon, Artikel wie bei einer einmaligen Bestellung.</li>
+    <li>Zahlungsart: nur <span class="taste">🏠 Bei Abholung</span> möglich (Sofortzahlung ist bei wiederkehrenden Bestellungen nicht verfügbar).</li>
+    <li><span class="taste">💾 Speichern &amp; Drucken</span> antippen.</li>
+  </ol>
+
+  <div class="screenshot" style="border: none; background: none; padding: 6px 0px; position: relative;">
+    <div class="foto-icon" style="display: none;">📷</div>
+    <div class="beschr" style="display: none;">Screenshot: Neue wiederkehrende Bestellung</div>
+    <div class="hinweis-text" style="display: none;">Zeigt: Typ „Wiederkehrend" ausgewählt, Wochentag-Dropdown, Start/Enddatum-Felder</div>
+  <img src="/doku/screenshot_1774479336341.png?t=1774479336361" alt="Screenshot: Neue wiederkehrende Bestellung"></div>
+
+  <div class="hinweis tipp">
+    <div class="icon">💡</div>
+    <div>Wenn kein Enddatum gesetzt wird, läuft die Bestellung unbefristet – solange bis sie storniert oder pausiert wird.</div>
+  </div>
+</div>
+
+<!-- 4.4 Bestellübersicht -->
+<div class="abschnitt" id="kap4-uebersicht">
+  <h2>4.4 Bestellübersicht</h2>
+  <p>Die Bestellübersicht (<span class="taste">📦 Bestellungen</span>) hat zwei Ansichten:</p>
+
+  <h3>Tab „Heute"</h3>
+  <p>Zeigt alle Bestellungen, die heute abzuholen sind (einmalige mit heutigem Datum und wiederkehrende mit heutigem Wochentag). Pausierte Bestellungen erscheinen hier <strong>nicht</strong>.</p>
+
+  <table>
+    <thead><tr><th>Spalte</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td>Nr.</td><td>Bestellnummer (z. B. B-2026-0042)</td></tr>
+      <tr><td>Name / Telefon</td><td>Kundendaten</td></tr>
+      <tr><td>Artikel</td><td>Kurzzusammenfassung der bestellten Artikel</td></tr>
+      <tr><td>Uhrzeit</td><td>Gewünschte Abholzeit</td></tr>
+      <tr><td>Typ</td><td>Einmalig oder Wdh. (wiederkehrend)</td></tr>
+      <tr><td>Zahlung</td><td>💳 Gezahlt oder 🏠 bei Abholung</td></tr>
+      <tr><td>Status</td><td>offen (noch nicht gedruckt) oder gedruckt</td></tr>
+      <tr><td>Aktionen</td><td>Drucken · Nachdruck · Stornieren · Bearbeiten</td></tr>
+    </tbody>
+  </table>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Bestellungen – Tab „Heute"</div>
+    <div class="hinweis-text">Zeigt: Tabelle mit heutigen Bestellungen, Status-Badges, Aktionsbuttons</div>
+  </div>
+
+  <h3>Tab „Alle Bestellungen"</h3>
+  <p>Zeigt alle vorhandenen Bestellungen (auch zukünftige, vergangene und stornierte). Hier können alle Bestellungen gesucht, bearbeitet und nachgedruckt werden.</p>
+
+  <div class="hinweis tipp">
+    <div class="icon">💡</div>
+    <div>Im Tab „Alle" gibt es ein Suchfeld – einfach Name oder Bestellnummer eingeben, um eine Bestellung schnell zu finden.</div>
+  </div>
+</div>
+
+<!-- 4.5 Pickliste drucken -->
+<div class="abschnitt" id="kap4-drucken">
+  <h2>4.5 Pickliste drucken</h2>
+  <p>Die Pickliste ist der interne Bon, der beim Zusammenstellen der Bestellung hilft. Sie zeigt alle bestellten Artikel mit Mengen und (je nach Einstellung) Preisen.</p>
+
+  <h3>Einzelne Bestellung drucken</h3>
+  <ol class="schritte">
+    <li>Im Tab „Heute" die gewünschte Bestellung suchen.</li>
+    <li>Den <span class="taste">🖨</span>-Button in der Aktionsspalte antippen.</li>
+    <li>Die Pickliste druckt. Der Status wechselt von „offen" auf „gedruckt".</li>
+  </ol>
+
+  <h3>Alle offenen Bestellungen auf einmal drucken</h3>
+  <ol class="schritte">
+    <li>Im Tab „Heute" den Button <span class="taste">🖨 Alle offenen drucken</span> antippen.</li>
+    <li>Alle Bestellungen mit Status „offen" werden nacheinander gedruckt.</li>
+  </ol>
+
+  <h3>Ausgewählte Bestellungen drucken</h3>
+  <ol class="schritte">
+    <li>Die gewünschten Bestellungen mit dem Häkchen links anwählen.</li>
+    <li>Den Button <span class="taste">🖨 Markierte drucken</span> antippen.</li>
+  </ol>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Pickliste (gedruckter Bon)</div>
+    <div class="hinweis-text">Zeigt: Beispiel einer Pickliste mit Bestellnummer, Kundenname, Artikel, Datum und Barcode oder „Bereits bezahlt"</div>
+  </div>
+</div>
+
+<!-- 4.6 Bestellung bearbeiten -->
+<div class="abschnitt" id="kap4-bearbeiten">
+  <h2>4.6 Bestellung bearbeiten</h2>
+  <p>Bestellungen können jederzeit (solange sie nicht storniert sind) geändert werden.</p>
+  <ol class="schritte">
+    <li>In der Bestellübersicht den <span class="taste">✏️ Edit</span>-Button der Bestellung antippen.</li>
+    <li>Die Detailansicht der Bestellung öffnet sich.</li>
+    <li>Gewünschte Felder ändern (Name, Artikel, Datum, Uhrzeit, Notiz usw.).</li>
+    <li><span class="taste">💾 Speichern</span> antippen.</li>
+    <li>Ein Änderungsbon druckt automatisch.</li>
+  </ol>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Bestellung bearbeiten – Detailansicht</div>
+    <div class="hinweis-text">Zeigt: Linke Seite mit Formularfeldern, rechte Seite mit Artikelauswahl, Speichern-Button unten</div>
+  </div>
+
+  <h3>Änderungsbon – was druckt?</h3>
+  <table>
+    <thead><tr><th>Zahlungsart</th><th>Was druckt?</th></tr></thead>
+    <tbody>
+      <tr><td>💳 Sofort gezahlt · Preis gestiegen</td><td>Bon mit <strong>Nachzahlung €X</strong> + Barcode</td></tr>
+      <tr><td>💳 Sofort gezahlt · Preis gesunken</td><td>Bon mit <strong>Auszuzahlender Betrag €X</strong> (kein Barcode)</td></tr>
+      <tr><td>💳 Sofort gezahlt · Preis gleich</td><td>Bon mit <strong>Keine Nachzahlung</strong></td></tr>
+      <tr><td>🏠 Bei Abholung (einmalig)</td><td>Aktualisierte Bestellung + neuer Barcode</td></tr>
+      <tr><td>🏠 Bei Abholung (wiederkehrend)</td><td>Aktualisierte Bestellung + neuer Wochenbetrag</td></tr>
+    </tbody>
+  </table>
+
+  <div class="hinweis info">
+    <div class="icon">ℹ️</div>
+    <div>Auf dem Änderungsbon werden weggefallene Artikel mit <strong>Menge 0</strong> und bei Sofort-Zahlung mit negativem Betrag angezeigt. Neue Artikel sind mit <strong>NEU</strong> markiert.</div>
+  </div>
+</div>
+
+<!-- 4.7 Pause -->
+<div class="abschnitt" id="kap4-pause">
+  <h2>4.7 Wiederkehrende Bestellung pausieren</h2>
+  <p>Wenn ein Stammkunde vorübergehend nicht kommen kann (Urlaub, Krankheit), kann seine Bestellung pausiert werden, ohne sie stornieren zu müssen.</p>
+
+  <ol class="schritte">
+    <li>Die Bestellung über <span class="taste">✏️ Edit</span> öffnen.</li>
+    <li>Im unteren Bereich „Pausieren" die Anzahl der Wochen mit <span class="taste" style="font-size:1.1rem; padding:2px 12px;">−</span> und <span class="taste" style="font-size:1.1rem; padding:2px 12px;">+</span> einstellen.<br>
+    <em>Anzeige „unbefristet"</em> = keine zeitliche Begrenzung (Standard).<br>
+    <em>Anzeige „N Wochen"</em> = Bestellung wird nach N Wochen automatisch wieder aktiv.</li>
+    <li><span class="taste">⏸ Pausieren</span> antippen.</li>
+    <li>Ein Pausierbon druckt mit dem Hinweis „Pausiert bis TT.MM.JJJJ" oder „Pausiert (unbefristet)".</li>
+  </ol>
+
+  <h3>Pausierte Bestellung wieder aktivieren</h3>
+  <ol class="schritte">
+    <li>Die pausierte Bestellung über die Bestellübersicht aufrufen (erkennbar am ⏸-Badge).</li>
+    <li><span class="taste">▶ Fortsetzen</span> antippen.</li>
+    <li>Die Bestellung erscheint ab dem nächsten zutreffenden Wochentag wieder in „Heute".</li>
+  </ol>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Pause-Steuerung in der Bestelldetailansicht</div>
+    <div class="hinweis-text">Zeigt: Großer − und + Button, Anzeige „unbefristet" oder „N Wochen", Pausieren-Button</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Bestellübersicht – pausierte Bestellung mit ⏸-Badge</div>
+    <div class="hinweis-text">Zeigt: Typ-Spalte mit „Wdh." und gelbem ⏸-Badge, Datum-Spalte mit Pauseninfo</div>
+  </div>
+</div>
+
+<!-- 4.8 Storno -->
+<div class="abschnitt" id="kap4-storno">
+  <h2>4.8 Bestellung stornieren</h2>
+  <ol class="schritte">
+    <li>In der Bestellübersicht den <span class="taste rot">✕ Storno</span>-Button antippen.</li>
+    <li>Die Sicherheitsabfrage bestätigen.</li>
+    <li>Die Bestellung wird als storniert markiert und verschwindet aus der „Heute"-Ansicht.</li>
+  </ol>
+
+  <div class="hinweis wichtig">
+    <div class="icon">🚨</div>
+    <div>Bei bereits bezahlten Bestellungen (💳 Sofort) druckt automatisch ein Storno-Bon mit dem <strong>Auszuzahlenden Betrag</strong>. Dieser Betrag muss dem Kunden zurückgegeben werden.</div>
+  </div>
+
+  <div class="hinweis achtung">
+    <div class="icon">⚠️</div>
+    <div>Bei wiederkehrenden Bestellungen: Storno beendet die Bestellung dauerhaft. Wenn der Kunde nur kurz pausieren möchte, bitte stattdessen die Pausieren-Funktion nutzen (Kapitel 4.7).</div>
+  </div>
+</div>
+
+</div>
+
+<div class="kap-sektion" data-kapitel="5">
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 5 – MITTAGSTISCH DATENPFLEGE
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap5">
+  <div class="kapitel-nr">05</div>
+  <div>
+    <h1>Datenpflege Mittagstisch</h1>
+    <div class="untertitel">Wochenmenü eingeben · Gerichte pro Tag · Speichern</div>
+  </div>
+</div>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Mittagstisch-Menü pflegen</h4>
+  <div class="mermaid" data-source="flowchart TD
+    A([Navigation: Mittagstisch]) --&gt; B[Woche auswählen\naktuelle · +1 · +2 Wochen]
+    B --&gt; C[Montag: Gerichte eintragen]
+    C --&gt; D[Dienstag ...]
+    D --&gt; E[Mittwoch ...]
+    E --&gt; F[Donnerstag ...]
+    F --&gt; G[Freitag ...]
+    G --&gt; H[💾 Woche speichern antippen]
+    H --&gt; I{Weitere Wochen?}
+    I --&gt;|Ja| B
+    I --&gt;|Nein| J([✅ Menüplan aktuell])">flowchart TD
+    A([Navigation: Mittagstisch]) --&gt; B[Woche auswählen\naktuelle · +1 · +2 Wochen]
+    B --&gt; C[Montag: Gerichte eintragen]
+    C --&gt; D[Dienstag ...]
+    D --&gt; E[Mittwoch ...]
+    E --&gt; F[Donnerstag ...]
+    F --&gt; G[Freitag ...]
+    G --&gt; H[💾 Woche speichern antippen]
+    H --&gt; I{Weitere Wochen?}
+    I --&gt;|Ja| B
+    I --&gt;|Nein| J([✅ Menüplan aktuell])</div>
+</div>
+
+<!-- 5.1 Zugang -->
+<div class="abschnitt" id="kap5-zugang">
+  <h2>5.1 Mittagstisch-Seite aufrufen</h2>
+  <ol class="schritte">
+    <li>In der Navigation <span class="taste">🍽 Mittagstisch</span> antippen.</li>
+    <li>Die Seite zeigt drei Wochen nebeneinander: die aktuelle Woche sowie die beiden nächsten Wochen.</li>
+    <li>Per Tap auf den gewünschten Wochen-Tab die entsprechende Woche zur Bearbeitung auswählen.</li>
+  </ol>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Mittagstisch-Übersicht mit Wochen-Tabs</div>
+    <div class="hinweis-text">Zeigt: Drei Tab-Reiter (KW x, KW x+1, KW x+2), Wochentage als Zeilen, Eingabefelder für Gerichte</div>
+  </div>
+</div>
+
+<!-- 5.2 Menü eingeben -->
+<div class="abschnitt" id="kap5-eingabe">
+  <h2>5.2 Wochenmenü eingeben</h2>
+  <p>Für jeden Wochentag (Montag bis Freitag) können ein oder mehrere Gerichte eingetragen werden.</p>
+  <ol class="schritte">
+    <li>Das Eingabefeld beim gewünschten Wochentag antippen.</li>
+    <li>Das Gericht eintragen (z. B. „Schweinebraten mit Knödel und Sauerkraut").</li>
+    <li>Wenn an einem Tag kein Mittagstisch angeboten wird, das Feld einfach leer lassen.</li>
+    <li>Alle Tage der Woche nacheinander ausfüllen.</li>
+  </ol>
+
+  <div class="screenshot">
+    <div class="foto-icon">📷</div>
+    <div class="beschr">Screenshot: Mittagstisch – Woche mit ausgefüllten Gerichten</div>
+    <div class="hinweis-text">Zeigt: Tageszeilen Mo–Fr mit Textfeldern, teilweise ausgefüllt, ein Tag leer (kein Angebot)</div>
+  </div>
+
+  <div class="hinweis tipp">
+    <div class="icon">💡</div>
+    <div>Am besten die Gerichte für die gesamte Woche auf einmal eintragen, bevor gespeichert wird. So müssen die Felder nur einmal aufgerufen werden.</div>
+  </div>
+</div>
+
+<!-- 5.3 Speichern -->
+<div class="abschnitt" id="kap5-speichern">
+  <h2>5.3 Woche speichern</h2>
+  <ol class="schritte">
+    <li>Nach der Eingabe aller Gerichte die Schaltfläche <span class="taste">💾 Woche speichern</span> antippen.</li>
+    <li>Eine Bestätigung erscheint, dass die Daten gespeichert wurden.</li>
+    <li>Wenn weitere Wochen zu pflegen sind, den nächsten Wochen-Tab antippen und die Schritte wiederholen.</li>
+  </ol>
+
+  <div class="hinweis achtung">
+    <div class="icon">⚠️</div>
+    <div>Die Schaltfläche <strong>„Woche speichern"</strong> muss für jede Woche separat angetippt werden. Ein Wechsel des Wochen-Tabs ohne Speichern verwirft die Eingaben für die aktuelle Woche.</div>
+  </div>
+
+  <div class="hinweis info">
+    <div class="icon">ℹ️</div>
+    <div>Der Mittagstisch sollte idealerweise am <strong>Freitag</strong> für die folgende Woche eingepflegt werden, damit die Informationen rechtzeitig verfügbar sind.</div>
+  </div>
+</div>
+
+</div>
+
+<!-- ── Seitenende ── -->
+<hr>
+<div style="text-align:center; color:var(--text-hell); font-size:0.83rem; padding: 1.5rem 0;">
+  <p>🌾 <strong>Habacher Dorfladen</strong> – Mitarbeiter-Handbuch Kiosk</p>
+  <p>Bei Fragen oder Fehlern bitte die Filialleitung ansprechen.</p>
+  <p style="margin-top:0.5rem; opacity:0.6;">Erstellt mit Claude · Stand 2026</p>
+</div>
+
+</main>
+</div>
+
+<!-- ── Aktive Sidebar-Links ── -->
+<script>
+  // Aktiven Link in der Sidebar beim Scrollen hervorheben
+  const links = document.querySelectorAll('.sidebar nav a');
+  const sections = [];
+  links.forEach(a => {
+    const id = a.getAttribute('href').replace('#','');
+    const el = document.getElementById(id);
+    if (el) sections.push({ el, a });
+  });
+  function updateActive() {
+    const top = window.scrollY + 120;
+    let aktiv = null;
+    for (const s of sections) {
+      if (s.el.offsetTop <= top) aktiv = s;
+    }
+    links.forEach(a => a.classList.remove('aktiv'));
+    if (aktiv) aktiv.a.classList.add('aktiv');
+  }
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+</script>
+
+<!-- ══════════════════════════════════════════════════════
+     EDIT-MODUS JAVASCRIPT
+══════════════════════════════════════════════════════ -->
+<script>
+// ── Welche Elemente werden editierbar ────────────────────
+const EDIT_SELEKTOREN = [
+  '.inhalt h2', '.inhalt h3', '.inhalt h4',
+  '.inhalt .abschnitt p', '.inhalt .titelseite p', '.inhalt .titelseite h1',
+  '.inhalt .abschnitt td', '.inhalt .abschnitt th',
+  '.schritte li',
+  '.hinweis > div:not(.icon)',
+  '.kapitel-karte .titel', '.kapitel-karte .beschr',
+  '.kapitel-header .untertitel',
+  '.version-info span',
+];
+
+const sicherung = new Map(); // Element → innerHTML vor der Bearbeitung
+
+// ── Edit-Modus starten ───────────────────────────────────
+// ── Zurück zur App ────────────────────────────────────────────
+function zurueckZurApp() {
+  const ref = document.referrer;
+  if (ref && new URL(ref).origin === location.origin && !new URL(ref).pathname.startsWith('/handbuch')) {
+    location.href = ref;   // direkt zur Seite, von der man kam
+  } else {
+    location.href = '/';   // Fallback: App-Startseite
+  }
+}
+
+function startEdit() {
+  document.body.classList.add('edit-mode');
+
+  EDIT_SELEKTOREN.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      if (el.closest('.mermaid') || el.closest('.diagramm-container') ||
+          el.closest('.sidebar') || el.closest('#edit-toolbar')) return;
+      el.contentEditable = 'true';
+      sicherung.set(el, el.innerHTML);
+    });
+  });
+
+  document.querySelectorAll('.screenshot').forEach(hinzufuegenUpload);
+  // Save-Button sicherstellen: aktiv und korrekte Beschriftung
+  const btnSpe = document.getElementById('btn-speichern');
+  if (btnSpe) { btnSpe.removeAttribute('disabled'); btnSpe.textContent = '💾 Speichern'; }
+  document.getElementById('toolbar-ansicht').style.display = 'none';
+  document.getElementById('toolbar-bearbeitung').style.display = 'flex';
+  zeigToast('✏️ Bearbeitungsmodus – Texte antippen zum Bearbeiten');
+}
+
+// ── Abbrechen ────────────────────────────────────────────
+function abbrechenEdit() {
+  sicherung.forEach((html, el) => { el.innerHTML = html; });
+  beendeEditModus();
+  zeigToast('↩ Änderungen verworfen');
+}
+
+// ── Edit-Modus beenden ───────────────────────────────────
+function beendeEditModus() {
+  document.body.classList.remove('edit-mode');
+  document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+    el.removeAttribute('contenteditable');
+  });
+  document.querySelectorAll('.upload-knopf-leiste').forEach(el => el.remove());
+  document.getElementById('toolbar-ansicht').style.display = 'flex';
+  document.getElementById('toolbar-bearbeitung').style.display = 'none';
+  sicherung.clear();
+}
+
+// ── Upload-Leiste zu Screenshot-Platzhalter hinzufügen ───
+function hinzufuegenUpload(div) {
+  if (div.querySelector('.upload-knopf-leiste')) return;
+  const leiste = document.createElement('div');
+  leiste.className = 'upload-knopf-leiste';
+  const knopf = document.createElement('button');
+  knopf.className = 'upload-knopf';
+  knopf.textContent = div.querySelector('img') ? '🔄 Bild ersetzen' : '📷 Bild einfügen';
+  knopf.onclick = e => {
+    e.stopPropagation();
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.onchange = ev => { if (ev.target.files[0]) ladeBild(ev.target.files[0], div, knopf); };
+    inp.click();
+  };
+  leiste.appendChild(knopf);
+  div.appendChild(leiste);
+}
+
+// ── Bild hochladen und Platzhalter ersetzen ──────────────
+function ladeBild(datei, container, knopf) {
+  knopf.textContent = '⏳ Lädt hoch…';
+  knopf.disabled = true;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result.split(',')[1];
+    const ext  = (datei.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const name = 'screenshot_' + Date.now() + '.' + ext;
+    try {
+      const resp = await fetch('/handbuch/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: name, data: base64 })
+      });
+      const result = await resp.json();
+      if (!result.ok) throw new Error(result.fehler || 'Unbekannter Fehler');
+
+      // Platzhalter-Inhalt ausblenden
+      Array.from(container.children).forEach(k => {
+        if (!k.classList.contains('upload-knopf-leiste')) k.style.display = 'none';
+      });
+      // Bild einfügen oder ersetzen
+      let img = container.querySelector('img');
+      if (img) {
+        img.src = result.filename + '?t=' + Date.now();
+        img.style.display = '';
+      } else {
+        img = document.createElement('img');
+        img.src = result.filename + '?t=' + Date.now();
+        img.alt = (container.querySelector('.beschr') || {}).textContent || '';
+        container.insertBefore(img, container.querySelector('.upload-knopf-leiste'));
+      }
+      container.style.cssText = 'border:none; background:none; padding:6px 0; position:relative;';
+      knopf.textContent = '🔄 Bild ersetzen';
+      knopf.disabled = false;
+      zeigToast('✅ Gespeichert: ' + result.filename);
+    } catch (err) {
+      knopf.textContent = container.querySelector('img') ? '🔄 Bild ersetzen' : '📷 Bild einfügen';
+      knopf.disabled = false;
+      zeigToast('❌ ' + err.message + ' – App läuft?', true);
+    }
+  };
+  reader.readAsDataURL(datei);
+}
+
+// ── Speichern ────────────────────────────────────────────
+async function speichernHandbuch() {
+  const btn = document.getElementById('btn-speichern');
+  btn.textContent = '⏳ Speichert…';
+  btn.disabled = true;
+  try {
+    const html = serializeHtml();
+    const resp = await fetch('/handbuch/speichern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html })
+    });
+    const result = await resp.json();
+    if (!result.ok) throw new Error(result.fehler || 'Serverfehler');
+    sicherung.forEach((_, el) => sicherung.set(el, el.innerHTML));
+    beendeEditModus();
+    zeigToast('✅ Handbuch erfolgreich gespeichert');
+  } catch (err) {
+    zeigToast('❌ ' + err.message + ' – App läuft?', true);
+  }
+  btn.textContent = '💾 Speichern';
+  btn.disabled = false;
+}
+
+// ── HTML für Speichern aufbereiten ───────────────────────
+function serializeHtml() {
+  const doc = new DOMParser().parseFromString(
+    '<!DOCTYPE html>' + document.documentElement.outerHTML, 'text/html'
+  );
+  doc.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  doc.querySelectorAll('.upload-knopf-leiste').forEach(el => el.remove());
+  doc.body.classList.remove('edit-mode');
+  // Terminal-inject-Script entfernen (wird bei jedem Laden neu injiziert)
+  const tinj = doc.getElementById('terminal-inject');
+  if (tinj) tinj.remove();
+  // Bearbeiten-Button zurück auf hidden (JS zeigt ihn bei Bedarf)
+  const btnBearb = doc.getElementById('btn-bearbeiten');
+  if (btnBearb) btnBearb.style.display = 'none';
+  const ta = doc.getElementById('toolbar-ansicht');
+  const tb = doc.getElementById('toolbar-bearbeitung');
+  if (ta) ta.style.display = 'flex';
+  if (tb) tb.style.display = 'none';
+  const toast = doc.getElementById('edit-toast');
+  if (toast) { toast.textContent = ''; toast.style.opacity = '0'; }
+  // Speichern-Button immer im Ausgangszustand speichern
+  const btnSpe = doc.getElementById('btn-speichern');
+  if (btnSpe) { btnSpe.removeAttribute('disabled'); btnSpe.textContent = '💾 Speichern'; }
+  // Mermaid-SVG durch Quelltext ersetzen → beim nächsten Laden korrekt rendern
+  doc.querySelectorAll('.mermaid[data-source]').forEach(el => {
+    el.textContent = el.getAttribute('data-source');
+    el.removeAttribute('data-processed');
+  });
+  return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+}
+
+// ── Toast-Meldung ────────────────────────────────────────
+function zeigToast(text, istFehler = false) {
+  const el = document.getElementById('edit-toast');
+  el.textContent = text;
+  el.style.background = istFehler ? '#fef2f2' : '#f0fdf4';
+  el.style.color      = istFehler ? '#991b1b' : '#14532d';
+  el.style.border     = `1px solid ${istFehler ? '#fca5a5' : '#86efac'}`;
+  el.style.opacity    = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = '0'; }, istFehler ? 6000 : 3500);
+}
+</script>
+
+
+<div class="mermaidTooltip" style="opacity: 0;"></div></body></html>

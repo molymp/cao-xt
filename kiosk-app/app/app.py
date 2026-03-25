@@ -333,16 +333,17 @@ def buchen(wk_id):
 
     jetzt = datetime.now()
 
+    tnr = get_terminal_nr()
     bon_text = druck.generiere_bon_text(
         warenkorb_id=wk_id, positionen=positionen,
         gesamtbetrag_cent=warenkorb["gesamtbetrag_cent"],
-        ean_barcode=ean_code, terminal_nr=get_terminal_nr(),
+        ean_barcode=ean_code, terminal_nr=tnr,
         ist_kopie=False, zeitpunkt=jetzt,
     )
     bon_bytes = druck.generiere_bon_bytes(
         warenkorb_id=wk_id, positionen=positionen,
         gesamtbetrag_cent=warenkorb["gesamtbetrag_cent"],
-        ean_barcode=ean_code, terminal_nr=get_terminal_nr(),
+        ean_barcode=ean_code, terminal_nr=tnr,
         ist_kopie=False, zeitpunkt=jetzt,
     )
 
@@ -353,22 +354,10 @@ def buchen(wk_id):
                    (warenkorb_id, terminal_nr, erstellt_am, gebucht_am,
                     gesamtbetrag_cent, ean_barcode, bon_text, bon_data, status)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'gebucht')""",
-                (wk_id, get_terminal_nr(), warenkorb["erstellt_am"], jetzt,
+                (wk_id, tnr, warenkorb["erstellt_am"], jetzt,
                  warenkorb["gesamtbetrag_cent"], ean_code, bon_text, bon_bytes)
             )
             journal_id = cursor.lastrowid
-
-            bon_text_final = bon_text.replace("Bon Nr:   0", f"Bon Nr:   {journal_id}")
-            bon_bytes_final = druck.generiere_bon_bytes(
-                warenkorb_id=wk_id, positionen=positionen,
-                gesamtbetrag_cent=warenkorb["gesamtbetrag_cent"],
-                ean_barcode=ean_code, terminal_nr=get_terminal_nr(),
-                ist_kopie=False, zeitpunkt=jetzt,
-            )
-            cursor.execute(
-                "UPDATE journal_warenkoerbe SET bon_text=%s, bon_data=%s WHERE id=%s",
-                (bon_text_final, bon_bytes_final, journal_id)
-            )
 
             for pos in positionen:
                 cursor.execute(
@@ -393,7 +382,7 @@ def buchen(wk_id):
         druck.drucke_bon(
             warenkorb_id=wk_id, positionen=positionen,
             gesamtbetrag_cent=warenkorb["gesamtbetrag_cent"],
-            ean_barcode=ean_code, terminal_nr=get_terminal_nr(),
+            ean_barcode=ean_code, terminal_nr=tnr,
             ist_kopie=False, zeitpunkt=jetzt,
         )
     except Exception as e:
@@ -655,6 +644,7 @@ _HEUTE_SQL = """(
     (b.typ='einmalig' AND b.status != 'storniert' AND b.abhol_datum = CURDATE())
     OR
     (b.typ='wiederkehrend' AND b.status != 'storniert'
+     AND NOT (b.pausiert = 1 AND (b.pause_bis IS NULL OR b.pause_bis >= CURDATE()))
      AND b.wochentag = %(wt)s
      AND (b.start_datum IS NULL OR b.start_datum <= CURDATE())
      AND (b.end_datum   IS NULL OR b.end_datum   >= CURDATE()))
@@ -665,6 +655,7 @@ _BADGE_SQL = """(
     (b.typ='einmalig' AND b.status='offen' AND b.abhol_datum = CURDATE())
     OR
     (b.typ='wiederkehrend' AND b.status != 'storniert'
+     AND NOT (b.pausiert = 1 AND (b.pause_bis IS NULL OR b.pause_bis >= CURDATE()))
      AND b.wochentag = %(wt)s
      AND (b.start_datum IS NULL OR b.start_datum <= CURDATE())
      AND (b.end_datum   IS NULL OR b.end_datum   >= CURDATE())
@@ -775,22 +766,40 @@ def api_bestellungen_produkte():
 
 @app.route("/api/bestellungen/kunden")
 def api_bestellungen_kunden():
-    """Liefert passende Name+Telefon-Paare für das Autocomplete."""
+    """Veraltet – leitet intern auf /api/kontakte weiter."""
+    return api_kontakte()
+
+
+@app.route("/api/kontakte")
+def api_kontakte():
+    """Autocomplete aus der kontakte-Tabelle."""
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
-    with get_db() as cursor:
-        cursor.execute(
-            """SELECT DISTINCT name, COALESCE(telefon, '') AS telefon
-               FROM bestellungen
-               WHERE (name LIKE %s OR telefon LIKE %s)
-                 AND status != 'storniert'
-               ORDER BY name
-               LIMIT 10""",
-            (f"%{q}%", f"%{q}%"),
-        )
-        rows = cursor.fetchall()
-    return jsonify([{"name": r["name"], "telefon": r["telefon"]} for r in rows])
+    try:
+        with get_db() as cursor:
+            cursor.execute(
+                """SELECT name, telefon FROM kontakte
+                   WHERE name LIKE %s OR telefon LIKE %s
+                   ORDER BY name
+                   LIMIT 10""",
+                (f"%{q}%", f"%{q}%"),
+            )
+            rows = cursor.fetchall()
+        return jsonify([{"name": r["name"], "telefon": r["telefon"]} for r in rows])
+    except Exception:
+        return jsonify([])   # Autocomplete schlägt still fehl (Tabelle noch nicht vorhanden)
+
+
+def _hole_oder_erstelle_kontakt(cursor, name: str, telefon: str) -> int:
+    """Sucht einen Kontakt (name, telefon) oder legt ihn neu an. Gibt kontakt_id zurück."""
+    tel = (telefon or "").strip()
+    cursor.execute("SELECT id FROM kontakte WHERE name=%s AND telefon=%s", (name, tel))
+    row = cursor.fetchone()
+    if row:
+        return row["id"]
+    cursor.execute("INSERT INTO kontakte (name, telefon) VALUES (%s, %s)", (name, tel))
+    return cursor.lastrowid
 
 
 @app.route("/api/bestellungen/neu", methods=["POST"])
@@ -845,9 +854,10 @@ def api_bestellung_neu():
             )
             bestell_id = cursor.lastrowid
             bestell_nr = f"B-{jetzt.year}-{bestell_id:04d}"
+            kontakt_id = _hole_oder_erstelle_kontakt(cursor, name, data.get("telefon") or "")
             cursor.execute(
-                "UPDATE bestellungen SET bestell_nr=%s WHERE id=%s",
-                (bestell_nr, bestell_id),
+                "UPDATE bestellungen SET bestell_nr=%s, kontakt_id=%s WHERE id=%s",
+                (bestell_nr, kontakt_id, bestell_id),
             )
             for pos in positionen:
                 cursor.execute(
@@ -883,6 +893,7 @@ def api_bestellung_neu():
                 ist_kopie=False,
                 zeitpunkt=jetzt,
                 bestell_nr=bestell_nr,
+                notiz=data.get("notiz") or None,
             )
             # bon_data immer speichern (auch bei Druckfehler → Nachdruck möglich)
             with get_db() as cursor:
@@ -929,16 +940,43 @@ def api_bestellung_speichern(bestell_id):
     if not positionen:
         return jsonify({"ok": False, "fehler": "Mindestens ein Artikel erforderlich"})
 
+    terminal_nr = get_terminal_nr()
+    neu_gesamt_cent = sum(int(p["menge"]) * int(p["preis_cent"]) for p in positionen)
+
     try:
         with get_db_transaction() as cursor:
+            # ── Alten Zustand vor dem Speichern lesen ──────────────
+            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            alt_bestellung = cursor.fetchone()
+            if not alt_bestellung:
+                return jsonify({"ok": False, "fehler": "Bestellung nicht gefunden"}), 404
+            cursor.execute(
+                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                (bestell_id,),
+            )
+            alt_pos = cursor.fetchall()
+            alt_gesamt_cent = sum(p["menge"] * p["preis_cent"] for p in alt_pos)
+
+            # Neues EAN für abholung-Bestellungen aktualisieren
+            zahlungsart = alt_bestellung.get("zahlungsart", "abholung")
+            neu_ean = alt_bestellung.get("ean_barcode")
+            if zahlungsart != "sofort":
+                try:
+                    neu_ean = ean_modul.generiere_ean(neu_gesamt_cent)
+                except Exception:
+                    pass  # alten EAN behalten
+
+            kontakt_id = _hole_oder_erstelle_kontakt(cursor, name, data.get("telefon") or "")
             cursor.execute(
                 """UPDATE bestellungen
-                   SET name=%s, telefon=%s, typ=%s, abhol_datum=%s, wochentag=%s,
-                       start_datum=%s, end_datum=%s, abhol_uhrzeit=%s, notiz=%s
+                   SET name=%s, telefon=%s, kontakt_id=%s, typ=%s, abhol_datum=%s,
+                       wochentag=%s, start_datum=%s, end_datum=%s, abhol_uhrzeit=%s,
+                       notiz=%s, ean_barcode=%s
                    WHERE id=%s""",
                 (
                     name,
                     data.get("telefon") or None,
+                    kontakt_id,
                     data.get("typ", "einmalig"),
                     data.get("abhol_datum") or None,
                     data.get("wochentag") or None,
@@ -946,6 +984,7 @@ def api_bestellung_speichern(bestell_id):
                     data.get("end_datum") or None,
                     data.get("abhol_uhrzeit") or None,
                     data.get("notiz") or None,
+                    neu_ean,
                     bestell_id,
                 ),
             )
@@ -960,20 +999,180 @@ def api_bestellung_speichern(bestell_id):
                     (bestell_id, pos["produkt_id"], pos["name"],
                      pos["preis_cent"], pos["menge"]),
                 )
+
+            # Neuen Zustand für den Bon laden
+            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            neu_bestellung = cursor.fetchone()
+            cursor.execute(
+                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                (bestell_id,),
+            )
+            neu_pos_rows = cursor.fetchall()
+
     except Exception as e:
         return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    # ── Diff-Liste für den Änderungsbon aufbauen ───────────────
+    # Neue und unveränderte Artikel zuerst, dann weggefallene.
+    alt_by_pid = {p["produkt_id"]: p for p in alt_pos}
+    neu_by_pid = {p["produkt_id"]: p for p in neu_pos_rows}
+
+    druckpositionen = []
+    for pos in neu_pos_rows:
+        p = dict(pos)
+        if pos["produkt_id"] not in alt_by_pid:
+            p["_aenderung"] = "neu"
+        druckpositionen.append(p)
+    for pid, alt_p in alt_by_pid.items():
+        if pid not in neu_by_pid:
+            p = dict(alt_p)
+            p["_orig_menge"] = p["menge"]
+            p["menge"] = 0          # kein Beitrag zum Gesamtbetrag
+            p["_aenderung"] = "entfernt"
+            # Negativer Betrag nur bei sofort-Zahlung (bereits bezahlter Betrag)
+            p["_neg_betrag"] = (zahlungsart == "sofort")
+            druckpositionen.append(p)
+
+    # ── Bon drucken ────────────────────────────────────────────
+    try:
+        if zahlungsart == "sofort":
+            # Differenz zum bereits gezahlten Betrag
+            diff_cent = neu_gesamt_cent - alt_gesamt_cent
+            diff_ean = None
+            if diff_cent > 0:
+                try:
+                    diff_ean = ean_modul.generiere_ean(diff_cent)
+                except Exception:
+                    diff_ean = None
+            druck.drucke_pickliste(
+                neu_bestellung, druckpositionen, terminal_nr,
+                mit_preisen=True,
+                ean_barcode=diff_ean,
+                titel_ueberschrift="Geaenderte Bestellung",
+                aenderung_cent=diff_cent,
+            )
+        else:
+            # abholung: aktualisierter Bon
+            # Wiederkehrend → kein Barcode (Zahlung wöchentlich, nicht einmalig),
+            # stattdessen "Zahlung bei Abholung: €X" als Hinweis auf neuen Wochenbetrag.
+            # Einmalig → EAN-Barcode für die Kasse.
+            ist_wiederkehrend = (neu_bestellung.get("typ") == "wiederkehrend")
+            druck.drucke_pickliste(
+                neu_bestellung, druckpositionen, terminal_nr,
+                mit_preisen=True,
+                ean_barcode=None if ist_wiederkehrend else neu_bestellung.get("ean_barcode"),
+                gesamt_hinweis=neu_gesamt_cent if ist_wiederkehrend else None,
+                titel_ueberschrift="Geaenderte Bestellung",
+            )
+    except Exception as pe:
+        app.logger.warning(f"Aenderungsbon Druck fehlgeschlagen: {pe}")
 
     return jsonify({"ok": True})
 
 
 @app.route("/api/bestellungen/<int:bestell_id>/stornieren", methods=["POST"])
 def api_bestellung_stornieren(bestell_id):
-    with get_db() as cursor:
-        cursor.execute(
-            "UPDATE bestellungen SET status='storniert' WHERE id=%s AND status != 'storniert'",
-            (bestell_id,),
-        )
+    terminal_nr = get_terminal_nr()
+    try:
+        with get_db() as cursor:
+            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            b_row = cursor.fetchone()
+            if not b_row:
+                return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
+            cursor.execute(
+                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                (bestell_id,),
+            )
+            pos_rows = cursor.fetchall()
+            cursor.execute(
+                "UPDATE bestellungen SET status='storniert' WHERE id=%s AND status != 'storniert'",
+                (bestell_id,),
+            )
+    except Exception as e:
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    # Storno-Bon nur bei bereits bezahlten Bestellungen
+    if b_row.get("zahlungsart") == "sofort":
+        try:
+            total_cent = sum(p["menge"] * p["preis_cent"] for p in pos_rows)
+            druck.drucke_pickliste(
+                b_row, pos_rows, terminal_nr,
+                mit_preisen=True,
+                titel_ueberschrift="Stornierung",
+                aenderung_cent=-total_cent,
+            )
+        except Exception as pe:
+            app.logger.warning(f"Storno-Bon Druck fehlgeschlagen: {pe}")
+
     return jsonify({"ok": True})
+
+
+@app.route("/api/bestellungen/<int:bestell_id>/pausieren", methods=["POST"])
+def api_bestellung_pausieren(bestell_id):
+    """
+    body: {"wochen": N}
+    N=0 → Toggle unbefristete Pause / Fortsetzen
+    N>0 → Pause für N Wochen
+    Nur für wiederkehrende Bestellungen. Druckt Bestätigungsbon.
+    """
+    data = request.get_json(force=True) or {}
+    try:
+        wochen = int(data.get("wochen", 0))
+    except (TypeError, ValueError):
+        wochen = 0
+    terminal_nr = get_terminal_nr()
+
+    try:
+        with get_db() as cursor:
+            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
+            if row["typ"] != "wiederkehrend":
+                return jsonify({"ok": False, "fehler": "Nur für wiederkehrende Bestellungen"}), 400
+
+            if wochen == 0:
+                neu_pausiert = 0 if row["pausiert"] else 1
+                cursor.execute(
+                    "UPDATE bestellungen SET pausiert=%s, pause_bis=NULL WHERE id=%s",
+                    (neu_pausiert, bestell_id),
+                )
+                pb = None
+                pause_text = "Pausiert (unbefristet)" if neu_pausiert else None
+            else:
+                cursor.execute(
+                    """UPDATE bestellungen
+                       SET pausiert=1, pause_bis=DATE_ADD(CURDATE(), INTERVAL %s WEEK)
+                       WHERE id=%s""",
+                    (wochen, bestell_id),
+                )
+                cursor.execute("SELECT pause_bis FROM bestellungen WHERE id=%s", (bestell_id,))
+                r = cursor.fetchone()
+                pb = r["pause_bis"].strftime('%d.%m.%Y') if r and r["pause_bis"] else None
+                pause_text = f"Pausiert bis {pb}" if pb else "Pausiert"
+                neu_pausiert = 1
+
+            # Bon drucken (nur beim Pausieren, nicht beim Fortsetzen)
+            if pause_text:
+                cursor.execute(
+                    "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                    (bestell_id,)
+                )
+                pos_rows = cursor.fetchall()
+                cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+                b_row = cursor.fetchone()
+                try:
+                    druck.drucke_pickliste(
+                        b_row, pos_rows, terminal_nr,
+                        mit_preisen=False,
+                        pause_hinweis=pause_text,
+                    )
+                except Exception as pe:
+                    app.logger.warning(f"Pausierbon Druck fehlgeschlagen: {pe}")
+
+        return jsonify({"ok": True, "pausiert": bool(neu_pausiert), "pause_bis": pb})
+    except Exception as e:
+        return jsonify({"ok": False, "fehler": str(e)}), 500
 
 
 @app.route("/api/bestellungen/drucken", methods=["POST"])
@@ -1038,18 +1237,18 @@ def api_bestellung_nachdruck(bestell_id):
     ist_bestaetigung = bool(data.get("bestaetigung", False))
     terminal_nr = get_terminal_nr()
 
-    with get_db() as cursor:
-        cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
-        b_row = cursor.fetchone()
-        if not b_row:
-            return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
-        cursor.execute(
-            "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
-            (bestell_id,)
-        )
-        pos_rows = cursor.fetchall()
-
     try:
+        with get_db() as cursor:
+            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            b_row = cursor.fetchone()
+            if not b_row:
+                return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
+            cursor.execute(
+                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                (bestell_id,)
+            )
+            pos_rows = cursor.fetchall()
+
         if ist_bestaetigung:
             # Bestätigungsbon: Artikel ohne Einzelpreise, kein EAN,
             # aber Gesamtbetrag + "Zahlung bei Abholung" am Ende
@@ -1076,6 +1275,86 @@ def api_bestellung_nachdruck(bestell_id):
         return jsonify({"ok": False, "fehler": str(e)}), 500
 
     return jsonify({"ok": True})
+
+
+# ── Handbuch ──────────────────────────────────────────────────
+
+DOKU_DIR = os.path.join(os.path.dirname(__file__), "..", "doku")
+
+
+@app.route("/doku/<path:dateiname>")
+def doku_datei(dateiname):
+    """Statische Dateien aus dem doku/-Verzeichnis (Bilder für Handbuch)."""
+    return send_from_directory(os.path.abspath(DOKU_DIR), dateiname)
+
+
+@app.route("/handbuch")
+def handbuch():
+    """
+    Mitarbeiter-Handbuch – Terminal-abhängige Darstellung:
+      Terminal 1–7 : read-only
+      Terminal 8   : bearbeitbar (Superuser)
+      Terminal 9   : nur Kapitel 4 – Bestellabwicklung (Kundenterminal)
+    """
+    terminal_nr = get_terminal_nr()
+    pfad = os.path.join(DOKU_DIR, "handbuch.html")
+    try:
+        with open(pfad, encoding="utf-8") as f:
+            html = f.read()
+    except FileNotFoundError:
+        return "Handbuch nicht gefunden.", 404
+
+    # Terminal-Nr als JS-Variable injizieren – wird vom Handbuch-JS ausgewertet
+    inject = f'<script id="terminal-inject">window.TERMINAL_NR = {terminal_nr};</script>\n'
+    html = html.replace("</head>", inject + "</head>", 1)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/handbuch/speichern", methods=["POST"])
+def handbuch_speichern():
+    """Speichert das bearbeitete Handbuch. Nur Terminal 8 (Superuser)."""
+    if get_terminal_nr() != 8:
+        return jsonify({"ok": False, "fehler": "Keine Berechtigung"}), 403
+    data = request.get_json(force=True) or {}
+    html = data.get("html", "").strip()
+    if not html:
+        return jsonify({"ok": False, "fehler": "Kein Inhalt"}), 400
+
+    pfad = os.path.join(DOKU_DIR, "handbuch.html")
+    backup = pfad + ".bak"
+    try:
+        if os.path.exists(pfad):
+            with open(pfad, "rb") as f_in, open(backup, "wb") as f_bak:
+                f_bak.write(f_in.read())
+        with open(pfad, "w", encoding="utf-8") as f:
+            f.write(html)
+    except OSError as e:
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    return jsonify({"ok": True})
+
+
+@app.route("/handbuch/upload", methods=["POST"])
+def handbuch_upload():
+    """Speichert ein hochgeladenes Bild im doku/-Verzeichnis. Nur Terminal 8."""
+    if get_terminal_nr() != 8:
+        return jsonify({"ok": False, "fehler": "Keine Berechtigung"}), 403
+    data = request.get_json(force=True) or {}
+    dateiname = os.path.basename(data.get("filename", ""))
+    b64data   = data.get("data", "")
+    if not dateiname or not b64data:
+        return jsonify({"ok": False, "fehler": "filename oder data fehlt"}), 400
+    if "," in b64data:
+        b64data = b64data.split(",", 1)[1]
+    try:
+        bild_bytes = base64.b64decode(b64data)
+        ziel = os.path.join(DOKU_DIR, dateiname)
+        with open(ziel, "wb") as f:
+            f.write(bild_bytes)
+    except Exception as e:
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    return jsonify({"ok": True, "filename": f"/doku/{dateiname}"})
 
 
 # ── Systemstatus ──────────────────────────────────────────────

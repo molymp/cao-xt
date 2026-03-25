@@ -1031,7 +1031,7 @@ async function acSuchen(q, feldId) {
     if (q.length < 1) { acVerbergen(); return; }
     acTimeout = setTimeout(async () => {
         try {
-            const res  = await fetch(`/api/bestellungen/kunden?q=${encodeURIComponent(q)}`);
+            const res  = await fetch(`/api/kontakte?q=${encodeURIComponent(q)}`);
             const data = await res.json();
             if (Array.isArray(data)) acZeigen(data, feldId);
         } catch (e) { /* Autocomplete-Fehler still ignorieren */ }

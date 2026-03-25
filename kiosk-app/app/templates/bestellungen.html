@@ -226,6 +226,7 @@
                     <th>Artikel</th>
                     <th>Uhrzeit</th>
                     <th>Typ</th>
+                    <th>Zahlung</th>
                     <th>Status</th>
                     <th>Aktionen</th>
                 </tr>
@@ -255,6 +256,10 @@
                     <span class="badge badge-{{ b.typ }}">
                         {% if b.typ == 'einmalig' %}Einmalig{% else %}Wdh.{% endif %}
                     </span>
+                    {% if b.pausiert %}<span class="badge" style="background:#fef9c3;color:#854d0e;">⏸</span>{% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if b.zahlungsart == 'sofort' %}💳 Gezahlt{% else %}🏠 bei Abholung{% endif %}
                 </td>
                 <td>
                     {% if heute_gedruckt %}
@@ -279,7 +284,7 @@
                                 onclick="druckeEinzel({{ b.id }})">🖨</button>
                         {% endif %}
                         <button class="btn-klein btn-storno"
-                                onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕</button>
+                                onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕ Storno</button>
                         {% endif %}
                     </div>
                 </td>
@@ -313,6 +318,7 @@
                     <th>Artikel</th>
                     <th>Uhrzeit</th>
                     <th>Typ</th>
+                    <th>Zahlung</th>
                     <th>Status</th>
                     <th>Aktionen</th>
                 </tr>
@@ -324,11 +330,21 @@
                 <td style="font-weight:700; white-space:nowrap;">{{ b.bestell_nr or '#' ~ b.id }}</td>
                 <td style="font-weight:700;">{{ b.name }}</td>
                 <td>{{ b.telefon or '–' }}</td>
-                <td style="white-space:nowrap;">
+                <td style="white-space:nowrap; line-height:1.6;">
                     {% if b.typ == 'einmalig' and b.abhol_datum %}
                         {{ b.abhol_datum.strftime('%d.%m.%Y') }}
                     {% elif b.typ == 'wiederkehrend' and b.wochentag %}
                         Jeden {{ b.wochentag }}
+                        {% if b.start_datum %}<br><small style="color:var(--text-hell);">ab {{ b.start_datum.strftime('%d.%m.%Y') }}</small>{% endif %}
+                        {% if b.end_datum %}<br><small style="color:var(--text-hell);">bis {{ b.end_datum.strftime('%d.%m.%Y') }}</small>{% endif %}
+                        {% if b.pausiert %}
+                          {% if b.pause_bis %}
+                            {% set _tage = (b.pause_bis - heute_datum).days %}
+                            <br><small style="color:#854d0e; font-weight:700;">⏸ {% if _tage <= 0 %}Fortsetzung heute{% elif _tage < 7 %}Fortsetzung in {{ _tage }} Tag{{ 'en' if _tage != 1 else '' }}{% else %}Fortsetzung in {{ (_tage // 7) }} Woche{{ 'n' if (_tage // 7) != 1 else '' }}{% endif %}</small>
+                          {% else %}
+                            <br><small style="color:#854d0e; font-weight:700;">⏸ Pausiert (unbefristet)</small>
+                          {% endif %}
+                        {% endif %}
                     {% else %}–{% endif %}
                 </td>
                 <td><div class="artikel-kurz" title="{{ b.artikel_kurz or '' }}">{{ b.artikel_kurz or '–' }}</div></td>
@@ -341,6 +357,10 @@
                     <span class="badge badge-{{ b.typ }}">
                         {% if b.typ == 'einmalig' %}Einmalig{% else %}Wdh.{% endif %}
                     </span>
+                    {% if b.pausiert %}<span class="badge" style="background:#fef9c3;color:#854d0e;">⏸</span>{% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if b.zahlungsart == 'sofort' %}💳 Gezahlt{% else %}🏠 bei Abholung{% endif %}
                 </td>
                 <td>
                     <span class="badge badge-{{ b.status }}">{{ b.status }}</span>
@@ -349,6 +369,8 @@
                     <div class="td-aktionen">
                         <a href="/bestellungen/{{ b.id }}" class="btn-klein btn-edit">✏️ Edit</a>
                         {% if b.status != 'storniert' %}
+                        <button class="btn-klein btn-druck"
+                                onclick="nachdruckEinzel({{ b.id }})">↺ Nachdruck</button>
                         <button class="btn-klein btn-storno"
                                 onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕ Storno</button>
                         {% endif %}

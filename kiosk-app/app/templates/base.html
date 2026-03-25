@@ -194,6 +194,33 @@
         .buchen-ok-sub {
             font-size: 0.95rem; opacity: 0.6; margin-top: 12px;
         }
+        /* ── Lade-Overlay (für langsame Seitenaufrufe) ── */
+        #lade-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(26,64,16,0.55); z-index: 9200;
+            align-items: center; justify-content: center;
+        }
+        #lade-overlay.sichtbar { display: flex; }
+        .lade-box {
+            background: white; border-radius: var(--radius);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+            padding: 32px 44px; text-align: center;
+            animation: best-einblenden 0.18s ease;
+        }
+        .lade-spinner {
+            width: 40px; height: 40px; margin: 0 auto 16px;
+            border: 4px solid var(--creme-dunkel);
+            border-top-color: var(--gruen-dunkel);
+            border-radius: 50%;
+            animation: lade-drehen 0.8s linear infinite;
+        }
+        @keyframes lade-drehen {
+            to { transform: rotate(360deg); }
+        }
+        .lade-text {
+            font-size: 1.05rem; font-weight: 700;
+            color: var(--gruen-dunkel);
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -219,7 +246,12 @@
             📦 Bestellungen
             <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
         </a>
-        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}">🍽 Mittagstisch</a>
+        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+        {% if terminal_nr == 9 %}
+        <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
+        {% else %}
+        <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">📖 Handbuch</a>
+        {% endif %}
     </nav>
 
     <div class="terminal-info">Terminal {{ terminal_nr }}</div>
@@ -228,6 +260,15 @@
 {% block inhalt %}{% endblock %}
 
 <div id="toast"></div>
+
+<!-- ── Buchen-Bestätigung ── -->
+<!-- ── Lade-Overlay ── -->
+<div id="lade-overlay">
+    <div class="lade-box">
+        <div class="lade-spinner"></div>
+        <div class="lade-text" id="lade-text">Bitte kurz warten …</div>
+    </div>
+</div>
 
 <!-- ── Buchen-Bestätigung ── -->
 <div id="buchen-ok-overlay">
@@ -257,6 +298,25 @@ function zeigBuchenOk(journalId, nachher) {
     ov.classList.add('sichtbar');
     setTimeout(() => { ov.classList.remove('sichtbar'); if (nachher) nachher(); }, 2200);
 }
+
+// ── Lade-Overlay für langsame Seitenaufrufe ──────────────────
+// Links mit data-lade="Text" zeigen beim Klick ein Warte-Overlay.
+document.querySelectorAll('a[data-lade]').forEach(link => {
+    link.addEventListener('click', function(e) {
+        // Nur bei normalem Linksklick (kein Ctrl/Cmd/middle)
+        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+        const overlay = document.getElementById('lade-overlay');
+        const text    = document.getElementById('lade-text');
+        if (text) text.textContent = this.dataset.lade || 'Bitte kurz warten …';
+        if (overlay) overlay.classList.add('sichtbar');
+        // Link wird durch Pointer-Events gesperrt (Overlay liegt darüber)
+    });
+});
+// Overlay beim Zurück-Navigieren (Browser-Cache) wieder ausblenden
+window.addEventListener('pageshow', () => {
+    const overlay = document.getElementById('lade-overlay');
+    if (overlay) overlay.classList.remove('sichtbar');
+});
 
 function zeigToast(text, dauer = 2500) {
     const t = document.getElementById('toast');
