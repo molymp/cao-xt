@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Geparkte Warenkörbe{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt { padding: 32px; max-width: 900px; margin: 0 auto; }
+.seiten-kopf { margin-bottom: 28px; }
+.seiten-kopf h1 { font-size: 2rem; margin-bottom: 6px; }
+.seiten-kopf p { color: var(--text-hell); font-size: 0.95rem; }
+
+.koerbe-liste { display: flex; flex-direction: column; gap: 14px; }
+
+.korb-karte {
+    background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+    border: 2px solid transparent; transition: border-color 0.15s, box-shadow 0.15s;
+    overflow: hidden;
+}
+.korb-karte:hover { border-color: var(--gruen-hell); box-shadow: var(--schatten-stark); }
+
+.korb-kopf {
+    padding: 20px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    cursor: pointer; user-select: none;
+}
+
+.korb-info { flex: 1; }
+.korb-nr {
+    font-family: 'Lobster', cursive; font-size: 1.3rem;
+    color: var(--gruen-dunkel); margin-bottom: 4px;
+}
+.korb-meta { display: flex; gap: 20px; font-size: 0.875rem; color: var(--text-hell); }
+.korb-meta span { display: flex; align-items: center; gap: 4px; }
+
+.korb-betrag {
+    font-family: 'Lobster', cursive; font-size: 1.7rem;
+    color: var(--gold); min-width: 110px; text-align: right;
+}
+
+.korb-toggle {
+    color: var(--text-hell); font-size: 0.9rem; transition: transform 0.2s; flex-shrink: 0;
+}
+.korb-karte.offen .korb-toggle { transform: rotate(90deg); }
+
+.korb-aktion { flex-shrink: 0; }
+.korb-aktion form { display: inline; }
+
+.korb-detail {
+    display: none;
+    border-top: 1px solid var(--creme-dunkel);
+    background: var(--grau-hell);
+    padding: 12px 24px 16px;
+}
+.korb-karte.offen .korb-detail { display: block; }
+
+.korb-position {
+    display: flex; gap: 16px; padding: 5px 0;
+    font-size: 0.875rem; color: var(--text-mitte);
+    border-bottom: 1px solid var(--creme-dunkel);
+}
+.korb-position:last-child { border-bottom: none; }
+.korb-pos-name { flex: 1; font-weight: 700; color: var(--text-dunkel); }
+.korb-pos-menge { color: var(--text-hell); min-width: 40px; }
+.korb-pos-ep { color: var(--text-hell); min-width: 70px; text-align: right; }
+.korb-pos-gp { font-weight: 700; min-width: 70px; text-align: right; color: var(--gold); }
+
+.korb-detail-laden { font-size: 0.85rem; color: var(--text-hell); font-style: italic; padding: 4px 0; }
+
+.keine-koerbe { text-align: center; padding: 64px 32px; color: var(--text-hell); }
+.keine-koerbe .icon { font-size: 3.5rem; display: block; margin-bottom: 16px; opacity: 0.4; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+    <div class="seiten-kopf">
+        <h1>Geparkte Warenkörbe</h1>
+        <p>Geparkte Warenkörbe können übernommen und weiterbearbeitet werden.</p>
+    </div>
+
+    {% if koerbe %}
+    <div class="koerbe-liste">
+        {% for korb in koerbe %}
+        <div class="korb-karte" id="korb-{{ korb.id }}">
+            <div class="korb-kopf" onclick="toggleKorb({{ korb.id }})">
+                <span class="korb-toggle">▶</span>
+                <div class="korb-info">
+                    <div class="korb-nr">Warenkorb Nr. {{ korb.id }} &ndash; von Terminal {{ korb.erstellt_von or '?' }}</div>
+                    <div class="korb-meta">
+                        <span>📦 {{ korb.anzahl_positionen }} Position(en)</span>
+                        <span>🕐 {{ korb.geaendert_am.strftime('%d.%m. %H:%M') if korb.geaendert_am else '–' }}</span>
+                    </div>
+                </div>
+                <div class="korb-betrag">{{ cent_zu_euro(korb.gesamtbetrag_cent) }}</div>
+                <div class="korb-aktion" onclick="event.stopPropagation()">
+                    <form method="POST" action="/offen/{{ korb.id }}/uebernehmen">
+                        <button type="submit" class="btn btn-primaer btn-gross">Übernehmen →</button>
+                    </form>
+                </div>
+            </div>
+            <div class="korb-detail" id="detail-{{ korb.id }}">
+                <div class="korb-detail-laden">Wird geladen…</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="keine-koerbe">
+        <span class="icon">⏸</span>
+        Keine geparkten Warenkörbe vorhanden.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function formatEuro(cent) { return (cent / 100).toFixed(2).replace('.', ',') + ' €'; }
+
+async function toggleKorb(korbId) {
+    const karte = document.getElementById(`korb-${korbId}`);
+    const detail = document.getElementById(`detail-${korbId}`);
+    const offen = karte.classList.toggle('offen');
+    if (offen && detail.querySelector('.korb-detail-laden')) await ladePositionen(korbId, detail);
+}
+
+async function ladePositionen(korbId, detail) {
+    const res = await apiFetch(`/warenkorb/${korbId}/positionen`);
+    if (!res || res.positionen.length === 0) {
+        detail.innerHTML = '<div class="korb-detail-laden">Keine Positionen.</div>';
+        return;
+    }
+    detail.innerHTML = res.positionen.map(p => `
+        <div class="korb-position">
+            <span class="korb-pos-name">${p.name_snapshot}</span>
+            <span class="korb-pos-menge">${p.menge} ×</span>
+            <span class="korb-pos-ep">EP ${formatEuro(p.preis_snapshot_cent)}</span>
+            <span class="korb-pos-gp">GP ${formatEuro(p.zeilen_betrag_cent)}</span>
+        </div>`).join('');
+}
+</script>
+{% endblock %}

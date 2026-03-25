@@ -1,0 +1,1079 @@
+{% extends "base.html" %}
+{% block title %}Neue Bestellung{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Seiten-Layout ── */
+.seiten-inhalt {
+    padding: 1.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 72px);
+    transition: padding-bottom 0.3s;
+    overflow: hidden;
+}
+.seiten-inhalt.tastatur-offen { padding-bottom: 360px; }
+
+.seiten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.2rem;
+    flex-shrink: 0;
+}
+.seiten-kopf h1 { font-size: 1.8rem; }
+
+/* ── Zweispaltiges Layout ── */
+.zweispaltig {
+    display: flex;
+    gap: 1.5rem;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── Linke Spalte: Formular ── */
+.spalte-formular {
+    width: 42%;
+    flex-shrink: 0;
+    overflow-y: auto;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.spalte-formular::-webkit-scrollbar { width: 6px; }
+.spalte-formular::-webkit-scrollbar-thumb { background: var(--creme-dunkel); border-radius: 3px; }
+
+/* ── Formular-Elemente ── */
+.feld-gruppe {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.feld-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gruen-dunkel);
+}
+.feld-label .pflicht { color: var(--rot); margin-left: 2px; }
+
+.feld-input {
+    padding: 10px 14px;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    background: var(--creme);
+    color: var(--text-dunkel);
+    width: 100%;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: text;
+    pointer-events: auto;
+}
+.feld-input:focus { outline: none; border-color: var(--gruen-hell); background: white; }
+.feld-input[readonly] { cursor: pointer; }
+
+textarea.feld-input {
+    resize: none;
+    min-height: 3.5rem;
+}
+
+/* ── Typ-Toggle ── */
+.typ-toggle {
+    display: flex;
+    gap: 8px;
+}
+.typ-btn {
+    flex: 1;
+    padding: 12px 8px;
+    border: 2px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--creme);
+    color: var(--gruen-dunkel);
+    transition: all 0.15s;
+    text-align: center;
+}
+.typ-btn.aktiv {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    border-color: var(--gruen-dunkel);
+}
+.typ-btn:hover:not(.aktiv):not(:disabled) { background: var(--creme-warm); border-color: var(--gruen-hell); }
+.typ-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Wochentag-Selector ── */
+.wt-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.wt-btn {
+    padding: 10px 14px;
+    border: 2px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--creme);
+    color: var(--gruen-dunkel);
+    transition: all 0.15s;
+    min-width: 44px;
+    text-align: center;
+}
+.wt-btn.aktiv {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    border-color: var(--gruen-dunkel);
+}
+.wt-btn:hover:not(.aktiv) { background: var(--creme-warm); border-color: var(--gruen-hell); }
+
+/* ── Sichtbarkeit ── */
+.bedingt { display: none; }
+.bedingt.sichtbar { display: block; }
+
+/* ── Aktions-Leiste ── */
+.aktions-leiste {
+    display: flex;
+    gap: 10px;
+    margin-top: 0.5rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.aktions-leiste .btn { flex: 1; min-width: 120px; }
+
+/* ── Rechte Spalte: Produkte ── */
+.spalte-produkte {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten);
+    display: flex;
+    flex-direction: column;
+}
+.spalte-produkte::-webkit-scrollbar { width: 6px; }
+.spalte-produkte::-webkit-scrollbar-thumb { background: var(--creme-dunkel); border-radius: 3px; }
+
+.produkte-kopf {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--creme-dunkel);
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+}
+.produkte-kopf-titel {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gruen-dunkel);
+    margin-bottom: 4px;
+}
+.auswahl-zusammenfassung {
+    font-size: 0.88rem;
+    color: var(--gruen-hell);
+    font-weight: 700;
+    min-height: 1.2em;
+}
+
+.produkte-liste {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+}
+
+.warte-hinweis {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--grau-mitte);
+    font-weight: 700;
+    font-size: 1rem;
+    padding: 2rem;
+    text-align: center;
+}
+
+/* ── Kategorie-Gruppe ── */
+.kat-gruppe { margin-bottom: 4px; }
+.kat-titel {
+    padding: 6px 1.25rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--gruen-dunkel);
+    background: var(--grau-hell);
+    border-bottom: 1px solid var(--creme-dunkel);
+    position: sticky;
+    top: 0;
+}
+
+/* ── Produkt-Zeile ── */
+.produkt-zeile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 1.25rem;
+    border-bottom: 1px solid var(--creme-dunkel);
+    transition: background 0.1s;
+}
+.produkt-zeile:last-child { border-bottom: none; }
+.produkt-zeile:hover { background: var(--grau-hell); }
+
+.mengen-steuer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.mengen-btn {
+    width: 30px; height: 30px;
+    border: none;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s, transform 0.07s;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Nunito', sans-serif;
+}
+.mengen-btn:active { transform: scale(0.9); }
+.mengen-minus { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+.mengen-minus:hover:not(:disabled) { background: var(--creme-warm); }
+.mengen-minus:disabled { opacity: 0.3; cursor: default; }
+.mengen-plus  { background: var(--gruen-hell); color: white; }
+.mengen-plus:hover { background: var(--gruen-mitte); }
+.mengen-zahl {
+    min-width: 22px;
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--text-dunkel);
+}
+.mengen-zahl.aktiv { color: var(--gruen-hell); font-size: 1.05rem; }
+
+.produkt-info { flex: 1; min-width: 0; }
+.produkt-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-dunkel);
+}
+.produkt-preis {
+    font-size: 0.78rem;
+    color: var(--text-hell);
+    margin-top: 1px;
+}
+
+/* ── Kunden-Autocomplete ── */
+.kunden-dropdown {
+    position: fixed;
+    z-index: 9500;
+    background: var(--creme-hell, #fdf8f0);
+    border: 1px solid var(--gruen-hell, #6a8f5a);
+    border-radius: var(--radius-klein, 6px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+    max-height: 220px;
+    overflow-y: auto;
+    display: none;
+}
+.kunden-dropdown-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    line-height: 1.35;
+}
+.kunden-dropdown-item:last-child { border-bottom: none; }
+.kunden-dropdown-item:hover,
+.kunden-dropdown-item.fokus {
+    background: var(--creme-warm, #f0e8d4);
+}
+.kunden-dropdown-item strong { color: var(--gruen-dunkel, #2d4a24); }
+.kunden-dropdown-item small  { color: #666; font-size: 0.82rem; }
+
+/* ── Bildschirmtastatur ── */
+#tastatur {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--gruen-dunkel);
+    padding: 10px 14px 14px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.35);
+    z-index: 7000;
+    transform: translateY(100%);
+    transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+    touch-action: none;
+}
+#tastatur.sichtbar { transform: translateY(0); }
+
+.tastatur-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.tastatur-feld-info {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--gruen-blass);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+}
+.tastatur-schliessen {
+    background: rgba(255,255,255,0.12);
+    border: none;
+    border-radius: var(--radius-klein);
+    color: var(--creme);
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    transition: background 0.15s;
+}
+.tastatur-schliessen:hover { background: rgba(255,255,255,0.22); }
+
+.tastatur-zeile {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+.tastatur-zeile:last-child { margin-bottom: 0; }
+
+.t-taste {
+    min-width: 52px;
+    height: 52px;
+    border: none;
+    border-radius: 8px;
+    background: #e8e0cc;
+    color: var(--text-dunkel);
+    font-family: 'Nunito', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.1s, transform 0.07s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.t-taste:active { transform: scale(0.93); background: #d4c8a8; }
+.t-taste.t-leer  { flex: 1; min-width: 160px; background: #d4ccb8; font-size: 0.85rem; }
+.t-taste.t-del   { min-width: 68px; background: #c0a880; color: white; font-size: 1.2rem; }
+.t-taste.t-shift { min-width: 68px; background: #a0b488; color: white; }
+.t-taste.t-shift.aktiv { background: var(--gold); color: white; }
+.t-taste.t-weiter { min-width: 80px; background: var(--gruen-hell); color: white; font-size: 0.85rem; }
+.t-taste.t-sonder { background: #c8d4b0; color: var(--gruen-dunkel); font-size: 0.88rem; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt" id="seiten-inhalt">
+
+    <div class="seiten-kopf">
+        <h1>+ Neue Bestellung</h1>
+    </div>
+
+    <div class="zweispaltig">
+
+        <!-- ── Linke Spalte: Formular ── -->
+        <div class="spalte-formular" id="formular">
+
+            <div class="feld-gruppe">
+                <label class="feld-label">Name <span class="pflicht">*</span></label>
+                <input type="text" class="feld-input tastatur-feld" id="inp-name"
+                       placeholder="Kundenname …" autocomplete="off" readonly>
+            </div>
+
+            <div class="feld-gruppe">
+                <label class="feld-label">Telefon</label>
+                <input type="text" class="feld-input tastatur-feld" id="inp-telefon"
+                       placeholder="z.B. 08671 …" autocomplete="off" readonly>
+            </div>
+
+            <!-- Kunden-Autocomplete-Dropdown (außerhalb der Felder, fixed positioniert) -->
+            <div id="kunden-dropdown" class="kunden-dropdown"></div>
+
+            <div class="feld-gruppe">
+                <label class="feld-label">Typ <span class="pflicht">*</span></label>
+                <div class="typ-toggle">
+                    <button class="typ-btn aktiv" id="typ-einmalig" onclick="setzeTyp('einmalig')">
+                        📅 Einmalig
+                    </button>
+                    <button class="typ-btn" id="typ-wiederkehrend" onclick="setzeTyp('wiederkehrend')">
+                        🔄 Wiederkehrend
+                    </button>
+                </div>
+            </div>
+
+            <!-- Einmalig: Datum -->
+            <div class="feld-gruppe bedingt sichtbar" id="gruppe-datum">
+                <label class="feld-label">Abholdatum <span class="pflicht">*</span></label>
+                <input type="date" class="feld-input" id="inp-datum"
+                       onchange="datumOderWtGeaendert()">
+            </div>
+
+            <!-- Wiederkehrend: Wochentag + Zeitraum -->
+            <div class="bedingt" id="gruppe-wiederkehrend">
+                <div class="feld-gruppe" style="margin-bottom:0.75rem;">
+                    <label class="feld-label">Wochentag <span class="pflicht">*</span></label>
+                    <div class="wt-selector" id="wt-selector">
+                        {% for wt in ['Mo','Di','Mi','Do','Fr','Sa'] %}
+                        <button class="wt-btn" data-wt="{{ wt }}" onclick="setzeWochentag('{{ wt }}')">{{ wt }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:0.75rem;">
+                    <div class="feld-gruppe" style="flex:1;">
+                        <label class="feld-label">Ab Datum</label>
+                        <input type="date" class="feld-input" id="inp-start-datum">
+                    </div>
+                    <div class="feld-gruppe" style="flex:1;">
+                        <label class="feld-label">Bis Datum</label>
+                        <input type="date" class="feld-input" id="inp-end-datum">
+                    </div>
+                </div>
+            </div>
+
+            <div class="feld-gruppe">
+                <label class="feld-label">Zahlung <span class="pflicht">*</span></label>
+                <div class="typ-toggle">
+                    <button class="typ-btn" id="zahl-sofort" onclick="setzeZahlungsart('sofort')">
+                        💳 Sofort zahlen
+                    </button>
+                    <button class="typ-btn aktiv" id="zahl-abholung" onclick="setzeZahlungsart('abholung')">
+                        🏠 Bei Abholung
+                    </button>
+                </div>
+            </div>
+
+            <div class="feld-gruppe">
+                <label class="feld-label">Abholzeit (optional)</label>
+                <input type="time" class="feld-input" id="inp-uhrzeit">
+            </div>
+
+            <div class="feld-gruppe">
+                <label class="feld-label">Notiz</label>
+                <textarea class="feld-input tastatur-feld" id="inp-notiz"
+                          rows="2" placeholder="Besondere Wünsche …" readonly></textarea>
+            </div>
+
+            <div id="gesamt-anzeige" style="display:none; padding:10px 14px; background:var(--creme-dunkel);
+                 border-radius:var(--radius-klein); font-weight:700; font-size:1rem;
+                 color:var(--gruen-dunkel); text-align:right;">
+                Gesamt: <span id="gesamt-betrag">–</span>
+            </div>
+
+            <div class="aktions-leiste">
+                <button class="btn btn-sekundaer" onclick="location.href='/bestellungen'">
+                    Abbrechen
+                </button>
+                <button class="btn btn-primaer" id="btn-speichern"
+                        onclick="speichern()" disabled>
+                    💾 Speichern
+                </button>
+            </div>
+
+        </div>
+
+        <!-- ── Rechte Spalte: Produktauswahl ── -->
+        <div class="spalte-produkte">
+            <div class="produkte-kopf">
+                <div class="produkte-kopf-titel">Artikel auswählen</div>
+                <div class="auswahl-zusammenfassung" id="auswahl-zusammenfassung">
+                    Noch keine Artikel ausgewählt
+                </div>
+            </div>
+            <div class="produkte-liste" id="produkte-liste">
+                <div class="warte-hinweis" id="warte-hinweis">
+                    Bitte zuerst Datum / Wochentag wählen
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- ── Bildschirmtastatur ── -->
+<div id="tastatur">
+    <div class="tastatur-kopf">
+        <span class="tastatur-feld-info" id="tastatur-info">Eingabe</span>
+        <button class="tastatur-schliessen"
+                onpointerdown="event.preventDefault()"
+                onclick="verbergeTastatur()">✕ Schließen</button>
+    </div>
+    <div class="tastatur-zeile" id="tz-zahlen"></div>
+    <div class="tastatur-zeile" id="tz-q"></div>
+    <div class="tastatur-zeile" id="tz-a"></div>
+    <div class="tastatur-zeile" id="tz-z"></div>
+    <div class="tastatur-zeile" id="tz-sonder"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ═══════════════════════════════════════════════════
+// ZUSTAND
+// ═══════════════════════════════════════════════════
+let gewaehlterTyp    = 'einmalig';
+let gewaehlterWT     = '';
+let gewaehlteZahlung = 'abholung';
+let alleProdukte     = [];   // [{id, name, preis_cent, kategorie_name, ...}]
+let warenkorb        = {};   // { produkt_id: { name, preis_cent, menge } }
+
+// ═══════════════════════════════════════════════════
+// ZAHLUNGSART
+// ═══════════════════════════════════════════════════
+
+function setzeZahlungsart(art) {
+    // Sofort zahlen ist bei wiederkehrenden Bestellungen nicht erlaubt
+    if (art === 'sofort' && gewaehlterTyp === 'wiederkehrend') return;
+    gewaehlteZahlung = art;
+    document.getElementById('zahl-sofort').classList.toggle('aktiv', art === 'sofort');
+    document.getElementById('zahl-abholung').classList.toggle('aktiv', art === 'abholung');
+}
+
+function aktualisiereZahlungsartButtons() {
+    const sofortBtn = document.getElementById('zahl-sofort');
+    const gesperrt  = gewaehlterTyp === 'wiederkehrend';
+    sofortBtn.disabled = gesperrt;
+    sofortBtn.title    = gesperrt ? 'Bei wiederkehrenden Bestellungen nur Zahlung bei Abholung möglich' : '';
+    if (gesperrt && gewaehlteZahlung === 'sofort') {
+        setzeZahlungsart('abholung');
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// TYP / DATUM / WOCHENTAG
+// ═══════════════════════════════════════════════════
+
+function setzeTyp(typ) {
+    gewaehlterTyp = typ;
+    document.getElementById('typ-einmalig').classList.toggle('aktiv', typ === 'einmalig');
+    document.getElementById('typ-wiederkehrend').classList.toggle('aktiv', typ === 'wiederkehrend');
+    document.getElementById('gruppe-datum').classList.toggle('sichtbar', typ === 'einmalig');
+    document.getElementById('gruppe-wiederkehrend').classList.toggle('sichtbar', typ === 'wiederkehrend');
+    if (typ === 'einmalig') {
+        gewaehlterWT = '';
+        const d = document.getElementById('inp-datum').value;
+        if (d) {
+            // Wochentag aus Datum ableiten
+            const wts = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+            const wt = wts[new Date(d).getDay()];
+            gewaehlterWT = wt;
+            ladeProdukteWennNoetig(wt);
+        } else {
+            ladeProdukteWennNoetig('');
+        }
+    } else {
+        gewaehlterWT = '';
+        ladeProdukteWennNoetig('');
+    }
+    aktualisiereZahlungsartButtons();
+    pruefeFormular();
+}
+
+function datumOderWtGeaendert() {
+    const d = document.getElementById('inp-datum').value;
+    if (d) {
+        const wts = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+        const wt = wts[new Date(d).getDay()];
+        gewaehlterWT = wt;
+        ladeProdukteWennNoetig(wt);
+    } else {
+        gewaehlterWT = '';
+        ladeProdukteWennNoetig('');
+    }
+    pruefeFormular();
+}
+
+function setzeWochentag(wt) {
+    gewaehlterWT = wt;
+    document.querySelectorAll('.wt-btn').forEach(b => {
+        b.classList.toggle('aktiv', b.dataset.wt === wt);
+    });
+    ladeProdukteWennNoetig(wt);
+    pruefeFormular();
+}
+
+// ═══════════════════════════════════════════════════
+// PRODUKTE LADEN
+// ═══════════════════════════════════════════════════
+
+let letzterWT = null;
+
+async function ladeProdukteWennNoetig(wt) {
+    if (wt === letzterWT) return;
+    letzterWT = wt;
+
+    const liste = document.getElementById('produkte-liste');
+    const warte = document.getElementById('warte-hinweis');
+
+    if (!wt) {
+        liste.innerHTML = '<div class="warte-hinweis">Bitte zuerst Datum / Wochentag wählen</div>';
+        return;
+    }
+
+    liste.innerHTML = '<div class="warte-hinweis">⏳ Lade Produkte …</div>';
+
+    const url = wt ? `/api/bestellungen/produkte?wochentag=${encodeURIComponent(wt)}` : '/api/bestellungen/produkte';
+    const res = await apiFetch(url);
+    if (!res) {
+        liste.innerHTML = '<div class="warte-hinweis">Fehler beim Laden</div>';
+        return;
+    }
+    alleProdukte = res.produkte || [];
+    rendereProduktliste();
+}
+
+function rendereProduktliste() {
+    const liste = document.getElementById('produkte-liste');
+    if (!alleProdukte.length) {
+        liste.innerHTML = '<div class="warte-hinweis">Keine Produkte für diesen Tag</div>';
+        return;
+    }
+
+    // Gruppieren nach Kategorie
+    const gruppen = {};
+    alleProdukte.forEach(p => {
+        const kat = p.kategorie_name || '– Sonstige –';
+        if (!gruppen[kat]) gruppen[kat] = [];
+        gruppen[kat].push(p);
+    });
+
+    let html = '';
+    for (const [kat, produkte] of Object.entries(gruppen)) {
+        html += `<div class="kat-gruppe">
+            <div class="kat-titel">${escHtml(kat)}</div>`;
+        produkte.forEach(p => {
+            const menge = warenkorb[p.id]?.menge || 0;
+            const preis = (p.preis_cent / 100).toFixed(2).replace('.', ',') + ' €';
+            html += `<div class="produkt-zeile" id="pz-${p.id}">
+                <div class="mengen-steuer">
+                    <button class="mengen-btn mengen-minus"
+                            ${menge === 0 ? 'disabled' : ''}
+                            onclick="aendernMenge(${p.id}, -1)">−</button>
+                    <span class="mengen-zahl ${menge > 0 ? 'aktiv' : ''}" id="mz-${p.id}">${menge}</span>
+                    <button class="mengen-btn mengen-plus"
+                            onclick="aendernMenge(${p.id}, 1)">+</button>
+                </div>
+                <div class="produkt-info">
+                    <div class="produkt-name">${escHtml(p.name)}</div>
+                    <div class="produkt-preis">${preis} / ${escHtml(p.einheit || 'Stck.')}</div>
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+    liste.innerHTML = html;
+}
+
+function escHtml(s) {
+    return String(s || '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════
+// WARENKORB-LOGIK
+// ═══════════════════════════════════════════════════
+
+function aendernMenge(produktId, delta) {
+    const p = alleProdukte.find(x => x.id === produktId);
+    if (!p) return;
+
+    const alt = warenkorb[produktId]?.menge || 0;
+    const neu = Math.max(0, alt + delta);
+
+    if (neu === 0) {
+        delete warenkorb[produktId];
+    } else {
+        warenkorb[produktId] = { name: p.name, preis_cent: p.preis_cent, menge: neu };
+    }
+
+    // UI aktualisieren
+    const zahl = document.getElementById('mz-' + produktId);
+    if (zahl) {
+        zahl.textContent = neu;
+        zahl.classList.toggle('aktiv', neu > 0);
+    }
+    const minusBtn = document.querySelector(`#pz-${produktId} .mengen-minus`);
+    if (minusBtn) minusBtn.disabled = neu === 0;
+
+    aktualisiereZusammenfassung();
+    pruefeFormular();
+}
+
+function aktualisiereZusammenfassung() {
+    const eintraege = Object.values(warenkorb);
+    const anzahl = eintraege.reduce((s, x) => s + x.menge, 0);
+    const centGesamt = eintraege.reduce((s, x) => s + x.menge * x.preis_cent, 0);
+    const div = document.getElementById('auswahl-zusammenfassung');
+    const gesamtDiv = document.getElementById('gesamt-anzeige');
+    const gesamtSpan = document.getElementById('gesamt-betrag');
+    if (anzahl === 0) {
+        div.textContent = 'Noch keine Artikel ausgewählt';
+        div.style.color = 'var(--grau-mitte)';
+        gesamtDiv.style.display = 'none';
+    } else {
+        const teile = eintraege
+            .filter(x => x.menge > 0)
+            .map(x => `${x.menge}× ${x.name}`)
+            .join(', ');
+        div.textContent = `${anzahl} Artikel: ${teile}`;
+        div.style.color = 'var(--gruen-hell)';
+        gesamtSpan.textContent = (centGesamt / 100).toFixed(2).replace('.', ',') + ' €';
+        gesamtDiv.style.display = 'block';
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// VALIDIERUNG
+// ═══════════════════════════════════════════════════
+
+function pruefeFormular() {
+    const name = document.getElementById('inp-name').value.trim();
+    const hatArtikel = Object.keys(warenkorb).length > 0;
+    let hatDatumOderWT = false;
+    if (gewaehlterTyp === 'einmalig') {
+        hatDatumOderWT = !!document.getElementById('inp-datum').value;
+    } else {
+        hatDatumOderWT = !!gewaehlterWT;
+    }
+    const ok = name && hatArtikel && hatDatumOderWT;
+    document.getElementById('btn-speichern').disabled = !ok;
+}
+
+// ═══════════════════════════════════════════════════
+// SPEICHERN
+// ═══════════════════════════════════════════════════
+
+async function speichern() {
+    const name = document.getElementById('inp-name').value.trim();
+    if (!name) { zeigToast('⚠️ Name ist erforderlich'); return; }
+
+    const positionen = Object.entries(warenkorb).map(([id, w]) => ({
+        produkt_id: parseInt(id),
+        name: w.name,
+        preis_cent: w.preis_cent,
+        menge: w.menge,
+    }));
+    if (!positionen.length) { zeigToast('⚠️ Mindestens einen Artikel wählen'); return; }
+
+    const payload = {
+        name,
+        telefon: document.getElementById('inp-telefon').value.trim() || null,
+        typ: gewaehlterTyp,
+        zahlungsart: gewaehlteZahlung,
+        abhol_datum: gewaehlterTyp === 'einmalig' ? (document.getElementById('inp-datum').value || null) : null,
+        wochentag: gewaehlterTyp === 'wiederkehrend' ? (gewaehlterWT || null) : null,
+        start_datum: document.getElementById('inp-start-datum')?.value || null,
+        end_datum: document.getElementById('inp-end-datum')?.value || null,
+        abhol_uhrzeit: document.getElementById('inp-uhrzeit').value || null,
+        notiz: document.getElementById('inp-notiz').value.trim() || null,
+        positionen,
+    };
+
+    const btn = document.getElementById('btn-speichern');
+    btn.disabled = true;
+    btn.textContent = '⏳ Speichern …';
+
+    const res = await apiFetch('/api/bestellungen/neu', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+
+    if (!res) {
+        btn.disabled = false;
+        btn.textContent = '💾 Speichern';
+        return;
+    }
+
+    if (res.druckfehler) {
+        zeigToast('⚠️ Gespeichert, aber Druckfehler: ' + res.druckfehler, 4000);
+        setTimeout(() => {
+            location.href = `/bestellungen?toast=${encodeURIComponent('✓ ' + res.bestell_nr + ' gespeichert (Nachdruck möglich)')}`;
+        }, 1500);
+        return;
+    }
+
+    // Zahlung bei Abholung: Frage nach Bestätigungsbon
+    if (res.frage_bestaetigung) {
+        const bestellId = res.id;
+        const bestell_nr = res.bestell_nr;
+        const urlOk    = `/bestellungen?toast=${encodeURIComponent('✓ ' + bestell_nr + ' gespeichert + Bon gedruckt')}`;
+        const urlOhne  = `/bestellungen?toast=${encodeURIComponent('✓ ' + bestell_nr + ' gespeichert')}`;
+        zeigeBestaetigung(
+            `Bestellbestätigungsbon für ${bestell_nr} drucken?`,
+            async () => {
+                // Bestätigungsbon: ohne Preise, ohne EAN/Barcode
+                const r = await apiFetch(`/api/bestellungen/${bestellId}/nachdruck`, {
+                    method: 'POST',
+                    body: JSON.stringify({ bestaetigung: true }),
+                });
+                if (r) {
+                    location.href = urlOk;
+                } else {
+                    // Toast wurde bereits durch apiFetch angezeigt → kurz warten, dann weiter
+                    setTimeout(() => { location.href = urlOhne; }, 2500);
+                }
+            },
+            'Ja, drucken'
+        );
+        // Nein → ohne Druck weiterleiten
+        document.getElementById('bestaetigung-nein').addEventListener('click', () => {
+            location.href = urlOhne;
+        }, { once: true });
+        return;
+    }
+
+    location.href = `/bestellungen?toast=${encodeURIComponent('✓ Bestellung ' + res.bestell_nr + ' gespeichert')}`;
+}
+
+// ═══════════════════════════════════════════════════
+// TASTATUR
+// ═══════════════════════════════════════════════════
+
+const LAYOUT = {
+    normal: [
+        ['1','2','3','4','5','6','7','8','9','0'],
+        ['q','w','e','r','t','z','u','i','o','p','ü'],
+        ['a','s','d','f','g','h','j','k','l','ö','ä'],
+        ['y','x','c','v','b','n','m','ß','-'],
+    ],
+    shift: [
+        ['1','2','3','4','5','6','7','8','9','0'],
+        ['Q','W','E','R','T','Z','U','I','O','P','Ü'],
+        ['A','S','D','F','G','H','J','K','L','Ö','Ä'],
+        ['Y','X','C','V','B','N','M','ß','-'],
+    ]
+};
+const SONDER = [',', '.', '-', '(', ')', '/', ':', '!', '?'];
+
+let aktivesElement = null;
+let shiftAn = false;
+
+function tastaturAufbauen() {
+    function taste(text, cls, aktion) {
+        const btn = document.createElement('button');
+        btn.className = 't-taste ' + (cls || '');
+        btn.textContent = text;
+        btn.onpointerdown = e => e.preventDefault();
+        btn.onclick = aktion;
+        return btn;
+    }
+    function zeichenTaste(zeichen) {
+        return taste(zeichen, '', () => einfuegen(zeichen));
+    }
+    function zeilenBauen(zeilenId, tasten, extraVorne, extraHinten) {
+        const zeile = document.getElementById(zeilenId);
+        zeile.innerHTML = '';
+        if (extraVorne) zeile.appendChild(extraVorne);
+        tasten.forEach(z => zeile.appendChild(zeichenTaste(z)));
+        if (extraHinten) zeile.appendChild(extraHinten);
+    }
+    const layout = shiftAn ? LAYOUT.shift : LAYOUT.normal;
+    const delBtn = taste('⌫', 't-del', loeschen);
+    const z1 = document.getElementById('tz-zahlen');
+    z1.innerHTML = '';
+    layout[0].forEach(z => z1.appendChild(zeichenTaste(z)));
+    z1.appendChild(delBtn);
+    zeilenBauen('tz-q', layout[1]);
+    zeilenBauen('tz-a', layout[2]);
+    const shiftL = taste('⇧', 't-shift' + (shiftAn ? ' aktiv' : ''), toggleShift);
+    const shiftR = taste('⇧', 't-shift' + (shiftAn ? ' aktiv' : ''), toggleShift);
+    zeilenBauen('tz-z', layout[3], shiftL, shiftR);
+    const z5 = document.getElementById('tz-sonder');
+    z5.innerHTML = '';
+    SONDER.forEach(z => {
+        const btn = zeichenTaste(z);
+        btn.classList.add('t-sonder');
+        z5.appendChild(btn);
+    });
+    z5.appendChild(taste('Leerzeichen', 't-leer', () => einfuegen(' ')));
+    z5.appendChild(taste('Weiter →', 't-weiter', naechstesFeld));
+}
+
+function einfuegen(zeichen) {
+    if (!aktivesElement) return;
+    const el = aktivesElement;
+    const s = el.selectionStart ?? el.value.length;
+    const e = el.selectionEnd   ?? el.value.length;
+    el.value = el.value.substring(0, s) + zeichen + el.value.substring(e);
+    const pos = s + zeichen.length;
+    el.selectionStart = el.selectionEnd = pos;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+    if (shiftAn && zeichen.length === 1 && zeichen.match(/[A-ZÄÖÜa-zäöü]/)) {
+        shiftAn = false;
+        tastaturAufbauen();
+    }
+}
+
+function loeschen() {
+    if (!aktivesElement) return;
+    const el = aktivesElement;
+    const s = el.selectionStart ?? el.value.length;
+    const e = el.selectionEnd   ?? el.value.length;
+    if (s !== e) {
+        el.value = el.value.substring(0, s) + el.value.substring(e);
+        el.selectionStart = el.selectionEnd = s;
+    } else if (s > 0) {
+        el.value = el.value.substring(0, s - 1) + el.value.substring(e);
+        el.selectionStart = el.selectionEnd = s - 1;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+}
+
+function toggleShift() {
+    shiftAn = !shiftAn;
+    tastaturAufbauen();
+    if (aktivesElement) aktivesElement.focus();
+}
+
+function naechstesFeld() {
+    if (!aktivesElement) return;
+    const felder = Array.from(document.querySelectorAll('.tastatur-feld:not([disabled])'));
+    const idx = felder.indexOf(aktivesElement);
+    if (idx >= 0 && idx < felder.length - 1) {
+        felder[idx + 1].focus();
+    } else {
+        verbergeTastatur();
+    }
+}
+
+function zeigeTastatur(el) {
+    aktivesElement = el;
+    const label = el.getAttribute('placeholder') || el.closest('.feld-gruppe')?.querySelector('.feld-label')?.textContent?.trim() || 'Eingabe';
+    document.getElementById('tastatur-info').textContent = label;
+    tastaturAufbauen();
+    document.getElementById('tastatur').classList.add('sichtbar');
+    document.getElementById('seiten-inhalt').classList.add('tastatur-offen');
+    setTimeout(() => { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 80);
+}
+
+function verbergeTastatur() {
+    document.getElementById('tastatur').classList.remove('sichtbar');
+    document.getElementById('seiten-inhalt').classList.remove('tastatur-offen');
+    if (aktivesElement) { aktivesElement.blur(); aktivesElement = null; }
+}
+
+// ═══════════════════════════════════════════════════
+// KUNDEN-AUTOCOMPLETE
+// ═══════════════════════════════════════════════════
+
+let acTimeout   = null;
+let acAktivFeld = null;   // 'inp-name' | 'inp-telefon'
+const acDropdown = document.getElementById('kunden-dropdown');
+
+function acVerbergen() {
+    acDropdown.style.display = 'none';
+    acDropdown.innerHTML = '';
+    acAktivFeld = null;
+}
+
+function acPositionieren(feldId) {
+    const rect = document.getElementById(feldId).getBoundingClientRect();
+    acDropdown.style.left  = rect.left + 'px';
+    acDropdown.style.top   = (rect.bottom + 3) + 'px';
+    acDropdown.style.width = rect.width + 'px';
+}
+
+function acZeigen(treffer, feldId) {
+    acDropdown.innerHTML = '';
+    if (!treffer || treffer.length === 0) { acVerbergen(); return; }
+    treffer.forEach(k => {
+        const item = document.createElement('div');
+        item.className = 'kunden-dropdown-item';
+        item.innerHTML = `<strong>${k.name}</strong>`
+            + (k.telefon ? `<br><small>${k.telefon}</small>` : '');
+        // pointerdown statt click: feuert bevor blur das Dropdown schließt
+        item.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            document.getElementById('inp-name').value    = k.name;
+            document.getElementById('inp-telefon').value = k.telefon || '';
+            acVerbergen();
+            pruefeFormular();
+        });
+        acDropdown.appendChild(item);
+    });
+    acAktivFeld = feldId;
+    acPositionieren(feldId);
+    acDropdown.style.display = 'block';
+}
+
+async function acSuchen(q, feldId) {
+    clearTimeout(acTimeout);
+    if (q.length < 1) { acVerbergen(); return; }
+    acTimeout = setTimeout(async () => {
+        try {
+            const res  = await fetch(`/api/bestellungen/kunden?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            if (Array.isArray(data)) acZeigen(data, feldId);
+        } catch (e) { /* Autocomplete-Fehler still ignorieren */ }
+    }, 200);
+}
+
+// Dropdown schließen bei Klick/Touch außerhalb
+document.addEventListener('pointerdown', e => {
+    if (!acDropdown.contains(e.target)) acVerbergen();
+});
+
+// Neu positionieren wenn Fenster scrollt oder Größe ändert
+window.addEventListener('scroll', () => { if (acAktivFeld) acPositionieren(acAktivFeld); }, true);
+window.addEventListener('resize', () => { if (acAktivFeld) acPositionieren(acAktivFeld); });
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    tastaturAufbauen();
+    document.querySelectorAll('.tastatur-feld').forEach(el => {
+        el.addEventListener('focus', () => {
+            el.removeAttribute('readonly');
+            zeigeTastatur(el);
+        });
+        el.addEventListener('click', () => {
+            el.removeAttribute('readonly');
+            if (aktivesElement !== el) zeigeTastatur(el);
+        });
+    });
+
+    // Name-Feld: Autocomplete + Validierung
+    document.getElementById('inp-name').addEventListener('input', e => {
+        acSuchen(e.target.value.trim(), 'inp-name');
+        pruefeFormular();
+    });
+
+    // Telefon-Feld: Autocomplete
+    document.getElementById('inp-telefon').addEventListener('input', e => {
+        acSuchen(e.target.value.trim(), 'inp-telefon');
+    });
+
+    // Datum-Feld direkt
+    document.getElementById('inp-datum').addEventListener('change', datumOderWtGeaendert);
+});
+</script>
+{% endblock %}

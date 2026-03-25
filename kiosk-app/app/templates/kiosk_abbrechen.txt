@@ -1,0 +1,7 @@
+async function abbrechen() {
+    if (!warenkorbId) return;
+    zeigeBestaetigung('Warenkorb wirklich verwerfen?', async () => {
+        const res = await apiFetch(`/warenkorb/${warenkorbId}/abbrechen`, { method: 'POST' });
+        if (res) { zeigToast('Warenkorb abgebrochen'); setTimeout(() => location.reload(), 800); }
+    }, 'Verwerfen');
+}

@@ -1,0 +1,9 @@
+# Habacher Dorfladen Kiosk – Python-Abhängigkeiten
+# Installation: pip3 install -r requirements.txt --break-system-packages
+
+flask>=3.0
+mysql-connector-python>=8.0
+gspread>=6.0
+google-auth>=2.0
+
+# python-escpos wurde entfernt – Bondruck läuft über direkten TCP-Socket (ESC/POS-Rohbytes)

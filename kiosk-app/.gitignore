@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Credentials – NIEMALS einchecken!
+app/*.json
+
+# Produktbilder (lokal, nicht im Repo)
+app/produktbilder/
+
+# macOS
+.DS_Store

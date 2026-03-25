@@ -1,0 +1,605 @@
+{% extends "base.html" %}
+{% block title %}Mittagstisch{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Seitenlayout ── */
+.seiten-inhalt {
+    padding: 2rem;
+    max-width: 72rem;
+    margin: 0 auto;
+    transition: padding-bottom 0.3s;
+}
+.seiten-inhalt.tastatur-offen {
+    padding-bottom: 360px;
+}
+.seiten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 1.5rem;
+}
+.seiten-kopf h1 { font-size: 2rem; }
+
+/* ── Wochen-Tabs ── */
+.wochen-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.5rem;
+}
+.wochen-tab {
+    padding: 10px 22px;
+    border: none;
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--creme-dunkel);
+    color: var(--gruen-dunkel);
+    transition: background 0.15s, color 0.15s;
+    line-height: 1.4;
+}
+.wochen-tab.aktiv {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+}
+.wochen-tab:hover:not(.aktiv) { background: var(--creme-warm); }
+
+/* ── Wochen-Panel ── */
+.wochen-panel { display: none; }
+.wochen-panel.aktiv { display: block; }
+
+/* ── Eingabetabelle ── */
+.plan-tabelle {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--schatten);
+    margin-bottom: 1.5rem;
+}
+.plan-tabelle th {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    padding: 12px 16px;
+    text-align: left;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.plan-tabelle td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--creme-dunkel);
+    font-size: 0.9rem;
+    vertical-align: middle;
+}
+.plan-tabelle tr:last-child td { border-bottom: none; }
+.plan-tabelle tr:hover td { background: var(--grau-hell); }
+
+.td-datum { width: 6rem;  color: var(--text-hell); font-weight: 700; white-space: nowrap; }
+.td-tag   { width: 9rem;  font-weight: 700; }
+
+.plan-tabelle input[type="text"] {
+    width: 100%;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.9rem;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    padding: 8px 12px;
+    background: var(--creme);
+    color: var(--text-dunkel);
+    transition: border-color 0.15s, background 0.15s;
+    user-select: text;
+    pointer-events: auto;
+}
+.plan-tabelle input[type="text"]:focus {
+    outline: none;
+    border-color: var(--gruen-hell);
+    background: white;
+}
+
+/* ── Zusatzfelder ── */
+.zusatz-felder {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+.zusatz-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gruen-dunkel);
+    margin-bottom: 6px;
+}
+.zusatz-felder textarea {
+    width: 100%;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.9rem;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    padding: 10px 14px;
+    background: var(--creme);
+    color: var(--text-dunkel);
+    resize: none;
+    min-height: 3.5rem;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: text;
+    pointer-events: auto;
+}
+.zusatz-felder textarea:focus {
+    outline: none;
+    border-color: var(--gruen-hell);
+    background: white;
+}
+
+/* ── Aktionsleiste ── */
+.aktionsleiste {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.speichern-status {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--gruen-status);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.speichern-status.sichtbar { opacity: 1; }
+
+/* ── Ladeoverlay ── */
+.lade-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26,64,16,0.5);
+    z-index: 8000;
+    align-items: center;
+    justify-content: center;
+}
+.lade-overlay.sichtbar { display: flex; }
+.lade-box {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    padding: 28px 44px;
+    border-radius: var(--radius);
+    font-size: 1.1rem;
+    font-weight: 700;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+}
+
+/* ── Bildschirmtastatur ── */
+#tastatur {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--gruen-dunkel);
+    padding: 10px 14px 14px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.35);
+    z-index: 7000;
+    transform: translateY(100%);
+    transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+    touch-action: none;
+}
+#tastatur.sichtbar {
+    transform: translateY(0);
+}
+
+.tastatur-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.tastatur-feld-info {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--gruen-blass);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+}
+.tastatur-schliessen {
+    background: rgba(255,255,255,0.12);
+    border: none;
+    border-radius: var(--radius-klein);
+    color: var(--creme);
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    transition: background 0.15s;
+}
+.tastatur-schliessen:hover { background: rgba(255,255,255,0.22); }
+
+.tastatur-zeile {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+.tastatur-zeile:last-child { margin-bottom: 0; }
+
+.t-taste {
+    min-width: 52px;
+    height: 52px;
+    border: none;
+    border-radius: 8px;
+    background: #e8e0cc;
+    color: var(--text-dunkel);
+    font-family: 'Nunito', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.1s, transform 0.07s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.t-taste:active { transform: scale(0.93); background: #d4c8a8; }
+
+/* Sondertasten */
+.t-taste.t-leer  { flex: 1; min-width: 160px; background: #d4ccb8; font-size: 0.85rem; }
+.t-taste.t-del   { min-width: 68px; background: #c0a880; color: white; font-size: 1.2rem; }
+.t-taste.t-shift { min-width: 68px; background: #a0b488; color: white; }
+.t-taste.t-shift.aktiv { background: var(--gold); color: white; }
+.t-taste.t-weiter { min-width: 80px; background: var(--gruen-hell); color: white; font-size: 0.85rem; }
+.t-taste.t-sonder { background: #c8d4b0; color: var(--gruen-dunkel); font-size: 0.88rem; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt" id="seiten-inhalt">
+
+    <div class="seiten-kopf">
+        <h1>🍽 Mittagstisch</h1>
+    </div>
+
+    <!-- Wochen-Tabs -->
+    <div class="wochen-tabs">
+        {% for w in wochen %}
+        <button class="wochen-tab {% if loop.first %}aktiv{% endif %}"
+                onclick="zeigeWoche({{ loop.index0 }})">
+            {% if loop.index0 == 0 %}Diese Woche
+            {% elif loop.index0 == 1 %}Nächste Woche
+            {% else %}Übernächste Woche{% endif %}
+            <br><small style="font-size:0.75em; opacity:0.7;">{{ w.kw_name }}</small>
+        </button>
+        {% endfor %}
+    </div>
+
+    <!-- Wochen-Panels -->
+    {% for w in wochen %}
+    {% set wi = loop.index0 %}
+    <div class="wochen-panel {% if loop.first %}aktiv{% endif %}" id="panel-{{ wi }}">
+
+        <!-- Tagesprogramm -->
+        <table class="plan-tabelle">
+            <thead>
+                <tr>
+                    <th class="td-datum">Datum</th>
+                    <th class="td-tag">Tag</th>
+                    <th>Tagesangebot</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tag in w.daten.tage %}
+                <tr>
+                    <td class="td-datum">{{ tag.datum }}</td>
+                    <td class="td-tag">{{ tag.tag }}</td>
+                    <td>
+                        <input type="text"
+                               class="gericht-input tastatur-feld"
+                               value="{{ tag.gericht }}"
+                               placeholder="Tagesangebot eintragen …"
+                               autocomplete="off"
+                               readonly>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Außerdem täglich + Jetzt neu -->
+        <div class="zusatz-felder">
+            <div>
+                <div class="zusatz-label">Außerdem täglich</div>
+                <textarea id="taeglich-{{ wi }}"
+                          class="tastatur-feld"
+                          rows="2"
+                          placeholder="z.B. Frische Salatbowls, Sandwiches, belegte Semmeln …"
+                          readonly>{{ w.daten.taeglich }}</textarea>
+            </div>
+            <div>
+                <div class="zusatz-label">Jetzt neu</div>
+                <textarea id="jetzt-neu-{{ wi }}"
+                          class="tastatur-feld"
+                          rows="2"
+                          placeholder="Neues Angebot eintragen …"
+                          readonly>{{ w.daten.jetzt_neu }}</textarea>
+            </div>
+        </div>
+
+        <!-- Speichern -->
+        <div class="aktionsleiste">
+            <button class="btn btn-primaer"
+                    onclick="speichern({{ wi }}, '{{ w.montag }}')">
+                💾 Speichern
+            </button>
+            <span class="speichern-status" id="status-{{ wi }}">✓ Gespeichert</span>
+        </div>
+
+    </div>
+    {% endfor %}
+
+</div>
+
+<!-- ── Bildschirmtastatur ── -->
+<div id="tastatur">
+    <div class="tastatur-kopf">
+        <span class="tastatur-feld-info" id="tastatur-info">Eingabe</span>
+        <button class="tastatur-schliessen"
+                onpointerdown="event.preventDefault()"
+                onclick="verbergeTastatur()">✕ Schließen</button>
+    </div>
+
+    <!-- Zeile 1: Zahlen + Backspace -->
+    <div class="tastatur-zeile" id="tz-zahlen"></div>
+    <!-- Zeile 2: Q-Reihe -->
+    <div class="tastatur-zeile" id="tz-q"></div>
+    <!-- Zeile 3: A-Reihe -->
+    <div class="tastatur-zeile" id="tz-a"></div>
+    <!-- Zeile 4: Z-Reihe + Shift -->
+    <div class="tastatur-zeile" id="tz-z"></div>
+    <!-- Zeile 5: Sonderzeichen + Leertaste + Weiter -->
+    <div class="tastatur-zeile" id="tz-sonder"></div>
+</div>
+
+<!-- Lade-Overlay -->
+<div class="lade-overlay" id="lade-overlay">
+    <div class="lade-box">⏳ Wird gespeichert …</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ═══════════════════════════════════════════════════
+// TASTATUR
+// ═══════════════════════════════════════════════════
+
+const LAYOUT = {
+    normal: [
+        ['1','2','3','4','5','6','7','8','9','0'],
+        ['q','w','e','r','t','z','u','i','o','p','ü'],
+        ['a','s','d','f','g','h','j','k','l','ö','ä'],
+        ['y','x','c','v','b','n','m','ß','-'],
+    ],
+    shift: [
+        ['1','2','3','4','5','6','7','8','9','0'],
+        ['Q','W','E','R','T','Z','U','I','O','P','Ü'],
+        ['A','S','D','F','G','H','J','K','L','Ö','Ä'],
+        ['Y','X','C','V','B','N','M','ß','-'],
+    ]
+};
+const SONDER = [',', '.', '-', '(', ')', '/', ':', '!', '?'];
+
+let aktivesElement = null;
+let shiftAn = false;
+
+// ── Tastatur aufbauen ──────────────────────────────
+function tastaturAufbauen() {
+    function taste(text, cls, aktion) {
+        const btn = document.createElement('button');
+        btn.className = 't-taste ' + (cls || '');
+        btn.textContent = text;
+        btn.onpointerdown = e => e.preventDefault();
+        btn.onclick = aktion;
+        return btn;
+    }
+
+    function zeichenTaste(zeichen) {
+        return taste(zeichen, '', () => einfuegen(zeichen));
+    }
+
+    function zeilenBauen(zeilenId, tasten, extraVorne, extraHinten) {
+        const zeile = document.getElementById(zeilenId);
+        zeile.innerHTML = '';
+        if (extraVorne) zeile.appendChild(extraVorne);
+        tasten.forEach(z => zeile.appendChild(zeichenTaste(z)));
+        if (extraHinten) zeile.appendChild(extraHinten);
+    }
+
+    const layout = shiftAn ? LAYOUT.shift : LAYOUT.normal;
+
+    // Zeile 1: Zahlen + Backspace
+    const delBtn = taste('⌫', 't-del', loeschen);
+    const z1 = document.getElementById('tz-zahlen');
+    z1.innerHTML = '';
+    layout[0].forEach(z => z1.appendChild(zeichenTaste(z)));
+    z1.appendChild(delBtn);
+
+    // Zeile 2: Q-Reihe
+    zeilenBauen('tz-q', layout[1]);
+
+    // Zeile 3: A-Reihe
+    zeilenBauen('tz-a', layout[2]);
+
+    // Zeile 4: Z-Reihe + Shift
+    const shiftL = taste('⇧', 't-shift' + (shiftAn ? ' aktiv' : ''), toggleShift);
+    const shiftR = taste('⇧', 't-shift' + (shiftAn ? ' aktiv' : ''), toggleShift);
+    zeilenBauen('tz-z', layout[3], shiftL, shiftR);
+
+    // Zeile 5: Sonderzeichen + Leertaste + Weiter
+    const z5 = document.getElementById('tz-sonder');
+    z5.innerHTML = '';
+    SONDER.forEach(z => {
+        const btn = zeichenTaste(z);
+        btn.classList.add('t-sonder');
+        z5.appendChild(btn);
+    });
+    const leerBtn = taste('Leerzeichen', 't-leer', () => einfuegen(' '));
+    const weiterBtn = taste('Weiter →', 't-weiter', naechstesFeld);
+    z5.appendChild(leerBtn);
+    z5.appendChild(weiterBtn);
+}
+
+// ── Tastatureingaben ───────────────────────────────
+function einfuegen(zeichen) {
+    if (!aktivesElement) return;
+    const el = aktivesElement;
+    const s = el.selectionStart ?? el.value.length;
+    const e = el.selectionEnd   ?? el.value.length;
+    el.value = el.value.substring(0, s) + zeichen + el.value.substring(e);
+    const pos = s + zeichen.length;
+    el.selectionStart = el.selectionEnd = pos;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+    // Nach einem Buchstaben Shift zurücksetzen (einmaliges Großschreiben)
+    if (shiftAn && zeichen.length === 1 && zeichen.match(/[A-ZÄÖÜa-zäöü]/)) {
+        shiftAn = false;
+        tastaturAufbauen();
+    }
+}
+
+function loeschen() {
+    if (!aktivesElement) return;
+    const el = aktivesElement;
+    const s = el.selectionStart ?? el.value.length;
+    const e = el.selectionEnd   ?? el.value.length;
+    if (s !== e) {
+        el.value = el.value.substring(0, s) + el.value.substring(e);
+        el.selectionStart = el.selectionEnd = s;
+    } else if (s > 0) {
+        el.value = el.value.substring(0, s - 1) + el.value.substring(e);
+        el.selectionStart = el.selectionEnd = s - 1;
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+}
+
+function toggleShift() {
+    shiftAn = !shiftAn;
+    tastaturAufbauen();
+    if (aktivesElement) aktivesElement.focus();
+}
+
+function naechstesFeld() {
+    if (!aktivesElement) return;
+    const felder = Array.from(document.querySelectorAll('.tastatur-feld:not([disabled])'));
+    const idx = felder.indexOf(aktivesElement);
+    if (idx >= 0 && idx < felder.length - 1) {
+        felder[idx + 1].focus();
+    } else {
+        verbergeTastatur();
+    }
+}
+
+// ── Tastatur ein-/ausblenden ───────────────────────
+function zeigeTastatur(el) {
+    aktivesElement = el;
+
+    // Feldname für Info-Zeile
+    const label = el.closest('tr')?.querySelector('.td-tag')?.textContent?.trim()
+        || el.closest('.zusatz-felder > div')?.querySelector('.zusatz-label')?.textContent?.trim()
+        || 'Eingabe';
+    document.getElementById('tastatur-info').textContent = label;
+
+    tastaturAufbauen();
+    document.getElementById('tastatur').classList.add('sichtbar');
+    document.getElementById('seiten-inhalt').classList.add('tastatur-offen');
+
+    // Aktives Element ins Sichtfeld scrollen (nach kurzer Verzögerung für Layout)
+    setTimeout(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+}
+
+function verbergeTastatur() {
+    document.getElementById('tastatur').classList.remove('sichtbar');
+    document.getElementById('seiten-inhalt').classList.remove('tastatur-offen');
+    if (aktivesElement) {
+        aktivesElement.blur();
+        aktivesElement = null;
+    }
+}
+
+// ── Felder mit Tastatur verbinden ──────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    tastaturAufbauen();
+
+    document.querySelectorAll('.tastatur-feld').forEach(el => {
+        // readonly verhindert Software-Tastatur des Browsers
+        // Wir entfernen readonly beim Fokus und setzen es danach wieder
+        el.addEventListener('focus', () => {
+            el.removeAttribute('readonly');
+            zeigeTastatur(el);
+        });
+        el.addEventListener('click', () => {
+            el.removeAttribute('readonly');
+            if (aktivesElement !== el) zeigeTastatur(el);
+        });
+    });
+});
+
+// ═══════════════════════════════════════════════════
+// WOCHEN-NAVIGATION
+// ═══════════════════════════════════════════════════
+
+function zeigeWoche(idx) {
+    document.querySelectorAll('.wochen-tab').forEach((t, i) =>
+        t.classList.toggle('aktiv', i === idx));
+    document.querySelectorAll('.wochen-panel').forEach((p, i) =>
+        p.classList.toggle('aktiv', i === idx));
+    verbergeTastatur();
+}
+
+// ═══════════════════════════════════════════════════
+// DATEN + SPEICHERN
+// ═══════════════════════════════════════════════════
+
+function wocheDaten(panelIdx) {
+    const panel = document.getElementById('panel-' + panelIdx);
+    const tage = Array.from(panel.querySelectorAll('.gericht-input')).map(inp => ({
+        gericht: inp.value.trim()
+    }));
+    return {
+        tage,
+        taeglich:  document.getElementById('taeglich-'  + panelIdx).value.trim(),
+        jetzt_neu: document.getElementById('jetzt-neu-' + panelIdx).value.trim(),
+    };
+}
+
+async function speichern(panelIdx, montag) {
+    verbergeTastatur();
+    const overlay = document.getElementById('lade-overlay');
+    overlay.classList.add('sichtbar');
+
+    const res = await apiFetch('/mittagstisch/speichern', {
+        method: 'POST',
+        body: JSON.stringify({ montag, daten: wocheDaten(panelIdx) }),
+    });
+
+    overlay.classList.remove('sichtbar');
+
+    if (res) {
+        const status = document.getElementById('status-' + panelIdx);
+        status.classList.add('sichtbar');
+        setTimeout(() => status.classList.remove('sichtbar'), 2500);
+    }
+}
+</script>
+{% endblock %}
