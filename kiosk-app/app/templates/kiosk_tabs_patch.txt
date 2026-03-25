@@ -1,0 +1,9 @@
+        <div class="kategorie-tabs">
+            {% for kat_name, kat_daten in kategorien %}
+            <button class="kat-tab {% if loop.first %}aktiv{% endif %}"
+                    onclick="zeigeKategorie('kat-{{ loop.index }}', this)">
+                {{ kat_name }}
+                <span class="kat-anzahl">{{ kat_daten.artikel|length }}</span>
+            </button>
+            {% endfor %}
+        </div>

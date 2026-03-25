@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+{% block title %}Artikelverwaltung{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt { padding: 2rem; max-width: 100rem; margin: 0 auto; }
+.seiten-kopf { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
+.seiten-kopf h1 { font-size: 2rem; }
+
+.hinweis-box {
+    background: var(--gruen-blass); border-left: 4px solid var(--gruen-hell);
+    border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
+    padding: 12px 18px; margin-bottom: 24px; font-size: 0.875rem; color: var(--gruen-mitte);
+}
+.aktionsleiste { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+.zaehler { background: var(--creme-dunkel); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; color: var(--text-mitte); font-weight: 700; }
+
+.verwaltung-tabelle { width: 100%; border-collapse: collapse; background: white; border-radius: var(--radius); overflow: hidden; box-shadow: var(--schatten); }
+.verwaltung-tabelle th {
+    background: var(--gruen-dunkel); color: var(--creme);
+    padding: 12px 14px; text-align: left; font-size: 0.78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
+    user-select: none; font-family: 'Nunito', sans-serif;
+}
+.verwaltung-tabelle th.sortierbar { cursor: pointer; transition: background 0.15s; }
+.verwaltung-tabelle th.sortierbar:hover { background: var(--gruen-mitte); }
+.verwaltung-tabelle th .sort-pfeil { display: inline-block; margin-left: 5px; opacity: 0.4; font-style: normal; }
+.verwaltung-tabelle th.sort-asc .sort-pfeil,
+.verwaltung-tabelle th.sort-desc .sort-pfeil { opacity: 1; }
+
+.verwaltung-tabelle td { padding: 10px 14px; border-bottom: 1px solid var(--creme-dunkel); font-size: 0.875rem; vertical-align: middle; }
+.verwaltung-tabelle tr:last-child td { border-bottom: none; }
+.verwaltung-tabelle tr:hover td { background: var(--grau-hell); }
+
+.verwaltung-tabelle select {
+    font-family: 'Nunito', sans-serif; font-size: 0.85rem; font-weight: 600;
+    border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+    padding: 6px 10px; background: var(--creme); color: var(--text-dunkel);
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.verwaltung-tabelle select:focus { outline: none; border-color: var(--gruen-hell); background: white; }
+.verwaltung-tabelle select.gespeichert { border-color: var(--gruen-status); background: #e8f5e0; }
+
+.wochentage-gruppe { display: flex; gap: 4px; flex-wrap: nowrap; }
+.wochentage-gruppe label {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px; cursor: pointer; font-size: 0.72rem; font-weight: 700; color: var(--text-mitte);
+}
+.wochentage-gruppe input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--gruen-dunkel); }
+.wochentage-gruppe input[type="checkbox"]:checked + span { color: var(--gruen-dunkel); }
+
+.aktiv-toggle { display: flex; gap: 3px; }
+.aktiv-btn {
+    padding: 6px 10px; border: 1px solid var(--creme-dunkel); border-radius: 4px;
+    background: white; color: var(--text-hell); font-size: 0.75rem; font-weight: 700;
+    cursor: pointer; transition: all 0.15s; font-family: 'Nunito', sans-serif; line-height: 1;
+}
+.aktiv-btn:hover { background: var(--creme-dunkel); }
+.aktiv-btn.gewaehlt-1 { background: var(--gruen-status); color: white; border-color: var(--gruen-status); }
+.aktiv-btn.gewaehlt-2 { background: var(--gold); color: white; border-color: var(--gold); }
+.aktiv-btn.gewaehlt-0 { background: var(--grau-mitte); color: white; border-color: var(--grau-mitte); }
+
+.zutaten-zelle { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+.zutaten-text { flex: 1; font-size: 0.8rem; color: var(--text-hell); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+.zutaten-text.leer { color: var(--creme-warm); }
+.btn-aendern {
+    padding: 6px 12px; background: var(--gruen-dunkel); color: var(--creme); border: none;
+    border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0; font-family: 'Nunito', sans-serif;
+    transition: background 0.15s;
+}
+.btn-aendern:hover { background: var(--gruen-mitte); }
+
+.badge-fehlt { background: #fde8e8; color: var(--rot); padding: 3px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+.badge-ok { background: #e8f5e0; color: var(--gruen-status); padding: 3px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+.preis-zelle { font-family: 'Lobster', cursive; font-size: 1rem; color: var(--gold); white-space: nowrap; }
+.artnum-zelle { font-size: 0.78rem; color: var(--text-hell); font-family: monospace; }
+
+/* Overlay */
+.overlay-box {
+    background: white; border-radius: var(--radius);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+    padding: 32px; width: 100%; max-width: 560px;
+    animation: einblenden 0.2s ease; position: relative; z-index: 2001;
+}
+@keyframes einblenden {
+    from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.overlay-titel { font-family: 'Lobster', cursive; font-size: 1.4rem; color: var(--gruen-dunkel); margin-bottom: 4px; }
+.overlay-artikelname { font-size: 0.875rem; color: var(--text-hell); margin-bottom: 20px; font-style: italic; }
+.overlay-textarea {
+    width: 100%; min-height: 120px; font-family: 'Nunito', sans-serif; font-size: 0.95rem;
+    border: 1.5px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+    padding: 12px 14px; color: var(--text-dunkel); resize: vertical;
+    transition: border-color 0.15s; display: block;
+}
+.overlay-textarea:focus { outline: none; border-color: var(--gruen-hell); }
+.overlay-aktionen { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.btn-overlay-abbruch {
+    padding: 12px 22px; background: var(--creme-dunkel); color: var(--gruen-dunkel);
+    border: none; border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700; cursor: pointer;
+}
+.btn-overlay-abbruch:hover { background: var(--creme-warm); }
+.btn-overlay-speichern {
+    padding: 12px 28px; background: var(--gruen-dunkel); color: var(--creme);
+    border: none; border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700; cursor: pointer;
+}
+.btn-overlay-speichern:hover { background: var(--gruen-mitte); }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+    <div class="seiten-kopf"><h1>Artikelverwaltung</h1></div>
+
+    <div class="hinweis-box">
+        Kategorie, Einheit, Wochentage und Status werden sofort beim Ändern gespeichert.
+        Zutaten über den Ändern-Button bearbeiten. Spaltenköpfe sind klickbar zum Sortieren.
+    </div>
+
+    <div class="aktionsleiste">
+        <span class="zaehler">{{ artikel|length }} Artikel</span>
+        <span class="zaehler">{{ artikel|selectattr('kiosk_eintrag','equalto','fehlt')|list|length }} noch nicht gepflegt</span>
+        <button class="btn btn-sekundaer" onclick="bereinigen()" style="padding: 6px 16px; font-size: 0.85rem;">
+            🗑 Verwaiste bereinigen
+        </button>
+        <div style="display:flex; align-items:center; gap:6px; margin-left:auto; background:var(--creme-dunkel); border-radius:40px; padding:4px 14px;">
+            <button onclick="zoomRunter()" style="
+                border:none; background:none; font-size:1.2rem; font-weight:700;
+                cursor:pointer; color:var(--gruen-dunkel); width:28px; line-height:1;
+                border-radius:50%; transition:background 0.15s;"
+                title="Kleiner">−</button>
+            <span class="zoom-anzeige" style="
+                font-size:0.82rem; font-weight:700; color:var(--text-mitte);
+                min-width:38px; text-align:center;"></span>
+            <button onclick="zoomRauf()" style="
+                border:none; background:none; font-size:1.2rem; font-weight:700;
+                cursor:pointer; color:var(--gruen-dunkel); width:28px; line-height:1;
+                border-radius:50%; transition:background 0.15s;"
+                title="Größer">+</button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px; background:var(--creme-dunkel); border-radius:40px; padding:4px 14px;">
+            <span style="font-size:0.78rem; font-weight:700; color:var(--text-hell);">Terminal:</span>
+            <div id="terminal-buttons" style="display:flex; gap:3px;">
+                {% for nr in range(1, 10) %}
+                <button onclick="terminalWaehlen({{ nr }})"
+                        class="terminal-btn" data-nr="{{ nr }}"
+                        style="width:28px; height:28px; border-radius:50%; border:2px solid transparent;
+                               background:white; font-size:0.8rem; font-weight:800; cursor:pointer;
+                               color:var(--gruen-dunkel); transition:all 0.15s;">{{ nr }}</button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <table class="verwaltung-tabelle" id="artikel-tabelle">
+        <thead>
+            <tr>
+                <th class="sortierbar" data-col="0" onclick="sortiere(0)">ID <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="1" onclick="sortiere(1)">Art.-Nr. <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="2" onclick="sortiere(2)">Name (CAO) <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="3" onclick="sortiere(3)">Preis <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="4" onclick="sortiere(4)">Kategorie <span class="sort-pfeil">↕</span></th>
+                <th>Einheit</th>
+                <th>Wochentage</th>
+                <th>Zutaten</th>
+                <th class="sortierbar" data-col="8" onclick="sortiere(8)">Status <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="9" onclick="sortiere(9)">Eintrag <span class="sort-pfeil">↕</span></th>
+            </tr>
+        </thead>
+        <tbody id="artikel-tbody">
+            {% for a in artikel %}
+            <tr id="zeile-{{ a.id }}" data-id="{{ a.id }}">
+                <td data-sort="{{ a.id }}"><code>{{ a.id }}</code></td>
+                <td data-sort="{{ a.artnum or '' }}" class="artnum-zelle">{{ a.artnum or '–' }}</td>
+                <td data-sort="{{ a.name }}"><strong>{{ a.name }}</strong></td>
+                <td data-sort="{{ a.preis_cent }}" class="preis-zelle">{{ cent_zu_euro(a.preis_cent) }}</td>
+                <td data-sort="{{ a.kategorie_name }}">
+                    <select id="kat-{{ a.id }}" onchange="autoSpeichern({{ a.id }}, this)">
+                        <option value="0" {% if a.kategorie_id == 0 or not a.kategorie_id %}selected{% endif %}>– nicht zugeordnet –</option>
+                        {% for kat in kategorien %}
+                        <option value="{{ kat.id }}" {% if kat.id == a.kategorie_id %}selected{% endif %}>{{ kat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select id="einheit-{{ a.id }}" onchange="autoSpeichern({{ a.id }}, this)">
+                        {% for e in ['Stck.', 'kg', '100g', 'Paar'] %}
+                        <option {% if a.einheit == e %}selected{% endif %}>{{ e }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <div class="wochentage-gruppe" id="wochentage-{{ a.id }}">
+                        {% for tag in ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'] %}
+                        <label>
+                            <input type="checkbox" value="{{ tag }}"
+                                   {% if tag in (a.wochentage or '') %}checked{% endif %}
+                                   onchange="autoSpeichern({{ a.id }}, this)">
+                            <span>{{ tag }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </td>
+                <td>
+                    <div class="zutaten-zelle">
+                        <span class="zutaten-text {% if not a.zutaten %}leer{% endif %}"
+                              id="zutaten-text-{{ a.id }}" title="{{ a.zutaten or '' }}">
+                            {{ a.zutaten or '–' }}
+                        </span>
+                        {# data-* statt onclick: verhindert Probleme mit Anführungszeichen im Namen #}
+                        <button type="button" class="btn-aendern"
+                                data-id="{{ a.id }}"
+                                data-name="{{ a.name | e }}"
+                                data-zutaten="{{ (a.zutaten or '') | e }}">
+                            ✏ Ändern
+                        </button>
+                    </div>
+                </td>
+                <td data-sort="{{ a.aktiv }}">
+                    <div class="aktiv-toggle" id="aktiv-{{ a.id }}">
+                        <button type="button" class="aktiv-btn {% if a.aktiv == 1 %}gewaehlt-1{% endif %}"
+                                onclick="setAktiv({{ a.id }}, 1)" title="Normal">✓</button>
+                        <button type="button" class="aktiv-btn {% if a.aktiv == 2 %}gewaehlt-2{% endif %}"
+                                onclick="setAktiv({{ a.id }}, 2)" title="Nur anzeigen">👁</button>
+                        <button type="button" class="aktiv-btn {% if a.aktiv == 0 %}gewaehlt-0{% endif %}"
+                                onclick="setAktiv({{ a.id }}, 0)" title="Ausgeblendet">✕</button>
+                    </div>
+                </td>
+                <td data-sort="{{ a.kiosk_eintrag }}">
+                    <span class="{{ 'badge-fehlt' if a.kiosk_eintrag == 'fehlt' else 'badge-ok' }}" id="badge-{{ a.id }}">
+                        {{ a.kiosk_eintrag }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Zutaten-Overlay -->
+<div id="zutaten-overlay" style="display:none; position:fixed; inset:0; background:rgba(26,64,16,0.65); z-index:2000; align-items:center; justify-content:center;">
+    <div class="overlay-box">
+        <div class="overlay-titel">Zutaten bearbeiten</div>
+        <div class="overlay-artikelname" id="overlay-artikelname"></div>
+        <textarea class="overlay-textarea" id="overlay-textarea" placeholder="Zutaten eingeben …" rows="5"></textarea>
+        <div class="overlay-aktionen">
+            <button type="button" class="btn-overlay-abbruch" onclick="overlayAbbrechen()">Abbrechen</button>
+            <button type="button" class="btn-overlay-speichern" onclick="overlayZutatenspeichern()">💾 Speichern</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const aktivWerte = {};
+{% for a in artikel %}
+aktivWerte[{{ a.id }}] = {{ a.aktiv if a.aktiv is not none else 1 }};
+{% endfor %}
+
+const zutatenCache = {};
+{% for a in artikel %}
+zutatenCache[{{ a.id }}] = {{ (a.zutaten or '')|tojson }};
+{% endfor %}
+
+let overlayAktuelleId = null;
+let sortSpalte = -1;
+let sortAufsteigend = true;
+
+function sortiere(spaltenIdx) {
+    const tbody = document.getElementById('artikel-tbody');
+    const ths = document.querySelectorAll('#artikel-tabelle thead th');
+    if (sortSpalte === spaltenIdx) { sortAufsteigend = !sortAufsteigend; }
+    else { sortSpalte = spaltenIdx; sortAufsteigend = true; }
+
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        const pfeil = th.querySelector('.sort-pfeil');
+        if (pfeil) pfeil.textContent = '↕';
+    });
+    const aktiverTh = document.querySelector(`#artikel-tabelle thead th[data-col="${spaltenIdx}"]`);
+    if (aktiverTh) {
+        aktiverTh.classList.add(sortAufsteigend ? 'sort-asc' : 'sort-desc');
+        const pfeil = aktiverTh.querySelector('.sort-pfeil');
+        if (pfeil) pfeil.textContent = sortAufsteigend ? '↑' : '↓';
+    }
+
+    const zeilen = Array.from(tbody.querySelectorAll('tr'));
+    zeilen.sort((a, b) => {
+        const tdsA = a.querySelectorAll('td');
+        const tdsB = b.querySelectorAll('td');
+        if (!tdsA[spaltenIdx] || !tdsB[spaltenIdx]) return 0;
+        const valA = tdsA[spaltenIdx].dataset.sort ?? tdsA[spaltenIdx].textContent.trim();
+        const valB = tdsB[spaltenIdx].dataset.sort ?? tdsB[spaltenIdx].textContent.trim();
+        const numA = parseFloat(valA), numB = parseFloat(valB);
+        let v = (!isNaN(numA) && !isNaN(numB)) ? numA - numB : valA.localeCompare(valB, 'de');
+        return sortAufsteigend ? v : -v;
+    });
+    zeilen.forEach(z => tbody.appendChild(z));
+}
+
+async function autoSpeichern(artikelId, el) {
+    const data = sammelDaten(artikelId);
+    const res = await apiFetch(`/admin/artikel/${artikelId}`, { method: 'POST', body: JSON.stringify(data) });
+    if (res) {
+        if (el.tagName === 'SELECT') { el.classList.add('gespeichert'); setTimeout(() => el.classList.remove('gespeichert'), 1200); }
+        aktualisiereEintragBadge(artikelId);
+    }
+}
+
+async function setAktiv(artikelId, wert) {
+    aktivWerte[artikelId] = wert;
+    const container = document.getElementById(`aktiv-${artikelId}`);
+    container.querySelectorAll('.aktiv-btn').forEach(btn => btn.className = 'aktiv-btn');
+    const btns = container.querySelectorAll('.aktiv-btn');
+    const idx = [1, 2, 0].indexOf(wert);
+    if (idx >= 0) btns[idx].classList.add(`gewaehlt-${wert}`);
+    const data = sammelDaten(artikelId);
+    const res = await apiFetch(`/admin/artikel/${artikelId}`, { method: 'POST', body: JSON.stringify(data) });
+    if (res) { zeigToast('Status gespeichert'); aktualisiereEintragBadge(artikelId); }
+}
+
+// ── Ändern-Button: Event-Delegation statt inline onclick ──────
+// Verhindert Probleme mit Anführungszeichen in Artikelnamen
+document.getElementById('artikel-tabelle').addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-aendern');
+    if (!btn) return;
+    const id      = parseInt(btn.dataset.id);
+    const name    = btn.dataset.name;
+    const zutaten = btn.dataset.zutaten;
+    zutatenOverlay(id, name, zutaten);
+});
+
+function zutatenOverlay(artikelId, name, zutaten) {
+    overlayAktuelleId = artikelId;
+    document.getElementById('overlay-artikelname').textContent = name;
+    document.getElementById('overlay-textarea').value = zutaten || '';
+    const overlay = document.getElementById('zutaten-overlay');
+    overlay.style.display = 'flex';
+    setTimeout(() => {
+        const ta = document.getElementById('overlay-textarea');
+        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    }, 50);
+}
+
+function overlayAbbrechen() {
+    document.getElementById('zutaten-overlay').style.display = 'none';
+    overlayAktuelleId = null;
+}
+
+document.getElementById('zutaten-overlay').addEventListener('click', function(e) {
+    if (e.target === this) overlayAbbrechen();
+});
+
+async function overlayZutatenspeichern() {
+    if (!overlayAktuelleId) return;
+    const zutaten = document.getElementById('overlay-textarea').value.trim() || null;
+    zutatenCache[overlayAktuelleId] = zutaten || '';
+    const data = sammelDaten(overlayAktuelleId);
+    data.zutaten = zutaten;
+    const res = await apiFetch(`/admin/artikel/${overlayAktuelleId}`, { method: 'POST', body: JSON.stringify(data) });
+    if (res) {
+        const textEl = document.getElementById(`zutaten-text-${overlayAktuelleId}`);
+        if (textEl) {
+            textEl.textContent = zutaten || '–';
+            textEl.title = zutaten || '';
+            textEl.classList.toggle('leer', !zutaten);
+        }
+        zeigToast('✓ Zutaten gespeichert');
+        aktualisiereEintragBadge(overlayAktuelleId);
+        overlayAbbrechen();
+    }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') overlayAbbrechen(); });
+
+function sammelWochentage(artikelId) {
+    const gruppe = document.getElementById(`wochentage-${artikelId}`);
+    return [...gruppe.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.value).join(',');
+}
+
+function sammelDaten(artikelId) {
+    const katWert = parseInt(document.getElementById(`kat-${artikelId}`).value);
+    return {
+        kategorie_id: katWert === 0 ? null : katWert,
+        einheit:      document.getElementById(`einheit-${artikelId}`).value,
+        wochentage:   sammelWochentage(artikelId),
+        zutaten:      zutatenCache[artikelId] || null,
+        aktiv:        aktivWerte[artikelId] ?? 1,
+        hinweis:      null
+    };
+}
+
+function aktualisiereEintragBadge(artikelId) {
+    const badge = document.getElementById(`badge-${artikelId}`);
+    if (badge && badge.textContent.trim() === 'fehlt') {
+        badge.textContent = 'vorhanden';
+        badge.className = 'badge-ok';
+    }
+}
+
+async function bereinigen() {
+    zeigeBestaetigung('Verwaiste Artikel-Einträge löschen?', async () => {
+        const res = await apiFetch('/admin/bereinigen', { method: 'POST' });
+        if (res) {
+            zeigToast(`✓ ${res.geloescht} verwaiste Einträge gelöscht`);
+            if (res.geloescht > 0) setTimeout(() => location.reload(), 1000);
+        }
+    }, 'Löschen');
+}
+
+// ── Terminal-Selector ────────────────────────────────────────
+function terminalWaehlen(nr) {
+    setzeTerminalNr(nr);
+    aktualisiereTerminalButtons();
+    zeigToast('Terminal ' + nr + ' gespeichert – Seite wird neu geladen …', 1500);
+    // Neu laden damit Flask den neuen Cookie liest und den richtigen Warenkorb liefert
+    setTimeout(() => location.reload(), 1200);
+}
+
+function aktualisiereTerminalButtons() {
+    const aktiv = aktuelleTerminalNr();
+    document.querySelectorAll('.terminal-btn').forEach(btn => {
+        const nr = parseInt(btn.dataset.nr);
+        if (nr === aktiv) {
+            btn.style.background = 'var(--gruen-dunkel)';
+            btn.style.color = 'white';
+            btn.style.borderColor = 'var(--gruen-dunkel)';
+        } else {
+            btn.style.background = 'white';
+            btn.style.color = 'var(--gruen-dunkel)';
+            btn.style.borderColor = 'transparent';
+        }
+    });
+}
+
+// Beim Laden aktiven Terminal-Button markieren
+aktualisiereTerminalButtons();
+
+sortiere(2);
+// Zoom-Anzeige beim Laden setzen
+document.querySelectorAll('.zoom-anzeige').forEach(el => {
+    el.textContent = aktuellerZoom() + '%';
+});
+</script>
+{% endblock %}

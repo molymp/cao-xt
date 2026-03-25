@@ -1,0 +1,4 @@
+                        <button type="button" class="btn-aendern"
+                                onclick="zutatenOverlay({{ a.id }}, {{ a.name|tojson }}, {{ (a.zutaten or '')|tojson }})">
+                            ✏ Ändern
+                        </button>

@@ -1,0 +1,124 @@
+    <div class="terminal-info">Terminal {{ terminal_nr }}</div>
+</header>
+
+{% block inhalt %}{% endblock %}
+
+<div id="toast"></div>
+
+<!-- ── Globales Bestätigungs-Overlay ── -->
+<div id="bestaetigung-overlay" style="
+    display: none; position: fixed; inset: 0;
+    background: rgba(26,64,16,0.6); z-index: 9000;
+    align-items: center; justify-content: center;">
+    <div style="
+        background: white; border-radius: var(--radius);
+        box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+        padding: 32px; width: 100%; max-width: 420px;
+        animation: bestaetigung-einblenden 0.18s ease;">
+        <div id="bestaetigung-text" style="
+            font-family: 'Nunito', sans-serif; font-size: 1.05rem;
+            color: var(--text-dunkel); margin-bottom: 28px;
+            line-height: 1.5;">
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+            <button id="bestaetigung-nein" style="
+                padding: 12px 24px; border: none; border-radius: var(--radius-klein);
+                background: var(--creme-dunkel); color: var(--gruen-dunkel);
+                font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+                cursor: pointer;">
+                Abbrechen
+            </button>
+            <button id="bestaetigung-ja" style="
+                padding: 12px 24px; border: none; border-radius: var(--radius-klein);
+                background: var(--rot); color: white;
+                font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+                cursor: pointer;">
+                Ja, fortfahren
+            </button>
+        </div>
+    </div>
+</div>
+<style>
+@keyframes bestaetigung-einblenden {
+    from { opacity: 0; transform: scale(0.95) translateY(-8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+</style>
+
+<script>
+function zeigToast(text, dauer = 2500) {
+    const t = document.getElementById('toast');
+    t.textContent = text;
+    t.classList.add('sichtbar');
+    setTimeout(() => t.classList.remove('sichtbar'), dauer);
+}
+
+async function apiFetch(url, optionen = {}) {
+    try {
+        const res = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...optionen
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            zeigToast('⚠️ ' + (data.fehler || 'Fehler'), 3000);
+            return null;
+        }
+        return data;
+    } catch (e) {
+        zeigToast('⚠️ Verbindungsfehler', 3000);
+        return null;
+    }
+}
+
+// ── Bestätigungs-Overlay (ersetzt browser confirm()) ─────────
+// Verwendung: zeigeBestaetigung('Text?', () => { /* bei Ja */ });
+function zeigeBestaetigung(text, beiJa, jaText = 'Ja, fortfahren') {
+    const overlay = document.getElementById('bestaetigung-overlay');
+    document.getElementById('bestaetigung-text').textContent = text;
+    document.getElementById('bestaetigung-ja').textContent = jaText;
+    overlay.style.display = 'flex';
+
+    // Einmalige Listener (werden nach Klick entfernt)
+    const jaBtn   = document.getElementById('bestaetigung-ja');
+    const neinBtn = document.getElementById('bestaetigung-nein');
+
+    function schliessenUndJa() {
+        overlay.style.display = 'none';
+        jaBtn.removeEventListener('click', schliessenUndJa);
+        neinBtn.removeEventListener('click', schliessenUndNein);
+        beiJa();
+    }
+    function schliessenUndNein() {
+        overlay.style.display = 'none';
+        jaBtn.removeEventListener('click', schliessenUndJa);
+        neinBtn.removeEventListener('click', schliessenUndNein);
+    }
+
+    jaBtn.addEventListener('click', schliessenUndJa);
+    neinBtn.addEventListener('click', schliessenUndNein);
+}
+
+// Klick auf Hintergrund = Abbrechen
+document.getElementById('bestaetigung-overlay').addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.style.display = 'none';
+    }
+});
+
+// Escape = Abbrechen (wird durch Seiten-eigene Escape-Handler nicht gestört,
+// da dieser auf document registriert ist und zuerst feuert)
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const overlay = document.getElementById('bestaetigung-overlay');
+        if (overlay.style.display === 'flex') {
+            overlay.style.display = 'none';
+            e.stopImmediatePropagation(); // andere Escape-Handler nicht feuern
+        }
+    }
+}, true); // capture phase
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>
