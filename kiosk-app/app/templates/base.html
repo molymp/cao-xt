@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Habacher Dorfladen – Kiosk{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
+    <style>
+        :root {
+            --gruen-dunkel:  #1a4010;
+            --gruen-mitte:   #2e6e1a;
+            --gruen-hell:    #4a9428;
+            --gruen-blass:   #d4e8c2;
+            --gold:          #c8780a;
+            --gold-hell:     #e8970e;
+            --creme:         #f7f3ea;
+            --creme-dunkel:  #ece3cc;
+            --creme-warm:    #e5d9bc;
+            --text-dunkel:   #142808;
+            --text-mitte:    #2e4a1a;
+            --text-hell:     #5a7a3a;
+            --grau-hell:     #f0ece0;
+            --grau-mitte:    #a8b890;
+            --rot:           #b83030;
+            --gruen-status:  #2e7a2e;
+            --schatten:      0 2px 12px rgba(26,64,16,0.13);
+            --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
+            --radius:        12px;
+            --radius-klein:  8px;
+            --braun-dunkel:  var(--gruen-dunkel);
+            --braun-mitte:   var(--gruen-mitte);
+            --braun-hell:    var(--gruen-hell);
+            --akzent:        var(--gold);
+            --akzent-hell:   var(--gold-hell);
+            --gruen:         var(--gruen-status);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+            background: var(--creme);
+            color: var(--text-dunkel);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Lobster', Georgia, serif;
+            color: var(--gruen-dunkel);
+            font-weight: 400;
+        }
+
+        header {
+            background: var(--gruen-dunkel);
+            color: var(--creme);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            height: 72px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 100;
+        }
+        header .logo {
+            display: flex; align-items: center; gap: 12px;
+            flex-shrink: 0; text-decoration: none;
+        }
+        header .logo img {
+            height: 52px; width: auto; object-fit: contain; border-radius: 6px;
+        }
+        header .logo-text {
+            font-family: 'Lobster', Georgia, serif;
+            font-size: 1.55rem; color: var(--creme); line-height: 1.1;
+        }
+        header .logo-text span {
+            display: block;
+            font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+            font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em;
+            text-transform: uppercase; color: var(--gruen-blass); margin-top: 1px;
+        }
+        header nav { display: flex; gap: 4px; flex-wrap: nowrap; }
+        header nav a {
+            color: var(--creme-dunkel); text-decoration: none;
+            padding: 9px 15px; border-radius: var(--radius-klein);
+            font-size: 0.88rem; font-weight: 700;
+            transition: background 0.15s, color 0.15s; white-space: nowrap;
+        }
+        header nav a:hover, header nav a.aktiv {
+            background: rgba(74,148,40,0.3); color: var(--gruen-blass);
+        }
+        header .terminal-info {
+            font-size: 0.78rem; color: var(--grau-mitte);
+            text-align: right; flex-shrink: 0;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 14px 24px; border: none; border-radius: var(--radius-klein);
+            font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: transform 0.1s, box-shadow 0.1s, background 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primaer  { background: var(--gold); color: white; box-shadow: var(--schatten); }
+        .btn-primaer:hover { background: var(--gold-hell); }
+        .btn-sekundaer { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+        .btn-sekundaer:hover { background: var(--creme-warm); }
+        .btn-gefaehrlich { background: var(--rot); color: white; }
+        .btn-gruen { background: var(--gruen-hell); color: white; }
+        .btn-gross { padding: 18px 32px; font-size: 1.15rem; border-radius: var(--radius); }
+
+        .meldung { padding: 14px 20px; border-radius: var(--radius-klein); margin-bottom: 16px; font-weight: 700; }
+        .meldung-fehler { background: #fde8e8; color: var(--rot); }
+        .meldung-erfolg { background: #e8f5e0; color: var(--gruen-status); }
+        .meldung-info   { background: #fef8e2; color: #7a5a00; }
+
+        #toast {
+            position: fixed; bottom: 32px; left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--gruen-dunkel); color: var(--creme);
+            padding: 14px 28px; border-radius: 40px; font-size: 1rem; font-weight: 700;
+            box-shadow: var(--schatten-stark); z-index: 9999;
+            transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none;
+        }
+        #toast.sichtbar { transform: translateX(-50%) translateY(0); }
+
+        /* ── Bestätigungs-Overlay ── */
+        #bestaetigung-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(26,64,16,0.6); z-index: 9000;
+            align-items: center; justify-content: center;
+        }
+        .bestaetigung-box {
+            background: white; border-radius: var(--radius);
+            box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+            padding: 32px 36px; width: 100%; max-width: 420px;
+            animation: best-einblenden 0.18s ease;
+        }
+        @keyframes best-einblenden {
+            from { opacity: 0; transform: scale(0.95) translateY(-8px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .bestaetigung-text {
+            font-size: 1.05rem; color: var(--text-dunkel);
+            line-height: 1.6; margin-bottom: 28px;
+        }
+        .bestaetigung-aktionen {
+            display: flex; justify-content: flex-end; gap: 12px;
+        }
+        #bestaetigung-nein {
+            padding: 12px 22px; border: none; border-radius: var(--radius-klein);
+            background: var(--creme-dunkel); color: var(--gruen-dunkel);
+            font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+            cursor: pointer; transition: background 0.15s;
+        }
+        #bestaetigung-nein:hover { background: var(--creme-warm); }
+        #bestaetigung-ja {
+            padding: 12px 22px; border: none; border-radius: var(--radius-klein);
+            background: var(--rot); color: white;
+            font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+            cursor: pointer; transition: background 0.15s;
+        }
+        #bestaetigung-ja:hover { background: #9a2020; }
+
+        /* ── Buchen-Bestätigung ── */
+        #buchen-ok-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(26,64,16,0.72); z-index: 9100;
+            align-items: center; justify-content: center;
+        }
+        #buchen-ok-overlay.sichtbar { display: flex; }
+        .buchen-ok-box {
+            background: var(--gruen-dunkel); color: var(--creme);
+            border-radius: var(--radius); box-shadow: 0 8px 48px rgba(0,0,0,0.45);
+            padding: 36px 52px; text-align: center;
+            animation: best-einblenden 0.2s ease;
+        }
+        .buchen-ok-label {
+            font-size: 1.1rem; font-weight: 700; letter-spacing: 0.05em;
+            opacity: 0.75; margin-bottom: 8px; text-transform: uppercase;
+        }
+        .buchen-ok-ziffern {
+            font-family: 'Lobster', Georgia, serif;
+            font-size: 9rem; line-height: 1;
+            color: var(--gold-hell);
+            text-shadow: 0 2px 16px rgba(0,0,0,0.4);
+        }
+        .buchen-ok-sub {
+            font-size: 0.95rem; opacity: 0.6; margin-top: 12px;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<header>
+    <a class="logo" href="/">
+        <img src="https://lh3.googleusercontent.com/sitesv/APaQ0ST5e2HHwKUXVL9lYukdMz2aIj00PnIYyuWzkdc_IrAj5oz2TuK3dbRLaKgFXzAa7SzkUY7f0XtLrbGgiASbhPF__WWZIUchtZKcEJtxtQhGh7CmwAkzytJJXYvhY3T7GDkHyLCHqkRx_w6S9kN2EJRt6zqQR3DGWEEBzZ9JDh4jLd8JtBBD5ILf=w120"
+             alt="Habacher Dorfladen Logo"
+             onerror="this.style.display='none'">
+        <div class="logo-text">
+            Habacher Dorfladen
+            <span>Kiosk</span>
+        </div>
+    </a>
+
+    <nav>
+        <a href="/" class="{% if request.path == '/' %}aktiv{% endif %}">🧺 Artikelauswahl</a>
+        <a href="/offen" class="{% if request.path == '/offen' %}aktiv{% endif %}">⏸ Geparkt</a>
+        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
+        <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
+        <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
+            📦 Bestellungen
+            <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
+        </a>
+        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}">🍽 Mittagstisch</a>
+    </nav>
+
+    <div class="terminal-info">Terminal {{ terminal_nr }}</div>
+</header>
+
+{% block inhalt %}{% endblock %}
+
+<div id="toast"></div>
+
+<!-- ── Buchen-Bestätigung ── -->
+<div id="buchen-ok-overlay">
+    <div class="buchen-ok-box">
+        <div class="buchen-ok-label">Bon Nr.</div>
+        <div class="buchen-ok-ziffern" id="buchen-ok-ziffern">—</div>
+        <div class="buchen-ok-sub">✓ Bon wird gedruckt …</div>
+    </div>
+</div>
+
+<!-- ── Globales Bestätigungs-Overlay ── -->
+<div id="bestaetigung-overlay">
+    <div class="bestaetigung-box">
+        <div class="bestaetigung-text" id="bestaetigung-text"></div>
+        <div class="bestaetigung-aktionen">
+            <button id="bestaetigung-nein">Abbrechen</button>
+            <button id="bestaetigung-ja">Ja, fortfahren</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function zeigBuchenOk(journalId, nachher) {
+    const ziffern = String(journalId).slice(-2).padStart(2, '0');
+    document.getElementById('buchen-ok-ziffern').textContent = ziffern;
+    const ov = document.getElementById('buchen-ok-overlay');
+    ov.classList.add('sichtbar');
+    setTimeout(() => { ov.classList.remove('sichtbar'); if (nachher) nachher(); }, 2200);
+}
+
+function zeigToast(text, dauer = 2500) {
+    const t = document.getElementById('toast');
+    t.textContent = text;
+    t.classList.add('sichtbar');
+    setTimeout(() => t.classList.remove('sichtbar'), dauer);
+}
+
+async function apiFetch(url, optionen = {}) {
+    try {
+        const res = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...optionen
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            zeigToast('⚠️ ' + (data.fehler || 'Fehler'), 3000);
+            return null;
+        }
+        return data;
+    } catch (e) {
+        zeigToast('⚠️ Verbindungsfehler', 3000);
+        return null;
+    }
+}
+
+
+
+// ── Terminal-Nummer ───────────────────────────────────────────
+const TERMINAL_COOKIE = 'kiosk_terminal';
+
+function aktuelleTerminalNr() {
+    const m = document.cookie.match('(?:^|; )' + TERMINAL_COOKIE + '=([^;]*)');
+    return m ? parseInt(decodeURIComponent(m[1])) : 0; // 0 = nicht gesetzt
+}
+function setzeTerminalNr(nr) {
+    if (nr < 1 || nr > 9) return;
+    document.cookie = TERMINAL_COOKIE + '=' + nr
+        + '; max-age=31536000; path=/; SameSite=Lax';
+    // Anzeige in allen Terminal-Badges aktualisieren
+    document.querySelectorAll('.terminal-badge').forEach(el => {
+        el.textContent = 'T' + nr;
+    });
+}
+
+// ── Zoom ─────────────────────────────────────────────────────
+// Stufen in Prozent (Basis = 100% = 16px)
+const ZOOM_STUFEN = [75, 85, 100, 110, 120, 135, 150];
+const ZOOM_COOKIE = 'kiosk_zoom';
+
+function _leseCookie(name) {
+    const m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+    return m ? decodeURIComponent(m[1]) : null;
+}
+function _schreibeCookie(name, value) {
+    // 1 Jahr gültig, kein Ablaufdatum → bleibt bis Browser-Reset
+    document.cookie = name + '=' + encodeURIComponent(value)
+        + '; max-age=31536000; path=/; SameSite=Lax';
+}
+
+function aktuellerZoom() {
+    return parseInt(_leseCookie(ZOOM_COOKIE) || '100');
+}
+function setzeZoom(prozent) {
+    document.documentElement.style.fontSize = prozent + '%';
+    _schreibeCookie(ZOOM_COOKIE, prozent);
+    // Anzeige in allen Zoom-Buttons aktualisieren
+    document.querySelectorAll('.zoom-anzeige').forEach(el => {
+        el.textContent = prozent + '%';
+    });
+}
+function zoomRauf() {
+    const aktuell = aktuellerZoom();
+    const idx = ZOOM_STUFEN.indexOf(aktuell);
+    if (idx < ZOOM_STUFEN.length - 1) setzeZoom(ZOOM_STUFEN[idx + 1]);
+}
+function zoomRunter() {
+    const aktuell = aktuellerZoom();
+    const idx = ZOOM_STUFEN.indexOf(aktuell);
+    if (idx > 0) setzeZoom(ZOOM_STUFEN[idx - 1]);
+}
+
+// Beim Laden sofort anwenden
+(function() {
+    const z = aktuellerZoom();
+    if (z !== 100) document.documentElement.style.fontSize = z + '%';
+})();
+
+// ── Bestätigungs-Overlay ──────────────────────────────────────
+// Verwendung:
+//   zeigeBestaetigung('Text?', () => { /* wird bei Ja ausgeführt */ });
+//   zeigeBestaetigung('Text?', callback, 'Löschen'); // eigener Ja-Button-Text
+function zeigeBestaetigung(text, beiJa, jaText) {
+    const overlay = document.getElementById('bestaetigung-overlay');
+    const jaBtn   = document.getElementById('bestaetigung-ja');
+    const neinBtn = document.getElementById('bestaetigung-nein');
+
+    document.getElementById('bestaetigung-text').textContent = text;
+    jaBtn.textContent = jaText || 'Ja, fortfahren';
+    overlay.style.display = 'flex';
+
+    // Einmalige Listener – werden nach Klick sofort entfernt
+    function schliessen() {
+        overlay.style.display = 'none';
+        jaBtn.removeEventListener('click', onJa);
+        neinBtn.removeEventListener('click', onNein);
+    }
+    function onJa()   { schliessen(); beiJa(); }
+    function onNein() { schliessen(); }
+
+    jaBtn.addEventListener('click', onJa);
+    neinBtn.addEventListener('click', onNein);
+}
+
+// Klick auf Hintergrund = Abbrechen
+document.getElementById('bestaetigung-overlay').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+
+// Escape schließt das Overlay (capture phase, damit es vor anderen Handlern feuert)
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const overlay = document.getElementById('bestaetigung-overlay');
+        if (overlay.style.display === 'flex') {
+            overlay.style.display = 'none';
+            e.stopImmediatePropagation();
+        }
+    }
+}, true);
+
+// ── Bestellungs-Badge ─────────────────────────────────────────
+async function aktualisiereBestellBadge() {
+    try {
+        const res = await fetch('/api/bestellungen/badge');
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('nav-bestell-badge');
+        if (!badge) return;
+        if (data.anzahl > 0) {
+            badge.textContent = data.anzahl;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch(e) {}
+}
+aktualisiereBestellBadge();
+setInterval(aktualisiereBestellBadge, 30000);
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

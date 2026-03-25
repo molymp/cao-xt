@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% block title %}Kiosk – Artikelauswahl{% endblock %}
+
+{% block extra_css %}
+<style>
+.kiosk-layout {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+
+.produkt-bereich { display: flex; flex-direction: column; overflow: hidden; background: var(--creme); }
+
+.kategorie-tabs {
+    display: flex; gap: 6px; padding: 16px 20px 12px;
+    background: var(--creme); border-bottom: 2px solid var(--creme-dunkel);
+    overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
+}
+.kategorie-tabs::-webkit-scrollbar { display: none; }
+
+.kat-tab {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 18px; border: 2px solid transparent; border-radius: 40px;
+    background: var(--grau-hell); color: var(--text-mitte);
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+}
+.kat-tab:hover { background: var(--creme-dunkel); color: var(--braun-dunkel); }
+.kat-tab.aktiv { background: var(--braun-dunkel); color: var(--creme); border-color: var(--braun-dunkel); }
+
+.kat-anzahl {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 5px;
+    border-radius: 10px; font-size: 0.72rem; font-weight: 800;
+    background: rgba(0,0,0,0.12); color: inherit;
+}
+.kat-tab.aktiv .kat-anzahl { background: rgba(255,255,255,0.2); }
+
+.produkt-scroll {
+    flex: 1; overflow-y: auto; padding: 20px;
+    scrollbar-width: thin; scrollbar-color: var(--creme-dunkel) transparent;
+}
+.produkt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.kat-abschnitt { display: none; }
+.kat-abschnitt.aktiv { display: block; }
+
+.produkt-karte {
+    background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+    overflow: hidden; cursor: pointer; transition: transform 0.12s, box-shadow 0.12s;
+    position: relative; border: 2px solid transparent;
+}
+.produkt-karte:hover { transform: translateY(-3px); box-shadow: var(--schatten-stark); border-color: var(--braun-hell); }
+.produkt-karte:active { transform: scale(0.97); }
+.produkt-karte.nur-anzeigen { opacity: 0.65; cursor: default; }
+.produkt-karte.nur-anzeigen:hover { transform: none; box-shadow: var(--schatten); border-color: transparent; }
+
+.karte-bild {
+    width: 100%; height: 130px; background: var(--creme-dunkel);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3rem; color: var(--creme-warm);
+}
+.karte-bild img { width: 100%; height: 100%; object-fit: cover; }
+.karte-info { padding: 12px 14px 14px; }
+.karte-name { font-size: 0.95rem; font-weight: 700; color: var(--text-dunkel); line-height: 1.3; margin-bottom: 6px; }
+.karte-meta { display: flex; justify-content: space-between; align-items: center; }
+.karte-preis { font-family: 'Lobster', cursive; font-size: 1.2rem; color: var(--akzent); }
+.karte-tag { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: var(--creme-dunkel); color: var(--text-hell); }
+.karte-hinweis { font-size: 0.75rem; color: var(--text-hell); margin-top: 4px; font-style: italic; }
+
+.karte-badge {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--akzent); color: white; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    opacity: 0; transform: scale(0);
+    transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+.karte-badge.sichtbar { opacity: 1; transform: scale(1); }
+
+/* ── Warenkorb ── */
+.warenkorb-bereich { background: var(--braun-dunkel); display: flex; flex-direction: column; overflow: hidden; box-shadow: -4px 0 20px rgba(0,0,0,0.25); }
+.warenkorb-kopf { padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
+.warenkorb-titel { font-family: 'Lobster', cursive; font-size: 1.5rem; color: var(--creme); margin-bottom: 4px; }
+.warenkorb-nr { font-size: 0.78rem; color: var(--grau-mitte); }
+
+.positionen-liste { flex: 1; overflow-y: auto; padding: 12px 16px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
+.leer-hinweis { text-align: center; padding: 48px 24px; color: rgba(255,255,255,0.3); font-size: 0.95rem; line-height: 1.8; }
+.leer-hinweis .leer-icon { font-size: 3rem; display: block; margin-bottom: 12px; opacity: 0.4; }
+
+.position { background: rgba(255,255,255,0.06); border-radius: var(--radius-klein); padding: 12px 14px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08); transition: background 0.15s; }
+.position:hover { background: rgba(255,255,255,0.1); }
+.pos-zeile-1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.pos-name { font-size: 0.9rem; font-weight: 700; color: var(--creme); line-height: 1.3; flex: 1; padding-right: 8px; }
+.pos-betrag { font-family: 'Lobster', cursive; font-size: 1.1rem; color: var(--gruen-blass); white-space: nowrap; }
+.pos-zeile-2 { display: flex; align-items: center; gap: 6px; }
+.pos-einzel { font-size: 0.78rem; color: rgba(255,255,255,0.4); flex: 1; }
+
+.menge-steuerung { display: flex; align-items: center; background: rgba(0,0,0,0.25); border-radius: 20px; overflow: hidden; }
+.menge-btn {
+    width: 34px; height: 34px; border: none; background: transparent;
+    color: var(--gruen-blass); font-size: 1.1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 0.1s, opacity 0.15s;
+}
+.menge-btn:hover { background: rgba(255,255,255,0.15); }
+.menge-btn:active { transform: scale(0.9); }
+.menge-btn.deaktiviert { opacity: 0.25; cursor: not-allowed; pointer-events: none; }
+.menge-zahl { min-width: 32px; text-align: center; color: var(--creme); font-weight: 800; font-size: 0.9rem; }
+
+.pos-loeschen {
+    width: 36px; height: 36px; border: none;
+    background: rgba(180,40,40,0.25); color: rgba(255,120,100,0.8);
+    border-radius: 8px; cursor: pointer; margin-left: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+    transition: background 0.1s, color 0.1s;
+}
+.pos-loeschen:hover { background: rgba(180,40,40,0.45); color: #ff7060; }
+
+.warenkorb-summe { padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
+.summe-zeile { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.summe-label { font-size: 0.85rem; color: rgba(255,255,255,0.5); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+.summe-betrag { font-family: 'Lobster', cursive; font-size: 2.2rem; color: var(--creme); }
+
+.warenkorb-aktionen { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 24px 16px; flex-shrink: 0; }
+.btn-buchen {
+    grid-column: 1 / -1; background: var(--akzent); color: white;
+    padding: 18px; font-size: 1.1rem; border-radius: var(--radius); border: none; cursor: pointer;
+    font-family: 'Nunito', sans-serif; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: background 0.15s, transform 0.1s; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.btn-buchen:hover { background: var(--akzent-hell); }
+.btn-buchen:active { transform: scale(0.98); }
+.btn-buchen:disabled { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); box-shadow: none; cursor: not-allowed; }
+.btn-parken, .btn-abbrechen {
+    padding: 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-klein);
+    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.75);
+    cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 0.9rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s;
+}
+.btn-parken:hover { background: rgba(255,255,255,0.14); }
+.btn-abbrechen:hover { background: rgba(180,40,40,0.25); color: #ff8070; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="kiosk-layout">
+
+    <div class="produkt-bereich">
+        <div class="kategorie-tabs">
+            {% for kat_name, kat_daten in kategorien %}
+            <button class="kat-tab {% if loop.first %}aktiv{% endif %}"
+                    onclick="zeigeKategorie('kat-{{ loop.index }}', this)">
+                {{ kat_name }}
+                <span class="kat-anzahl">{{ kat_daten.artikel|length }}</span>
+            </button>
+            {% endfor %}
+        </div>
+
+        <div class="produkt-scroll">
+            {% for kat_name, kat_daten in kategorien %}
+            <div class="kat-abschnitt {% if loop.first %}aktiv{% endif %}" id="kat-{{ loop.index }}">
+                <div class="produkt-grid">
+                    {% for artikel in kat_daten.artikel %}
+                    <div class="produkt-karte {% if artikel.aktiv == 2 %}nur-anzeigen{% endif %}"
+                         id="karte-{{ artikel.id }}"
+                         {% if artikel.aktiv == 1 %}onclick="artikelHinzufuegen({{ artikel.id }})"{% endif %}>
+                        <div class="karte-bild">
+                            {% if artikel.bild_pfad %}
+                            <img src="{{ artikel.bild_pfad }}" alt="{{ artikel.name }}"
+                                 onerror="this.parentElement.innerHTML='🍞'">
+                            {% else %}🍞{% endif %}
+                        </div>
+                        <div class="karte-badge" id="badge-{{ artikel.id }}">0</div>
+                        <div class="karte-info">
+                            <div class="karte-name">{{ artikel.name }}</div>
+                            <div class="karte-meta">
+                                <span class="karte-preis">{{ cent_zu_euro(artikel.preis_cent) }}</span>
+                                {% if artikel.wochentage and artikel.wochentage != 'undefiniert' %}
+                                <span class="karte-tag">{{ artikel.wochentage }}</span>
+                                {% endif %}
+                            </div>
+                            {% if artikel.aktiv == 2 and artikel.hinweis %}
+                            <div class="karte-hinweis">{{ artikel.hinweis }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="warenkorb-bereich">
+        <div class="warenkorb-kopf">
+            <div class="warenkorb-titel">🧺 Warenkorb</div>
+            <div class="warenkorb-nr" id="wk-nr">Nr. {{ warenkorb.id if warenkorb else '–' }}</div>
+        </div>
+
+        <div class="positionen-liste" id="positionen-liste">
+            {% if positionen %}
+                {% for pos in positionen %}
+                <div class="position" id="pos-{{ pos.id }}" data-produkt="{{ pos.produkt_id }}">
+                    <div class="pos-zeile-1">
+                        <span class="pos-name">{{ pos.name_snapshot }}</span>
+                        <span class="pos-betrag" id="pos-betrag-{{ pos.id }}">{{ cent_zu_euro(pos.zeilen_betrag_cent) }}</span>
+                    </div>
+                    <div class="pos-zeile-2">
+                        <span class="pos-einzel">{{ cent_zu_euro(pos.preis_snapshot_cent) }} / Stück</span>
+                        <div class="menge-steuerung">
+                            <button class="menge-btn {% if pos.menge <= 1 %}deaktiviert{% endif %}"
+                                    id="minus-{{ pos.id }}"
+                                    onclick="mengeAendern({{ pos.id }}, -1)">−</button>
+                            <span class="menge-zahl" id="menge-{{ pos.id }}">{{ pos.menge }}</span>
+                            <button class="menge-btn"
+                                    onclick="mengeAendern({{ pos.id }}, +1)">+</button>
+                        </div>
+                        <button class="pos-loeschen" onclick="positionLoeschen({{ pos.id }}, {{ pos.produkt_id }})">✕</button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="leer-hinweis">
+                    <span class="leer-icon">🧺</span>
+                    Noch keine Artikel ausgewählt.<br>Tippen Sie auf ein Produkt.
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="warenkorb-summe">
+            <div class="summe-zeile">
+                <span class="summe-label">Gesamt</span>
+                <span class="summe-betrag" id="gesamtbetrag">
+                    {{ cent_zu_euro(warenkorb.gesamtbetrag_cent if warenkorb else 0) }}
+                </span>
+            </div>
+        </div>
+
+        <div class="warenkorb-aktionen">
+            <button class="btn-buchen" id="btn-buchen" onclick="buchen()"
+                    {% if not positionen %}disabled{% endif %}>
+                🖨️ Buchen & Drucken
+            </button>
+            <button class="btn-parken" onclick="parken()">⏸ Parken</button>
+            <button class="btn-abbrechen" onclick="abbrechen()">✕ Abbrechen</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let warenkorbId = {{ warenkorb.id if warenkorb else 'null' }};
+const mengen = {};
+{% for pos in positionen %}
+mengen[{{ pos.produkt_id }}] = { menge: {{ pos.menge }}, posId: {{ pos.id }}, preis: {{ pos.preis_snapshot_cent }} };
+{% endfor %}
+aktualisiereAlleBadges();
+
+function zeigeKategorie(katId, tab) {
+    document.querySelectorAll('.kat-abschnitt').forEach(el => el.classList.remove('aktiv'));
+    document.querySelectorAll('.kat-tab').forEach(el => el.classList.remove('aktiv'));
+    document.getElementById(katId).classList.add('aktiv');
+    tab.classList.add('aktiv');
+}
+
+async function artikelHinzufuegen(produktId) {
+    if (!warenkorbId) {
+        const res = await apiFetch('/warenkorb/neu', { method: 'POST' });
+        if (!res) return;
+        warenkorbId = res.warenkorb_id;
+        document.getElementById('wk-nr').textContent = 'Nr. ' + warenkorbId;
+    }
+    const res = await apiFetch(`/warenkorb/${warenkorbId}/position`, {
+        method: 'POST', body: JSON.stringify({ produkt_id: produktId })
+    });
+    if (!res) return;
+
+    if (mengen[produktId]) {
+        mengen[produktId].menge++;
+        const posId = mengen[produktId].posId;
+        document.getElementById(`menge-${posId}`).textContent = mengen[produktId].menge;
+        document.getElementById(`pos-betrag-${posId}`).textContent =
+            formatEuro(mengen[produktId].menge * mengen[produktId].preis);
+        aktualisiereBadge(produktId);
+        aktualisiereMinus(posId, mengen[produktId].menge);
+        aktualisiereGesamtbetrag(res.gesamtbetrag_cent);
+    } else {
+        await ladeWarenkorb();
+    }
+}
+
+async function mengeAendern(posId, delta) {
+    const mengeEl = document.getElementById(`menge-${posId}`);
+    const aktuell = parseInt(mengeEl.textContent) || 0;
+    const neueMenge = aktuell + delta;
+    if (neueMenge < 1) return;
+    await mengeSteppen(posId, neueMenge);
+}
+
+async function mengeSteppen(posId, neueMenge) {
+    const res = await apiFetch(`/warenkorb/${warenkorbId}/position/${posId}/menge`, {
+        method: 'POST', body: JSON.stringify({ menge: neueMenge })
+    });
+    if (!res) return;
+    aktualisiereGesamtbetrag(res.gesamtbetrag_cent);
+
+    if (neueMenge <= 0) {
+        const posEl = document.getElementById(`pos-${posId}`);
+        const produktId = posEl ? parseInt(posEl.dataset.produkt) : null;
+        if (posEl) posEl.remove();
+        if (produktId) { delete mengen[produktId]; aktualisiereBadge(produktId); }
+        pruefeLeererKorb();
+    } else {
+        document.getElementById(`menge-${posId}`).textContent = neueMenge;
+        aktualisiereMinus(posId, neueMenge);
+        for (const [pid, info] of Object.entries(mengen)) {
+            if (info.posId === posId) {
+                info.menge = neueMenge;
+                document.getElementById(`pos-betrag-${posId}`).textContent =
+                    formatEuro(neueMenge * info.preis);
+                aktualisiereBadge(parseInt(pid));
+                break;
+            }
+        }
+    }
+}
+
+async function positionLoeschen(posId, produktId) {
+    const res = await apiFetch(`/warenkorb/${warenkorbId}/position/${posId}`, { method: 'DELETE' });
+    if (!res) return;
+    aktualisiereGesamtbetrag(res.gesamtbetrag_cent);
+    document.getElementById(`pos-${posId}`).remove();
+    delete mengen[produktId];
+    aktualisiereBadge(produktId);
+    pruefeLeererKorb();
+}
+
+async function parken() {
+    if (!warenkorbId) return;
+    const res = await apiFetch(`/warenkorb/${warenkorbId}/parken`, { method: 'POST' });
+    if (res) { zeigToast('Warenkorb geparkt'); setTimeout(() => location.reload(), 800); }
+}
+
+async function abbrechen() {
+    if (!warenkorbId) return;
+    zeigeBestaetigung('Warenkorb wirklich verwerfen?', async () => {
+        const res = await apiFetch(`/warenkorb/${warenkorbId}/abbrechen`, { method: 'POST' });
+        if (res) { zeigToast('Warenkorb abgebrochen'); setTimeout(() => location.reload(), 800); }
+    }, 'Verwerfen');
+}
+
+async function buchen() {
+    const btn = document.getElementById('btn-buchen');
+    btn.disabled = true; btn.textContent = '⏳ Wird gebucht …';
+    const res = await apiFetch(`/warenkorb/${warenkorbId}/buchen`, { method: 'POST' });
+    if (res) {
+        zeigBuchenOk(res.bon_nr, () => location.reload());
+    } else {
+        btn.disabled = false; btn.innerHTML = '🖨️ Buchen &amp; Drucken';
+    }
+}
+
+async function ladeWarenkorb() {
+    const res = await apiFetch(`/warenkorb/${warenkorbId}/positionen`);
+    if (!res) return;
+    Object.keys(mengen).forEach(k => delete mengen[k]);
+    res.positionen.forEach(pos => {
+        mengen[pos.produkt_id] = { menge: pos.menge, posId: pos.id, preis: pos.preis_snapshot_cent };
+    });
+    const liste = document.getElementById('positionen-liste');
+    if (res.positionen.length === 0) {
+        liste.innerHTML = `<div class="leer-hinweis"><span class="leer-icon">🧺</span>Noch keine Artikel.<br>Tippen Sie auf ein Produkt.</div>`;
+    } else {
+        liste.innerHTML = res.positionen.map(pos => `
+            <div class="position" id="pos-${pos.id}" data-produkt="${pos.produkt_id}">
+                <div class="pos-zeile-1">
+                    <span class="pos-name">${pos.name_snapshot}</span>
+                    <span class="pos-betrag" id="pos-betrag-${pos.id}">${formatEuro(pos.zeilen_betrag_cent)}</span>
+                </div>
+                <div class="pos-zeile-2">
+                    <span class="pos-einzel">${formatEuro(pos.preis_snapshot_cent)} / Stück</span>
+                    <div class="menge-steuerung">
+                        <button class="menge-btn${pos.menge <= 1 ? ' deaktiviert' : ''}"
+                                id="minus-${pos.id}"
+                                onclick="mengeAendern(${pos.id}, -1)">−</button>
+                        <span class="menge-zahl" id="menge-${pos.id}">${pos.menge}</span>
+                        <button class="menge-btn" onclick="mengeAendern(${pos.id}, +1)">+</button>
+                    </div>
+                    <button class="pos-loeschen" onclick="positionLoeschen(${pos.id}, ${pos.produkt_id})">✕</button>
+                </div>
+            </div>`).join('');
+    }
+    aktualisiereGesamtbetrag(res.gesamtbetrag_cent);
+    aktualisiereAlleBadges();
+}
+
+function aktualisiereMinus(posId, menge) {
+    const btn = document.getElementById(`minus-${posId}`);
+    if (!btn) return;
+    btn.classList.toggle('deaktiviert', menge <= 1);
+}
+
+function formatEuro(cent) { return (cent / 100).toFixed(2).replace('.', ',') + ' €'; }
+
+function aktualisiereGesamtbetrag(cent) {
+    document.getElementById('gesamtbetrag').textContent = formatEuro(cent);
+    document.getElementById('btn-buchen').disabled = cent <= 0;
+}
+
+function aktualisiereBadge(produktId) {
+    const badge = document.getElementById(`badge-${produktId}`);
+    if (!badge) return;
+    const m = mengen[produktId] ? mengen[produktId].menge : 0;
+    badge.textContent = m;
+    badge.classList.toggle('sichtbar', m > 0);
+}
+
+function aktualisiereAlleBadges() {
+    for (const [pid] of Object.entries(mengen)) aktualisiereBadge(parseInt(pid));
+}
+
+function pruefeLeererKorb() {
+    const liste = document.getElementById('positionen-liste');
+    if (!liste.querySelector('.position')) {
+        liste.innerHTML = `<div class="leer-hinweis"><span class="leer-icon">🧺</span>Noch keine Artikel ausgewählt.<br>Tippen Sie auf ein Produkt.</div>`;
+        aktualisiereGesamtbetrag(0);
+    }
+}
+</script>
+{% endblock %}

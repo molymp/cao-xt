@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Artikelübersicht{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt {
+    padding: 32px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.seiten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 28px;
+}
+.seiten-kopf h1 { font-size: 1.8rem; }
+
+/* Kategorie-Abschnitt */
+.kat-abschnitt {
+    margin-bottom: 40px;
+}
+
+.kat-kopf {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--creme-dunkel);
+}
+
+.kat-titel {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    color: var(--braun-dunkel);
+}
+
+.kat-anzahl {
+    background: var(--creme-dunkel);
+    color: var(--text-mitte);
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Artikel-Gitter */
+.artikel-gitter {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+
+/* Artikel-Karte */
+.artikel-karte {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten);
+    padding: 16px 18px;
+    border-left: 4px solid var(--braun-hell);
+    transition: box-shadow 0.15s;
+    position: relative;
+}
+.artikel-karte:hover {
+    box-shadow: var(--schatten-stark);
+}
+
+.artikel-karte.nur-anzeigen {
+    border-left-color: var(--braun-mitte);
+    opacity: 0.75;
+}
+.artikel-karte.ausgeblendet {
+    border-left-color: var(--grau-mitte);
+    opacity: 0.45;
+}
+
+.karte-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+    gap: 8px;
+}
+
+.karte-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-dunkel);
+    line-height: 1.3;
+}
+
+.karte-preis {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--akzent);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.karte-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+}
+
+.meta-tag {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+
+.meta-einheit {
+    background: var(--grau-hell);
+    color: var(--text-mitte);
+}
+.meta-wochentag {
+    background: #e8f0fe;
+    color: #3a5a9a;
+}
+.meta-status-2 {
+    background: #fff3e0;
+    color: #a05000;
+}
+.meta-status-0 {
+    background: #f0f0f0;
+    color: #888;
+}
+
+.karte-zutaten {
+    margin-top: 8px;
+    font-size: 0.78rem;
+    color: var(--text-hell);
+    line-height: 1.5;
+    font-style: italic;
+}
+
+.karte-hinweis {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: var(--rot);
+    font-weight: 600;
+}
+
+.karte-artnum {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-size: 0.72rem;
+    color: var(--grau-mitte);
+    font-family: monospace;
+}
+
+/* Filter-Leiste */
+.filter-leiste {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.filter-leiste input[type="text"] {
+    padding: 9px 16px;
+    border: 1.5px solid var(--creme-dunkel);
+    border-radius: 40px;
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 0.9rem;
+    background: white;
+    width: 260px;
+    transition: border-color 0.15s;
+}
+.filter-leiste input[type="text"]:focus {
+    outline: none;
+    border-color: var(--braun-hell);
+}
+
+.filter-status {
+    display: flex;
+    gap: 6px;
+}
+.filter-btn {
+    padding: 8px 16px;
+    border: 1.5px solid var(--creme-dunkel);
+    border-radius: 40px;
+    background: white;
+    color: var(--text-mitte);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Source Sans 3', sans-serif;
+    transition: all 0.15s;
+}
+.filter-btn.aktiv, .filter-btn:hover {
+    background: var(--braun-dunkel);
+    color: var(--creme);
+    border-color: var(--braun-dunkel);
+}
+
+.zaehler-gesamt {
+    margin-left: auto;
+    font-size: 0.85rem;
+    color: var(--text-hell);
+}
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+    <div class="seiten-kopf">
+        <h1>Artikelübersicht</h1>
+        <a href="/admin/artikel" class="btn btn-sekundaer">⚙️ Zur Verwaltung</a>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-leiste">
+        <input type="text" id="suche" placeholder="Artikel suchen …"
+               oninput="filtere()" autocomplete="off">
+        <div class="filter-status">
+            <button class="filter-btn aktiv" data-filter="alle" onclick="filterStatus('alle', this)">Alle</button>
+            <button class="filter-btn" data-filter="1" onclick="filterStatus('1', this)">Normal</button>
+            <button class="filter-btn" data-filter="2" onclick="filterStatus('2', this)">Nur anzeigen</button>
+            <button class="filter-btn" data-filter="0" onclick="filterStatus('0', this)">Ausgeblendet</button>
+        </div>
+        <span class="zaehler-gesamt" id="zaehler-gesamt">
+            {{ gesamt }} Artikel
+        </span>
+    </div>
+
+    <!-- Kategorien -->
+    {% for kat_name, artikel_liste in kategorien %}
+    <div class="kat-abschnitt" id="kat-{{ loop.index }}">
+        <div class="kat-kopf">
+            <span class="kat-titel">{{ kat_name }}</span>
+            <span class="kat-anzahl">{{ artikel_liste|length }}</span>
+        </div>
+
+        <div class="artikel-gitter">
+            {% for a in artikel_liste %}
+            <div class="artikel-karte
+                         {% if a.aktiv == 2 %}nur-anzeigen
+                         {% elif a.aktiv == 0 %}ausgeblendet
+                         {% endif %}"
+                 data-name="{{ a.name|lower }}"
+                 data-aktiv="{{ a.aktiv }}">
+
+                <span class="karte-artnum">{{ a.id }}</span>
+
+                <div class="karte-kopf">
+                    <span class="karte-name">{{ a.name }}</span>
+                    <span class="karte-preis">{{ cent_zu_euro(a.preis_cent) }}</span>
+                </div>
+
+                <div class="karte-meta">
+                    <span class="meta-tag meta-einheit">{{ a.einheit }}</span>
+                    {% if a.wochentage != 'undefiniert' %}
+                    <span class="meta-tag meta-wochentag">{{ a.wochentage }}</span>
+                    {% endif %}
+                    {% if a.aktiv == 2 %}
+                    <span class="meta-tag meta-status-2">Nur anzeigen</span>
+                    {% elif a.aktiv == 0 %}
+                    <span class="meta-tag meta-status-0">Ausgeblendet</span>
+                    {% endif %}
+                </div>
+
+                {% if a.zutaten %}
+                <div class="karte-zutaten">{{ a.zutaten }}</div>
+                {% endif %}
+
+                {% if a.hinweis %}
+                <div class="karte-hinweis">⚠ {{ a.hinweis }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let aktivFilter = 'alle';
+
+function filtere() {
+    const suche = document.getElementById('suche').value.toLowerCase().trim();
+    let sichtbar = 0;
+
+    document.querySelectorAll('.artikel-karte').forEach(karte => {
+        const namePasst  = karte.dataset.name.includes(suche);
+        const statusPasst = aktivFilter === 'alle' || karte.dataset.aktiv === aktivFilter;
+        const zeigen = namePasst && statusPasst;
+        karte.style.display = zeigen ? '' : 'none';
+        if (zeigen) sichtbar++;
+    });
+
+    // Kategorien ohne sichtbare Karten ausblenden
+    document.querySelectorAll('.kat-abschnitt').forEach(kat => {
+        const hatSichtbare = [...kat.querySelectorAll('.artikel-karte')]
+            .some(k => k.style.display !== 'none');
+        kat.style.display = hatSichtbare ? '' : 'none';
+    });
+
+    document.getElementById('zaehler-gesamt').textContent =
+        sichtbar + ' Artikel';
+}
+
+function filterStatus(wert, btn) {
+    aktivFilter = wert;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('aktiv'));
+    btn.classList.add('aktiv');
+    filtere();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% block title %}Bestellungen{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt {
+    padding: 2rem;
+    max-width: 96rem;
+    margin: 0 auto;
+}
+.seiten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    gap: 12px;
+}
+.seiten-kopf h1 { font-size: 2rem; }
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--creme-dunkel);
+    padding-bottom: 0;
+}
+.tab-btn {
+    padding: 10px 22px;
+    border: none;
+    border-radius: var(--radius-klein) var(--radius-klein) 0 0;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--creme-dunkel);
+    color: var(--gruen-dunkel);
+    transition: background 0.15s, color 0.15s;
+    position: relative;
+    top: 2px;
+}
+.tab-btn.aktiv {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+}
+.tab-btn:hover:not(.aktiv) { background: var(--creme-warm); }
+
+.tab-panel { display: none; }
+.tab-panel.aktiv { display: block; }
+
+/* Datum-Header */
+.datum-header {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+    margin-bottom: 1rem;
+}
+
+/* Aktionsleiste */
+.aktionsleiste {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Tabelle */
+.bestell-tabelle {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--schatten);
+    margin-bottom: 1.5rem;
+    font-size: 0.88rem;
+}
+.bestell-tabelle th {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    padding: 10px 14px;
+    text-align: left;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+.bestell-tabelle td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--creme-dunkel);
+    vertical-align: middle;
+}
+.bestell-tabelle tr:last-child td { border-bottom: none; }
+.bestell-tabelle tr:hover td { background: var(--grau-hell); }
+.bestell-tabelle tr.zeile-gedruckt td { background: #f0f0ec; color: #888; }
+.bestell-tabelle tr.zeile-gedruckt:hover td { background: #e8e8e0; }
+.bestell-tabelle tr.zeile-storniert td { background: #f8f0f0; color: #aaa; text-decoration: line-through; }
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.badge-einmalig     { background: #dbeafe; color: #1e40af; }
+.badge-wiederkehrend{ background: #dcfce7; color: #166534; }
+.badge-offen        { background: #fef9c3; color: #854d0e; }
+.badge-gedruckt     { background: #f0f0f0; color: #666; }
+.badge-storniert    { background: #fee2e2; color: #991b1b; }
+
+/* Aktionen-Spalte */
+.td-aktionen {
+    white-space: nowrap;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.btn-klein {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    border: none;
+    border-radius: var(--radius-klein);
+    cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    transition: background 0.15s;
+}
+.btn-edit    { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+.btn-edit:hover    { background: var(--creme-warm); }
+.btn-storno  { background: #fee2e2; color: var(--rot); }
+.btn-storno:hover  { background: #fecaca; }
+.btn-druck   { background: var(--gruen-blass); color: var(--gruen-dunkel); }
+.btn-druck:hover   { background: #b8d8a0; }
+
+/* Checkbox */
+.bestell-tabelle input[type="checkbox"] {
+    width: 18px; height: 18px; cursor: pointer; accent-color: var(--gruen-hell);
+}
+
+/* Suchfeld */
+.suchfeld-wrap {
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.suchfeld {
+    padding: 9px 14px;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.92rem;
+    background: var(--creme);
+    color: var(--text-dunkel);
+    width: 320px;
+    max-width: 100%;
+}
+.suchfeld:focus { outline: none; border-color: var(--gruen-hell); background: white; }
+
+/* Leer-Meldung */
+.leer-hinweis {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--grau-mitte);
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+/* Artikel-Kurz-Text */
+.artikel-kurz {
+    color: var(--text-hell);
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+}
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+
+    <div class="seiten-kopf">
+        <h1>📦 Bestellungen</h1>
+        <a href="/bestellungen/neu" class="btn btn-primaer">+ Neue Bestellung</a>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab-btn aktiv" onclick="zeigeTab('heute')">Heute</button>
+        <button class="tab-btn" onclick="zeigeTab('alle')">Alle Bestellungen</button>
+    </div>
+
+    <!-- ── Tab: Heute ── -->
+    <div class="tab-panel aktiv" id="tab-heute">
+
+        <div class="datum-header">
+            {% set TAGE = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'] %}
+            {{ TAGE[heute_datum.weekday()] }}, {{ heute_datum.strftime('%d.%m.%Y') }}
+        </div>
+
+        {% if heute %}
+        <div class="aktionsleiste">
+            <button class="btn btn-gruen" id="btn-druck-markierte" onclick="druckeMarkierte()" disabled>
+                🖨 Markierte drucken
+            </button>
+            <button class="btn btn-sekundaer" onclick="druckeAlleOffene()">
+                🖨 Alle offenen drucken
+            </button>
+        </div>
+
+        <table class="bestell-tabelle" id="tabelle-heute">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="cb-alle" onchange="alleToggle(this)"></th>
+                    <th>Nr.</th>
+                    <th>Name</th>
+                    <th>Telefon</th>
+                    <th>Artikel</th>
+                    <th>Uhrzeit</th>
+                    <th>Typ</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for b in heute %}
+            {% set heute_gedruckt = (b.gedruckt_datum is not none and b.gedruckt_datum == heute_datum) %}
+            <tr id="zeile-{{ b.id }}"
+                class="{% if heute_gedruckt %}zeile-gedruckt{% endif %}">
+                <td>
+                    {% if b.status != 'storniert' %}
+                    <input type="checkbox" class="cb-zeile" value="{{ b.id }}"
+                           data-status="{{ b.status }}"
+                           onchange="aktualisiereMarkiertBtn()">
+                    {% endif %}
+                </td>
+                <td style="font-weight:700;">{{ b.bestell_nr or '#' ~ b.id }}</td>
+                <td style="font-weight:700;">{{ b.name }}</td>
+                <td>{{ b.telefon or '–' }}</td>
+                <td><div class="artikel-kurz" title="{{ b.artikel_kurz or '' }}">{{ b.artikel_kurz or '–' }}</div></td>
+                <td>
+                    {% if b.abhol_uhrzeit is not none %}
+                        {{ (b.abhol_uhrzeit | string)[:5] }} Uhr
+                    {% else %}–{% endif %}
+                </td>
+                <td>
+                    <span class="badge badge-{{ b.typ }}">
+                        {% if b.typ == 'einmalig' %}Einmalig{% else %}Wdh.{% endif %}
+                    </span>
+                </td>
+                <td>
+                    {% if heute_gedruckt %}
+                        <span class="badge badge-gedruckt">gedruckt</span>
+                    {% elif b.status == 'offen' %}
+                        <span class="badge badge-offen">offen</span>
+                    {% elif b.status == 'storniert' %}
+                        <span class="badge badge-storniert">storniert</span>
+                    {% else %}
+                        <span class="badge badge-gedruckt">{{ b.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="td-aktionen">
+                        <a href="/bestellungen/{{ b.id }}" class="btn-klein btn-edit">✏️ Edit</a>
+                        {% if b.status != 'storniert' %}
+                        {% if heute_gedruckt %}
+                        <button class="btn-klein btn-druck"
+                                onclick="nachdruckEinzel({{ b.id }})">↺ Nachdruck</button>
+                        {% else %}
+                        <button class="btn-klein btn-druck"
+                                onclick="druckeEinzel({{ b.id }})">🖨</button>
+                        {% endif %}
+                        <button class="btn-klein btn-storno"
+                                onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕</button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="leer-hinweis">Keine Bestellungen für heute.</div>
+        {% endif %}
+
+    </div>
+
+    <!-- ── Tab: Alle ── -->
+    <div class="tab-panel" id="tab-alle">
+
+        <div class="suchfeld-wrap">
+            <input type="text" class="suchfeld" id="suchfeld-alle"
+                   placeholder="Suche nach Name, Bestell-Nr. …"
+                   oninput="filterAlleTabelle(this.value)">
+        </div>
+
+        {% if alle %}
+        <table class="bestell-tabelle" id="tabelle-alle">
+            <thead>
+                <tr>
+                    <th>Nr.</th>
+                    <th>Name</th>
+                    <th>Telefon</th>
+                    <th>Datum / Wochentag</th>
+                    <th>Artikel</th>
+                    <th>Uhrzeit</th>
+                    <th>Typ</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for b in alle %}
+            <tr class="{% if b.status == 'storniert' %}zeile-storniert{% endif %}"
+                data-suche="{{ (b.name ~ ' ' ~ (b.bestell_nr or '') ~ ' ' ~ (b.telefon or '')) | lower }}">
+                <td style="font-weight:700; white-space:nowrap;">{{ b.bestell_nr or '#' ~ b.id }}</td>
+                <td style="font-weight:700;">{{ b.name }}</td>
+                <td>{{ b.telefon or '–' }}</td>
+                <td style="white-space:nowrap;">
+                    {% if b.typ == 'einmalig' and b.abhol_datum %}
+                        {{ b.abhol_datum.strftime('%d.%m.%Y') }}
+                    {% elif b.typ == 'wiederkehrend' and b.wochentag %}
+                        Jeden {{ b.wochentag }}
+                    {% else %}–{% endif %}
+                </td>
+                <td><div class="artikel-kurz" title="{{ b.artikel_kurz or '' }}">{{ b.artikel_kurz or '–' }}</div></td>
+                <td style="white-space:nowrap;">
+                    {% if b.abhol_uhrzeit is not none %}
+                        {{ (b.abhol_uhrzeit | string)[:5] }} Uhr
+                    {% else %}–{% endif %}
+                </td>
+                <td>
+                    <span class="badge badge-{{ b.typ }}">
+                        {% if b.typ == 'einmalig' %}Einmalig{% else %}Wdh.{% endif %}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge badge-{{ b.status }}">{{ b.status }}</span>
+                </td>
+                <td>
+                    <div class="td-aktionen">
+                        <a href="/bestellungen/{{ b.id }}" class="btn-klein btn-edit">✏️ Edit</a>
+                        {% if b.status != 'storniert' %}
+                        <button class="btn-klein btn-storno"
+                                onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕ Storno</button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="leer-hinweis">Noch keine Bestellungen vorhanden.</div>
+        {% endif %}
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Tab-Navigation ────────────────────────────────────────────
+function zeigeTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.classList.toggle('aktiv', b.getAttribute('onclick').includes("'" + name + "'"));
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.toggle('aktiv', p.id === 'tab-' + name);
+    });
+}
+
+// ── Checkboxen ────────────────────────────────────────────────
+function alleToggle(cb) {
+    document.querySelectorAll('.cb-zeile').forEach(c => { c.checked = cb.checked; });
+    aktualisiereMarkiertBtn();
+}
+
+function aktualisiereMarkiertBtn() {
+    const markiert = document.querySelectorAll('.cb-zeile:checked').length;
+    const btn = document.getElementById('btn-druck-markierte');
+    if (btn) {
+        btn.disabled = markiert === 0;
+        btn.textContent = markiert > 0 ? `🖨 Markierte drucken (${markiert})` : '🖨 Markierte drucken';
+    }
+}
+
+// ── Drucken ───────────────────────────────────────────────────
+async function druckeMarkierte() {
+    const ids = Array.from(document.querySelectorAll('.cb-zeile:checked')).map(c => parseInt(c.value));
+    if (!ids.length) return;
+    const res = await apiFetch('/api/bestellungen/drucken', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+    });
+    if (res) {
+        zeigToast(`✓ ${res.gedruckt} Bestellung(en) gedruckt`);
+        setTimeout(() => location.reload(), 800);
+    }
+}
+
+async function druckeAlleOffene() {
+    const ids = Array.from(document.querySelectorAll('.cb-zeile'))
+        .filter(c => c.dataset.status === 'offen')
+        .map(c => parseInt(c.value));
+    if (!ids.length) { zeigToast('Keine offenen Bestellungen', 2000); return; }
+    const res = await apiFetch('/api/bestellungen/drucken', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+    });
+    if (res) {
+        zeigToast(`✓ ${res.gedruckt} Bestellung(en) gedruckt`);
+        setTimeout(() => location.reload(), 800);
+    }
+}
+
+async function druckeEinzel(id) {
+    const res = await apiFetch('/api/bestellungen/drucken', {
+        method: 'POST',
+        body: JSON.stringify({ ids: [id] }),
+    });
+    if (res) {
+        zeigToast('✓ Bestellung gedruckt');
+        setTimeout(() => location.reload(), 800);
+    }
+}
+
+async function nachdruckEinzel(id) {
+    const res = await apiFetch(`/api/bestellungen/${id}/nachdruck`, { method: 'POST' });
+    if (res) {
+        zeigToast('✓ Nachdruck gesendet');
+    }
+}
+
+// ── Stornieren ────────────────────────────────────────────────
+function storniereBestellung(id, nr) {
+    zeigeBestaetigung(
+        `Bestellung ${nr} wirklich stornieren?`,
+        async () => {
+            const res = await apiFetch(`/api/bestellungen/${id}/stornieren`, { method: 'POST' });
+            if (res) {
+                zeigToast('Bestellung storniert');
+                const zeile = document.getElementById('zeile-' + id);
+                if (zeile) zeile.remove();
+                // Zeile in Alle-Tab ausgrauen falls vorhanden
+                const tabelleAlle = document.getElementById('tabelle-alle');
+                if (tabelleAlle) {
+                    tabelleAlle.querySelectorAll('tr').forEach(tr => {
+                        const editLink = tr.querySelector('a[href="/bestellungen/' + id + '"]');
+                        if (editLink) tr.classList.add('zeile-storniert');
+                    });
+                }
+            }
+        },
+        'Ja, stornieren'
+    );
+}
+
+// ── Such-Filter (Alle-Tab) ────────────────────────────────────
+function filterAlleTabelle(suchtext) {
+    const q = suchtext.toLowerCase().trim();
+    const tabelle = document.getElementById('tabelle-alle');
+    if (!tabelle) return;
+    tabelle.querySelectorAll('tbody tr').forEach(tr => {
+        const suchfeld = (tr.dataset.suche || '').toLowerCase();
+        tr.style.display = (!q || suchfeld.includes(q)) ? '' : 'none';
+    });
+}
+
+// ── Toast bei Redirect ────────────────────────────────────────
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const toast = params.get('toast');
+    if (toast) {
+        zeigToast(decodeURIComponent(toast), 3500);
+        // URL bereinigen ohne Reload
+        const url = new URL(window.location.href);
+        url.searchParams.delete('toast');
+        window.history.replaceState({}, '', url.toString());
+    }
+})();
+</script>
+{% endblock %}

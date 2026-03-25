@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{% block title %}Journal{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt { padding: 2rem; max-width: 90rem; margin: 0 auto; }
+.seiten-kopf { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 28px; }
+.seiten-kopf h1 { font-size: 2rem; }
+
+.journal-tabelle { width: 100%; border-collapse: collapse; background: white; border-radius: var(--radius); overflow: hidden; box-shadow: var(--schatten); }
+.journal-tabelle th { background: var(--gruen-dunkel); color: var(--creme); padding: 14px 20px; text-align: left; font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-family: 'Nunito', sans-serif; }
+.journal-tabelle td { padding: 14px 20px; border-bottom: 1px solid var(--creme-dunkel); font-size: 0.9rem; vertical-align: middle; }
+.journal-tabelle tr:last-child td { border-bottom: none; }
+.journal-tabelle tr:hover td { background: var(--grau-hell); }
+.journal-tabelle tr.storniert td { opacity: 0.5; text-decoration: line-through; }
+.journal-tabelle tr.storniert .aktionen { text-decoration: none; opacity: 1; }
+
+.betrag-zelle { font-family: 'Lobster', cursive; font-size: 1.1rem; color: var(--gold); }
+.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
+.status-gebucht { background: #e8f5e0; color: var(--gruen-status); }
+.status-storniert { background: #fde8e8; color: var(--rot); }
+
+.aktionen { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+.btn-klein { padding: 6px 12px; font-size: 0.78rem; border-radius: 6px; border: none; cursor: pointer; font-family: 'Nunito', sans-serif; font-weight: 700; transition: background 0.15s; white-space: nowrap; }
+.btn-nachdruck { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+.btn-nachdruck:hover { background: var(--creme-warm); }
+.btn-druckansicht { background: #e8f0fe; color: #3a5a9a; }
+.btn-druckansicht:hover { background: #ccdaf7; }
+.btn-storno { background: #fde8e8; color: var(--rot); }
+.btn-storno:hover { background: #f9c0c0; }
+.ean-code { font-family: monospace; font-size: 0.82rem; color: var(--text-hell); letter-spacing: 0.05em; }
+
+.aufklapp-pfeil { color: var(--text-hell); font-size: 0.8rem; display: inline-block; transition: transform 0.2s ease; }
+.aufklapp-pfeil.offen { transform: rotate(90deg); }
+
+.detail-zeile td { padding: 0; background: var(--grau-hell); }
+.detail-inhalt { padding: 12px 20px 16px 40px; display: none; font-size: 0.85rem; }
+.detail-inhalt.offen { display: block; }
+.detail-position { display: flex; gap: 16px; padding: 4px 0; color: var(--text-mitte); }
+.detail-position span:first-child { flex: 1; }
+
+/* Druckansicht-Overlay */
+.druck-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65); z-index: 2000;
+    align-items: flex-start; justify-content: center;
+    padding: 40px 20px; overflow-y: auto;
+}
+.druck-overlay.aktiv { display: flex; }
+.druck-box { background: white; border-radius: var(--radius); box-shadow: 0 8px 48px rgba(0,0,0,0.3); width: 100%; max-width: 420px; font-family: 'Courier New', monospace; overflow: hidden; }
+.druck-kopf { background: var(--gruen-dunkel); color: var(--creme); padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
+.druck-kopf-titel { font-family: 'Lobster', cursive; font-size: 1.1rem; }
+.druck-schliessen { background: none; border: none; color: rgba(255,255,255,0.6); font-size: 1.3rem; cursor: pointer; padding: 0 4px; line-height: 1; }
+.druck-schliessen:hover { color: white; }
+.druck-inhalt { background: #fafaf8; padding: 20px; font-size: 0.78rem; line-height: 1.6; color: #1a1a1a; }
+.druck-linie { border-top: 1px dashed #aaa; margin: 8px 0; }
+.druck-header { text-align: center; margin-bottom: 12px; }
+.druck-bonnr { font-size: 0.78rem; margin: 4px 0; }
+.druck-header .titel { font-size: 1.1rem; font-weight: bold; }
+.druck-header .meta { font-size: 0.72rem; color: #555; margin-top: 4px; }
+.druck-positionen { margin: 8px 0; }
+.druck-pos { margin-bottom: 6px; }
+.druck-pos-name { display: flex; justify-content: space-between; }
+.druck-pos-ep { color: #555; font-size: 0.72rem; padding-left: 8px; }
+.druck-gesamt { display: flex; justify-content: space-between; font-size: 1rem; font-weight: bold; margin: 8px 0; }
+.druck-barcode-bereich { text-align: center; margin: 12px 0 8px; }
+.druck-barcode-bereich svg { max-width: 100%; }
+.druck-barcode-hint { font-size: 0.68rem; color: #666; }
+.druck-fuss { background: var(--creme-dunkel); padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px; }
+.btn-druck-drucken { padding: 10px 20px; background: var(--gruen-dunkel); color: var(--creme); border: none; border-radius: var(--radius-klein); font-family: 'Nunito', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+.btn-druck-drucken:hover { background: var(--gruen-mitte); }
+.btn-druck-schliessen2 { padding: 10px 20px; background: var(--creme-warm); color: var(--gruen-dunkel); border: none; border-radius: var(--radius-klein); font-family: 'Nunito', sans-serif; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+    <div class="seiten-kopf">
+        <h1>Journal</h1>
+        <span style="color: var(--text-hell); font-size: 0.9rem;">Letzte 100 Einträge</span>
+    </div>
+
+    {% if eintraege %}
+    <table class="journal-tabelle">
+        <thead>
+            <tr>
+                <th style="width: 40px;"></th>
+                <th>Nr.</th>
+                <th>Datum/Zeit</th>
+                <th>Terminal</th>
+                <th>Pos.</th>
+                <th>Betrag</th>
+                <th>EAN</th>
+                <th>Status</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in eintraege %}
+            <tr class="{{ 'storniert' if e.status == 'storniert' else '' }}"
+                onclick="toggleDetail({{ e.id }})" style="cursor: pointer;">
+                <td><span class="aufklapp-pfeil" id="pfeil-{{ e.id }}">▶</span></td>
+                <td><strong>{{ e.warenkorb_id }}</strong></td>
+                <td>{{ e.gebucht_am.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>T{{ e.terminal_nr }}</td>
+                <td>{{ e.anzahl_positionen }}</td>
+                <td class="betrag-zelle">{{ cent_zu_euro(e.gesamtbetrag_cent) }}</td>
+                <td class="ean-code">{{ e.ean_barcode }}</td>
+                <td>
+                    <span class="status-badge status-{{ e.status }}">
+                        {% if e.status == 'gebucht' %}✓ Gebucht{% else %}✕ Storniert{% endif %}
+                    </span>
+                </td>
+                <td class="aktionen" onclick="event.stopPropagation()">
+                    <button class="btn-klein btn-druckansicht"
+                            onclick="zeigeDruckansicht({{ e.id }}, '{{ e.ean_barcode }}', {{ e.gesamtbetrag_cent }}, '{{ e.gebucht_am.strftime('%d.%m.%Y %H:%M') }}', {{ e.terminal_nr }}, {{ e.warenkorb_id }})">
+                        🔍 Bon
+                    </button>
+                    <button class="btn-klein btn-nachdruck" onclick="nachdruck({{ e.id }})">
+                        🖨 Erneut drucken
+                    </button>
+                    {% if e.status == 'gebucht' %}
+                    <button class="btn-klein btn-storno" onclick="stornieren({{ e.id }}, {{ e.warenkorb_id }})">
+                        ✕ Storno
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr class="detail-zeile">
+                <td colspan="9">
+                    <div class="detail-inhalt" id="detail-{{ e.id }}">Wird geladen…</div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if gesamt > seite_groesse %}
+    <div id="mehr-container" style="text-align:center; padding: 24px;">
+        <button id="btn-mehr" onclick="ladeWeitere()"
+                style="padding: 12px 32px; background: var(--gruen-dunkel); color: var(--creme);
+                       border: none; border-radius: 40px; font-family: 'Nunito', sans-serif;
+                       font-size: 0.95rem; font-weight: 700; cursor: pointer;">
+            ↓ Nächste 100 laden
+            <span id="mehr-zaehler" style="opacity:0.7; font-size:0.82rem;">
+                ({{ gesamt - seite_groesse }} weitere vorhanden)
+            </span>
+        </button>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div style="text-align:center; padding: 64px; color: var(--text-hell);">
+        <div style="font-size: 3rem; margin-bottom: 16px; opacity: 0.4;">📒</div>
+        Noch keine Buchungen vorhanden.
+    </div>
+    {% endif %}
+</div>
+
+<div id="druck-overlay" class="druck-overlay" onclick="overlayHintergrundKlick(event)">
+    <div class="druck-box">
+        <div class="druck-kopf">
+            <span class="druck-kopf-titel">🧾 Bon <span id="druck-kopf-nr"></span></span>
+            <button class="druck-schliessen" onclick="schliesseDruckansicht()">✕</button>
+        </div>
+        <div class="druck-inhalt" id="druck-inhalt">
+            <div style="text-align:center;padding:20px;color:#999">Wird geladen…</div>
+        </div>
+        <div class="druck-fuss">
+            <button class="btn-druck-schliessen2" onclick="schliesseDruckansicht()">Schließen</button>
+            <button class="btn-druck-drucken" id="btn-druck-drucken">🖨 Erneut drucken drucken</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script>
+let aktuelleJournalId = null;
+let journalOffset = {{ eintraege|length }};
+const JOURNAL_GESAMT = {{ gesamt }};
+
+async function ladeWeitere() {
+    const btn = document.getElementById('btn-mehr');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Wird geladen …'; }
+
+    const res = await apiFetch(`/journal/mehr?offset=${journalOffset}&limit=100`);
+    if (!res) {
+        if (btn) { btn.disabled = false; btn.textContent = '↓ Weitere laden'; }
+        return;
+    }
+
+    const tbody = document.querySelector('.journal-tabelle tbody');
+    for (const e of res.eintraege) {
+        // Datum formatieren: "2026-03-23 14:05:00" → "23.03.2026 14:05"
+        const dt = e.gebucht_am ? e.gebucht_am.replace(
+            /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}).*$/,
+            '$3.$2.$1 $4:$5'
+        ) : '–';
+        const statusKlasse = e.status === 'storniert' ? 'storniert' : '';
+        const statusBadge  = e.status === 'storniert'
+            ? '<span class="status-badge status-storniert">✕ Storniert</span>'
+            : '<span class="status-badge status-gebucht">✓ Gebucht</span>';
+        const stornoBtn = e.status === 'gebucht'
+            ? `<button class="btn-klein btn-storno" onclick="stornieren(${e.id}, ${e.warenkorb_id})">✕ Storno</button>`
+            : '';
+
+        const zeile = document.createElement('tr');
+        zeile.className = statusKlasse;
+        zeile.setAttribute('onclick', `toggleDetail(${e.id})`);
+        zeile.style.cursor = 'pointer';
+        zeile.innerHTML = `
+            <td><span class="aufklapp-pfeil" id="pfeil-${e.id}">▶</span></td>
+            <td><strong>${e.warenkorb_id}</strong></td>
+            <td>${dt}</td>
+            <td>T${e.terminal_nr}</td>
+            <td>${e.anzahl_positionen}</td>
+            <td class="betrag-zelle">${formatEuro(e.gesamtbetrag_cent)}</td>
+            <td class="ean-code">${e.ean_barcode || ''}</td>
+            <td>${statusBadge}</td>
+            <td class="aktionen" onclick="event.stopPropagation()">
+                <button class="btn-klein btn-druckansicht"
+                    onclick="zeigeDruckansicht(${e.id},'${e.ean_barcode}',${e.gesamtbetrag_cent},'${dt}',${e.terminal_nr},${e.warenkorb_id})">
+                    🔍 Bon
+                </button>
+                <button class="btn-klein btn-nachdruck" onclick="nachdruck(${e.id})">
+                    🖨 Erneut drucken
+                </button>
+                ${stornoBtn}
+            </td>`;
+        tbody.appendChild(zeile);
+
+        // Detail-Zeile (leer, wird beim Aufklappen befüllt)
+        const detailZeile = document.createElement('tr');
+        detailZeile.className = 'detail-zeile';
+        detailZeile.innerHTML = `<td colspan="9"><div class="detail-inhalt" id="detail-${e.id}">Wird geladen…</div></td>`;
+        tbody.appendChild(detailZeile);
+    }
+
+    journalOffset += res.eintraege.length;
+    const verbleibend = JOURNAL_GESAMT - journalOffset;
+    const container = document.getElementById('mehr-container');
+    if (verbleibend <= 0) {
+        if (container) container.style.display = 'none';
+    } else {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `↓ Nächste 100 laden <span style="opacity:0.7;font-size:0.82rem;">(${verbleibend} weitere vorhanden)</span>`;
+        }
+    }
+}
+
+function toggleDetail(journalId) {
+    const detail = document.getElementById(`detail-${journalId}`);
+    const pfeil  = document.getElementById(`pfeil-${journalId}`);
+    const offen  = detail.classList.toggle('offen');
+    pfeil.classList.toggle('offen', offen);
+    if (offen && detail.textContent.trim() === 'Wird geladen…') ladeDetail(journalId, detail);
+}
+
+async function ladeDetail(journalId, el) {
+    const res = await apiFetch(`/journal/${journalId}/positionen`);
+    if (!res) { el.textContent = 'Fehler beim Laden.'; return; }
+    el.innerHTML = res.positionen.map(p =>
+        `<div class="detail-position">
+            <span>${p.name_snapshot}</span>
+            <span>${p.menge} ×</span>
+            <span>${formatEuro(p.preis_snapshot_cent)}</span>
+            <span><strong>${formatEuro(p.zeilen_betrag_cent)}</strong></span>
+        </div>`
+    ).join('') || '<div style="color:var(--text-hell);padding:4px 0">Keine Positionen</div>';
+}
+
+async function zeigeDruckansicht(journalId, eanBarcode, gesamtCent, datum, terminalNr, wkId) {
+    aktuelleJournalId = journalId;
+    document.getElementById('druck-kopf-nr').textContent = wkId || journalId;
+    document.getElementById('druck-inhalt').innerHTML = '<div style="text-align:center;padding:20px;color:#999">Wird geladen…</div>';
+    document.getElementById('druck-overlay').classList.add('aktiv');
+    document.getElementById('btn-druck-drucken').onclick = () => nachdruck(journalId);
+
+    const res = await apiFetch(`/journal/${journalId}/positionen`);
+    if (!res) { document.getElementById('druck-inhalt').innerHTML = '<div style="color:red;padding:20px">Fehler.</div>'; return; }
+
+    let posHTML = '';
+    for (const p of res.positionen) {
+        const ep = formatEuro(p.preis_snapshot_cent), gp = formatEuro(p.zeilen_betrag_cent);
+        posHTML += p.menge > 1
+            ? `<div class="druck-pos"><div class="druck-pos-name"><span>${p.name_snapshot}</span><span>${gp}</span></div><div class="druck-pos-ep">${p.menge} × EP ${ep}</div></div>`
+            : `<div class="druck-pos"><div class="druck-pos-name"><span>${p.name_snapshot}</span><span>${gp}</span></div><div class="druck-pos-ep">EP ${ep}</div></div>`;
+    }
+
+    document.getElementById('druck-inhalt').innerHTML = `
+        <div class="druck-header">
+            <div class="titel">Habacher Dorfladen</div>
+            <div class="druck-bonnr" id="druck-bonnr"></div>
+            <div class="meta">${datum} · Terminal ${terminalNr}</div>
+        </div>
+        <div class="druck-linie"></div>
+        <div class="druck-positionen">${posHTML}</div>
+        <div class="druck-linie"></div>
+        <div class="druck-gesamt"><span>GESAMT</span><span>${formatEuro(gesamtCent)}</span></div>
+        <div class="druck-linie"></div>
+        <div class="druck-barcode-bereich"><div class="druck-barcode-hint">Bitte an der Kasse scannen:</div><svg id="druck-barcode-svg"></svg></div>`;
+
+    // Bonnummer: letzte 2 Ziffern fett + groß
+    const bonnrEl = document.getElementById('druck-bonnr');
+    if (bonnrEl) {
+        const s = String(wkId || journalId);
+        const prefix = s.length > 2 ? 'Bon Nr: ' + s.slice(0, -2) : 'Bon Nr: ';
+        const suffix = s.slice(-2);
+        bonnrEl.innerHTML = prefix
+            + '<span style="font-size:1.6rem;font-weight:900;letter-spacing:0.05em;">'
+            + suffix + '</span>';
+    }
+
+    try {
+        JsBarcode('#druck-barcode-svg', eanBarcode, { format: 'EAN13', width: 2.2, height: 70, displayValue: true, fontSize: 14, margin: 8, lineColor: '#1a1a1a', background: '#fafaf8' });
+    } catch (e) {
+        document.getElementById('druck-barcode-svg').outerHTML = `<div style="color:red;font-size:0.8rem">Barcode-Fehler: ${eanBarcode}</div>`;
+    }
+}
+
+function schliesseDruckansicht() { document.getElementById('druck-overlay').classList.remove('aktiv'); aktuelleJournalId = null; }
+function overlayHintergrundKlick(event) { if (event.target === document.getElementById('druck-overlay')) schliesseDruckansicht(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') schliesseDruckansicht(); });
+
+function formatEuro(cent) { return (cent / 100).toFixed(2).replace('.', ',') + ' €'; }
+
+async function nachdruck(journalId) {
+    const res = await apiFetch(`/journal/${journalId}/nachdruck`, { method: 'POST' });
+    if (res) zeigToast('✓ Nachdruck wird gesendet …');
+}
+
+async function stornieren(journalId, wkId) {
+    zeigeBestaetigung(`Warenkorb Nr. ${wkId} wirklich stornieren?`, async () => {
+        const res = await apiFetch(`/journal/${journalId}/stornieren`, { method: 'POST' });
+        if (res) { zeigToast('Buchung storniert'); setTimeout(() => location.reload(), 800); }
+    }, 'Stornieren');
+}
+</script>
+{% endblock %}

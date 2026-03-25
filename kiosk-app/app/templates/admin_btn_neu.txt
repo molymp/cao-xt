@@ -1,0 +1,6 @@
+                        <button type="button" class="btn-aendern"
+                                data-id="{{ a.id }}"
+                                data-name="{{ a.name | e }}"
+                                data-zutaten="{{ (a.zutaten or '') | e }}">
+                            ✏ Ändern
+                        </button>
