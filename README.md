@@ -1,11 +1,11 @@
 # cao-xt
 Erweiterungen zu CAO-Faktura für unseren Dorfladen.
 Wir benötigen folgende zusätzliche Funktionen die mit cao-xt umgesetzt wurden (oder noch werden):
-- Export aller Vorgänge zum Einspielen nach DATEV bei unserem Steuerbüro (unter Berücksichtigung spezifischer Besonderheiten)
-- Liste aller Kontoauszüge
+- Monatlicher Export aller Vorgänge zum Einspielen nach DATEV bei unserem Steuerbüro (unter Berücksichtigung spezifischer Besonderheiten)
 - Buchen von 'Zahlungseingängen' für 'Kunde hat mit EC-Karte gezahlt' und 'Transfer Kasse->Bank' (Bank an Geldtransit)
-- Übernahme von Kassenbelegen in Lieferscheine, damit über die Kasse eingekaufte Waren per Lastschrift eingezogen werden können
-- Kassensturz
+- Erfassungshilfe für Backwaren. Per touchscreen werden alle Waren erfasst und dann ein Bon erstellt, der an der Kasse gescannt wird. Wir erreichen damit weniger Rechenfehler, schnellere Bearbeitung an der Backwarentheke und auch an der Kasse.
+- Verwaltung von Vorbestellungen: Kunden können z.B. ihre allsamstagliche Semmelbestellung abgeben. Im Verkauf werden dann jeden Morgen Bons mit Picklisten ausgedruckt.
+- Einfache Pflege unserer Mittagstisch-Angebote 
 
 ## Haftungsausschluss:
 Weder die Autoren noch die Habacher Dorfladen UG oder einer ihrer Angestellten übernimmt irgendeine Art der Haftung für die Folgen der Verwendung dieser Software. Die Installation und Verwendng erfolgt auf eigenes Risiko. Datenverluste oder andere Schäden werden vom Benutzer der Software selst verantwortet. Vermutlich ist keine der Funktionen 1:1 auf andere Konstellationen übertragbar...
