@@ -3,10 +3,10 @@
 # ============================================================
 
 # ── Datenbank ─────────────────────────────────────────────────
-DB_HOST     = "jdqsab3zx9phmhdt.myfritz.net"     # lokale LAN-IP des MariaDB-Servers eintragen
-DB_PORT     = 3333
-DB_USER     = "cao"
-DB_PASSWORD = "faktura"
+DB_HOST     = "<DB_HOST>"       # z.B. 192.168.x.x (lokale LAN-IP des MariaDB-Servers)
+DB_PORT     = 3306              # Standard MariaDB-Port anpassen falls nötig
+DB_USER     = "<DB_USER>"
+DB_PASSWORD = "<DB_PASSWORD>"
 DB_NAME     = "Backwaren"
 
 # ── Terminal ──────────────────────────────────────────────────

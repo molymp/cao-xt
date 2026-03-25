@@ -1,5 +1,5 @@
 -- Bestellungs-Modul – Migration für bestehende Installationen
--- Einmalig ausführen: mysql -h <HOST> -P 3333 -u cao -pfaktura Backwaren < init_bestellungen.sql
+-- Einmalig ausführen: mysql -h <DB_HOST> -P <DB_PORT> -u <DB_USER> -p<DB_PASSWORD> Backwaren < init_bestellungen.sql
 
 USE Backwaren;
 
