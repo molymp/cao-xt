@@ -71,9 +71,9 @@ Barcode enthält NUR Gesamtpreis. Einzelpositionen nur auf Bon.
 
 ## Datenhaltung
 
-- Server: MariaDB (jdqsab3zx9phmhdt.myfritz.net:3333)
+- Server: MariaDB (<DB_HOST>:<DB_PORT>)
   Im Produktivbetrieb lokale LAN-IP verwenden!
-- Benutzer: cao / faktura
+- Benutzer: <DB_USER> / <DB_PASSWORD>
 - Unsere DB: Backwaren
 - CAO-DB: cao_2018_001, Tabelle ARTIKEL
 - Felder: REC_ID (PK), ARTNUM, KURZNAME, VK5B (Preis Euro), WARENGRUPPE
@@ -257,9 +257,9 @@ Kassierbon (generiere_bon_bytes / _bon_bytes):
 
 Kein eigenes DB-Schema – Google Sheet ist Single Source of Truth.
 
-  Spreadsheet-ID: 1Fr2INvHllH61SjIkuTOCrMATrC78xxYW0W-2Rre2ALQ
-  Service Account: kiosk-mittagstisch@synthetic-cargo-399409.iam.gserviceaccount.com
-  Credentials:     app/synthetic-cargo-399409-97147aac27d2.json  (NICHT einchecken!)
+  Spreadsheet-ID: <SPREADSHEET_ID>
+  Service Account: <SERVICE_ACCOUNT_EMAIL>
+  Credentials:     app/<credentials>.json  (NICHT einchecken!)
 
 Sheet-Tabs: ein Tab pro Woche, Name = "KW13_2026" (ISO-Woche)
 Zellen pro Tab:
@@ -487,10 +487,10 @@ CSS: object-fit: cover – füllt Kachel proportional, kein Rand
   pip3 install -r requirements.txt --break-system-packages
 
   # DB anlegen (Neuinstallation)
-  mysql -h <LAN-IP> -P 3333 -u cao -pfaktura < ../schema.sql
+  mysql -h <LAN-IP> -P 3333 -u cao -p<DB_PASSWORD> < ../schema.sql
 
   # Oder: nur Bestellungs-Tabellen auf bestehender DB
-  mysql -h <LAN-IP> -P 3333 -u cao -pfaktura < ../init_bestellungen.sql
+  mysql -h <LAN-IP> -P 3333 -u cao -p<DB_PASSWORD> < ../init_bestellungen.sql
 
   # Drucker in DB eintragen
   INSERT INTO Backwaren.drucker (name, ip_adresse, port, standard, aktiv)
