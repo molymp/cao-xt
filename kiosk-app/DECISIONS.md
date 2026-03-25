@@ -229,7 +229,7 @@ app/
   mittagstisch.py     – Google Sheets Lesen/Schreiben (gspread)
   app.py              – Flask-Routen, get_terminal_nr() aus Cookie
   requirements.txt    – flask, mysql-connector-python, gspread, google-auth
-  REMOVED_CREDENTIALS.json  – Service-Account-Key (NICHT in Git!)
+  <credentials>.json                        – Service-Account-Key (NICHT in Git!)
 
 Projektroot:
   mittagstisch_apps_script.js  – Google Apps Script Web App für Google Sites (Option C)
