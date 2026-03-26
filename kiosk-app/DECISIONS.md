@@ -2,6 +2,12 @@
 
 **Letzte Aktualisierung:** 26.03.2026 (App-Update-Verwaltung, Mitarbeiter-Handbuch)
 
+> ⚠️ **Pflicht zur Aktualität**
+> Diese Datei ist die zentrale Architekturdokumentation des Projekts.
+> **Jede Änderung an Design-Entscheidungen, Parametern, Routen, DB-Schema oder
+> Terminal-Rollen muss hier sofort eingetragen werden** – idealerweise im gleichen
+> Commit wie der zugehörige Code. Veraltete Dokumentation ist schlimmer als keine.
+
 ---
 
 ## Hardware
@@ -131,11 +137,16 @@ Views:
 - Produkt-Filter: wochentage='' → immer verfügbar; sonst FIND_IN_SET-Abfrage
 - Einmalig nach Druck: status → 'gedruckt', gedruckt_datum = heute
 - Wiederkehrend nach Druck: status bleibt 'offen', nur gedruckt_datum = heute
-- Heute-View (_HEUTE_SQL): zeigt alle nicht-stornierten Bestellungen für heute
-  (auch bereits gedruckte – sie verschwinden NICHT aus der Liste)
+- Heute-View (_HEUTE_SQL): zeigt alle nicht-stornierten, nicht-pausierten
+  Bestellungen für heute (auch bereits gedruckte – sie verschwinden NICHT)
+- Pausierte Bestellungen (`pausiert=1` mit `pause_bis IS NULL OR pause_bis >= heute`)
+  werden im Heute-Tab und in der Tagesansicht ausgeblendet
 - Badge-Zähler (_BADGE_SQL): nur wirklich offene (einmalig: status='offen';
   wiederkehrend: gedruckt_datum IS NULL OR gedruckt_datum < heute)
+  Ebenfalls pausierte Bestellungen ausgeschlossen
   → JS-Polling alle 30 Sekunden, sichtbar in Nav auf allen Seiten
+- URL-Struktur: `/bestellungen/<id>` verwendet den internen DB-PK `id`,
+  NICHT `bestell_nr` → kein Konflikt z.B. B-2026-0042 vs. B-2027-0042
 - Bon-Vorschub vor Schnitt: 2 Leerzeilen (nicht 3)
 
 #### Zahlungsart
@@ -176,19 +187,71 @@ Body-Parameter `bestaetigung` steuert den Modus:
 #### Pickliste / Bestätigungsbon (druck.py:drucke_pickliste)
 
 Parameter:
-- `mit_preisen=True`     Einzelpreise + Gesamtbetrag anzeigen
-- `ean_barcode`          EAN-13 Barcode am Ende (Zahlung bei Abholung)
-- `bereits_bezahlt=True` statt Barcode: "Bereits bezahlt" (Sofort-Zahler)
-- `gesamt_hinweis=N`     Betrag in Cent → Sektion "Zahlung bei Abholung / X,XX EUR"
-                         (Bestätigungsbon nach Abholung-Bestellung, kein mit_preisen)
+- `mit_preisen=True`        Einzelpreise + Gesamtbetrag anzeigen
+- `ean_barcode`             EAN-13 Barcode am Ende (Zahlung bei Abholung)
+- `bereits_bezahlt=True`    statt Barcode: "Bereits bezahlt" (Sofort-Zahler)
+- `gesamt_hinweis=N`        Betrag in Cent → "Zahlung bei Abholung / X,XX EUR"
+                            (Bestätigungsbon nach Abholung-Bestellung)
+- `pause_hinweis=str`       Zeigt Pause-Hinweis, überschreibt alle anderen Blöcke
+- `titel_ueberschrift=str`  Überschreibt den automatischen Titel
+                            ("Pickliste" / "Bestellbestaetigung")
+- `aenderung_cent=int`      Differenzbetrag-Block für Änderungsbons:
+                            > 0 → "Nachzahlung: X,XX EUR" + Barcode
+                            = 0 → "Keine Nachzahlung"
+                            < 0 → "Auszuzahlender Betrag: X,XX EUR" (fett, groß)
+
+Priorität Titelblock: pause_hinweis → titel_ueberschrift → gesamt_hinweis → Standard
+Priorität Zahlungsblock: pause_hinweis → aenderung_cent → gesamt_hinweis →
+                         bereits_bezahlt → ean_barcode
+
+Diff-Positionen (Änderungsbon):
+- `_aenderung="entfernt"` → Artikel als "0x Name" + negativer Betrag drucken
+  (negativer Betrag nur wenn `_neg_betrag=True`, d.h. nur bei Sofort-Zahlung)
+- `_aenderung="neu"` → Artikel mit Suffix "NEU" drucken
+- `_orig_menge` → Originalmenge für entfernte Artikel (für Betragsberechnung)
 
 Preis-Strings (ep, gp) werden durch _ascii() gejagt → € → EUR (kein ? mehr)
 
 Kassierbon (generiere_bon_bytes / _bon_bytes):
-- Optionaler Parameter `bestell_nr`: zeigt Bestellnummer (B-YYYY-NNNN) statt
-  "Bon Nr: XXXX" – nur für Sofort-zahlen-Bons, reguläre Bons unverändert
+- Parameter `bestell_nr`: zeigt Bestellnummer (B-YYYY-NNNN) statt "Bon Nr: XXXX"
+- Parameter `notiz`: druckt Notizzeile auf dem Bon
 - Migration für bestehende DB: init_bestellungen.sql (CREATE TABLE IF NOT EXISTS +
   idempotente ALTER TABLE für zahlungsart / ean_barcode / bon_data)
+
+#### Änderungsbon (beim Speichern einer Bestellung)
+
+- Alte Positionen werden VOR dem Speichern gelesen (alt_gesamt_cent)
+- Nach dem Speichern: Diff-Liste aus alten und neuen Positionen aufgebaut
+- **Sofort-Zahlung:** `diff_cent = neu - alt`; separater Differenz-EAN bei > 0;
+  `aenderung_cent=diff_cent`, `titel_ueberschrift="Geaenderte Bestellung"`
+- **Abholung einmalig:** aktualisierter Picklisten-Bon mit neuem EAN
+- **Abholung wiederkehrend:** Picklisten-Bon ohne EAN, mit `gesamt_hinweis`
+- EAN-Barcode in DB (`bestellungen.ean_barcode`) wird bei jeder Speicherung
+  für Abholung-Bestellungen auf den neuen Gesamtbetrag aktualisiert
+
+#### Storno-Bon (bereits bezahlte Bestellungen)
+
+- Positionen + Gesamtbetrag werden VOR dem Stornieren gelesen
+- `zahlungsart == "sofort"`: Storno-Bon mit `titel_ueberschrift="Stornierung"`,
+  `aenderung_cent=-total_cent` → zeigt "Auszuzahlender Betrag" groß + fett
+- `zahlungsart == "abholung"`: kein Storno-Bon (nichts bezahlt)
+
+### Mitarbeiter-Handbuch (doku/handbuch.html)
+
+- Selbst enthaltene HTML-Datei (kein Framework-Dependency zur Laufzeit)
+- 5 Kapitel: Verkauf Backwaren, Bon parken & Journal, Artikelverwaltung,
+  Bestellabwicklung, Mittagstisch – mit Mermaid.js-Ablaufdiagrammen
+- Flask liest die Datei und injiziert `window.TERMINAL_NR` als JS-Variable
+- Terminal 1–7: read-only (kein Edit-Toolbar sichtbar)
+- Terminal 8: WYSIWYG-Bearbeitungsmodus via `contenteditable`
+  Bilder per Upload → POST `/handbuch/upload` → gespeichert in `doku/`
+  Speichern → POST `/handbuch/speichern` → überschreibt handbuch.html (Backup: .bak)
+- Terminal 9: nur Kapitel 4 (Bestellabwicklung) wird angezeigt
+- Mermaid v10: `startOnLoad: false`, `data-source` sichert Quelltext vor SVG-Ersatz,
+  `mermaid.run()` nach DOMContentLoaded manuell aufgerufen
+- Screenshots: gespeichert in `doku/screenshot_<timestamp>.png`
+- Zurück-Button: prüft `document.referrer` – gleicher Origin → zurück;
+  sonst → `/` (keine Browser-History-Abhängigkeit)
 
 ### Mittagstisch-Modul (Google Sheets)
 
@@ -227,16 +290,24 @@ app/
   ean.py              – EAN-13-Generierung + Selbsttest
   druck.py            – Bondruck + Picklisten-Druck via Raw-TCP-Socket (ESC/POS)
   mittagstisch.py     – Google Sheets Lesen/Schreiben (gspread)
-  app.py              – Flask-Routen, get_terminal_nr() aus Cookie
+  app.py              – Flask-Routen, get_terminal_nr() aus Cookie,
+                        context_processor (terminal_nr + update_verfuegbar
+                        automatisch in allen Templates verfügbar)
   requirements.txt    – flask, mysql-connector-python, gspread, google-auth
   synthetic-cargo-399409-97147aac27d2.json  – Service-Account-Key (NICHT in Git!)
 
 Projektroot:
   mittagstisch_apps_script.js  – Google Apps Script Web App für Google Sites (Option C)
   produktbilder/      – <REC_ID>.jpg/png/webp → automatisch erkannt
+  doku/
+    handbuch.html     – Mitarbeiter-Handbuch (selbst enthaltene HTML-Datei)
+    screenshot_*.png  – Hochgeladene Screenshots (über Edit-Modus Terminal 8)
   templates/
-    base.html             – Navigation, Toast, Zoom-Funktion,
-                            Terminal-Cookie, Bestätigungs-Overlay
+    base.html             – Navigation (inkl. Update-Badge, Handbuch-Link),
+                            Lade-Overlay (data-lade="..." Attribut auf Nav-Links
+                            → zeigt "Bitte kurz warten…" für langsame Seiten),
+                            Toast, Zoom-Funktion, Terminal-Cookie,
+                            Bestätigungs-Overlay
     kiosk.html            – Produktauswahl (Kategorie-Tabs + Anzahl)
                             + Warenkorb-Spalte
     offen.html            – Geparkte Körbe (mit Terminal-Herkunft)
@@ -247,6 +318,7 @@ Projektroot:
     bestellungen.html     – Übersicht Heute + Alle, Bulk-Druck, Storno
     bestellung_neu.html   – Neue Bestellung, Produkt-AJAX, Bildschirmtastatur
     bestellung_detail.html– Bestellung bearbeiten/stornieren
+    update.html           – App-Update-Seite (nur Terminal 8)
 
 ---
 
@@ -359,6 +431,13 @@ CSS: object-fit: cover – füllt Kachel proportional, kein Rand
   /api/bestellungen/<id>/stornieren POST – Bestellung stornieren
   /api/bestellungen/<id>/nachdruck  POST – Nachdruck (Kassierbon oder Pickliste)
   /api/bestellungen/drucken         POST – Picklisten drucken (ids:[…])
+  /handbuch                         GET  – Mitarbeiter-Handbuch (Terminal-abhängig)
+  /handbuch/speichern               POST – Handbuch speichern (nur Terminal 8)
+  /handbuch/upload                  POST – Bild hochladen nach doku/ (nur Terminal 8)
+  /doku/<path>                      GET  – Statische Dateien aus doku/ (Bilder)
+  /update                           GET  – App-Update-Seite (nur Terminal 8)
+  /api/update/ausfuehren            POST – git pull + App-Neustart (nur Terminal 8)
+  /api/update/rollback/<hash>       POST – git reset --hard + Neustart (nur Terminal 8)
 
 ---
 
@@ -394,8 +473,9 @@ CSS: object-fit: cover – füllt Kachel proportional, kein Rand
 4. Mittagstisch: Apps Script in Google Sheet einfügen und als Web App bereitstellen
    (siehe mittagstisch_apps_script.js + Anleitung im Dateiheader)
 5. Mittagstisch: Web-App-URL in Google Sites per "Einbetten"-Block einbinden
-6. Bestellungs-DB anlegen: mysql … < init_bestellungen.sql
-7. Bestellungen: weitere Eingangskanäle anbinden (Telefon, Web, …)
+6. Bestellungen: weitere Eingangskanäle anbinden (Telefon, Web, …)
+7. Handbuch: Diagramm "Ablauf Bestellung am Liefertag" – Mermaid-Syntaxfehler prüfen
+8. Handbuch: Screenshot-Platzhalter mit echten Screenshots befüllen (über Terminal 8)
 
 ---
 
