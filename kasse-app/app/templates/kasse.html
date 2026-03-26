@@ -11,7 +11,7 @@
   overflow: hidden;
 }
 
-/* ── Mittlere Spalte: Warenkorb + Schnelltasten ──────────── */
+/* ── Linke Spalte: Warenkorb + fixe Schnelltasten ────────── */
 .warenkorb-panel {
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--creme);
@@ -31,29 +31,28 @@
   font-size: 26px; font-weight: 400; color: var(--gruen-dunkel);
 }
 
-/* Scrollbereich: Warenkorb + Schnelltasten */
-.wk-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
-
-.wk-liste { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.wk-leer {
-  padding: 30px 16px; display: flex; align-items: center; justify-content: center;
-  color: var(--text-hell); font-size: 18px; flex-direction: column; gap: 12px;
+/* Scrollbarer Warenkorb */
+.wk-liste {
+  flex: 1; overflow-y: auto; padding: 8px;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.wk-leer-icon { font-size: 56px; opacity: 0.25; }
+.wk-leer {
+  padding: 20px 16px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-hell); font-size: 18px; flex-direction: column; gap: 10px;
+}
+.wk-leer-icon { font-size: 48px; opacity: 0.25; }
 
 /* Warenkorb-Position */
 .wk-pos {
   background: white; border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein);
-  padding: 9px 12px;
+  border-radius: var(--radius-klein); padding: 8px 10px;
   box-shadow: var(--schatten);
   display: flex; align-items: center; gap: 8px;
 }
 .pos-info { flex: 1; min-width: 0; }
-.pos-name  { font-size: 14px; font-weight: 700; color: var(--text-dunkel);
-             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pos-meta  { font-size: 11px; color: var(--text-hell); margin-top: 1px; }
-
+.pos-name { font-size: 14px; font-weight: 700; color: var(--text-dunkel);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pos-meta { font-size: 11px; color: var(--text-hell); margin-top: 1px; }
 .wk-pos-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .menge-btn {
   width: 30px; height: 30px; border-radius: 50%;
@@ -77,43 +76,66 @@
   min-width: 64px; flex-shrink: 0;
 }
 .pos-del {
-  width: 34px; height: 34px; background: transparent;
+  width: 32px; height: 32px; background: transparent;
   border: 1px solid #f0c0c0; border-radius: var(--radius-klein);
   color: var(--rot); font-size: 16px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .pos-del:active { background: #fde8e8; }
 
-/* ── Schnelltasten unterhalb Warenkorb ───────────────────── */
+/* ── Fixe Schnelltasten: unteres Drittel ─────────────────── */
 .schnell-section {
   flex-shrink: 0;
+  height: 42%;
+  min-height: 200px;
+  max-height: 340px;
+  display: flex; flex-direction: column; overflow: hidden;
   border-top: 2px solid var(--creme-dunkel);
-  padding: 8px 8px 16px;
   background: var(--grau-hell);
 }
-.schnell-gruppe { margin-bottom: 10px; }
-.schnell-gruppe:last-child { margin-bottom: 0; }
-.schnell-gruppe-kopf {
-  font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
-  color: var(--text-hell); text-transform: uppercase;
-  padding: 4px 2px 4px; margin-bottom: 5px;
+
+/* Kategorie-Navigationsleiste */
+.schnell-nav {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 8px; background: white;
   border-bottom: 1px solid var(--creme-dunkel);
+  overflow-x: auto; flex-shrink: 0;
+  scrollbar-width: none;
 }
-.schnell-gruppe-grid {
-  display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: 5px;
+.schnell-nav::-webkit-scrollbar { display: none; }
+.schnell-wg-btn {
+  padding: 6px 12px; border-radius: var(--radius-klein);
+  background: var(--gold); border: 2px solid var(--gold);
+  color: white; font-size: 12px; font-weight: 800; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.schnell-wg-btn.aktiv { background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); }
+.schnell-kat-tab {
+  padding: 6px 12px; border-radius: var(--radius-klein);
+  background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
+  color: var(--text-hell); font-size: 12px; font-weight: 700; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.schnell-kat-tab.aktiv {
+  background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); color: var(--gruen-blass);
+}
+
+/* Artikel-Grid der aktiven Kategorie */
+.schnell-grid {
+  flex: 1; overflow-y: auto; padding: 6px 8px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px; align-content: start;
 }
 .schnell-btn {
   background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein); padding: 8px 4px;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 3px; cursor: pointer; min-height: 60px;
-  text-align: center; transition: opacity 0.1s;
-  font-family: 'Nunito', sans-serif;
+  border-radius: var(--radius-klein); padding: 7px 4px;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; cursor: pointer;
+  min-height: 56px; text-align: center;
+  font-family: 'Nunito', sans-serif; transition: opacity 0.1s;
 }
-.schnell-btn:active { opacity: 0.7; }
+.schnell-btn:active { opacity: 0.65; }
 .schnell-btn .name  { font-size: 11px; font-weight: 700; color: var(--text-dunkel); line-height: 1.2; }
 .schnell-btn .preis { font-size: 10px; color: var(--text-hell); }
 .schnell-btn.wg-btn {
@@ -130,21 +152,21 @@
   background: var(--gruen-dunkel);
   border-left: 2px solid rgba(0,0,0,0.15);
   display: flex; flex-direction: column;
-  gap: 8px; padding: 12px; overflow-y: auto;
+  gap: 6px; padding: 10px; overflow-y: auto;
 }
 .aktionen-panel hr { border-color: rgba(255,255,255,0.15); margin: 0; }
 .akt-summen {
   background: rgba(0,0,0,0.2); border-radius: var(--radius);
-  padding: 12px; text-align: center;
+  padding: 10px; text-align: center;
 }
 .akt-summen .label { font-size: 11px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
 .akt-summen .wert  {
   font-family: 'Lobster', Georgia, serif;
-  font-size: 36px; font-weight: 400; color: var(--gold);
+  font-size: 34px; font-weight: 400; color: var(--gold);
 }
 .akt-summen .mwst  { font-size: 11px; color: var(--grau-mitte); margin-top: 2px; }
-.akt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.akt-grid .btn { min-height: 50px; font-size: 13px; }
+.akt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.akt-grid .btn { min-height: 44px; font-size: 12px; }
 .aktionen-panel .btn-neutral {
   background: rgba(255,255,255,0.12); color: var(--gruen-blass);
   border-color: rgba(255,255,255,0.2);
@@ -154,51 +176,52 @@
 .aktionen-panel .btn-success { background: var(--gruen-hell); color: white; }
 .aktionen-panel #btnZahlen {
   background: var(--gold); color: white;
-  font-size: 17px; min-height: 62px;
+  font-size: 17px; min-height: 58px;
   box-shadow: 0 3px 12px rgba(200,120,10,0.4);
 }
 .aktionen-panel #btnZahlen:hover { background: var(--gold-hell); }
 .aktionen-panel #btnZahlen:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
-/* EAN-Suche im rechten Panel */
+/* EAN-Eingabefeld */
 .ean-label { font-size: 11px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
 .ean-wrap { position: relative; }
 .ean-input {
-  width: 100%; padding: 10px 12px;
-  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
-  border-radius: var(--radius-klein); color: white; font-size: 15px;
+  width: 100%; padding: 9px 11px;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--radius-klein); color: white; font-size: 16px;
   font-family: 'Nunito', sans-serif; box-sizing: border-box;
 }
-.ean-input::placeholder { color: rgba(255,255,255,0.4); }
-.ean-input:focus { outline: none; border-color: var(--gold); background: rgba(255,255,255,0.18); }
+.ean-input::placeholder { color: rgba(255,255,255,0.35); }
+.ean-input:focus { outline: none; border-color: var(--gold); background: rgba(255,255,255,0.2); }
 .ean-ergebnisse {
   position: absolute; left: 0; right: 0; top: 100%;
   background: white; border: 1px solid var(--creme-dunkel);
   border-top: none; border-radius: 0 0 var(--radius-klein) var(--radius-klein);
-  z-index: 50; max-height: 220px; overflow-y: auto; display: none;
+  z-index: 50; max-height: 200px; overflow-y: auto; display: none;
   box-shadow: var(--schatten);
 }
 .ean-ergebnisse.sichtbar { display: block; }
-.ean-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--creme-dunkel); font-size: 13px; }
+.ean-item { padding: 8px 11px; cursor: pointer; border-bottom: 1px solid var(--creme-dunkel); font-size: 13px; }
 .ean-item:active { background: var(--grau-hell); }
 .ean-item .art-name  { font-weight: 700; color: var(--text-dunkel); }
 .ean-item .art-preis { color: var(--text-hell); font-size: 12px; }
 
-/* EAN Numpad */
-.ean-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+/* 4×4 Numpad */
+.ean-numpad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .ean-taste {
-  padding: 10px 4px; border-radius: var(--radius-klein);
+  padding: 9px 2px; border-radius: var(--radius-klein);
   background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
-  color: var(--gruen-blass); font-size: 16px; font-weight: 700; cursor: pointer;
+  color: var(--gruen-blass); font-size: 15px; font-weight: 700; cursor: pointer;
   font-family: 'Nunito', sans-serif; text-align: center;
 }
 .ean-taste:active { background: rgba(255,255,255,0.25); }
-.ean-taste.ean-enter {
-  background: var(--gold); border-color: var(--gold); color: white;
-  grid-column: span 1;
+.ean-taste.t-ok {
+  background: var(--gold); border-color: var(--gold-hell); color: white;
+  font-size: 14px;
 }
+.ean-taste.t-loeschen { background: rgba(180,60,60,0.35); border-color: rgba(255,100,100,0.3); }
 
-/* Geparkt-Badge im Navbar */
+/* Geparkt-Badge */
 .geparkt-badge {
   display: inline-block;
   background: var(--gold); color: white;
@@ -207,7 +230,7 @@
   margin-left: 4px; vertical-align: middle;
 }
 
-/* Mengen/Rabatt Modal */
+/* Modal */
 .menge-modal-content { display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .menge-display {
   font-family: 'Lobster', Georgia, serif;
@@ -238,27 +261,24 @@
       <span class="wk-summe" id="wkSumme">0,00 €</span>
     </div>
 
-    <div class="wk-scroll">
-      <!-- Artikelliste -->
-      <div class="wk-liste" id="wkListe">
-        <div class="wk-leer">
-          <div class="wk-leer-icon">🛒</div>
-          <div>Artikel hinzufügen</div>
-        </div>
+    <!-- Scrollbarer Warenkorb -->
+    <div class="wk-liste" id="wkListe">
+      <div class="wk-leer">
+        <div class="wk-leer-icon">🛒</div>
+        <div>Artikel hinzufügen</div>
       </div>
+    </div>
 
-      <!-- Schnelltasten -->
-      <div class="schnell-section">
-        <div id="schnellGrid">
-          <div style="text-align:center; padding:20px; color:var(--text-dim); font-size:14px;">
-            Lade Schnelltasten…
-          </div>
-        </div>
+    <!-- Fixer Schnellzugriff: Kategorie-Tabs + Artikel-Grid -->
+    <div class="schnell-section">
+      <div class="schnell-nav" id="schnellNav">
+        <span style="color:rgba(255,255,255,0.4); font-size:13px; padding:4px 8px;">Lade…</span>
       </div>
+      <div class="schnell-grid" id="schnellGrid"></div>
     </div>
   </div>
 
-  <!-- ── Rechte Spalte: Aktionen ─────────────────────────────── -->
+  <!-- ── Rechte Spalte: Aktionen + EAN + Numpad ─────────────── -->
   <div class="aktionen-panel">
     <div class="akt-summen">
       <div class="label">Gesamtbetrag</div>
@@ -282,22 +302,37 @@
 
     <hr>
 
-    <!-- EAN / Artikelsuche / Betrag -->
-    <div class="ean-label">Artikel / EAN / Betrag (€)</div>
+    <!-- EAN / Suche / Betrag -->
+    <div class="ean-label">Artikel · EAN · Betrag (€)</div>
     <div class="ean-wrap">
       <input class="ean-input" id="artikelSuche" type="text"
-             placeholder="z.B. 3×12345…"
+             placeholder="3×EAN  oder  1,99"
              autocomplete="off" autocorrect="off" autocapitalize="off"
              spellcheck="false">
       <div class="ean-ergebnisse" id="sucheErgebnisse"></div>
     </div>
 
-    <!-- Numpad -->
+    <!-- 4×4 Numpad: 7 8 9 ⌫ / 4 5 6 × / 1 2 3 − / 00 0 , OK -->
     <div class="ean-numpad">
-      {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
-      <button class="ean-taste{% if z == '⌫' %} ean-enter{% endif %}"
-              data-z="{{ z }}">{{ z }}</button>
-      {% endfor %}
+      <button class="ean-taste" data-z="7">7</button>
+      <button class="ean-taste" data-z="8">8</button>
+      <button class="ean-taste" data-z="9">9</button>
+      <button class="ean-taste t-loeschen" data-z="⌫">⌫</button>
+
+      <button class="ean-taste" data-z="4">4</button>
+      <button class="ean-taste" data-z="5">5</button>
+      <button class="ean-taste" data-z="6">6</button>
+      <button class="ean-taste" data-z="×">×</button>
+
+      <button class="ean-taste" data-z="1">1</button>
+      <button class="ean-taste" data-z="2">2</button>
+      <button class="ean-taste" data-z="3">3</button>
+      <button class="ean-taste" data-z="-">−</button>
+
+      <button class="ean-taste" data-z="00">00</button>
+      <button class="ean-taste" data-z="0">0</button>
+      <button class="ean-taste" data-z=",">,</button>
+      <button class="ean-taste t-ok" data-z="OK">OK</button>
     </div>
   </div>
 </div>
@@ -314,7 +349,7 @@
   </div>
 </div>
 
-<!-- ── Mengen-Eingabe Modal ──────────────────────────────────── -->
+<!-- ── Mengen-Modal ──────────────────────────────────────────── -->
 <div class="overlay hidden" id="mengeOverlay">
   <div class="modal">
     <h2>Menge eingeben</h2>
@@ -333,7 +368,7 @@
   </div>
 </div>
 
-<!-- ── Rabatt Modal ──────────────────────────────────────────── -->
+<!-- ── Rabatt-Modal ──────────────────────────────────────────── -->
 <div class="overlay hidden" id="rabattOverlay">
   <div class="modal">
     <h2>Rabatt auf aktuelle Position</h2>
@@ -372,12 +407,26 @@
 {% block extra_script %}
 <script>
 // ── State ─────────────────────────────────────────────────────
-let vorgangId    = null;
-let bonNr        = null;
-let positionen   = [];
-let selPosId     = null;
+let vorgangId     = null;
+let bonNr         = null;
+let positionen    = [];
+let selPosId      = null;
 let mengeEingabe  = '';
 let rabattEingabe = '';
+let schnellDaten  = [];
+let aktivKategorie = null;
+
+// ── Autofokus EAN-Feld ─────────────────────────────────────────
+// Immer Fokus auf Suchfeld halten (Barcodescanner)
+document.addEventListener('click', e => {
+  if (e.target.closest('.overlay:not(.hidden)')) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+      e.target.tagName === 'SELECT') return;
+  setTimeout(() => {
+    const inp = document.getElementById('artikelSuche');
+    if (document.activeElement !== inp) inp.focus();
+  }, 60);
+});
 
 // ── Vorgang ───────────────────────────────────────────────────
 async function neuerVorgang() {
@@ -480,7 +529,7 @@ async function posEntfernen(posId) {
   await vorgangNachladen();
 }
 
-// ── Menge inline +/- ─────────────────────────────────────────
+// ── Menge / Steuer inline ─────────────────────────────────────
 async function _posNeuanlegen(pos, neueMenge, steuerCode) {
   await api('DELETE', `/api/vorgang/${vorgangId}/position/${pos.ID}`);
   await api('POST', `/api/vorgang/${vorgangId}/position`, {
@@ -511,27 +560,24 @@ async function mengeReduzierenPos(posId) {
 async function steuerToggle(posId) {
   const pos = positionen.find(p => p.ID === posId);
   if (!pos || !vorgangId) return;
-  const next = pos.STEUER_CODE >= 3 ? 1 : pos.STEUER_CODE + 1;
-  await _posNeuanlegen(pos, pos.MENGE, next);
+  await _posNeuanlegen(pos, pos.MENGE, pos.STEUER_CODE >= 3 ? 1 : pos.STEUER_CODE + 1);
 }
 
-// ── Menge per Modal ──────────────────────────────────────────
-function mengeAendern(posId, aktuellMenge) {
-  selPosId = posId;
-  mengeEingabe = String(Math.round(aktuellMenge));
-  document.getElementById('mengeDisplay').textContent = mengeEingabe;
-  document.getElementById('mengeOverlay').classList.remove('hidden');
-}
-
+// ── Menge per Modal ───────────────────────────────────────────
 function mengaendern() {
   const aktiv = positionen.filter(p => !p.STORNIERT);
-  if (aktiv.length > 0) mengeAendern(aktiv.at(-1).ID, aktiv.at(-1).MENGE);
+  if (aktiv.length > 0) {
+    selPosId = aktiv.at(-1).ID;
+    mengeEingabe = String(Math.round(aktiv.at(-1).MENGE));
+    document.getElementById('mengeDisplay').textContent = mengeEingabe;
+    document.getElementById('mengeOverlay').classList.remove('hidden');
+  }
 }
 
 async function mengeBestaetigen() {
   document.getElementById('mengeOverlay').classList.add('hidden');
   const neue = parseFloat(mengeEingabe.replace(',', '.'));
-  if (!neue || neue <= 0 || !selPosId || !vorgangId) return;
+  if (!neue || !selPosId || !vorgangId) return;
   const pos = positionen.find(p => p.ID === selPosId);
   if (!pos) return;
   await _posNeuanlegen(pos, neue, pos.STEUER_CODE);
@@ -543,7 +589,7 @@ function mengeAbbrechen() {
   selPosId = null;
 }
 
-// ── Rabatt auf Position ───────────────────────────────────────
+// ── Rabatt ────────────────────────────────────────────────────
 function rabattDialog() {
   const aktiv = positionen.filter(p => !p.STORNIERT);
   if (!aktiv.length) return;
@@ -562,12 +608,9 @@ async function rabattPosBestaetigen() {
   const ep_orig = Math.round(pos.EINZELPREIS_BRUTTO / (1 - (pos.RABATT_PROZENT||0)/100));
   await api('DELETE', `/api/vorgang/${vorgangId}/position/${selPosId}`);
   await api('POST', `/api/vorgang/${vorgangId}/position`, {
-    artikel_id:         pos.ARTIKEL_ID,
-    bezeichnung:        pos.BEZEICHNUNG,
-    menge:              pos.MENGE,
-    einzelpreis_brutto: ep_orig,
-    steuer_code:        pos.STEUER_CODE,
-    rabatt_prozent:     proz,
+    artikel_id: pos.ARTIKEL_ID, bezeichnung: pos.BEZEICHNUNG,
+    menge: pos.MENGE, einzelpreis_brutto: ep_orig,
+    steuer_code: pos.STEUER_CODE, rabatt_prozent: proz,
   });
   await vorgangNachladen();
   selPosId = null;
@@ -583,11 +626,8 @@ async function vorgangParken() {
   if (!vorgangId) return;
   await api('POST', `/api/vorgang/${vorgangId}/parken`);
   toast('Bon geparkt', 'ok');
-  vorgangId  = null;
-  bonNr      = null;
-  positionen = [];
-  aktualisiereBonNr();
-  renderWarenkorb();
+  vorgangId = null; bonNr = null; positionen = [];
+  aktualisiereBonNr(); renderWarenkorb();
   await geparkteAktualisieren();
 }
 
@@ -596,21 +636,17 @@ async function entparken(vid) {
   await api('POST', `/api/vorgang/${vid}/entparken`);
   vorgangId = vid;
   const d = await (await fetch(`/api/vorgang/${vid}`)).json();
-  bonNr      = d.vorgang.BON_NR;
-  positionen = d.positionen;
-  aktualisiereBonNr();
-  renderWarenkorb();
+  bonNr = d.vorgang.BON_NR; positionen = d.positionen;
+  aktualisiereBonNr(); renderWarenkorb();
   await geparkteAktualisieren();
   toast('Bon wieder aufgenommen', 'ok');
 }
 
 async function geparkteAktualisieren() {
   const rows = await (await fetch('/api/geparkte')).json();
-  // Badge in Navbar aktualisieren
   const badge = document.getElementById('geparkteAnzahl');
   badge.textContent = rows.length;
   badge.style.display = rows.length > 0 ? 'inline-block' : 'none';
-  // Overlay-Liste befüllen
   const liste = document.getElementById('geparkteOverlayListe');
   if (!rows.length) {
     liste.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Keine geparkten Bons</div>';
@@ -639,13 +675,8 @@ function geparkteOverlaySchliessen() {
   document.getElementById('geparkteOverlay').classList.add('hidden');
 }
 
-// ── Zahlung ───────────────────────────────────────────────────
-function zahlungStarten() {
-  if (!vorgangId) return;
-  window.location.href = `/kasse/zahlung/${vorgangId}`;
-}
-
-// ── X-Bon ─────────────────────────────────────────────────────
+// ── Zahlung / X-Bon ──────────────────────────────────────────
+function zahlungStarten() { if (vorgangId) window.location.href = `/kasse/zahlung/${vorgangId}`; }
 function xBon() { window.location.href = '/kasse/xbon'; }
 
 // ── Kunden ────────────────────────────────────────────────────
@@ -653,9 +684,8 @@ function kundenkonto() {
   document.getElementById('kundenOverlay').classList.remove('hidden');
   document.getElementById('kundenSuche').focus();
 }
-function kundenSchliessen() {
-  document.getElementById('kundenOverlay').classList.add('hidden');
-}
+function kundenSchliessen() { document.getElementById('kundenOverlay').classList.add('hidden'); }
+
 let _kundenTimer;
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('kundenSuche').addEventListener('input', e => {
@@ -663,6 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
     _kundenTimer = setTimeout(() => kundenSucheAusfuehren(e.target.value), 300);
   });
 });
+
 async function kundenSucheAusfuehren(q) {
   if (q.length < 2) { document.getElementById('kundenErgebnisse').innerHTML = ''; return; }
   const rows = await (await fetch(`/api/kunden/suche?q=${encodeURIComponent(q)}`)).json();
@@ -675,14 +706,22 @@ async function kundenSucheAusfuehren(q) {
       <div style="color:var(--text-dim);font-size:12px">${esc(k.KUNNUM1||'')} · ${esc(k.ORT||'')}</div>
     </div>`).join('');
 }
-async function kundeWaehlen(adressenId, name) {
-  window._gewaehlterKunde = { id: adressenId, name: name };
+async function kundeWaehlen(id, name) {
+  window._gewaehlterKunde = { id, name };
   toast(`Kunde: ${name}`, 'ok');
   kundenSchliessen();
 }
 
-// ── EAN / Artikelsuche ────────────────────────────────────────
+// ── EAN-Eingabe ───────────────────────────────────────────────
 let _sucheTimer;
+
+function parseEanEingabe(str) {
+  // "3×12345" oder "-2×12345" → { menge, code }
+  const m = str.match(/^(-?\d+)[x×X](.+)$/i);
+  if (m) return { menge: parseFloat(m[1]), code: m[2].trim() };
+  return { menge: 1, code: str };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('artikelSuche');
   inp.addEventListener('input', e => {
@@ -697,29 +736,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function parseEanEingabe(str) {
-  // "3x12345" oder "3×12345" → menge=3, code=12345
-  const m = str.match(/^(\d+)[x×X](.+)$/i);
-  if (m) return { menge: parseInt(m[1]), code: m[2].trim() };
-  return { menge: 1, code: str };
-}
-
 async function scanEingabeVerarbeiten(str) {
   const { menge, code } = parseEanEingabe(str);
   document.getElementById('artikelSuche').value = '';
-  // Zuerst Barcode probieren
   const r = await fetch(`/api/artikel/barcode/${encodeURIComponent(code)}`);
   if (r.ok) {
     const art = await r.json();
     if (art) { await artikelHinzufuegen(art, menge); return; }
   }
-  // Sonst Suche öffnen
   sucheAusfuehren(code);
 }
 
 async function sucheAusfuehren(q) {
   if (q.length < 2) { sucheErgebnisseSchliessen(); return; }
-  // Menge-Prefix ignorieren für Suche
   const { code } = parseEanEingabe(q);
   const items = await (await fetch(`/api/artikel/suche?q=${encodeURIComponent(code)}`)).json();
   const el = document.getElementById('sucheErgebnisse');
@@ -750,25 +779,38 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.ean-wrap')) sucheErgebnisseSchliessen();
 });
 
-// ── EAN Numpad ────────────────────────────────────────────────
+// ── EAN 4×4 Numpad ────────────────────────────────────────────
 document.addEventListener('click', e => {
   const t = e.target.closest('.ean-taste');
   if (!t) return;
   const z = t.dataset.z;
   const inp = document.getElementById('artikelSuche');
+  const val = inp.value;
+
   if (z === '⌫') {
-    inp.value = inp.value.slice(0, -1);
+    inp.value = val.slice(0, -1);
+  } else if (z === 'OK') {
+    const q = inp.value.trim();
+    if (q) { sucheErgebnisseSchliessen(); scanEingabeVerarbeiten(q); }
+    return;
+  } else if (z === '×') {
+    // Mengenmultiplikator: nur setzen wenn reiner Zahlwert davor
+    if (!val.includes('×') && val.match(/^-?\d+$/)) inp.value = val + '×';
   } else if (z === ',') {
-    if (!inp.value.includes(',')) inp.value += ',';
+    if (!val.includes(',')) inp.value = val + ',';
+  } else if (z === '-') {
+    // Vorzeichen toggeln
+    if (val.startsWith('-')) inp.value = val.slice(1);
+    else inp.value = '-' + val;
   } else {
-    inp.value += z;
+    inp.value = val + z;
   }
   clearTimeout(_sucheTimer);
   _sucheTimer = setTimeout(() => sucheAusfuehren(inp.value), 250);
   inp.focus();
 });
 
-// ── Modal-Numpad (Menge & Rabatt) ─────────────────────────────
+// ── Modal-Numpad ──────────────────────────────────────────────
 document.addEventListener('click', e => {
   const t = e.target.closest('.numpad-taste');
   if (!t) return;
@@ -790,81 +832,98 @@ document.addEventListener('click', e => {
   }
 });
 
-// ── Schnelltasten laden (nach Kategorie gruppiert) ────────────
-let schnellDaten = [];
-
+// ── Schnelltasten: Laden + Rendern ────────────────────────────
 async function schnellLaden() {
   schnellDaten = await (await fetch('/api/schnelltasten')).json();
   schnellRender();
 }
 
 function schnellRender() {
-  // Nach KATEGORIE_NAME gruppieren; Fallback: 'Artikel'
-  const gruppen = new Map();
+  // Kategorien aus Artikeln sammeln (Reihenfolge beibehalten)
+  const kategorien = [];
+  const katSeen = new Set();
   for (const s of schnellDaten) {
-    const g = s.kategorie_name || (s.seite > 1 ? `Seite ${s.seite}` : 'Artikel');
-    if (!gruppen.has(g)) gruppen.set(g, []);
-    gruppen.get(g).push(s);
+    if (s.ist_warengruppe) continue;
+    const k = s.kategorie_name || 'Artikel';
+    if (!katSeen.has(k)) { kategorien.push(k); katSeen.add(k); }
+  }
+  const hatWG = schnellDaten.some(s => s.ist_warengruppe);
+
+  // Aktive Kategorie sicherstellen
+  if (!aktivKategorie ||
+      (aktivKategorie !== 'WG' && !kategorien.includes(aktivKategorie))) {
+    aktivKategorie = hatWG ? 'WG' : (kategorien[0] || null);
   }
 
+  // Navigationsleiste
+  const nav = document.getElementById('schnellNav');
+  let navHtml = '';
+  if (hatWG) {
+    navHtml += `<button class="schnell-wg-btn${aktivKategorie === 'WG' ? ' aktiv' : ''}"
+                        onclick="schnellKatWechseln('WG')">📦 Warengruppen</button>`;
+  }
+  navHtml += kategorien.map(k =>
+    `<button class="schnell-kat-tab${aktivKategorie === k ? ' aktiv' : ''}"
+             onclick="schnellKatWechseln('${k.replace(/'/g,"\\'")}')">${esc(k)}</button>`
+  ).join('');
+  nav.innerHTML = navHtml || '<span style="color:var(--text-dim);font-size:13px;padding:4px 8px;">Keine Kategorien</span>';
+
+  schnellArtikelRender();
+}
+
+function schnellKatWechseln(kat) {
+  aktivKategorie = kat;
+  schnellRender();
+  document.getElementById('artikelSuche').focus();
+}
+
+function schnellArtikelRender() {
   const grid = document.getElementById('schnellGrid');
-  if (!gruppen.size) {
-    grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">Keine Schnelltasten konfiguriert</div>';
+  const items = aktivKategorie === 'WG'
+    ? schnellDaten.filter(s => s.ist_warengruppe)
+    : schnellDaten.filter(s => !s.ist_warengruppe &&
+        (s.kategorie_name || 'Artikel') === aktivKategorie);
+
+  if (!items.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim);font-size:14px;">Keine Einträge</div>';
     return;
   }
-
-  let html = '';
-  for (const [name, items] of gruppen) {
-    html += `<div class="schnell-gruppe">
-      <div class="schnell-gruppe-kopf">${esc(name)}</div>
-      <div class="schnell-gruppe-grid">`;
-    for (const s of items) {
-      const bgStyle  = s.farbe        ? `background:${esc(s.farbe)};` : '';
-      const fgStyle  = s.schriftfarbe ? `color:${esc(s.schriftfarbe)};` : '';
-      const wgKlasse = s.ist_warengruppe ? ' wg-btn' : '';
-      html += `<button class="schnell-btn${wgKlasse}" style="${bgStyle}${fgStyle}"
-                       onclick="schnellHinzufuegen(${JSON.stringify(s).replace(/"/g,'&quot;')})">
-        <span class="name" style="${fgStyle}">${esc(s.bezeichnung||'?')}</span>
-        ${s.preis_cent !== undefined ? `<span class="preis" style="${fgStyle}">${euro(s.preis_cent)}</span>` : ''}
-      </button>`;
-    }
-    html += '</div></div>';
-  }
-  grid.innerHTML = html;
+  grid.innerHTML = items.map(s => {
+    const bg = s.farbe        ? `background:${esc(s.farbe)};` : '';
+    const fg = s.schriftfarbe ? `color:${esc(s.schriftfarbe)};` : '';
+    const wg = s.ist_warengruppe ? ' wg-btn' : '';
+    return `<button class="schnell-btn${wg}" style="${bg}${fg}"
+                    onclick="schnellHinzufuegen(${JSON.stringify(s).replace(/"/g,'&quot;')})">
+      <span class="name" style="${fg}">${esc(s.bezeichnung||'?')}</span>
+      ${s.preis_cent !== undefined ? `<span class="preis" style="${fg}">${euro(s.preis_cent)}</span>` : ''}
+    </button>`;
+  }).join('');
 }
 
 async function schnellHinzufuegen(s) {
-  if (s.ist_warengruppe) {
-    await warengruppeBuchen(s);
-    return;
-  }
+  if (s.ist_warengruppe) { await warengruppeBuchen(s); return; }
   if (!s.preis_cent && s.preis_cent !== 0) return;
   const eanStr = document.getElementById('artikelSuche').value.trim();
-  const { menge } = parseEanEingabe(eanStr || '1');
+  const { menge } = eanStr ? parseEanEingabe(eanStr) : { menge: 1 };
   document.getElementById('artikelSuche').value = '';
   await artikelHinzufuegen({
-    id:           s.artikel_id,
-    bezeichnung:  s.bezeichnung,
-    preis_cent:   s.preis_cent,
-    steuer_code:  s.steuer_code || 1,
-    mwst_satz:    s.mwst_satz || 19.0,
-    ist_gutschein: false,
+    id: s.artikel_id, bezeichnung: s.bezeichnung,
+    preis_cent: s.preis_cent, steuer_code: s.steuer_code || 1,
+    mwst_satz: s.mwst_satz || 19.0, ist_gutschein: false,
   }, menge);
 }
 
 async function warengruppeBuchen(wg) {
   const eanStr = document.getElementById('artikelSuche').value.trim();
   if (!eanStr) { toast('Bitte Betrag eingeben', 'err'); return; }
-  const betragEuro = parseFloat(eanStr.replace(',', '.'));
-  if (!betragEuro || betragEuro <= 0) { toast('Ungültiger Betrag', 'err'); return; }
-  const betragCent = Math.round(betragEuro * 100);
+  const betragCent = Math.round(parseFloat(eanStr.replace(',', '.')) * 100);
+  if (!betragCent) { toast('Ungültiger Betrag', 'err'); return; }
   document.getElementById('artikelSuche').value = '';
   await artikelHinzufuegen({
-    id:           null,
-    bezeichnung:  wg.bezeichnung,
-    preis_cent:   betragCent,
-    steuer_code:  wg.steuer_code || 2,
-    mwst_satz:    wg.mwst_satz  || 7.0,
+    id: null, bezeichnung: wg.bezeichnung,
+    preis_cent: betragCent,
+    steuer_code: wg.steuer_code || 2,
+    mwst_satz: wg.mwst_satz || 7.0,
     ist_gutschein: false,
   });
 }
@@ -884,6 +943,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     await neuerVorgang();
   }
+  document.getElementById('artikelSuche').focus();
 });
 </script>
 {% endblock %}
