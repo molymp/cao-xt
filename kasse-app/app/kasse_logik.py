@@ -180,17 +180,21 @@ def schnelltasten_laden() -> list:
         cur.execute("DESCRIBE ARTIKEL_SCHNELLZUGRIFF")
         spalten = {r['Field'] for r in cur.fetchall()}
 
-        pos_col   = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
-        name_col  = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
-        farbe_col = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
-        seite_col = _erste_spalte(spalten, ['SEITE','GRUPPE','EBENE','TAB'], None)
-        artnr_col = _erste_spalte(spalten, ['ARTIKEL_ID','ARTNUM','ARTNR'], None)
+        pos_col    = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
+        name_col   = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
+        farbe_col  = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
+        schrift_col= _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR'], None)
+        seite_col  = _erste_spalte(spalten, ['SEITE','EBENE','TAB'], None)
+        gruppe_col = _erste_spalte(spalten, ['GRUPPE','KATEGORIE','CATEGORY','GRUPPENNAME'], None)
+        artnr_col  = _erste_spalte(spalten, ['ARTIKEL_ID','ARTNUM','ARTNR'], None)
 
         select = ['REC_ID', pos_col]
-        if name_col:   select.append(name_col)
-        if farbe_col:  select.append(farbe_col)
-        if seite_col:  select.append(seite_col)
-        if artnr_col:  select.append(artnr_col)
+        if name_col:    select.append(name_col)
+        if farbe_col:   select.append(farbe_col)
+        if schrift_col: select.append(schrift_col)
+        if seite_col:   select.append(seite_col)
+        if gruppe_col:  select.append(gruppe_col)
+        if artnr_col:   select.append(artnr_col)
 
         cur.execute(
             f"SELECT {', '.join(set(select))} FROM ARTIKEL_SCHNELLZUGRIFF ORDER BY {pos_col}"
@@ -201,10 +205,12 @@ def schnelltasten_laden() -> list:
     result = []
     for row in rows:
         eintrag = {
-            'rec_id':   row.get('REC_ID'),
-            'position': row.get(pos_col) or row.get('REC_ID'),
-            'farbe':    row.get(farbe_col) if farbe_col else None,
-            'seite':    row.get(seite_col) or 1 if seite_col else 1,
+            'rec_id':       row.get('REC_ID'),
+            'position':     row.get(pos_col) or row.get('REC_ID'),
+            'farbe':        row.get(farbe_col)   if farbe_col   else None,
+            'schriftfarbe': row.get(schrift_col) if schrift_col else None,
+            'seite':        row.get(seite_col) or 1 if seite_col else 1,
+            'gruppe':       row.get(gruppe_col)  if gruppe_col  else None,
         }
         # Artikel-Daten laden
         artikel_ref = row.get(artnr_col) if artnr_col else None

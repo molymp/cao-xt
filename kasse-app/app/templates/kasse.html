@@ -3,80 +3,15 @@
 
 {% block extra_style %}
 <style>
-/* ── Haupt-Layout: 3 Spalten ─────────────────────────────── */
+/* ── Haupt-Layout: 2 Spalten ─────────────────────────────── */
 .kasse-layout {
   display: grid;
-  grid-template-columns: 320px 1fr 280px;
+  grid-template-columns: 1fr 300px;
   grid-template-rows: calc(100vh - 60px);
   overflow: hidden;
 }
 
-/* ── Linke Spalte: Schnelltasten ─────────────────────────── */
-.schnell-panel {
-  background: white;
-  border-right: 2px solid var(--creme-dunkel);
-  display: flex; flex-direction: column;
-  overflow: hidden;
-}
-.schnell-tabs {
-  display: flex; gap: 4px; padding: 8px;
-  border-bottom: 1px solid var(--creme-dunkel);
-  overflow-x: auto; flex-shrink: 0;
-}
-.schnell-tab {
-  padding: 7px 14px; border-radius: var(--radius-klein);
-  background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
-  color: var(--text-hell); font-size: 13px; font-weight: 700; cursor: pointer;
-  white-space: nowrap; font-family: 'Nunito', sans-serif;
-}
-.schnell-tab.aktiv {
-  background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); color: var(--gruen-blass);
-}
-.schnell-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 6px; padding: 8px; overflow-y: auto; flex: 1;
-}
-.schnell-btn {
-  background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein); padding: 10px 6px;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 4px; cursor: pointer; min-height: 70px;
-  text-align: center; transition: background 0.1s;
-  font-family: 'Nunito', sans-serif;
-}
-.schnell-btn:active { background: var(--gruen-dunkel); }
-.schnell-btn:active .name, .schnell-btn:active .preis { color: var(--gruen-blass); }
-.schnell-btn .name  { font-size: 12px; font-weight: 700; color: var(--text-dunkel); line-height: 1.2; }
-.schnell-btn .preis { font-size: 11px; color: var(--text-hell); }
-
-/* Artikel-Suche oben in Schnell-Panel */
-.suche-wrap { padding: 8px; border-bottom: 1px solid var(--creme-dunkel); flex-shrink: 0; }
-.suche-input {
-  width: 100%; padding: 11px 14px;
-  background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein); color: var(--text-dunkel); font-size: 15px;
-  font-family: 'Nunito', sans-serif;
-}
-.suche-input:focus { outline: none; border-color: var(--gruen-mitte); }
-.suche-ergebnisse {
-  position: absolute; left: 0; right: 0; top: 100%;
-  background: white; border: 1px solid var(--creme-dunkel);
-  border-top: none; border-radius: 0 0 var(--radius-klein) var(--radius-klein);
-  z-index: 50; max-height: 300px; overflow-y: auto; display: none;
-  box-shadow: var(--schatten);
-}
-.suche-ergebnisse.sichtbar { display: block; }
-.suche-item {
-  padding: 11px 14px; cursor: pointer;
-  border-bottom: 1px solid var(--creme-dunkel); font-size: 14px;
-}
-.suche-item:active { background: var(--grau-hell); }
-.suche-item .art-name  { font-weight: 700; color: var(--text-dunkel); }
-.suche-item .art-preis { color: var(--text-hell); font-size: 13px; }
-.suche-rel { position: relative; }
-
-/* ── Mittlere Spalte: Warenkorb ──────────────────────────── */
+/* ── Mittlere Spalte: Warenkorb + Schnelltasten ──────────── */
 .warenkorb-panel {
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--creme);
@@ -95,57 +30,92 @@
   font-family: 'Lobster', Georgia, serif;
   font-size: 26px; font-weight: 400; color: var(--gruen-dunkel);
 }
-.wk-liste {
-  flex: 1; overflow-y: auto; padding: 8px;
-  display: flex; flex-direction: column; gap: 6px;
-}
-.wk-pos {
-  background: white; border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein); padding: 11px 12px;
-  display: grid; grid-template-columns: 1fr auto 110px 44px;
-  align-items: center; gap: 10px;
-  box-shadow: var(--schatten);
-}
-.wk-pos .pos-name  { font-size: 15px; font-weight: 700; color: var(--text-dunkel); }
-.wk-pos .pos-meta  { font-size: 12px; color: var(--text-hell); margin-top: 2px; }
-.wk-pos .pos-menge { display: flex; align-items: center; gap: 6px; }
-.wk-pos .menge-btn {
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 1px solid var(--creme-dunkel);
-  background: var(--grau-hell); color: var(--text-dunkel); font-size: 18px;
-  display: flex; align-items: center; justify-content: center; cursor: pointer;
-}
-.wk-pos .menge-anzeige { font-size: 17px; font-weight: 700; min-width: 26px; text-align: center; }
-.wk-pos .pos-gp {
-  font-family: 'Lobster', Georgia, serif;
-  font-size: 17px; font-weight: 400; text-align: right; color: var(--gold);
-}
-.wk-pos .pos-del {
-  width: 42px; height: 42px; background: transparent;
-  border: 1px solid #f0c0c0; border-radius: var(--radius-klein);
-  color: var(--rot); font-size: 18px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.wk-pos .pos-del:active { background: #fde8e8; }
+
+/* Scrollbereich: Warenkorb + Schnelltasten */
+.wk-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+.wk-liste { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .wk-leer {
-  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 30px 16px; display: flex; align-items: center; justify-content: center;
   color: var(--text-hell); font-size: 18px; flex-direction: column; gap: 12px;
 }
 .wk-leer-icon { font-size: 56px; opacity: 0.25; }
 
-/* Rabatt-Zeile */
-.rabatt-zeile {
-  padding: 7px 14px; background: white;
-  border-top: 1px solid var(--creme-dunkel); flex-shrink: 0;
-  display: flex; align-items: center; gap: 10px;
+/* Warenkorb-Position */
+.wk-pos {
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  padding: 9px 12px;
+  box-shadow: var(--schatten);
+  display: flex; align-items: center; gap: 8px;
 }
-.rabatt-zeile label { font-size: 13px; color: var(--text-hell); font-weight: 700; }
-.rabatt-input {
-  width: 72px; padding: 7px 10px;
+.pos-info { flex: 1; min-width: 0; }
+.pos-name  { font-size: 14px; font-weight: 700; color: var(--text-dunkel);
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pos-meta  { font-size: 11px; color: var(--text-hell); margin-top: 1px; }
+
+.wk-pos-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.menge-btn {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--creme-dunkel);
+  background: var(--grau-hell); color: var(--text-dunkel); font-size: 18px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  flex-shrink: 0;
+}
+.menge-btn:active { background: var(--gruen-blass); }
+.menge-anzeige { font-size: 16px; font-weight: 700; min-width: 22px; text-align: center; }
+.steuer-btn {
+  padding: 4px 7px; border-radius: var(--radius-klein);
+  border: 1px solid var(--creme-dunkel);
+  background: var(--grau-hell); color: var(--text-hell);
+  font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+}
+.steuer-btn:active { background: var(--gruen-blass); color: var(--gruen-dunkel); }
+.pos-gp {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 16px; font-weight: 400; text-align: right; color: var(--gold);
+  min-width: 64px; flex-shrink: 0;
+}
+.pos-del {
+  width: 34px; height: 34px; background: transparent;
+  border: 1px solid #f0c0c0; border-radius: var(--radius-klein);
+  color: var(--rot); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.pos-del:active { background: #fde8e8; }
+
+/* ── Schnelltasten unterhalb Warenkorb ───────────────────── */
+.schnell-section {
+  flex-shrink: 0;
+  border-top: 2px solid var(--creme-dunkel);
+  padding: 8px 8px 16px;
+  background: var(--grau-hell);
+}
+.schnell-gruppe { margin-bottom: 10px; }
+.schnell-gruppe:last-child { margin-bottom: 0; }
+.schnell-gruppe-kopf {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+  color: var(--text-hell); text-transform: uppercase;
+  padding: 4px 2px 4px; margin-bottom: 5px;
+  border-bottom: 1px solid var(--creme-dunkel);
+}
+.schnell-gruppe-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+}
+.schnell-btn {
   background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein); color: var(--text-dunkel);
-  font-size: 15px; text-align: right; font-family: 'Nunito', sans-serif;
+  border-radius: var(--radius-klein); padding: 8px 4px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px; cursor: pointer; min-height: 60px;
+  text-align: center; transition: opacity 0.1s;
+  font-family: 'Nunito', sans-serif;
 }
+.schnell-btn:active { opacity: 0.7; }
+.schnell-btn .name  { font-size: 11px; font-weight: 700; color: var(--text-dunkel); line-height: 1.2; }
+.schnell-btn .preis { font-size: 10px; color: var(--text-hell); }
 
 /* ── Rechte Spalte: Aktionen ─────────────────────────────── */
 .aktionen-panel {
@@ -154,22 +124,19 @@
   display: flex; flex-direction: column;
   gap: 8px; padding: 12px; overflow-y: auto;
 }
-.aktionen-panel hr { border-color: rgba(255,255,255,0.15); }
+.aktionen-panel hr { border-color: rgba(255,255,255,0.15); margin: 0; }
 .akt-summen {
   background: rgba(0,0,0,0.2); border-radius: var(--radius);
-  padding: 14px; text-align: center;
+  padding: 12px; text-align: center;
 }
-.akt-summen .label { font-size: 12px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
+.akt-summen .label { font-size: 11px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
 .akt-summen .wert  {
   font-family: 'Lobster', Georgia, serif;
-  font-size: 38px; font-weight: 400; color: var(--gold);
+  font-size: 36px; font-weight: 400; color: var(--gold);
 }
-.akt-summen .mwst  { font-size: 11px; color: var(--grau-mitte); margin-top: 4px; }
-.akt-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-}
-.akt-grid .btn { min-height: 56px; font-size: 14px; }
-/* Buttons in der grünen Aktions-Spalte anpassen */
+.akt-summen .mwst  { font-size: 11px; color: var(--grau-mitte); margin-top: 2px; }
+.akt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.akt-grid .btn { min-height: 50px; font-size: 13px; }
 .aktionen-panel .btn-neutral {
   background: rgba(255,255,255,0.12); color: var(--gruen-blass);
   border-color: rgba(255,255,255,0.2);
@@ -177,31 +144,63 @@
 .aktionen-panel .btn-neutral:hover { background: rgba(255,255,255,0.2); }
 .aktionen-panel .btn-warning { background: var(--gold); color: white; }
 .aktionen-panel .btn-success { background: var(--gruen-hell); color: white; }
-/* Zahlen-Button prominent */
 .aktionen-panel #btnZahlen {
   background: var(--gold); color: white;
-  font-size: 18px; min-height: 68px;
+  font-size: 17px; min-height: 62px;
   box-shadow: 0 3px 12px rgba(200,120,10,0.4);
 }
 .aktionen-panel #btnZahlen:hover { background: var(--gold-hell); }
-/* Geparkte Bons */
-.aktionen-panel .geparkt-label {
-  font-size: 12px; color: var(--grau-mitte);
-  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
-}
-.geparkt-liste { display: flex; flex-direction: column; gap: 5px; }
-.geparkt-item {
-  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
-  border-radius: var(--radius-klein); padding: 9px 11px;
-  display: flex; justify-content: space-between; align-items: center;
-  cursor: pointer; font-size: 13px; color: var(--gruen-blass);
-}
-.geparkt-item:active { background: rgba(255,255,255,0.2); }
+.aktionen-panel #btnZahlen:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
-/* ── Mengen/Rabatt Modal ─────────────────────────────────── */
-.menge-modal-content {
-  display: flex; flex-direction: column; gap: 16px; align-items: center;
+/* EAN-Suche im rechten Panel */
+.ean-label { font-size: 11px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
+.ean-wrap { position: relative; }
+.ean-input {
+  width: 100%; padding: 10px 12px;
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: var(--radius-klein); color: white; font-size: 15px;
+  font-family: 'Nunito', sans-serif; box-sizing: border-box;
 }
+.ean-input::placeholder { color: rgba(255,255,255,0.4); }
+.ean-input:focus { outline: none; border-color: var(--gold); background: rgba(255,255,255,0.18); }
+.ean-ergebnisse {
+  position: absolute; left: 0; right: 0; top: 100%;
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-top: none; border-radius: 0 0 var(--radius-klein) var(--radius-klein);
+  z-index: 50; max-height: 220px; overflow-y: auto; display: none;
+  box-shadow: var(--schatten);
+}
+.ean-ergebnisse.sichtbar { display: block; }
+.ean-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--creme-dunkel); font-size: 13px; }
+.ean-item:active { background: var(--grau-hell); }
+.ean-item .art-name  { font-weight: 700; color: var(--text-dunkel); }
+.ean-item .art-preis { color: var(--text-hell); font-size: 12px; }
+
+/* EAN Numpad */
+.ean-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.ean-taste {
+  padding: 10px 4px; border-radius: var(--radius-klein);
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+  color: var(--gruen-blass); font-size: 16px; font-weight: 700; cursor: pointer;
+  font-family: 'Nunito', sans-serif; text-align: center;
+}
+.ean-taste:active { background: rgba(255,255,255,0.25); }
+.ean-taste.ean-enter {
+  background: var(--gold); border-color: var(--gold); color: white;
+  grid-column: span 1;
+}
+
+/* Geparkt-Badge im Navbar */
+.geparkt-badge {
+  display: inline-block;
+  background: var(--gold); color: white;
+  border-radius: 10px; padding: 1px 7px;
+  font-size: 11px; font-weight: 700;
+  margin-left: 4px; vertical-align: middle;
+}
+
+/* Mengen/Rabatt Modal */
+.menge-modal-content { display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .menge-display {
   font-family: 'Lobster', Georgia, serif;
   font-size: 52px; font-weight: 400; color: var(--gold);
@@ -213,35 +212,16 @@
 {% block nav_extra %}
 <a href="/kasse/journal" class="nav-btn">📋 Journal</a>
 <a href="/kasse/tagesabschluss" class="nav-btn">📋 Z-Bon</a>
+<button class="nav-btn" id="btnGeparkt" onclick="geparkteOverlayOeffnen()"
+        style="background:transparent; border:none; cursor:pointer;">
+  🅿 Geparkt<span class="geparkt-badge" id="geparkteAnzahl">0</span>
+</button>
 {% endblock %}
 
 {% block content %}
 <div class="kasse-layout">
 
-  <!-- ── Linke Spalte: Schnelltasten + Suche ─────────────── -->
-  <div class="schnell-panel">
-    <div class="suche-wrap">
-      <div class="suche-rel">
-        <input class="suche-input" id="artikelSuche" type="text"
-               placeholder="🔍 Artikel suchen / EAN scannen"
-               autocomplete="off" autocorrect="off" autocapitalize="off"
-               spellcheck="false">
-        <div class="suche-ergebnisse" id="sucheErgebnisse"></div>
-      </div>
-    </div>
-
-    <!-- Tabs für Schnelltasten-Seiten -->
-    <div class="schnell-tabs" id="schnellTabs"></div>
-
-    <!-- Schnelltasten-Grid -->
-    <div class="schnell-grid" id="schnellGrid">
-      <div style="grid-column:1/-1; text-align:center; padding:20px; color:var(--text-dim); font-size:14px;">
-        Lade Schnelltasten…
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Mittlere Spalte: Warenkorb ───────────────────────── -->
+  <!-- ── Warenkorb + Schnelltasten ──────────────────────────── -->
   <div class="warenkorb-panel">
     <div class="wk-kopf">
       <span class="wk-bon-nr" id="bonNrAnzeige">–</span>
@@ -250,22 +230,27 @@
       <span class="wk-summe" id="wkSumme">0,00 €</span>
     </div>
 
-    <div class="wk-liste" id="wkListe">
-      <div class="wk-leer">
-        <div class="wk-leer-icon">🛒</div>
-        <div>Artikel hinzufügen</div>
+    <div class="wk-scroll">
+      <!-- Artikelliste -->
+      <div class="wk-liste" id="wkListe">
+        <div class="wk-leer">
+          <div class="wk-leer-icon">🛒</div>
+          <div>Artikel hinzufügen</div>
+        </div>
       </div>
-    </div>
 
-    <div class="rabatt-zeile">
-      <label>Gesamtrabatt:</label>
-      <input class="rabatt-input" id="gesamtRabatt" type="number"
-             min="0" max="100" step="1" value="0"> %
-      <button class="btn btn-neutral btn-sm" onclick="rabattAnwenden()">Anwenden</button>
+      <!-- Schnelltasten -->
+      <div class="schnell-section">
+        <div id="schnellGrid">
+          <div style="text-align:center; padding:20px; color:var(--text-dim); font-size:14px;">
+            Lade Schnelltasten…
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- ── Rechte Spalte: Aktionen ───────────────────────────── -->
+  <!-- ── Rechte Spalte: Aktionen ─────────────────────────────── -->
   <div class="aktionen-panel">
     <div class="akt-summen">
       <div class="label">Gesamtbetrag</div>
@@ -273,7 +258,6 @@
       <div class="mwst" id="aktMwst"></div>
     </div>
 
-    <!-- Zahlungs-Button -->
     <button class="btn btn-success btn-full" id="btnZahlen"
             onclick="zahlungStarten()" disabled>
       💳 Zahlung
@@ -281,7 +265,6 @@
 
     <hr>
 
-    <!-- Aktionsraster -->
     <div class="akt-grid">
       <button class="btn btn-neutral" onclick="mengaendern()">✏️ Menge</button>
       <button class="btn btn-warning" onclick="rabattDialog()">% Rabatt</button>
@@ -291,20 +274,35 @@
 
     <hr>
 
-    <!-- Geparkte Bons -->
-    <div class="geparkt-label">Geparkte Bons</div>
-    <div class="geparkt-liste" id="geparkteVorgaenge">
-      {% if geparkte_vorgaenge %}
-        {% for v in geparkte_vorgaenge %}
-        <div class="geparkt-item" onclick="entparken({{ v.ID }})">
-          <span>Bon {{ v.BON_NR }}</span>
-          <span style="color:var(--gold)">{{ "%.2f"|format(v.BETRAG_BRUTTO/100) }} €</span>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div style="color:var(--text-dim); font-size:13px;">Keine</div>
-      {% endif %}
+    <!-- EAN / Artikelsuche -->
+    <div class="ean-label">Artikel / EAN scannen</div>
+    <div class="ean-wrap">
+      <input class="ean-input" id="artikelSuche" type="text"
+             placeholder="z.B. 3×12345…"
+             autocomplete="off" autocorrect="off" autocapitalize="off"
+             spellcheck="false">
+      <div class="ean-ergebnisse" id="sucheErgebnisse"></div>
     </div>
+
+    <!-- Numpad -->
+    <div class="ean-numpad">
+      {% for z in ['7','8','9','4','5','6','1','2','3','×','0','⌫'] %}
+      <button class="ean-taste{% if z == '⌫' %} ean-enter{% endif %}"
+              data-z="{{ z }}">{{ z }}</button>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Geparkte Bons Overlay ──────────────────────────────────── -->
+<div class="overlay hidden" id="geparkteOverlay">
+  <div class="modal">
+    <h2>🅿 Geparkte Bons</h2>
+    <div id="geparkteOverlayListe"
+         style="display:flex; flex-direction:column; gap:8px;
+                max-height:320px; overflow-y:auto; margin-bottom:16px;">
+    </div>
+    <button class="btn btn-neutral btn-full" onclick="geparkteOverlaySchliessen()">Schließen</button>
   </div>
 </div>
 
@@ -355,7 +353,8 @@
       <input class="form-control" id="kundenSuche" type="text"
              placeholder="Name oder Kundennummer…" autocomplete="off">
     </div>
-    <div id="kundenErgebnisse" style="display:flex; flex-direction:column; gap:6px; max-height:300px; overflow-y:auto;"></div>
+    <div id="kundenErgebnisse"
+         style="display:flex; flex-direction:column; gap:6px; max-height:300px; overflow-y:auto;"></div>
     <br>
     <button class="btn btn-neutral btn-full" onclick="kundenSchliessen()">Schließen</button>
   </div>
@@ -365,20 +364,19 @@
 {% block extra_script %}
 <script>
 // ── State ─────────────────────────────────────────────────────
-let vorgangId   = null;
-let bonNr       = null;
-let positionen  = [];
-let selPosId    = null;   // ausgewählte Position für Menge/Rabatt
-let pendArtikel = null;   // Artikel der auf Mengen-Eingabe wartet
-let mengeEingabe = '';
+let vorgangId    = null;
+let bonNr        = null;
+let positionen   = [];
+let selPosId     = null;
+let mengeEingabe  = '';
 let rabattEingabe = '';
 
-// ── Vorgang initialisieren ─────────────────────────────────────
+// ── Vorgang ───────────────────────────────────────────────────
 async function neuerVorgang() {
   const r = await api('POST', '/api/vorgang/neu');
   if (!r.ok) { toast('Fehler: ' + r.fehler, 'err'); return; }
-  vorgangId = r.vorgang_id;
-  bonNr     = r.bon_nr;
+  vorgangId  = r.vorgang_id;
+  bonNr      = r.bon_nr;
   positionen = [];
   aktualisiereBonNr();
   renderWarenkorb();
@@ -392,7 +390,9 @@ function aktualisiereBonNr() {
     vorgangId ? `Bon ${bonNr}` : '–';
 }
 
-// ── Warenkorb rendern ──────────────────────────────────────────
+// ── Warenkorb rendern ─────────────────────────────────────────
+function mwstAnzeige(satz) { return parseFloat(satz).toFixed(0) + '%'; }
+
 function renderWarenkorb() {
   const liste = document.getElementById('wkListe');
   const aktiv = positionen.filter(p => !p.STORNIERT);
@@ -406,16 +406,15 @@ function renderWarenkorb() {
   }
   liste.innerHTML = aktiv.map(p => `
     <div class="wk-pos" id="pos-${p.ID}">
-      <div>
+      <div class="pos-info">
         <div class="pos-name">${esc(p.BEZEICHNUNG)}</div>
-        <div class="pos-meta">
-          EP ${euro(p.EINZELPREIS_BRUTTO)} · ${p.MWST_SATZ}% MwSt
-          ${p.RABATT_PROZENT > 0 ? ` · Rabatt ${p.RABATT_PROZENT}%` : ''}
-        </div>
+        <div class="pos-meta">EP ${euro(p.EINZELPREIS_BRUTTO)}${p.RABATT_PROZENT > 0 ? ` · ${p.RABATT_PROZENT}% Rabatt` : ''}</div>
       </div>
-      <div class="pos-menge">
-        <button class="menge-btn" onclick="mengeAendern(${p.ID}, ${p.MENGE}, ${p.EINZELPREIS_BRUTTO}, ${p.STEUER_CODE})">✎</button>
+      <div class="wk-pos-controls">
+        <button class="menge-btn" onclick="mengeReduzierenPos(${p.ID})">−</button>
         <span class="menge-anzeige">${formatMenge(p.MENGE)}</span>
+        <button class="menge-btn" onclick="mengeErhoehenPos(${p.ID})">+</button>
+        <button class="steuer-btn" onclick="steuerToggle(${p.ID})">${mwstAnzeige(p.MWST_SATZ)}</button>
       </div>
       <div class="pos-gp">${euro(p.GESAMTPREIS_BRUTTO)}</div>
       <button class="pos-del" onclick="posEntfernen(${p.ID})">✕</button>
@@ -446,7 +445,7 @@ async function artikelHinzufuegen(artikel, menge = 1, rabatt = 0) {
     await neuerVorgang();
     if (!vorgangId) return;
   }
-  const body = {
+  const r = await api('POST', `/api/vorgang/${vorgangId}/position`, {
     artikel_id:         artikel.id,
     bezeichnung:        artikel.bezeichnung,
     menge:              menge,
@@ -454,16 +453,14 @@ async function artikelHinzufuegen(artikel, menge = 1, rabatt = 0) {
     steuer_code:        artikel.steuer_code,
     rabatt_prozent:     rabatt,
     ist_gutschein:      artikel.ist_gutschein || false,
-  };
-  const r = await api('POST', `/api/vorgang/${vorgangId}/position`, body);
+  });
   if (!r.ok) { toast('Fehler', 'err'); return; }
   await vorgangNachladen();
 }
 
 async function vorgangNachladen() {
   if (!vorgangId) return;
-  const r = await fetch(`/api/vorgang/${vorgangId}`);
-  const d = await r.json();
+  const d = await (await fetch(`/api/vorgang/${vorgangId}`)).json();
   positionen = d.positionen;
   renderWarenkorb();
 }
@@ -475,9 +472,43 @@ async function posEntfernen(posId) {
   await vorgangNachladen();
 }
 
-// ── Menge ändern ──────────────────────────────────────────────
-let _mengeKallback = null;
-function mengeAendern(posId, aktuellMenge, ep, steuerCode) {
+// ── Menge inline +/- ─────────────────────────────────────────
+async function _posNeuanlegen(pos, neueMenge, steuerCode) {
+  await api('DELETE', `/api/vorgang/${vorgangId}/position/${pos.ID}`);
+  await api('POST', `/api/vorgang/${vorgangId}/position`, {
+    artikel_id:         pos.ARTIKEL_ID,
+    bezeichnung:        pos.BEZEICHNUNG,
+    menge:              neueMenge,
+    einzelpreis_brutto: pos.EINZELPREIS_BRUTTO,
+    steuer_code:        steuerCode,
+    rabatt_prozent:     pos.RABATT_PROZENT,
+  });
+  await vorgangNachladen();
+}
+
+async function mengeErhoehenPos(posId) {
+  const pos = positionen.find(p => p.ID === posId);
+  if (!pos || !vorgangId) return;
+  await _posNeuanlegen(pos, parseFloat(pos.MENGE) + 1, pos.STEUER_CODE);
+}
+
+async function mengeReduzierenPos(posId) {
+  const pos = positionen.find(p => p.ID === posId);
+  if (!pos || !vorgangId) return;
+  const neu = parseFloat(pos.MENGE) - 1;
+  if (neu <= 0) { await posEntfernen(posId); return; }
+  await _posNeuanlegen(pos, neu, pos.STEUER_CODE);
+}
+
+async function steuerToggle(posId) {
+  const pos = positionen.find(p => p.ID === posId);
+  if (!pos || !vorgangId) return;
+  const next = pos.STEUER_CODE >= 3 ? 1 : pos.STEUER_CODE + 1;
+  await _posNeuanlegen(pos, pos.MENGE, next);
+}
+
+// ── Menge per Modal ──────────────────────────────────────────
+function mengeAendern(posId, aktuellMenge) {
   selPosId = posId;
   mengeEingabe = String(Math.round(aktuellMenge));
   document.getElementById('mengeDisplay').textContent = mengeEingabe;
@@ -485,32 +516,17 @@ function mengeAendern(posId, aktuellMenge, ep, steuerCode) {
 }
 
 function mengaendern() {
-  if (!selPosId && positionen.filter(p=>!p.STORNIERT).length > 0) {
-    const letztePos = positionen.filter(p=>!p.STORNIERT).at(-1);
-    if (letztePos) mengeAendern(letztePos.ID, letztePos.MENGE,
-                                 letztePos.EINZELPREIS_BRUTTO, letztePos.STEUER_CODE);
-  }
+  const aktiv = positionen.filter(p => !p.STORNIERT);
+  if (aktiv.length > 0) mengeAendern(aktiv.at(-1).ID, aktiv.at(-1).MENGE);
 }
 
 async function mengeBestaetigen() {
   document.getElementById('mengeOverlay').classList.add('hidden');
   const neue = parseFloat(mengeEingabe.replace(',', '.'));
   if (!neue || neue <= 0 || !selPosId || !vorgangId) return;
-
-  // Position entfernen und neu anlegen mit neuer Menge
   const pos = positionen.find(p => p.ID === selPosId);
   if (!pos) return;
-  await api('DELETE', `/api/vorgang/${vorgangId}/position/${selPosId}`);
-  const body = {
-    artikel_id:         pos.ARTIKEL_ID,
-    bezeichnung:        pos.BEZEICHNUNG,
-    menge:              neue,
-    einzelpreis_brutto: pos.EINZELPREIS_BRUTTO,
-    steuer_code:        pos.STEUER_CODE,
-    rabatt_prozent:     pos.RABATT_PROZENT,
-  };
-  await api('POST', `/api/vorgang/${vorgangId}/position`, body);
-  await vorgangNachladen();
+  await _posNeuanlegen(pos, neue, pos.STEUER_CODE);
   selPosId = null;
 }
 
@@ -519,13 +535,13 @@ function mengeAbbrechen() {
   selPosId = null;
 }
 
-// ── Rabatt auf Position ────────────────────────────────────────
+// ── Rabatt auf Position ───────────────────────────────────────
 function rabattDialog() {
   const aktiv = positionen.filter(p => !p.STORNIERT);
   if (!aktiv.length) return;
   selPosId = aktiv.at(-1).ID;
   rabattEingabe = '0';
-  document.getElementById('rabattDisplay').textContent = rabattEingabe;
+  document.getElementById('rabattDisplay').textContent = '0';
   document.getElementById('rabattOverlay').classList.remove('hidden');
 }
 
@@ -535,18 +551,16 @@ async function rabattPosBestaetigen() {
   if (!selPosId || !vorgangId) return;
   const pos = positionen.find(p => p.ID === selPosId);
   if (!pos) return;
-  // EP zurückrechnen (falls schon Rabatt drauf war)
   const ep_orig = Math.round(pos.EINZELPREIS_BRUTTO / (1 - (pos.RABATT_PROZENT||0)/100));
   await api('DELETE', `/api/vorgang/${vorgangId}/position/${selPosId}`);
-  const body = {
+  await api('POST', `/api/vorgang/${vorgangId}/position`, {
     artikel_id:         pos.ARTIKEL_ID,
     bezeichnung:        pos.BEZEICHNUNG,
     menge:              pos.MENGE,
     einzelpreis_brutto: ep_orig,
     steuer_code:        pos.STEUER_CODE,
     rabatt_prozent:     proz,
-  };
-  await api('POST', `/api/vorgang/${vorgangId}/position`, body);
+  });
   await vorgangNachladen();
   selPosId = null;
 }
@@ -554,27 +568,6 @@ async function rabattPosBestaetigen() {
 function rabattAbbrechen() {
   document.getElementById('rabattOverlay').classList.add('hidden');
   selPosId = null;
-}
-
-async function rabattAnwenden() {
-  const proz = parseFloat(document.getElementById('gesamtRabatt').value) || 0;
-  if (!vorgangId || proz < 0 || proz > 100) return;
-  // Alle aktiven Positionen mit Rabatt neu laden
-  const aktiv = positionen.filter(p => !p.STORNIERT);
-  for (const pos of aktiv) {
-    await api('DELETE', `/api/vorgang/${vorgangId}/position/${pos.ID}`);
-    const ep_orig = Math.round(pos.EINZELPREIS_BRUTTO / (1 - (pos.RABATT_PROZENT||0)/100));
-    await api('POST', `/api/vorgang/${vorgangId}/position`, {
-      artikel_id:         pos.ARTIKEL_ID,
-      bezeichnung:        pos.BEZEICHNUNG,
-      menge:              pos.MENGE,
-      einzelpreis_brutto: ep_orig,
-      steuer_code:        pos.STEUER_CODE,
-      rabatt_prozent:     proz,
-    });
-  }
-  await vorgangNachladen();
-  toast(`Rabatt ${proz}% angewendet`, 'ok');
 }
 
 // ── Parken ────────────────────────────────────────────────────
@@ -591,29 +584,51 @@ async function vorgangParken() {
 }
 
 async function entparken(vid) {
+  geparkteOverlaySchliessen();
   await api('POST', `/api/vorgang/${vid}/entparken`);
   vorgangId = vid;
-  await vorgangNachladen();
-  const v = await (await fetch(`/api/vorgang/${vid}`)).json();
-  bonNr = v.vorgang.BON_NR;
+  const d = await (await fetch(`/api/vorgang/${vid}`)).json();
+  bonNr      = d.vorgang.BON_NR;
+  positionen = d.positionen;
   aktualisiereBonNr();
+  renderWarenkorb();
   await geparkteAktualisieren();
   toast('Bon wieder aufgenommen', 'ok');
 }
 
 async function geparkteAktualisieren() {
-  const r = await fetch('/api/geparkte');
-  const rows = await r.json();
-  const el = document.getElementById('geparkteVorgaenge');
+  const rows = await (await fetch('/api/geparkte')).json();
+  // Badge in Navbar aktualisieren
+  const badge = document.getElementById('geparkteAnzahl');
+  badge.textContent = rows.length;
+  badge.style.display = rows.length > 0 ? 'inline-block' : 'none';
+  // Overlay-Liste befüllen
+  const liste = document.getElementById('geparkteOverlayListe');
   if (!rows.length) {
-    el.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">Keine</div>';
+    liste.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Keine geparkten Bons</div>';
     return;
   }
-  el.innerHTML = rows.map(v => `
-    <div class="geparkt-item" onclick="entparken(${v.ID})">
-      <span>Bon ${v.BON_NR} (${v.ANZAHL_POS} Pos.)</span>
-      <span style="color:var(--green)">${euro(v.BETRAG_BRUTTO)}</span>
+  liste.innerHTML = rows.map(v => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:12px;background:var(--grau-hell);border-radius:var(--radius-klein);
+                border:1px solid var(--creme-dunkel);cursor:pointer;"
+         onclick="entparken(${v.ID})">
+      <div>
+        <div style="font-weight:700;">Bon ${v.BON_NR}</div>
+        <div style="font-size:12px;color:var(--text-hell);">${v.ANZAHL_POS} Position(en)</div>
+      </div>
+      <div style="font-family:'Lobster',Georgia,serif;font-size:20px;color:var(--gold);">
+        ${euro(v.BETRAG_BRUTTO)}
+      </div>
     </div>`).join('');
+}
+
+function geparkteOverlayOeffnen() {
+  geparkteAktualisieren();
+  document.getElementById('geparkteOverlay').classList.remove('hidden');
+}
+function geparkteOverlaySchliessen() {
+  document.getElementById('geparkteOverlay').classList.add('hidden');
 }
 
 // ── Zahlung ───────────────────────────────────────────────────
@@ -623,9 +638,7 @@ function zahlungStarten() {
 }
 
 // ── X-Bon ─────────────────────────────────────────────────────
-async function xBon() {
-  window.location.href = '/kasse/xbon';
-}
+function xBon() { window.location.href = '/kasse/xbon'; }
 
 // ── Kunden ────────────────────────────────────────────────────
 function kundenkonto() {
@@ -635,7 +648,6 @@ function kundenkonto() {
 function kundenSchliessen() {
   document.getElementById('kundenOverlay').classList.add('hidden');
 }
-
 let _kundenTimer;
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('kundenSuche').addEventListener('input', e => {
@@ -643,68 +655,72 @@ document.addEventListener('DOMContentLoaded', () => {
     _kundenTimer = setTimeout(() => kundenSucheAusfuehren(e.target.value), 300);
   });
 });
-
 async function kundenSucheAusfuehren(q) {
   if (q.length < 2) { document.getElementById('kundenErgebnisse').innerHTML = ''; return; }
-  const r = await fetch(`/api/kunden/suche?q=${encodeURIComponent(q)}`);
-  const rows = await r.json();
+  const rows = await (await fetch(`/api/kunden/suche?q=${encodeURIComponent(q)}`)).json();
   const el = document.getElementById('kundenErgebnisse');
   if (!rows.length) { el.innerHTML = '<div style="color:var(--text-dim)">Keine Treffer</div>'; return; }
   el.innerHTML = rows.map(k => `
-    <div class="geparkt-item" onclick="kundeWaehlen(${k.REC_ID}, '${esc(k.NAME1)}')">
-      <div>
-        <div style="font-weight:600">${esc(k.NAME1)} ${esc(k.NAME2||'')}</div>
-        <div style="color:var(--text-dim);font-size:12px">${esc(k.KUNNUM1||'')} · ${esc(k.ORT||'')}</div>
-      </div>
+    <div style="padding:10px;background:var(--grau-hell);border-radius:var(--radius-klein);cursor:pointer;"
+         onclick="kundeWaehlen(${k.REC_ID}, '${esc(k.NAME1)}')">
+      <div style="font-weight:600">${esc(k.NAME1)} ${esc(k.NAME2||'')}</div>
+      <div style="color:var(--text-dim);font-size:12px">${esc(k.KUNNUM1||'')} · ${esc(k.ORT||'')}</div>
     </div>`).join('');
 }
-
 async function kundeWaehlen(adressenId, name) {
-  // Für Zahlung auf Kundenkonto merken
   window._gewaehlterKunde = { id: adressenId, name: name };
   toast(`Kunde: ${name}`, 'ok');
   kundenSchliessen();
 }
 
-// ── Artikel-Suche ─────────────────────────────────────────────
+// ── EAN / Artikelsuche ────────────────────────────────────────
 let _sucheTimer;
-document.getElementById('artikelSuche').addEventListener('input', e => {
-  clearTimeout(_sucheTimer);
-  _sucheTimer = setTimeout(() => sucheAusfuehren(e.target.value), 250);
-});
-document.getElementById('artikelSuche').addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    const q = e.target.value.trim();
-    if (q) sucheBarcode(q);
-  }
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('artikelSuche');
+  inp.addEventListener('input', e => {
+    clearTimeout(_sucheTimer);
+    _sucheTimer = setTimeout(() => sucheAusfuehren(e.target.value), 250);
+  });
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const q = inp.value.trim();
+      if (q) { sucheErgebnisseSchliessen(); scanEingabeVerarbeiten(q); }
+    }
+  });
 });
 
-async function sucheBarcode(code) {
+function parseEanEingabe(str) {
+  // "3x12345" oder "3×12345" → menge=3, code=12345
+  const m = str.match(/^(\d+)[x×X](.+)$/i);
+  if (m) return { menge: parseInt(m[1]), code: m[2].trim() };
+  return { menge: 1, code: str };
+}
+
+async function scanEingabeVerarbeiten(str) {
+  const { menge, code } = parseEanEingabe(str);
+  document.getElementById('artikelSuche').value = '';
+  // Zuerst Barcode probieren
   const r = await fetch(`/api/artikel/barcode/${encodeURIComponent(code)}`);
   if (r.ok) {
     const art = await r.json();
-    if (art) {
-      document.getElementById('artikelSuche').value = '';
-      sucheErgebnisseSchliessen();
-      await artikelHinzufuegen(art);
-      return;
-    }
+    if (art) { await artikelHinzufuegen(art, menge); return; }
   }
+  // Sonst Suche öffnen
   sucheAusfuehren(code);
 }
 
 async function sucheAusfuehren(q) {
   if (q.length < 2) { sucheErgebnisseSchliessen(); return; }
-  const r = await fetch(`/api/artikel/suche?q=${encodeURIComponent(q)}`);
-  const items = await r.json();
+  // Menge-Prefix ignorieren für Suche
+  const { code } = parseEanEingabe(q);
+  const items = await (await fetch(`/api/artikel/suche?q=${encodeURIComponent(code)}`)).json();
   const el = document.getElementById('sucheErgebnisse');
   if (!items.length) {
-    el.innerHTML = '<div class="suche-item" style="color:var(--text-dim)">Keine Treffer</div>';
-    el.classList.add('sichtbar');
-    return;
+    el.innerHTML = '<div class="ean-item" style="color:var(--text-dim)">Keine Treffer</div>';
+    el.classList.add('sichtbar'); return;
   }
   el.innerHTML = items.map(a => `
-    <div class="suche-item" onclick="sucheArtikelWaehlen(${JSON.stringify(a).replace(/"/g,'&quot;')})">
+    <div class="ean-item" onclick="sucheArtikelWaehlen(${JSON.stringify(a).replace(/"/g,'&quot;')})">
       <div class="art-name">${esc(a.bezeichnung)}</div>
       <div class="art-preis">${esc(a.artnum||'')} · ${euro(a.preis_cent)} · ${a.mwst_satz}%</div>
     </div>`).join('');
@@ -712,70 +728,41 @@ async function sucheAusfuehren(q) {
 }
 
 function sucheArtikelWaehlen(artikel) {
+  const str = document.getElementById('artikelSuche').value;
+  const { menge } = parseEanEingabe(str);
   document.getElementById('artikelSuche').value = '';
   sucheErgebnisseSchliessen();
-  artikelHinzufuegen(artikel);
+  artikelHinzufuegen(artikel, menge);
 }
 
 function sucheErgebnisseSchliessen() {
   document.getElementById('sucheErgebnisse').classList.remove('sichtbar');
 }
 document.addEventListener('click', e => {
-  if (!e.target.closest('.suche-rel')) sucheErgebnisseSchliessen();
+  if (!e.target.closest('.ean-wrap')) sucheErgebnisseSchliessen();
 });
 
-// ── Schnelltasten laden ────────────────────────────────────────
-let schnellDaten = [];
-let aktivSeite   = 1;
-
-async function schnellLaden() {
-  const r = await fetch('/api/schnelltasten');
-  schnellDaten = await r.json();
-  const seiten = [...new Set(schnellDaten.map(s => s.seite || 1))].sort();
-
-  const tabs = document.getElementById('schnellTabs');
-  tabs.innerHTML = seiten.map(s => `
-    <button class="schnell-tab ${s===1?'aktiv':''}"
-            onclick="schnellSeiteWechseln(${s})">
-      Seite ${s}
-    </button>`).join('');
-
-  schnellSeiteWechseln(1);
-}
-
-function schnellSeiteWechseln(seite) {
-  aktivSeite = seite;
-  document.querySelectorAll('.schnell-tab').forEach(t => {
-    t.classList.toggle('aktiv', parseInt(t.textContent.split(' ')[1]) === seite);
-  });
-  const gefiltert = schnellDaten.filter(s => (s.seite||1) === seite);
-  const grid = document.getElementById('schnellGrid');
-  if (!gefiltert.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim)">Keine Schnelltasten</div>';
-    return;
+// ── EAN Numpad ────────────────────────────────────────────────
+document.addEventListener('click', e => {
+  const t = e.target.closest('.ean-taste');
+  if (!t) return;
+  const z = t.dataset.z;
+  const inp = document.getElementById('artikelSuche');
+  if (z === '⌫') {
+    inp.value = inp.value.slice(0, -1);
+  } else if (z === '×') {
+    // Nur einmal × erlauben
+    if (!inp.value.includes('×') && inp.value.match(/^\d+$/)) inp.value += '×';
+  } else {
+    inp.value += z;
   }
-  grid.innerHTML = gefiltert.map(s => {
-    const bg = s.farbe ? `style="background:${esc(s.farbe)}"` : '';
-    return `<button class="schnell-btn" ${bg} onclick="schnellHinzufuegen(${JSON.stringify(s).replace(/"/g,'&quot;')})">
-      <span class="name">${esc(s.bezeichnung||'?')}</span>
-      ${s.preis_cent !== undefined ? `<span class="preis">${euro(s.preis_cent)}</span>` : ''}
-    </button>`;
-  }).join('');
-}
+  // Suche live aktualisieren
+  clearTimeout(_sucheTimer);
+  _sucheTimer = setTimeout(() => sucheAusfuehren(inp.value), 250);
+  inp.focus();
+});
 
-async function schnellHinzufuegen(s) {
-  if (!s.preis_cent && s.preis_cent !== 0) return;
-  await artikelHinzufuegen({
-    id:           s.artikel_id,
-    bezeichnung:  s.bezeichnung,
-    preis_cent:   s.preis_cent,
-    steuer_code:  s.steuer_code || 1,
-    mwst_satz:    s.mwst_satz || 19.0,
-    ist_gutschein: false,
-  });
-}
-
-// ── Numpad (Menge & Rabatt) ────────────────────────────────────
+// ── Modal-Numpad (Menge & Rabatt) ─────────────────────────────
 document.addEventListener('click', e => {
   const t = e.target.closest('.numpad-taste');
   if (!t) return;
@@ -792,18 +779,75 @@ document.addEventListener('click', e => {
   } else {
     if (z === '⌫') rabattEingabe = rabattEingabe.slice(0, -1) || '0';
     else rabattEingabe = (rabattEingabe === '0' ? '' : rabattEingabe) + z;
-    const v = parseInt(rabattEingabe) || 0;
-    rabattEingabe = String(Math.min(v, 100));
+    rabattEingabe = String(Math.min(parseInt(rabattEingabe) || 0, 100));
     document.getElementById('rabattDisplay').textContent = rabattEingabe;
   }
 });
 
+// ── Schnelltasten laden (nach Kategorie gruppiert) ────────────
+let schnellDaten = [];
+
+async function schnellLaden() {
+  schnellDaten = await (await fetch('/api/schnelltasten')).json();
+  schnellRender();
+}
+
+function schnellRender() {
+  // Nach Kategorie (gruppe) gruppieren; Fallback: Seite N
+  const gruppen = new Map();
+  for (const s of schnellDaten) {
+    const g = s.gruppe || (s.seite > 1 ? `Seite ${s.seite}` : 'Artikel');
+    if (!gruppen.has(g)) gruppen.set(g, []);
+    gruppen.get(g).push(s);
+  }
+
+  const grid = document.getElementById('schnellGrid');
+  if (!gruppen.size) {
+    grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">Keine Schnelltasten konfiguriert</div>';
+    return;
+  }
+
+  let html = '';
+  for (const [name, items] of gruppen) {
+    html += `<div class="schnell-gruppe">
+      <div class="schnell-gruppe-kopf">${esc(name)}</div>
+      <div class="schnell-gruppe-grid">`;
+    for (const s of items) {
+      const bgStyle  = s.farbe        ? `background:${esc(s.farbe)};` : '';
+      const fgStyle  = s.schriftfarbe ? `color:${esc(s.schriftfarbe)};` : '';
+      const nameStyle= s.schriftfarbe ? `color:${esc(s.schriftfarbe)};` : '';
+      html += `<button class="schnell-btn" style="${bgStyle}${fgStyle}"
+                       onclick="schnellHinzufuegen(${JSON.stringify(s).replace(/"/g,'&quot;')})">
+        <span class="name" style="${nameStyle}">${esc(s.bezeichnung||'?')}</span>
+        ${s.preis_cent !== undefined ? `<span class="preis" style="${nameStyle}">${euro(s.preis_cent)}</span>` : ''}
+      </button>`;
+    }
+    html += '</div></div>';
+  }
+  grid.innerHTML = html;
+}
+
+async function schnellHinzufuegen(s) {
+  if (!s.preis_cent && s.preis_cent !== 0) return;
+  // Ggf. Mengenmultiplikator aus EAN-Feld
+  const eanStr = document.getElementById('artikelSuche').value.trim();
+  const { menge } = parseEanEingabe(eanStr || '1');
+  document.getElementById('artikelSuche').value = '';
+  await artikelHinzufuegen({
+    id:           s.artikel_id,
+    bezeichnung:  s.bezeichnung,
+    preis_cent:   s.preis_cent,
+    steuer_code:  s.steuer_code || 1,
+    mwst_satz:    s.mwst_satz || 19.0,
+    ist_gutschein: false,
+  }, menge);
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await schnellLaden();
-  // Offenen Vorgang wiederherstellen, sonst neu anlegen
-  const r = await fetch('/api/vorgang/offen');
-  const d = await r.json();
+  await geparkteAktualisieren();
+  const d = await (await fetch('/api/vorgang/offen')).json();
   if (d.vorgang) {
     vorgangId  = d.vorgang.ID;
     bonNr      = d.vorgang.BON_NR;
