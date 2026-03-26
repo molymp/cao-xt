@@ -1,6 +1,6 @@
 # Habacher Dorfladen Kiosk – Projektdokumentation
 
-**Letzte Aktualisierung:** 24.03.2026 (Bestellungs-Modul v2)
+**Letzte Aktualisierung:** 26.03.2026 (App-Update-Verwaltung, Mitarbeiter-Handbuch)
 
 ---
 
@@ -269,6 +269,28 @@ Cookies werden pro Browser/Gerät gespeichert (1 Jahr):
 - Geparkte Körbe: für alle Terminals sichtbar und übernehmbar
 - Bei Übernahme: erstellt_von wird auf übernehmendes Terminal gesetzt
 - Journal: terminal_nr = buchendendes Terminal (im Bon und in Tabelle)
+
+### Terminal-Rollen
+
+| Terminal | Rolle | Besonderheiten |
+|---|---|---|
+| 1–7 | Mitarbeiter | Vollzugriff außer Handbuch-Bearbeitung und App-Update |
+| 8 | Superuser | Handbuch bearbeitbar, App-Update und Rollback möglich |
+| 9 | Kundenterminal | Nur Bestellabwicklung + Handbuch-Kapitel „Bestellabwicklung" |
+
+---
+
+## App-Update (Terminal 8)
+
+- Hintergrund-Thread (`update-checker`) prüft alle 10 Minuten via `git fetch`
+  ob neue Commits auf `origin/master` vorhanden sind
+- Bei verfügbarem Update: pulsierender 🔄-Badge in der Navbar (nur Terminal 8)
+- Seite `/update` zeigt aktuelle Version, neue Commits und Versions-Verlauf
+- Update: `git pull origin master` → automatischer App-Neustart via `os.execv`
+- Rollback: `git reset --hard <hash>` → automatischer Neustart
+- `ROLLBACK_MIN_COMMIT = "abb491c"` — ältester Commit mit Update-Funktion;
+  Rollback auf ältere Versionen wird nicht angeboten (fehlende Rollback-Seite)
+- Bei künftigen Breaking Changes (Schema, Protokoll) diesen Wert aktualisieren
 
 ---
 
