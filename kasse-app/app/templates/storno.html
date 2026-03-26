@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Storno{% endblock %}
+{% block content %}
+<div style="max-width:800px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">↩️ Stornierung</h1>
+
+  <!-- Suche -->
+  <div class="card" style="margin-bottom:20px;">
+    <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Bon suchen</h3>
+    <div style="display:grid; grid-template-columns:120px 160px 160px 1fr; gap:10px; align-items:end;">
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Bon-Nr.</label>
+        <input class="form-control" id="suchBonNr" type="number" placeholder="z.B. 42">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Von</label>
+        <input class="form-control" id="suchVon" type="date" value="{{ jetzt.strftime('%Y-%m-%d') }}">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Bis</label>
+        <input class="form-control" id="suchBis" type="date" value="{{ jetzt.strftime('%Y-%m-%d') }}">
+      </div>
+      <button class="btn btn-primary" onclick="suchen()" style="height:54px;">🔍 Suchen</button>
+    </div>
+  </div>
+
+  <!-- Ergebnisse -->
+  <div id="ergebnisse"></div>
+
+  <!-- Storno-Bestätigung Modal -->
+  <div class="overlay hidden" id="stornoModal">
+    <div class="modal">
+      <h2>Stornierung bestätigen</h2>
+      <div id="stornoInfo" style="margin-bottom:20px; color:var(--text-dim); font-size:15px;"></div>
+      <div class="alert alert-warn">
+        Der Beleg wird storniert und ein Storno-Bon gedruckt.
+        Dieser Vorgang kann nicht rückgängig gemacht werden.
+      </div>
+      <div style="display:flex; gap:12px; margin-top:16px;">
+        <button class="btn btn-neutral btn-full" onclick="stornoAbbrechen()">Abbrechen</button>
+        <button class="btn btn-danger btn-full" id="btnStornoFinal" onclick="stornoBestaetigen()">
+          ✓ Storno durchführen
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <a href="/kasse" class="btn btn-neutral" style="margin-top:20px;">← Zurück</a>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+let stornoVorgangId = null;
+
+async function suchen() {
+  const bonNr  = document.getElementById('suchBonNr').value.trim();
+  const von    = document.getElementById('suchVon').value;
+  const bis    = document.getElementById('suchBis').value;
+  const params = new URLSearchParams({ datum_von: von, datum_bis: bis });
+  if (bonNr) params.set('bon_nr', bonNr);
+
+  const r    = await fetch('/api/vorgang/suche?' + params);
+  const rows = await r.json();
+  const el   = document.getElementById('ergebnisse');
+
+  if (!rows.length) {
+    el.innerHTML = '<div style="color:var(--text-dim); padding:16px;">Keine Treffer</div>';
+    return;
+  }
+  el.innerHTML = `<div class="card">
+    <div style="display:flex; flex-direction:column; gap:6px;">
+    ${rows.map(v => `
+      <div style="display:grid; grid-template-columns:80px 1fr 130px 130px;
+                  align-items:center; gap:12px; padding:12px; background:var(--card);
+                  border-radius:8px; border:1px solid var(--border);">
+        <div style="font-weight:700; font-size:17px;">Bon ${v.BON_NR}</div>
+        <div>
+          <div style="font-size:14px;">${v.BON_DATUM ? v.BON_DATUM.slice(0,16).replace('T',' ') : ''}</div>
+          <div style="font-size:12px; color:var(--text-dim);">${v.MITARBEITER_NAME || ''}</div>
+        </div>
+        <div style="font-size:18px; font-weight:700; color:var(--green); text-align:right;">
+          ${euro(v.BETRAG_BRUTTO)}
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="stornoStarten(${v.ID}, ${v.BON_NR}, ${v.BETRAG_BRUTTO})">
+          ↩ Stornieren
+        </button>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function stornoStarten(vid, bonNr, betrag) {
+  stornoVorgangId = vid;
+  document.getElementById('stornoInfo').innerHTML =
+    `<strong>Bon ${bonNr}</strong> über <strong>${euro(betrag)}</strong> wird storniert.`;
+  document.getElementById('stornoModal').classList.remove('hidden');
+}
+
+function stornoAbbrechen() {
+  stornoVorgangId = null;
+  document.getElementById('stornoModal').classList.add('hidden');
+}
+
+async function stornoBestaetigen() {
+  if (!stornoVorgangId) return;
+  const btn = document.getElementById('btnStornoFinal');
+  btn.disabled = true;
+  btn.textContent = '⏳…';
+  const r = await api('POST', `/api/vorgang/${stornoVorgangId}/storno`);
+  stornoAbbrechen();
+  if (r.ok) {
+    toast('Storno erfolgreich – Bon gedruckt', 'ok');
+    await suchen();
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+  }
+  btn.disabled = false;
+  btn.textContent = '✓ Storno durchführen';
+}
+
+// Automatisch heute suchen
+document.addEventListener('DOMContentLoaded', suchen);
+</script>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Kassenbuch{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">📒 Kassenbuch</h1>
+
+  <!-- Aktueller Saldo -->
+  <div class="card" style="margin-bottom:20px; text-align:center;">
+    <div style="color:var(--text-dim); font-size:14px;">Aktueller Kassenbestand</div>
+    <div style="font-family:'Lobster',Georgia,serif; font-size:48px; font-weight:400; color:var(--gold);" id="saldoAnzeige">
+      {{ "%.2f"|format(saldo/100) }} €
+    </div>
+  </div>
+
+  <!-- Buchung erfassen -->
+  <div class="card" style="margin-bottom:20px;">
+    <h3 style="margin-bottom:16px; font-size:17px;">Buchung erfassen</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+      <button class="btn btn-success" id="btnEinlage"  onclick="typWaehlen('EINLAGE')">+ Einlage</button>
+      <button class="btn btn-danger"  id="btnEntnahme" onclick="typWaehlen('ENTNAHME')">− Entnahme</button>
+    </div>
+    <div class="form-group">
+      <label>Betrag (€)</label>
+      <input class="form-control" id="buchBetrag" type="number"
+             min="0.01" step="0.01" placeholder="0,00">
+    </div>
+    <div class="form-group">
+      <label>Notiz (optional)</label>
+      <input class="form-control" id="buchNotiz" type="text" placeholder="z.B. Wechselgeld aufgefüllt">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="buchungSpeichern()">Buchen</button>
+  </div>
+
+  <!-- Heutige Buchungen -->
+  <div class="card">
+    <h3 style="margin-bottom:12px; font-size:17px;">Heutige Buchungen</h3>
+    {% if eintraege %}
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      {% for e in eintraege %}
+      <div style="display:flex; justify-content:space-between; align-items:center;
+                  padding:10px 12px; background:var(--card); border-radius:8px;
+                  border:1px solid var(--border);">
+        <div>
+          <div style="font-size:15px; font-weight:600;">
+            {% if e.TYP == 'EINLAGE' %}+ Einlage
+            {% elif e.TYP == 'ENTNAHME' %}− Entnahme
+            {% elif e.TYP == 'UMSATZ_BAR' %}Bar-Umsatz
+            {% elif e.TYP == 'ANFANGSBESTAND' %}Anfangsbestand
+            {% else %}{{ e.TYP }}{% endif %}
+          </div>
+          {% if e.NOTIZ %}
+          <div style="font-size:12px; color:var(--text-dim);">{{ e.NOTIZ }}</div>
+          {% endif %}
+          <div style="font-size:12px; color:var(--text-dim);">
+            {{ e.BUCHUNGSDATUM[:16] if e.BUCHUNGSDATUM is string else e.BUCHUNGSDATUM }}
+          </div>
+        </div>
+        <div style="font-family:'Lobster',Georgia,serif; font-size:20px; font-weight:400;
+                    color:{{ 'var(--gruen-hell)' if e.BETRAG >= 0 else 'var(--rot)' }};">
+          {{ "%.2f"|format(e.BETRAG/100) }} €
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="color:var(--text-dim); text-align:center; padding:20px;">
+      Noch keine Buchungen heute
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:20px;">
+    <a href="/kasse" class="btn btn-neutral">← Zurück</a>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+let gewaehlterTyp = 'EINLAGE';
+
+function typWaehlen(typ) {
+  gewaehlterTyp = typ;
+  document.getElementById('btnEinlage').style.opacity  = typ === 'EINLAGE'  ? '1' : '0.5';
+  document.getElementById('btnEntnahme').style.opacity = typ === 'ENTNAHME' ? '1' : '0.5';
+}
+
+async function buchungSpeichern() {
+  const betrag = parseFloat(document.getElementById('buchBetrag').value);
+  if (!betrag || betrag <= 0) { toast('Betrag eingeben', 'err'); return; }
+  const notiz = document.getElementById('buchNotiz').value.trim();
+  const r = await api('POST', '/api/kassenbuch', {
+    typ: gewaehlterTyp,
+    betrag_cent: Math.round(betrag * 100),
+    notiz,
+  });
+  if (r.ok) {
+    document.getElementById('saldoAnzeige').textContent =
+      (r.saldo / 100).toFixed(2).replace('.', ',') + ' €';
+    document.getElementById('buchBetrag').value = '';
+    document.getElementById('buchNotiz').value  = '';
+    toast(gewaehlterTyp === 'EINLAGE' ? 'Einlage gebucht' : 'Entnahme gebucht', 'ok');
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+  }
+}
+</script>
+{% endblock %}

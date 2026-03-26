@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}DSFinV-K Export{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:8px;">📦 DSFinV-K Export</h1>
+  <div style="color:var(--text-dim); font-size:14px; margin-bottom:24px;">
+    Digitale Schnittstelle der Finanzverwaltung für Kassensysteme (§146b AO).
+    Das TAR-Archiv kann direkt an das Finanzamt übergeben werden.
+  </div>
+
+  <!-- Fiskaly Export -->
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">
+      Export via Fiskaly API
+    </h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Von</label>
+        <input class="form-control" id="exportVon" type="date"
+               value="{{ jetzt.strftime('%Y-%m-01') }}">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Bis</label>
+        <input class="form-control" id="exportBis" type="date"
+               value="{{ jetzt.strftime('%Y-%m-%d') }}">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="exportStarten()">
+      🚀 Export anfordern
+    </button>
+
+    <div id="exportStatus" style="margin-top:16px; display:none;">
+      <div id="exportMsg" class="alert"></div>
+      <div style="display:flex; gap:10px; margin-top:10px;" id="exportAktionen"></div>
+    </div>
+  </div>
+
+  <!-- Lokale Übersicht -->
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">
+      Lokale Transaktionsübersicht (JSON)
+    </h3>
+    <p style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">
+      Listet alle Kassenvorgänge des Zeitraums aus der lokalen Datenbank auf.
+      Nützlich für interne Prüfungen unabhängig von Fiskaly.
+    </p>
+    <button class="btn btn-neutral btn-full" onclick="lokalHerunterladen()">
+      ⬇ JSON herunterladen
+    </button>
+  </div>
+
+  <a href="/admin/" class="btn btn-neutral">← Zurück</a>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+let laufenderExportId = null;
+let statusInterval    = null;
+
+async function exportStarten() {
+  const von = document.getElementById('exportVon').value;
+  const bis = document.getElementById('exportBis').value;
+  if (!von || !bis) { toast('Zeitraum angeben', 'err'); return; }
+
+  const el  = document.getElementById('exportStatus');
+  const msg = document.getElementById('exportMsg');
+  el.style.display = 'block';
+  msg.className    = 'alert alert-warn';
+  msg.textContent  = '⏳ Export wird bei Fiskaly angefordert…';
+  document.getElementById('exportAktionen').innerHTML = '';
+
+  const r = await fetch('/admin/export/starten', {
+    method: 'POST',
+    body: new URLSearchParams({ datum_von: von, datum_bis: bis }),
+  });
+  const d = await r.json();
+  if (!d.ok) {
+    msg.className   = 'alert alert-error';
+    msg.textContent = '❌ Fehler: ' + d.fehler;
+    return;
+  }
+
+  laufenderExportId = d.export_id;
+  msg.textContent   = `⏳ Export läuft… (ID: ${d.export_id})`;
+
+  // Polling alle 3 Sekunden
+  statusInterval = setInterval(exportStatusPruefen, 3000);
+}
+
+async function exportStatusPruefen() {
+  if (!laufenderExportId) return;
+  const r = await fetch(`/admin/export/status/${laufenderExportId}`);
+  const d = await r.json();
+  const msg = document.getElementById('exportMsg');
+
+  if (d.state === 'COMPLETED') {
+    clearInterval(statusInterval);
+    msg.className   = 'alert alert-success';
+    msg.textContent = '✅ Export fertig – TAR-Archiv bereit zum Download';
+    document.getElementById('exportAktionen').innerHTML = `
+      <a href="/admin/export/download/${laufenderExportId}"
+         class="btn btn-success" download>
+        ⬇ TAR-Archiv herunterladen
+      </a>`;
+  } else if (d.state === 'ERROR') {
+    clearInterval(statusInterval);
+    msg.className   = 'alert alert-error';
+    msg.textContent = '❌ Export fehlgeschlagen: ' + (d.fehler || d.state);
+  } else {
+    msg.textContent = `⏳ Status: ${d.state}…`;
+  }
+}
+
+async function lokalHerunterladen() {
+  const von = document.getElementById('exportVon').value;
+  const bis = document.getElementById('exportBis').value;
+  const url = `/admin/export/lokal?von=${von}&bis=${bis}`;
+  const r   = await fetch(url);
+  const d   = await r.json();
+  const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `kasse_export_${von}_${bis}.json`;
+  a.click();
+  toast('JSON heruntergeladen', 'ok');
+}
+</script>
+{% endblock %}
