@@ -180,21 +180,19 @@ def schnelltasten_laden() -> list:
         cur.execute("DESCRIBE ARTIKEL_SCHNELLZUGRIFF")
         spalten = {r['Field'] for r in cur.fetchall()}
 
-        pos_col    = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
-        name_col   = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
-        farbe_col  = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
-        schrift_col= _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR'], None)
-        seite_col  = _erste_spalte(spalten, ['SEITE','EBENE','TAB'], None)
-        gruppe_col = _erste_spalte(spalten, ['GRUPPE','KATEGORIE','CATEGORY','GRUPPENNAME'], None)
-        artnr_col  = _erste_spalte(spalten, ['ARTIKEL_ID','ARTNUM','ARTNR'], None)
+        pos_col      = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
+        name_col     = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
+        farbe_col    = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
+        schrift_col  = _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR'], None)
+        seite_col    = _erste_spalte(spalten, ['SEITE','EBENE','TAB'], None)
+        kategorie_col= _erste_spalte(spalten, ['KATEGORIE_NAME','KATEGORIE','CATEGORY','GRUPPE','GRUPPENNAME'], None)
+        artnr_col    = _erste_spalte(spalten, ['ARTIKEL_ID'], None)
+        wg_id_col    = _erste_spalte(spalten, ['WG_ID','WGID','WARENGRUPPE_ID'], None)
 
-        select = ['REC_ID', pos_col]
-        if name_col:    select.append(name_col)
-        if farbe_col:   select.append(farbe_col)
-        if schrift_col: select.append(schrift_col)
-        if seite_col:   select.append(seite_col)
-        if gruppe_col:  select.append(gruppe_col)
-        if artnr_col:   select.append(artnr_col)
+        select = list({'REC_ID', pos_col})
+        for col in (name_col, farbe_col, schrift_col, seite_col, kategorie_col, artnr_col, wg_id_col):
+            if col:
+                select.append(col)
 
         cur.execute(
             f"SELECT {', '.join(set(select))} FROM ARTIKEL_SCHNELLZUGRIFF ORDER BY {pos_col}"
@@ -205,15 +203,30 @@ def schnelltasten_laden() -> list:
     result = []
     for row in rows:
         eintrag = {
-            'rec_id':       row.get('REC_ID'),
-            'position':     row.get(pos_col) or row.get('REC_ID'),
-            'farbe':        row.get(farbe_col)   if farbe_col   else None,
-            'schriftfarbe': row.get(schrift_col) if schrift_col else None,
-            'seite':        row.get(seite_col) or 1 if seite_col else 1,
-            'gruppe':       row.get(gruppe_col)  if gruppe_col  else None,
+            'rec_id':         row.get('REC_ID'),
+            'position':       row.get(pos_col) or row.get('REC_ID'),
+            'farbe':          _cao_farbe_zu_css(row.get(farbe_col))   if farbe_col    else None,
+            'schriftfarbe':   _cao_farbe_zu_css(row.get(schrift_col)) if schrift_col  else None,
+            'seite':          row.get(seite_col) or 1 if seite_col else 1,
+            'kategorie_name': row.get(kategorie_col) if kategorie_col else None,
         }
-        # Artikel-Daten laden
+        # Warengruppe oder Artikel laden
         artikel_ref = row.get(artnr_col) if artnr_col else None
+        wg_ref      = row.get(wg_id_col) if wg_id_col else None
+
+        # Warengruppe: ARTIKEL_ID leer, WG_ID gefüllt
+        if (not artikel_ref or str(artikel_ref).strip() in ('', '0')) and wg_ref:
+            wg = _warengruppe_laden(wg_ref)
+            if wg:
+                eintrag.update({
+                    'ist_warengruppe': True,
+                    'wg_id':           wg['wg_id'],
+                    'bezeichnung':     row.get(name_col) or wg['bezeichnung'] if name_col else wg['bezeichnung'],
+                    'steuer_code':     wg['steuer_code'],
+                    'mwst_satz':       wg['mwst_satz'],
+                })
+            result.append(eintrag)
+            continue
         if artikel_ref:
             if str(artikel_ref).isdigit():
                 # numerisch → ARTIKEL.REC_ID
@@ -256,6 +269,53 @@ def _erste_spalte(spalten: set, kandidaten: list, fallback) -> str | None:
         if k in spalten:
             return k
     return fallback
+
+
+def _cao_farbe_zu_css(farbe) -> str | None:
+    """
+    Konvertiert CAO-Farbzahl (Windows COLORREF: R | G<<8 | B<<16) zu CSS #rrggbb.
+    z.B. 39372 → R=204, G=153, B=0 → '#cc9900'
+    """
+    if not farbe:
+        return None
+    try:
+        n = int(farbe)
+        r = n & 0xFF
+        g = (n >> 8) & 0xFF
+        b = (n >> 16) & 0xFF
+        return f'#{r:02x}{g:02x}{b:02x}'
+    except (ValueError, TypeError):
+        s = str(farbe).strip()
+        return s if s.startswith('#') else None
+
+
+def _warengruppe_laden(wg_id) -> dict | None:
+    """Lädt eine Warengruppe aus WARENGRUPPEN und gibt bezeichnung + steuer_code zurück."""
+    try:
+        with get_db() as cur:
+            cur.execute("DESCRIBE WARENGRUPPEN")
+            spalten = {r['Field'] for r in cur.fetchall()}
+            id_col   = _erste_spalte(spalten, ['REC_ID', 'WG_ID', 'ID'], 'REC_ID')
+            name_col = _erste_spalte(spalten, ['BEZEICHNUNG', 'NAME', 'KURZNAME', 'WGNAME'], None)
+            st_col   = _erste_spalte(spalten, ['STEUER_CODE', 'STEUERSATZ_CODE', 'MWST_CODE'], None)
+            felder   = list({id_col, *(([name_col] if name_col else []) + ([st_col] if st_col else []))})
+            cur.execute(
+                f"SELECT {', '.join(felder)} FROM WARENGRUPPEN WHERE {id_col} = %s LIMIT 1",
+                (wg_id,)
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        steuer_code = int(row.get(st_col) or 1) if st_col else 1
+        return {
+            'wg_id':       wg_id,
+            'bezeichnung': row.get(name_col, f'WG {wg_id}') if name_col else f'WG {wg_id}',
+            'steuer_code': steuer_code,
+            'mwst_satz':   mwst_satz_fuer_code(steuer_code),
+        }
+    except Exception as e:
+        log.warning('Warengruppe %s nicht ladbar: %s', wg_id, e)
+        return None
 
 
 # ─────────────────────────────────────────────────────────────

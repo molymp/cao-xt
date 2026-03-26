@@ -116,6 +116,14 @@
 .schnell-btn:active { opacity: 0.7; }
 .schnell-btn .name  { font-size: 11px; font-weight: 700; color: var(--text-dunkel); line-height: 1.2; }
 .schnell-btn .preis { font-size: 10px; color: var(--text-hell); }
+.schnell-btn.wg-btn {
+  border-style: dashed; border-width: 2px;
+  border-color: var(--gold); position: relative;
+}
+.schnell-btn.wg-btn::after {
+  content: '€'; position: absolute; top: 3px; right: 5px;
+  font-size: 9px; font-weight: 800; color: var(--gold); opacity: 0.8;
+}
 
 /* ── Rechte Spalte: Aktionen ─────────────────────────────── */
 .aktionen-panel {
@@ -274,8 +282,8 @@
 
     <hr>
 
-    <!-- EAN / Artikelsuche -->
-    <div class="ean-label">Artikel / EAN scannen</div>
+    <!-- EAN / Artikelsuche / Betrag -->
+    <div class="ean-label">Artikel / EAN / Betrag (€)</div>
     <div class="ean-wrap">
       <input class="ean-input" id="artikelSuche" type="text"
              placeholder="z.B. 3×12345…"
@@ -286,7 +294,7 @@
 
     <!-- Numpad -->
     <div class="ean-numpad">
-      {% for z in ['7','8','9','4','5','6','1','2','3','×','0','⌫'] %}
+      {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
       <button class="ean-taste{% if z == '⌫' %} ean-enter{% endif %}"
               data-z="{{ z }}">{{ z }}</button>
       {% endfor %}
@@ -750,13 +758,11 @@ document.addEventListener('click', e => {
   const inp = document.getElementById('artikelSuche');
   if (z === '⌫') {
     inp.value = inp.value.slice(0, -1);
-  } else if (z === '×') {
-    // Nur einmal × erlauben
-    if (!inp.value.includes('×') && inp.value.match(/^\d+$/)) inp.value += '×';
+  } else if (z === ',') {
+    if (!inp.value.includes(',')) inp.value += ',';
   } else {
     inp.value += z;
   }
-  // Suche live aktualisieren
   clearTimeout(_sucheTimer);
   _sucheTimer = setTimeout(() => sucheAusfuehren(inp.value), 250);
   inp.focus();
@@ -793,10 +799,10 @@ async function schnellLaden() {
 }
 
 function schnellRender() {
-  // Nach Kategorie (gruppe) gruppieren; Fallback: Seite N
+  // Nach KATEGORIE_NAME gruppieren; Fallback: 'Artikel'
   const gruppen = new Map();
   for (const s of schnellDaten) {
-    const g = s.gruppe || (s.seite > 1 ? `Seite ${s.seite}` : 'Artikel');
+    const g = s.kategorie_name || (s.seite > 1 ? `Seite ${s.seite}` : 'Artikel');
     if (!gruppen.has(g)) gruppen.set(g, []);
     gruppen.get(g).push(s);
   }
@@ -815,11 +821,11 @@ function schnellRender() {
     for (const s of items) {
       const bgStyle  = s.farbe        ? `background:${esc(s.farbe)};` : '';
       const fgStyle  = s.schriftfarbe ? `color:${esc(s.schriftfarbe)};` : '';
-      const nameStyle= s.schriftfarbe ? `color:${esc(s.schriftfarbe)};` : '';
-      html += `<button class="schnell-btn" style="${bgStyle}${fgStyle}"
+      const wgKlasse = s.ist_warengruppe ? ' wg-btn' : '';
+      html += `<button class="schnell-btn${wgKlasse}" style="${bgStyle}${fgStyle}"
                        onclick="schnellHinzufuegen(${JSON.stringify(s).replace(/"/g,'&quot;')})">
-        <span class="name" style="${nameStyle}">${esc(s.bezeichnung||'?')}</span>
-        ${s.preis_cent !== undefined ? `<span class="preis" style="${nameStyle}">${euro(s.preis_cent)}</span>` : ''}
+        <span class="name" style="${fgStyle}">${esc(s.bezeichnung||'?')}</span>
+        ${s.preis_cent !== undefined ? `<span class="preis" style="${fgStyle}">${euro(s.preis_cent)}</span>` : ''}
       </button>`;
     }
     html += '</div></div>';
@@ -828,8 +834,11 @@ function schnellRender() {
 }
 
 async function schnellHinzufuegen(s) {
+  if (s.ist_warengruppe) {
+    await warengruppeBuchen(s);
+    return;
+  }
   if (!s.preis_cent && s.preis_cent !== 0) return;
-  // Ggf. Mengenmultiplikator aus EAN-Feld
   const eanStr = document.getElementById('artikelSuche').value.trim();
   const { menge } = parseEanEingabe(eanStr || '1');
   document.getElementById('artikelSuche').value = '';
@@ -841,6 +850,23 @@ async function schnellHinzufuegen(s) {
     mwst_satz:    s.mwst_satz || 19.0,
     ist_gutschein: false,
   }, menge);
+}
+
+async function warengruppeBuchen(wg) {
+  const eanStr = document.getElementById('artikelSuche').value.trim();
+  if (!eanStr) { toast('Bitte Betrag eingeben', 'err'); return; }
+  const betragEuro = parseFloat(eanStr.replace(',', '.'));
+  if (!betragEuro || betragEuro <= 0) { toast('Ungültiger Betrag', 'err'); return; }
+  const betragCent = Math.round(betragEuro * 100);
+  document.getElementById('artikelSuche').value = '';
+  await artikelHinzufuegen({
+    id:           null,
+    bezeichnung:  wg.bezeichnung,
+    preis_cent:   betragCent,
+    steuer_code:  wg.steuer_code || 2,
+    mwst_satz:    wg.mwst_satz  || 7.0,
+    ist_gutschein: false,
+  });
 }
 
 // ── Init ──────────────────────────────────────────────────────
