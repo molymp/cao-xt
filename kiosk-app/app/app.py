@@ -1436,6 +1436,10 @@ def handbuch_upload():
 
 # ── App-Update (nur Terminal 8) ────────────────────────────────
 
+# Ältester Commit, der die Update-/Rollback-Funktion bereits enthält.
+# Rollback auf ältere Versionen wird nicht angeboten.
+ROLLBACK_MIN_COMMIT = "abb491c"
+
 def _parse_git_log(raw: str) -> list[dict]:
     ergebnis = []
     for zeile in raw.splitlines():
@@ -1461,7 +1465,8 @@ def update_seite():
         if _update_status["verfuegbar"]:
             raw = _git(["log", "HEAD..origin/master", "--format=%H|%h|%s|%ai"])
             commits_neu = _parse_git_log(raw)
-        raw2 = _git(["log", "-15", "--format=%H|%h|%s|%ai"])
+        # Nur Commits ab dem ersten mit Update-Funktion anzeigen
+        raw2 = _git(["log", f"{ROLLBACK_MIN_COMMIT}^..HEAD", "--format=%H|%h|%s|%ai"])
         commits_lokal = _parse_git_log(raw2)
     except Exception as exc:
         fehler = str(exc)
