@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% block title %}Journal{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ── Kiosk-Farbschema für diese Seite ───────────────────────── */
+:root {
+  --gd:  #1a4010;  --gm:  #2e6e1a;  --gh:  #4a9428;  --gb:  #d4e8c2;
+  --au:  #c8780a;  --auh: #e8970e;
+  --cr:  #f7f3ea;  --crd: #ece3cc;  --crw: #e5d9bc;
+  --td:  #142808;  --tm:  #2e4a1a;  --th:  #5a7a3a;
+  --glh: #f0ece0;  --rot: #b83030;
+  --sk: 0 2px 12px rgba(26,64,16,0.13);
+  --rk: 8px; --rl: 12px;
+}
+
+/* Inhaltsbereich auf Creme umschalten */
+.j-seite {
+  background: var(--cr);
+  color: var(--td);
+  min-height: calc(100vh - 60px);
+  padding: 24px;
+  font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+}
+
+/* Filterbereich */
+.j-filter {
+  background: white;
+  border: 1px solid var(--crd);
+  border-radius: var(--rl);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--sk);
+  display: grid;
+  grid-template-columns: 120px 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+}
+.j-filter label { display: block; font-size: 12px; font-weight: 700;
+  color: var(--th); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.j-filter input {
+  width: 100%; padding: 10px 12px;
+  background: var(--glh); border: 1px solid var(--crd);
+  border-radius: var(--rk); color: var(--td); font-size: 15px;
+  font-family: inherit;
+}
+.j-filter input:focus { outline: none; border-color: var(--gm); }
+.j-btn-suche {
+  padding: 10px 20px; background: var(--gd); color: var(--gb);
+  border: none; border-radius: var(--rk); font-family: inherit;
+  font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: background 0.15s;
+}
+.j-btn-suche:hover { background: var(--gm); }
+
+/* Tabelle */
+.j-tabelle {
+  width: 100%; border-collapse: collapse;
+  background: white; border-radius: var(--rl);
+  overflow: hidden; box-shadow: var(--sk);
+}
+.j-tabelle th {
+  background: var(--gd); color: var(--gb);
+  padding: 12px 16px; text-align: left;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.j-tabelle td {
+  padding: 12px 16px; border-bottom: 1px solid var(--crd);
+  font-size: 14px; vertical-align: middle;
+}
+.j-tabelle tr:last-child td { border-bottom: none; }
+.j-tabelle tr.daten-zeile { cursor: pointer; }
+.j-tabelle tr.daten-zeile:hover td { background: var(--glh); }
+.j-tabelle tr.storniert td { opacity: 0.5; }
+.j-tabelle tr.storniert .j-aktionen { opacity: 1; text-decoration: none; }
+
+/* Aufklapp-Pfeil */
+.j-pfeil {
+  display: inline-block; color: var(--th);
+  font-size: 12px; transition: transform 0.2s ease;
+}
+.j-pfeil.offen { transform: rotate(90deg); }
+
+/* Betrag */
+.j-betrag { font-family: 'Lobster', Georgia, serif; font-size: 17px; color: var(--au); }
+
+/* Zahlart */
+.j-zahlart { font-size: 12px; color: var(--th); }
+
+/* Status-Badge */
+.j-badge {
+  display: inline-block; padding: 3px 9px;
+  border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.j-badge-ok        { background: #e8f5e0; color: var(--gm); }
+.j-badge-storniert { background: #fde8e8; color: var(--rot); }
+
+/* Aktions-Buttons */
+.j-aktionen { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+.j-btn {
+  padding: 6px 11px; font-size: 12px; border-radius: 6px;
+  border: none; cursor: pointer; font-family: inherit; font-weight: 700;
+  transition: background 0.12s; white-space: nowrap;
+}
+.j-btn-neu    { background: var(--crd); color: var(--gd); }
+.j-btn-neu:hover { background: var(--crw); }
+.j-btn-storno { background: #fde8e8; color: var(--rot); }
+.j-btn-storno:hover { background: #f9c0c0; }
+
+/* Detail-Bereich */
+.j-detail-zeile td { padding: 0; background: var(--glh); }
+.j-detail-inhalt {
+  display: none; padding: 10px 16px 14px 48px;
+  font-size: 13px; color: var(--tm);
+}
+.j-detail-inhalt.offen { display: block; }
+.j-detail-pos { display: flex; gap: 16px; padding: 3px 0; }
+.j-detail-pos span:first-child { flex: 1; }
+
+/* Leer-Zustand */
+.j-leer { text-align: center; padding: 48px; color: var(--th); }
+.j-leer-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+
+/* Storno-Modal */
+.j-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(26,64,16,0.6); z-index: 9000;
+  align-items: center; justify-content: center;
+}
+.j-overlay.aktiv { display: flex; }
+.j-modal {
+  background: white; border-radius: var(--rl);
+  box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+  padding: 28px 32px; width: min(440px, 95vw);
+}
+.j-modal h2 { font-family: 'Lobster', Georgia, serif;
+  font-size: 22px; color: var(--gd); margin-bottom: 14px; font-weight: 400; }
+.j-modal-info { color: var(--tm); margin-bottom: 14px; font-size: 15px; }
+.j-modal-warn {
+  background: #fef8e2; border: 1px solid #e8c84a; border-radius: var(--rk);
+  padding: 12px 16px; color: #7a5a00; font-size: 14px; margin-bottom: 18px;
+}
+.j-modal-btn-zeile { display: flex; gap: 10px; }
+.j-modal-btn-zeile button { flex: 1; padding: 12px; font-family: inherit;
+  font-size: 15px; font-weight: 700; border: none;
+  border-radius: var(--rk); cursor: pointer; transition: background 0.12s; }
+.j-modal-abbrechen { background: var(--crd); color: var(--gd); }
+.j-modal-abbrechen:hover { background: var(--crw); }
+.j-modal-bestaetigen { background: var(--rot); color: white; }
+.j-modal-bestaetigen:hover { background: #9a2020; }
+
+@import url('https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap');
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="j-seite">
+  <div style="display:flex; align-items:baseline; gap:16px; margin-bottom:20px;">
+    <h1 style="font-family:'Lobster',Georgia,serif; font-size:28px; color:var(--gd);
+               font-weight:400;">Journal</h1>
+    <a href="/kasse" style="margin-left:auto; padding:8px 16px; background:var(--crd);
+       color:var(--gd); border-radius:var(--rk); font-size:14px; font-weight:700;
+       text-decoration:none;">← Kasse</a>
+  </div>
+
+  <!-- Filter -->
+  <div class="j-filter">
+    <div>
+      <label>Bon-Nr.</label>
+      <input id="suchBonNr" type="number" placeholder="alle">
+    </div>
+    <div>
+      <label>Von</label>
+      <input id="suchVon" type="date" value="{{ heute }}">
+    </div>
+    <div>
+      <label>Bis</label>
+      <input id="suchBis" type="date" value="{{ heute }}">
+    </div>
+    <button class="j-btn-suche" onclick="suchen()">🔍 Suchen</button>
+  </div>
+
+  <!-- Ergebnisse -->
+  <div id="ergebnisse"></div>
+</div>
+
+<!-- Storno-Bestätigung -->
+<div class="j-overlay" id="stornoModal">
+  <div class="j-modal">
+    <h2>Storno bestätigen</h2>
+    <div class="j-modal-info" id="stornoInfo"></div>
+    <div class="j-modal-warn">
+      Der Beleg wird storniert und ein Storno-Bon gedruckt.
+      Dieser Vorgang kann nicht rückgängig gemacht werden.
+    </div>
+    <div class="j-modal-btn-zeile">
+      <button class="j-modal-abbrechen" onclick="stornoAbbrechen()">Abbrechen</button>
+      <button class="j-modal-bestaetigen" id="btnStornoFinal" onclick="stornoBestaetigen()">
+        ↩️ Storno durchführen
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let stornoVorgangId = null;
+const posCache = {};
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function datFmt(raw) {
+  return raw ? raw.slice(0,16).replace('T',' ') : '–';
+}
+function fmtZahlart(raw) {
+  if (!raw) return '';
+  const m = { BAR:'Bar', EC:'EC', KUNDENKONTO:'Konto', GUTSCHEIN:'Gutsch.', SONSTIGE:'Sonst.' };
+  return raw.split('/').map(z => m[z] || z).join('/');
+}
+
+// ── Suche ────────────────────────────────────────────────────
+async function suchen() {
+  const bonNr  = document.getElementById('suchBonNr').value.trim();
+  const von    = document.getElementById('suchVon').value;
+  const bis    = document.getElementById('suchBis').value;
+  const params = new URLSearchParams({ datum_von: von, datum_bis: bis });
+  if (bonNr) params.set('bon_nr', bonNr);
+
+  const el = document.getElementById('ergebnisse');
+  el.innerHTML = '<div style="color:var(--th);padding:16px;">Suche läuft…</div>';
+
+  const rows = await fetch('/api/vorgang/suche?' + params).then(r => r.json());
+
+  if (!rows.length) {
+    el.innerHTML = `<div class="j-leer"><div class="j-leer-icon">📒</div>Keine Bons gefunden.</div>`;
+    return;
+  }
+
+  el.innerHTML = `<table class="j-tabelle">
+    <thead><tr>
+      <th style="width:28px;"></th>
+      <th>Bon</th>
+      <th>Datum</th>
+      <th>Betrag</th>
+      <th>Zahlart</th>
+      <th>Status</th>
+      <th>Aktionen</th>
+    </tr></thead>
+    <tbody>
+    ${rows.map(v => {
+      const ist = v.STATUS === 'STORNIERT';
+      const badge = ist
+        ? `<span class="j-badge j-badge-storniert">✕ Storniert</span>`
+        : `<span class="j-badge j-badge-ok">✓ OK</span>`;
+      const stornoBtn = !ist
+        ? `<button class="j-btn j-btn-storno" onclick="event.stopPropagation();stornoStarten(${v.ID},${v.BON_NR},${v.BETRAG_BRUTTO})">↩️ Storno</button>`
+        : '';
+      return `
+        <tr class="daten-zeile${ist?' storniert':''}" onclick="togglePos(${v.ID})">
+          <td style="text-align:center;"><span class="j-pfeil" id="pfeil-${v.ID}">▶</span></td>
+          <td><strong>Bon ${v.BON_NR}</strong></td>
+          <td style="color:var(--th);">${datFmt(v.BON_DATUM)}</td>
+          <td class="j-betrag">${euro(v.BETRAG_BRUTTO)}</td>
+          <td class="j-zahlart">${fmtZahlart(v.ZAHLARTEN)}</td>
+          <td>${badge}</td>
+          <td class="j-aktionen" onclick="event.stopPropagation()">
+            <button class="j-btn j-btn-neu" onclick="nachdrucken(${v.ID})">🖨️ Nochmal</button>
+            <button class="j-btn j-btn-neu" onclick="kopieren(${v.ID})">📋 Kopieren</button>
+            ${stornoBtn}
+          </td>
+        </tr>
+        <tr class="j-detail-zeile">
+          <td colspan="7">
+            <div class="j-detail-inhalt" id="det-${v.ID}"></div>
+          </td>
+        </tr>`;
+    }).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ── Auf-/Zuklappen ───────────────────────────────────────────
+async function togglePos(vid) {
+  const det  = document.getElementById(`det-${vid}`);
+  const pfeil = document.getElementById(`pfeil-${vid}`);
+  const offen = det.classList.contains('offen');
+
+  det.classList.toggle('offen', !offen);
+  pfeil.classList.toggle('offen', !offen);
+
+  if (offen || posCache[vid]) return;
+  posCache[vid] = true;
+
+  det.innerHTML = '<span style="color:var(--th);">Lädt…</span>';
+  const d = await fetch(`/api/vorgang/${vid}`).then(r => r.json());
+  const aktiv = (d.positionen || []).filter(p => !p.STORNIERT);
+
+  if (!aktiv.length) {
+    det.innerHTML = '<em style="color:var(--th);">Keine Positionen</em>';
+    return;
+  }
+  det.innerHTML = aktiv.map(p => `
+    <div class="j-detail-pos">
+      <span>${esc(p.BEZEICHNUNG)}</span>
+      <span>${parseFloat(p.MENGE).toLocaleString('de-DE')} ×</span>
+      <span>${euro(p.EINZELPREIS_BRUTTO)}</span>
+      <span><strong>${euro(p.GESAMTPREIS_BRUTTO)}</strong></span>
+    </div>`).join('');
+}
+
+// ── Aktionen ─────────────────────────────────────────────────
+async function nachdrucken(vid) {
+  const r = await api('POST', `/api/vorgang/${vid}/bon_nochmal`);
+  toast(r.ok ? 'Bon wird gedruckt' : 'Druckfehler: ' + (r.warnung || r.fehler || '?'),
+        r.ok ? 'ok' : 'err');
+}
+async function kopieren(vid) {
+  const r = await api('POST', `/api/vorgang/${vid}/kopieren`);
+  if (r.ok) {
+    toast(`Bon ${r.bon_nr} erstellt – zur Kasse…`, 'ok');
+    setTimeout(() => { window.location.href = '/kasse'; }, 1000);
+  } else {
+    toast(r.fehler || 'Fehler beim Kopieren', 'err');
+  }
+}
+
+function stornoStarten(vid, bonNr, betrag) {
+  stornoVorgangId = vid;
+  document.getElementById('stornoInfo').innerHTML =
+    `<strong>Bon ${bonNr}</strong> über <strong>${euro(betrag)}</strong> wird storniert.`;
+  document.getElementById('stornoModal').classList.add('aktiv');
+}
+function stornoAbbrechen() {
+  stornoVorgangId = null;
+  document.getElementById('stornoModal').classList.remove('aktiv');
+}
+async function stornoBestaetigen() {
+  if (!stornoVorgangId) return;
+  const btn = document.getElementById('btnStornoFinal');
+  btn.disabled = true; btn.textContent = '⏳…';
+  const r = await api('POST', `/api/vorgang/${stornoVorgangId}/storno`);
+  stornoAbbrechen();
+  if (r.ok) {
+    toast('Storno durchgeführt', 'ok');
+    delete posCache[stornoVorgangId];
+    await suchen();
+  } else {
+    toast(r.fehler || 'Fehler beim Storno', 'err');
+  }
+  btn.disabled = false; btn.textContent = '↩️ Storno durchführen';
+}
+
+document.addEventListener('DOMContentLoaded', suchen);
+</script>
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Tagesabschluss{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:6px;">📋 Z-Bon – Tagesabschluss</h1>
+  <div style="color:var(--text-dim); font-size:14px; margin-bottom:20px;">
+    Terminal {{ terminal_nr }} · {{ jetzt.strftime('%d.%m.%Y') }}
+  </div>
+
+  <div class="alert alert-warn" style="margin-bottom:20px;">
+    ⚠️ Der Z-Bon schließt den Tagesabschluss ab. Dieser Vorgang kann nicht rückgängig gemacht werden.
+  </div>
+
+  <!-- Vorschau der Tagesdaten -->
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <div>
+        <div style="color:var(--text-dim); font-size:13px;">Belege</div>
+        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gruen-dunkel);">{{ daten.anzahl_belege }}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-dim); font-size:13px;">Umsatz brutto</div>
+        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gold);">
+          {{ "%.2f"|format(daten.umsatz_brutto/100) }} €
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">MwSt</h3>
+    {% for code, satz in mwst_saetze.items()|sort %}
+    {% set netto = daten['netto_' ~ code] %}
+    {% set mwst  = daten['mwst_'  ~ code] %}
+    {% if netto or mwst %}
+    <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border); font-size:15px;">
+      <span>{{ satz|int }}%</span>
+      <span>Netto {{ "%.2f"|format(netto/100) }} €  ·  MwSt {{ "%.2f"|format(mwst/100) }} €</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Zahlarten</h3>
+    <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);">
+      <span>Bar</span><span>{{ "%.2f"|format(daten.umsatz_bar/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);">
+      <span>EC-Karte</span><span>{{ "%.2f"|format(daten.umsatz_ec/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:7px 0;">
+      <span>Kundenkonto</span><span>{{ "%.2f"|format(daten.umsatz_kundenkonto/100) }} €</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Kassenbuch</h3>
+    <div style="display:flex; justify-content:space-between; padding:6px 0;">
+      <span>Anfangsbestand</span><span>{{ "%.2f"|format(daten.kassenbestand_anfang/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:6px 0;">
+      <span>+ Einlagen</span><span>{{ "%.2f"|format(daten.einlagen/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:6px 0;">
+      <span>− Entnahmen</span><span>{{ "%.2f"|format(daten.entnahmen/100) }} €</span>
+    </div>
+    {% if daten.anzahl_stornos %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--rot);">
+      <span>Stornos ({{ daten.anzahl_stornos }}×)</span>
+      <span>− {{ "%.2f"|format(daten.betrag_stornos/100) }} €</span>
+    </div>
+    {% endif %}
+    <div style="display:flex; justify-content:space-between; padding:10px 0; font-family:'Lobster',Georgia,serif; font-size:24px; font-weight:400; color:var(--gold); border-top:2px solid var(--border); margin-top:4px;">
+      <span>Kassenstand Ende</span>
+      <span>{{ "%.2f"|format(daten.kassenbestand_ende/100) }} €</span>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:12px; flex-wrap:wrap;">
+    <button class="btn btn-danger" id="btnZBon" onclick="tagesabschluss()">
+      ✓ Tagesabschluss durchführen
+    </button>
+    <a href="/kasse" class="btn btn-neutral">← Abbrechen</a>
+  </div>
+
+  <div id="ergebnis" style="margin-top:20px; display:none;"></div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+async function tagesabschluss() {
+  const btn = document.getElementById('btnZBon');
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird erstellt…';
+  const r = await api('POST', '/api/tagesabschluss');
+  const el = document.getElementById('ergebnis');
+  el.style.display = 'block';
+  if (r.ok) {
+    el.innerHTML = `<div class="alert alert-success">
+      ✓ Z-Bon Nr. ${r.z_nr} erstellt und gedruckt.
+      ${r.warnung ? '<br>⚠️ ' + r.warnung : ''}
+    </div>
+    <a href="/kasse" class="btn btn-success">← Zurück zur Kasse</a>
+    <a href="/kasse/abschluesse" class="btn btn-neutral" style="margin-left:10px;">Übersicht</a>`;
+    btn.style.display = 'none';
+  } else {
+    el.innerHTML = `<div class="alert alert-error">Fehler: ${r.fehler}</div>`;
+    btn.disabled = false;
+    btn.textContent = '✓ Tagesabschluss durchführen';
+  }
+}
+</script>
+{% endblock %}

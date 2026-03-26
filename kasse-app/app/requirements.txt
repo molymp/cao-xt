@@ -1,0 +1,8 @@
+# CAO-XT Kassen-App – Python-Abhängigkeiten
+# Installation: pip3 install -r requirements.txt --break-system-packages
+
+flask>=3.0
+mysql-connector-python>=8.0
+requests>=2.31          # Fiskaly REST API
+qrcode[pil]>=7.4        # QR-Code für Kassenbon (TSE-Pflichtangaben)
+Pillow>=10.0            # Abhängigkeit von qrcode

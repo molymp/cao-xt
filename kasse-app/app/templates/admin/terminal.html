@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Terminal konfigurieren{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">⚙️ Terminal {{ terminal_nr }} konfigurieren</h1>
+
+  <form method="POST" action="/admin/terminal">
+    <!-- Allgemein -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Allgemein</h3>
+      <div class="form-group">
+        <label>Bezeichnung</label>
+        <input class="form-control" name="bezeichnung" type="text"
+               value="{{ terminal.BEZEICHNUNG or '' }}" placeholder="z.B. Hauptkasse">
+      </div>
+    </div>
+
+    <!-- Firma -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Firmendaten (für Bondruck)</h3>
+      <div class="form-group">
+        <label>Firmenname</label>
+        <input class="form-control" name="firma_name" type="text"
+               value="{{ terminal.FIRMA_NAME or '' }}" placeholder="z.B. Habacher Dorfladen">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label>Straße</label>
+          <input class="form-control" name="firma_strasse" type="text"
+                 value="{{ terminal.FIRMA_STRASSE or '' }}">
+        </div>
+        <div class="form-group">
+          <label>PLZ / Ort</label>
+          <input class="form-control" name="firma_ort" type="text"
+                 value="{{ terminal.FIRMA_ORT or '' }}" placeholder="12345 Musterstadt">
+        </div>
+        <div class="form-group">
+          <label>USt-IdNr.</label>
+          <input class="form-control" name="firma_ust_id" type="text"
+                 value="{{ terminal.FIRMA_UST_ID or '' }}" placeholder="DE123456789">
+        </div>
+        <div class="form-group">
+          <label>Steuernummer</label>
+          <input class="form-control" name="firma_steuernummer" type="text"
+                 value="{{ terminal.FIRMA_STEUERNUMMER or '' }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- Fiskaly TSE -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:6px; font-size:16px; color:var(--text-dim);">Fiskaly Cloud TSE</h3>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:14px;">
+        Registrierung unter
+        <span style="color:var(--blue);">dashboard.fiskaly.com</span>
+        (kostenloser Test-Modus verfügbar)
+      </div>
+      <div class="form-group">
+        <label>Umgebung</label>
+        <select class="form-control" name="fiskaly_env" style="font-size:16px;">
+          <option value="test"  {{ 'selected' if (terminal.FISKALY_ENV or 'test') == 'test' }}>
+            Test (Sandbox)
+          </option>
+          <option value="live"  {{ 'selected' if terminal.FISKALY_ENV == 'live' }}>
+            Live (Produktion)
+          </option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input class="form-control" name="api_key" type="text"
+               value="{{ terminal.FISKALY_API_KEY or '' }}"
+               autocomplete="off" placeholder="fiskaly_…">
+      </div>
+      <div class="form-group">
+        <label>API Secret</label>
+        <input class="form-control" name="api_secret" type="password"
+               value="{{ terminal.FISKALY_API_SECRET or '' }}"
+               autocomplete="off" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>TSS-ID (UUID)</label>
+        <input class="form-control" name="tss_id" type="text"
+               value="{{ terminal.FISKALY_TSS_ID or '' }}"
+               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label>TSE Admin-PUK
+          <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">
+            — aus Fiskaly-Dashboard (TSS → Details), mind. 10 Zeichen
+          </span>
+        </label>
+        <input class="form-control" name="admin_puk" type="password"
+               value="{{ terminal.FISKALY_ADMIN_PUK or '' }}"
+               autocomplete="new-password" placeholder="aus Fiskaly-Dashboard">
+        {% if terminal.FISKALY_CLIENT_ID %}
+          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
+            TSE bereits initialisiert – nur ändern wenn nötig.
+          </div>
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label>TSE Admin-PIN
+          <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">
+            — frei wählbar, mind. 6 Zeichen (z.B. Admin123)
+          </span>
+        </label>
+        <input class="form-control" name="admin_pin" type="password"
+               value="{{ terminal.FISKALY_ADMIN_PIN or '' }}"
+               autocomplete="new-password" placeholder="mind. 6 Zeichen">
+      </div>
+      <div class="form-group">
+        <label>Client-ID (UUID)
+          {% if not terminal.FISKALY_CLIENT_ID %}
+            <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">
+              — wird beim Speichern automatisch angelegt
+            </span>
+          {% endif %}
+        </label>
+        <input class="form-control" name="client_id" type="text"
+               value="{{ terminal.FISKALY_CLIENT_ID or '' }}"
+               placeholder="wird automatisch generiert"
+               {% if terminal.FISKALY_CLIENT_ID %}readonly style="color:var(--text-hell); background:var(--grau-hell);"{% endif %}>
+        {% if terminal.FISKALY_CLIENT_ID %}
+          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
+            Einmalig angelegt — zum Zurücksetzen Feld leeren und neu speichern.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Drucker -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Bondrucker (ESC/POS Netzwerk)</h3>
+      <div style="display:grid; grid-template-columns:1fr 120px; gap:12px;">
+        <div class="form-group">
+          <label>IP-Adresse</label>
+          <input class="form-control" name="drucker_ip" type="text"
+                 value="{{ terminal.DRUCKER_IP or '' }}" placeholder="192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label>Port</label>
+          <input class="form-control" name="drucker_port" type="number"
+                 value="{{ terminal.DRUCKER_PORT or 9100 }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Kassenlade</label>
+        <select class="form-control" name="kassenlade" style="font-size:16px;">
+          <option value="0" {{ 'selected' if (terminal.KASSENLADE or 0) == 0 }}>Keine</option>
+          <option value="1" {{ 'selected' if terminal.KASSENLADE == 1 }}>Pin 2 (Standard)</option>
+          <option value="2" {{ 'selected' if terminal.KASSENLADE == 2 }}>Pin 5</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px;">
+      <button class="btn btn-success btn-full" type="submit">💾 Speichern</button>
+      <a href="/admin/" class="btn btn-neutral">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

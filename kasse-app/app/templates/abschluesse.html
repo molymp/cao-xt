@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Tagesabschlüsse{% endblock %}
+{% block content %}
+<div style="max-width:900px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">📋 Tagesabschlüsse</h1>
+
+  {% if abschluesse %}
+  <div class="card">
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      {% for a in abschluesse %}
+      <div style="display:grid; grid-template-columns:80px 120px 1fr 140px 140px;
+                  align-items:center; gap:12px; padding:12px; background:var(--card);
+                  border-radius:8px; border:1px solid var(--border);">
+        <div style="font-family:'Lobster',Georgia,serif; font-size:20px; font-weight:400; color:var(--gold);">Z-{{ a.Z_NR }}</div>
+        <div style="font-size:14px; color:var(--text-dim);">{{ a.DATUM }}</div>
+        <div>
+          <span style="font-size:14px;">{{ a.ANZAHL_BELEGE }} Belege</span>
+          <span style="color:var(--text-dim); font-size:12px; margin-left:8px;">
+            Bar {{ "%.2f"|format(a.UMSATZ_BAR/100) }} €
+            · EC {{ "%.2f"|format(a.UMSATZ_EC/100) }} €
+          </span>
+        </div>
+        <div style="font-family:'Lobster',Georgia,serif; font-size:22px; font-weight:400; color:var(--gold); text-align:right;">
+          {{ "%.2f"|format(a.UMSATZ_BRUTTO/100) }} €
+        </div>
+        <button class="btn btn-neutral btn-sm" onclick="nochmalDrucken({{ a.ID }})">
+          🖨 Z-Bon
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div style="color:var(--text-dim); text-align:center; padding:40px; font-size:18px;">
+    Noch keine Tagesabschlüsse vorhanden
+  </div>
+  {% endif %}
+
+  <div style="margin-top:20px;">
+    <a href="/kasse" class="btn btn-neutral">← Zurück</a>
+    <a href="/admin/export" class="btn btn-primary" style="margin-left:10px;">
+      📦 DSFinV-K Export
+    </a>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+async function nochmalDrucken(taId) {
+  const r = await api('POST', `/api/tagesabschluss/${taId}/drucken`);
+  toast(r.ok ? 'Z-Bon gedruckt' : ('Fehler: ' + r.fehler), r.ok ? 'ok' : 'err');
+}
+</script>
+{% endblock %}

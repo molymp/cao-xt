@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<div style="max-width:900px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">⚙️ Administration – Terminal {{ terminal_nr }}</h1>
+
+  <!-- Systemstatus -->
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px;">
+    <div class="card" style="text-align:center;">
+      <div style="font-size:36px;">{{ '✅' if db_ok else '❌' }}</div>
+      <div style="font-size:14px; margin-top:6px; color:var(--text-dim);">Datenbank</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div style="font-size:36px;">{{ '✅' if tse_ok else '⚠️' }}</div>
+      <div style="font-size:14px; margin-top:6px; color:var(--text-dim);">TSE (Fiskaly)</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div style="font-size:36px;">{{ '✅' if drucker_ok else '❌' }}</div>
+      <div style="font-size:14px; margin-top:6px; color:var(--text-dim);">Bondrucker</div>
+    </div>
+  </div>
+
+  {% if not tse_ok %}
+  <div class="alert alert-warn" style="margin-bottom:16px;">
+    ⚠️ TSE nicht konfiguriert oder nicht erreichbar.
+    <a href="/admin/terminal" style="color:var(--gold); text-decoration:underline; font-weight:700;">Jetzt konfigurieren →</a>
+  </div>
+  {% endif %}
+
+  {% with hinweis = session.pop('tse_hinweis', None), fehler = session.pop('tse_fehler', None) %}
+  {% if hinweis %}
+  <div class="alert alert-success" style="margin-bottom:16px;">✅ {{ hinweis }}</div>
+  {% endif %}
+  {% if fehler %}
+  <div class="alert alert-error" style="margin-bottom:16px;">❌ {{ fehler }}</div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Terminal-Info -->
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Terminal-Konfiguration</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:14px;">
+      <div><span style="color:var(--text-dim);">Bezeichnung:</span> {{ terminal.BEZEICHNUNG or '–' }}</div>
+      <div><span style="color:var(--text-dim);">Drucker:</span> {{ terminal.DRUCKER_IP or '–' }}:{{ terminal.DRUCKER_PORT or 9100 }}</div>
+      <div><span style="color:var(--text-dim);">Fiskaly-Env:</span>
+        <span style="color:{{ 'var(--gruen-hell)' if terminal.FISKALY_ENV == 'live' else 'var(--gold)' }}; font-weight:700;">
+          {{ terminal.FISKALY_ENV or 'test' }}
+        </span>
+      </div>
+      <div><span style="color:var(--text-dim);">TSS-ID:</span>
+        <span style="font-family:monospace; font-size:12px;">{{ (terminal.FISKALY_TSS_ID or '–')[:20] }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aktionen -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+    <a href="/admin/terminal" class="btn btn-primary">⚙️ Terminal bearbeiten</a>
+    <button class="btn btn-neutral" onclick="druckerTest()">🖨 Drucker testen</button>
+    <a href="/admin/export" class="btn btn-neutral">📦 DSFinV-K Export</a>
+    <a href="/kasse/abschluesse" class="btn btn-neutral">📋 Tagesabschlüsse</a>
+  </div>
+
+  <!-- Letzte Abschlüsse -->
+  {% if letzte_abschluesse %}
+  <div class="card">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Letzte Z-Bons</h3>
+    {% for a in letzte_abschluesse %}
+    <div style="display:flex; justify-content:space-between; align-items:center;
+                padding:10px 0; border-bottom:1px solid var(--border); font-size:14px;">
+      <span style="font-family:'Lobster',Georgia,serif; font-weight:400; font-size:17px; color:var(--gold);">Z-{{ a.Z_NR }}</span>
+      <span style="color:var(--text-dim);">{{ a.DATUM }}</span>
+      <span>{{ a.ANZAHL_BELEGE }} Belege</span>
+      <span style="font-family:'Lobster',Georgia,serif; font-weight:400; color:var(--gold);">{{ "%.2f"|format(a.UMSATZ_BRUTTO/100) }} €</span>
+      <span style="font-size:11px; color:var(--text-dim);">
+        {{ '✅' if a.TSE_SIGNATUR else '⚠️ keine TSE' }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="margin-top:20px;">
+    <a href="/kasse" class="btn btn-neutral">← Zur Kasse</a>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+async function druckerTest() {
+  const r = await api('POST', '/admin/drucker/test');
+  toast(r.ok ? '✅ Drucker erreichbar – Testseite gedruckt' : '❌ Drucker nicht erreichbar',
+        r.ok ? 'ok' : 'err', 3000);
+}
+</script>
+{% endblock %}
