@@ -14,6 +14,7 @@ Enthält alle Datenbankoperationen für:
 """
 import uuid
 import hashlib
+import time
 from datetime import datetime, date
 from decimal import Decimal
 from db import get_db, get_db_transaction, euro_zu_cent, cent_zu_euro_str
@@ -166,31 +167,57 @@ def _artikel_aufbereiten(row: dict) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Schnelltasten (ARTIKEL_SCHNELLZUGRIFF read-only)
+# Optimiert: Batch-Queries + Server-Cache (5 min TTL)
 # ─────────────────────────────────────────────────────────────
 
+_schnell_cache: list | None = None
+_schnell_cache_ts: float = 0.0
+_SCHNELL_TTL = 300  # Sekunden
+
+
 def schnelltasten_laden() -> list:
+    """Gibt gecachte Schnelltasten zurück, lädt nur bei abgelaufenem Cache neu."""
+    global _schnell_cache, _schnell_cache_ts
+    if _schnell_cache is not None and (time.time() - _schnell_cache_ts) < _SCHNELL_TTL:
+        return _schnell_cache
+    t0 = time.time()
+    result = _schnelltasten_laden_uncached()
+    log.debug('Schnelltasten geladen: %d Einträge in %.2f s', len(result), time.time() - t0)
+    _schnell_cache = result
+    _schnell_cache_ts = time.time()
+    return result
+
+
+def schnelltasten_cache_invalidieren():
+    global _schnell_cache
+    _schnell_cache = None
+    log.info('Schnelltasten-Cache invalidiert')
+
+
+def _schnelltasten_laden_uncached() -> list:
     """
-    Liest ARTIKEL_SCHNELLZUGRIFF aus CAO.
-    Da die Spaltenstruktur variieren kann, werden alle Spalten gelesen
-    und flexibel aufbereitet.
+    Liest ARTIKEL_SCHNELLZUGRIFF und lädt Artikel/WG-Details per Batch-Query
+    (3 DB-Abfragen insgesamt, unabhängig von der Anzahl der Tasten).
     """
+    # ── 1. Haupttabelle einlesen ──────────────────────────────
     with get_db() as cur:
-        # Spalten der Tabelle ermitteln
         cur.execute("DESCRIBE ARTIKEL_SCHNELLZUGRIFF")
         spalten = {r['Field'] for r in cur.fetchall()}
 
-        pos_col      = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
-        name_col     = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
-        farbe_col    = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
-        schrift_col  = _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR'], None)
-        seite_col    = _erste_spalte(spalten, ['SEITE','EBENE','TAB'], None)
-        kategorie_col= _erste_spalte(spalten, ['KATEGORIE_NAME','KATEGORIE','CATEGORY','GRUPPE','GRUPPENNAME'], None)
-        artnr_col    = _erste_spalte(spalten, ['ARTIKEL_ID'], None)
-        wg_id_col    = _erste_spalte(spalten, ['WG_ID','WGID','WARENGRUPPE_ID'], None)
+        pos_col       = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
+        name_col      = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
+        farbe_col     = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
+        schrift_col   = _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR'], None)
+        seite_col     = _erste_spalte(spalten, ['SEITE','EBENE','TAB'], None)
+        kategorie_col = _erste_spalte(spalten, ['KATEGORIE_NAME','KATEGORIE','CATEGORY','GRUPPE','GRUPPENNAME'], None)
+        artnr_col     = _erste_spalte(spalten, ['ARTIKEL_ID'], None)
+        wg_id_col     = _erste_spalte(spalten, ['WG_ID','WGID','WARENGRUPPE_ID'], None)
 
         select = list({'REC_ID', pos_col})
-        for col in (name_col, farbe_col, schrift_col, seite_col, kategorie_col, artnr_col, wg_id_col):
+        for col in (name_col, farbe_col, schrift_col, seite_col,
+                    kategorie_col, artnr_col, wg_id_col):
             if col:
                 select.append(col)
 
@@ -199,68 +226,125 @@ def schnelltasten_laden() -> list:
         )
         rows = cur.fetchall()
 
-    # Artikel-Details nachladen
+    # ── 2. Artikel- und WG-Referenzen sammeln ─────────────────
+    ids_num  = []   # ARTIKEL.REC_ID (int)
+    ids_text = []   # ARTIKEL.ARTNUM (str)
+    wg_ids   = []   # WARENGRUPPEN.REC_ID
+
+    for row in rows:
+        art_ref = str(row.get(artnr_col) or '').strip() if artnr_col else ''
+        wg_ref  = row.get(wg_id_col) if wg_id_col else None
+        if art_ref and art_ref != '0':
+            (ids_num if art_ref.isdigit() else ids_text).append(
+                int(art_ref) if art_ref.isdigit() else art_ref
+            )
+        elif wg_ref:
+            wg_ids.append(wg_ref)
+
+    # ── 3. Batch-Query: Artikel nach REC_ID ───────────────────
+    artikel_by_id: dict = {}
+    if ids_num:
+        ph = ','.join(['%s'] * len(ids_num))
+        with get_db() as cur:
+            cur.execute(
+                f"SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, VK5B AS VK_PREIS, STEUER_CODE "
+                f"FROM ARTIKEL WHERE REC_ID IN ({ph})",
+                ids_num
+            )
+            for a in cur.fetchall():
+                artikel_by_id[a['REC_ID']] = a
+
+    # ── 4. Batch-Query: Artikel nach ARTNUM ───────────────────
+    artikel_by_artnum: dict = {}
+    if ids_text:
+        ph = ','.join(['%s'] * len(ids_text))
+        with get_db() as cur:
+            cur.execute(
+                f"SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, VK5B AS VK_PREIS, STEUER_CODE "
+                f"FROM ARTIKEL WHERE ARTNUM IN ({ph})",
+                ids_text
+            )
+            for a in cur.fetchall():
+                artikel_by_artnum[a['ARTNUM']] = a
+
+    # ── 5. Batch-Query: Warengruppen ──────────────────────────
+    wg_by_id: dict = {}
+    if wg_ids:
+        wg_unique = list(set(wg_ids))
+        try:
+            with get_db() as cur:
+                cur.execute("DESCRIBE WARENGRUPPEN")
+                ws = {r['Field'] for r in cur.fetchall()}
+                wg_id_db  = _erste_spalte(ws, ['REC_ID','WG_ID','ID'], 'REC_ID')
+                wg_name   = _erste_spalte(ws, ['BEZEICHNUNG','NAME','KURZNAME','WGNAME'], None)
+                wg_stcol  = _erste_spalte(ws, ['STEUER_CODE','STEUERSATZ_CODE','MWST_CODE'], None)
+                wg_felder = list({wg_id_db, *([wg_name] if wg_name else []),
+                                             *([wg_stcol] if wg_stcol else [])})
+                ph = ','.join(['%s'] * len(wg_unique))
+                cur.execute(
+                    f"SELECT {', '.join(wg_felder)} FROM WARENGRUPPEN "
+                    f"WHERE {wg_id_db} IN ({ph})",
+                    wg_unique
+                )
+                for r in cur.fetchall():
+                    wid = r.get(wg_id_db)
+                    sc  = int(r.get(wg_stcol) or 1) if wg_stcol else 1
+                    wg_by_id[wid] = {
+                        'wg_id':       wid,
+                        'bezeichnung': r.get(wg_name, f'WG {wid}') if wg_name else f'WG {wid}',
+                        'steuer_code': sc,
+                        'mwst_satz':   mwst_satz_fuer_code(sc),
+                    }
+        except Exception as e:
+            log.warning('Warengruppen Batch-Laden fehlgeschlagen: %s', e)
+
+    # ── 6. Ergebnis zusammenbauen ─────────────────────────────
     result = []
     for row in rows:
+        art_ref = str(row.get(artnr_col) or '').strip() if artnr_col else ''
+        wg_ref  = row.get(wg_id_col) if wg_id_col else None
+
         eintrag = {
             'rec_id':         row.get('REC_ID'),
             'position':       row.get(pos_col) or row.get('REC_ID'),
-            'farbe':          _cao_farbe_zu_css(row.get(farbe_col))   if farbe_col    else None,
-            'schriftfarbe':   _cao_farbe_zu_css(row.get(schrift_col)) if schrift_col  else None,
+            'farbe':          _cao_farbe_zu_css(row.get(farbe_col))   if farbe_col   else None,
+            'schriftfarbe':   _cao_farbe_zu_css(row.get(schrift_col)) if schrift_col else None,
             'seite':          row.get(seite_col) or 1 if seite_col else 1,
             'kategorie_name': row.get(kategorie_col) if kategorie_col else None,
         }
-        # Warengruppe oder Artikel laden
-        artikel_ref = row.get(artnr_col) if artnr_col else None
-        wg_ref      = row.get(wg_id_col) if wg_id_col else None
 
-        # Warengruppe: ARTIKEL_ID leer, WG_ID gefüllt
-        if (not artikel_ref or str(artikel_ref).strip() in ('', '0')) and wg_ref:
-            wg = _warengruppe_laden(wg_ref)
+        if (not art_ref or art_ref == '0') and wg_ref:
+            # Warengruppe
+            wg = wg_by_id.get(wg_ref)
             if wg:
                 eintrag.update({
                     'ist_warengruppe': True,
                     'wg_id':           wg['wg_id'],
-                    'bezeichnung':     row.get(name_col) or wg['bezeichnung'] if name_col else wg['bezeichnung'],
+                    'bezeichnung':     (row.get(name_col) or wg['bezeichnung']) if name_col else wg['bezeichnung'],
                     'steuer_code':     wg['steuer_code'],
                     'mwst_satz':       wg['mwst_satz'],
                 })
             result.append(eintrag)
             continue
-        if artikel_ref:
-            if str(artikel_ref).isdigit():
-                # numerisch → ARTIKEL.REC_ID
-                with get_db() as cur2:
-                    cur2.execute(
-                        """SELECT REC_ID, ARTNUM, BARCODE, KURZNAME,
-                                  VK5B AS VK_PREIS, STEUER_CODE
-                           FROM ARTIKEL WHERE REC_ID = %s""",
-                        (int(artikel_ref),)
-                    )
-                    art = cur2.fetchone()
-            else:
-                # Text → ARTNUM
-                with get_db() as cur2:
-                    cur2.execute(
-                        """SELECT REC_ID, ARTNUM, BARCODE, KURZNAME,
-                                  VK5B AS VK_PREIS, STEUER_CODE
-                           FROM ARTIKEL WHERE ARTNUM = %s LIMIT 1""",
-                        (str(artikel_ref),)
-                    )
-                    art = cur2.fetchone()
+
+        if art_ref and art_ref != '0':
+            art = (artikel_by_id.get(int(art_ref)) if art_ref.isdigit()
+                   else artikel_by_artnum.get(art_ref))
             if art:
-                art_aufb = _artikel_aufbereiten(art)
+                a = _artikel_aufbereiten(art)
                 eintrag.update({
-                    'artikel_id':  art_aufb['id'],
-                    'artnum':      art_aufb['artnum'],
-                    'bezeichnung': row.get(name_col) or art_aufb['bezeichnung'] if name_col else art_aufb['bezeichnung'],
-                    'preis_cent':  art_aufb['preis_cent'],
-                    'steuer_code': art_aufb['steuer_code'],
-                    'mwst_satz':   art_aufb['mwst_satz'],
+                    'artikel_id':  a['id'],
+                    'artnum':      a['artnum'],
+                    'bezeichnung': (row.get(name_col) or a['bezeichnung']) if name_col else a['bezeichnung'],
+                    'preis_cent':  a['preis_cent'],
+                    'steuer_code': a['steuer_code'],
+                    'mwst_satz':   a['mwst_satz'],
                 })
+
         if 'bezeichnung' not in eintrag:
             eintrag['bezeichnung'] = row.get(name_col, '?') if name_col else '?'
         result.append(eintrag)
+
     return result
 
 

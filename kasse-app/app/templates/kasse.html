@@ -833,8 +833,32 @@ document.addEventListener('click', e => {
 });
 
 // ── Schnelltasten: Laden + Rendern ────────────────────────────
+const SCHNELL_CACHE_KEY = 'schnelltasten_v1';
+const SCHNELL_CACHE_TTL = 5 * 60 * 1000;
+
 async function schnellLaden() {
-  schnellDaten = await (await fetch('/api/schnelltasten')).json();
+  // Sofortige Darstellung aus sessionStorage
+  try {
+    const cached = sessionStorage.getItem(SCHNELL_CACHE_KEY);
+    if (cached) {
+      const { ts, data } = JSON.parse(cached);
+      if (Date.now() - ts < SCHNELL_CACHE_TTL) {
+        schnellDaten = data;
+        schnellRender();
+        // Im Hintergrund aktualisieren
+        fetch('/api/schnelltasten').then(r => r.json()).then(fresh => {
+          try { sessionStorage.setItem(SCHNELL_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: fresh })); } catch (_) {}
+          schnellDaten = fresh;
+          schnellRender();
+        }).catch(() => {});
+        return;
+      }
+    }
+  } catch (_) {}
+  // Kein Cache: laden und speichern
+  const data = await (await fetch('/api/schnelltasten')).json();
+  try { sessionStorage.setItem(SCHNELL_CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch (_) {}
+  schnellDaten = data;
   schnellRender();
 }
 
