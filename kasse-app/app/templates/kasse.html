@@ -209,18 +209,6 @@
 }
 .ean-input::placeholder { color: rgba(255,255,255,0.35); }
 .ean-input:focus { outline: none; border-color: var(--gold); background: rgba(255,255,255,0.2); }
-.ean-ergebnisse {
-  position: absolute; left: 0; right: 0; top: 100%;
-  background: white; border: 1px solid var(--creme-dunkel);
-  border-top: none; border-radius: 0 0 var(--radius-klein) var(--radius-klein);
-  z-index: 50; max-height: 200px; overflow-y: auto; display: none;
-  box-shadow: var(--schatten);
-}
-.ean-ergebnisse.sichtbar { display: block; }
-.ean-item { padding: 8px 11px; cursor: pointer; border-bottom: 1px solid var(--creme-dunkel); font-size: 13px; }
-.ean-item:active { background: var(--grau-hell); }
-.ean-item .art-name  { font-weight: 700; color: var(--text-dunkel); }
-.ean-item .art-preis { color: var(--text-hell); font-size: 12px; }
 
 /* 4×4 Numpad */
 .ean-numpad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
@@ -329,7 +317,6 @@
                placeholder="3×EAN  oder  1,99"
                autocomplete="off" autocorrect="off" autocapitalize="off"
                spellcheck="false">
-        <div class="ean-ergebnisse" id="sucheErgebnisse"></div>
       </div>
     </div>
 
@@ -761,8 +748,6 @@ function anzahlAktualisieren() {
   document.getElementById('anzahlAnzeige').textContent = formatMenge(menge);
 }
 
-let _sucheTimer;
-
 function parseEanEingabe(str) {
   // "3×12345" oder "-2×12345" → { menge, code }
   const m = str.match(/^(-?\d+)[x×X](.+)$/i);
@@ -772,15 +757,11 @@ function parseEanEingabe(str) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('artikelSuche');
-  inp.addEventListener('input', e => {
-    anzahlAktualisieren();
-    clearTimeout(_sucheTimer);
-    _sucheTimer = setTimeout(() => sucheAusfuehren(e.target.value), 250);
-  });
+  inp.addEventListener('input', () => anzahlAktualisieren());
   inp.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const q = inp.value.trim();
-      if (q) { sucheErgebnisseSchliessen(); scanEingabeVerarbeiten(q); }
+      if (q) scanEingabeVerarbeiten(q);
     }
   });
 });
@@ -794,40 +775,8 @@ async function scanEingabeVerarbeiten(str) {
     const art = await r.json();
     if (art) { await artikelHinzufuegen(art, menge); return; }
   }
-  sucheAusfuehren(code);
+  toast('Artikel nicht gefunden: ' + code, 'err');
 }
-
-async function sucheAusfuehren(q) {
-  if (q.length < 2) { sucheErgebnisseSchliessen(); return; }
-  const { code } = parseEanEingabe(q);
-  const items = await (await fetch(`/api/artikel/suche?q=${encodeURIComponent(code)}`)).json();
-  const el = document.getElementById('sucheErgebnisse');
-  if (!items.length) {
-    el.innerHTML = '<div class="ean-item" style="color:var(--text-dim)">Keine Treffer</div>';
-    el.classList.add('sichtbar'); return;
-  }
-  el.innerHTML = items.map(a => `
-    <div class="ean-item" onclick="sucheArtikelWaehlen(${JSON.stringify(a).replace(/"/g,'&quot;')})">
-      <div class="art-name">${esc(a.bezeichnung)}</div>
-      <div class="art-preis">${esc(a.artnum||'')} · ${euro(a.preis_cent)} · ${a.mwst_satz}%</div>
-    </div>`).join('');
-  el.classList.add('sichtbar');
-}
-
-function sucheArtikelWaehlen(artikel) {
-  const str = document.getElementById('artikelSuche').value;
-  const { menge } = parseEanEingabe(str);
-  document.getElementById('artikelSuche').value = '';
-  sucheErgebnisseSchliessen();
-  artikelHinzufuegen(artikel, menge);
-}
-
-function sucheErgebnisseSchliessen() {
-  document.getElementById('sucheErgebnisse').classList.remove('sichtbar');
-}
-document.addEventListener('click', e => {
-  if (!e.target.closest('.ean-wrap')) sucheErgebnisseSchliessen();
-});
 
 // ── EAN 4×4 Numpad ────────────────────────────────────────────
 document.addEventListener('click', e => {
@@ -841,7 +790,7 @@ document.addEventListener('click', e => {
     inp.value = val.slice(0, -1);
   } else if (z === 'OK') {
     const q = inp.value.trim();
-    if (q) { sucheErgebnisseSchliessen(); scanEingabeVerarbeiten(q); }
+    if (q) scanEingabeVerarbeiten(q);
     return;
   } else if (z === '×') {
     // Mengenmultiplikator: nur setzen wenn reiner Zahlwert davor
@@ -856,8 +805,6 @@ document.addEventListener('click', e => {
     inp.value = val + z;
   }
   anzahlAktualisieren();
-  clearTimeout(_sucheTimer);
-  _sucheTimer = setTimeout(() => sucheAusfuehren(inp.value), 250);
   inp.focus();
 });
 
