@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block inhalt %}
+<style>
+  .update-layout {
+    max-width: 860px; margin: 32px auto; padding: 0 16px;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .update-card {
+    background: white; border-radius: var(--radius);
+    box-shadow: var(--schatten); padding: 24px 28px;
+  }
+  .update-card h2 {
+    font-size: 1.1rem; font-weight: 800; color: var(--gruen-dunkel);
+    margin: 0 0 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .update-card h2 .badge {
+    font-size: 0.75rem; background: var(--gold); color: white;
+    border-radius: 20px; padding: 2px 10px; font-weight: 700;
+  }
+  .version-info {
+    display: grid; grid-template-columns: auto 1fr; gap: 6px 16px;
+    font-size: 0.9rem;
+  }
+  .version-info dt { color: var(--grau-mitte); font-weight: 700; }
+  .version-info dd { margin: 0; color: var(--gruen-dunkel); font-family: monospace; }
+  .commit-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .commit-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: var(--radius-klein);
+    background: var(--creme-warm); font-size: 0.88rem;
+  }
+  .commit-item .commit-short {
+    font-family: monospace; font-size: 0.8rem; color: var(--grau-mitte);
+    flex-shrink: 0; width: 60px;
+  }
+  .commit-item .commit-msg { flex: 1; color: var(--gruen-dunkel); }
+  .commit-item .commit-datum { color: var(--grau-mitte); font-size: 0.8rem; flex-shrink: 0; }
+  .commit-item .commit-aktiv {
+    font-size: 0.75rem; background: var(--gruen-dunkel); color: white;
+    border-radius: 10px; padding: 2px 8px; flex-shrink: 0;
+  }
+  .btn-update {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 28px; border: none; border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 800;
+    cursor: pointer; transition: transform 0.1s, background 0.15s;
+    background: #2d8f1a; color: white;
+  }
+  .btn-update:hover { background: #3aab22; }
+  .btn-update:active { transform: scale(0.97); }
+  .btn-rollback {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border: 1.5px solid var(--grau-mitte);
+    border-radius: var(--radius-klein); background: white;
+    font-family: 'Nunito', sans-serif; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer; color: var(--gruen-dunkel); flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-rollback:hover { background: #fff3cd; border-color: var(--gold); }
+  .aktuell-box {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; background: #f0fdf4; border-radius: var(--radius-klein);
+    color: #1a5c14; font-weight: 700; font-size: 0.95rem;
+  }
+  .fehler-box {
+    padding: 12px 16px; background: #fff0f0; border-radius: var(--radius-klein);
+    color: var(--rot); font-size: 0.88rem;
+  }
+  #update-log {
+    display: none; background: #1a1a1a; color: #c8ffa8;
+    border-radius: var(--radius-klein); padding: 14px 18px;
+    font-family: monospace; font-size: 0.82rem; white-space: pre-wrap;
+    margin-top: 12px; max-height: 200px; overflow-y: auto;
+  }
+  #update-meldung {
+    display: none; padding: 12px 16px; border-radius: var(--radius-klein);
+    font-weight: 700; margin-top: 12px;
+  }
+  #update-meldung.ok    { background: #f0fdf4; color: #1a5c14; }
+  #update-meldung.fehler { background: #fff0f0; color: var(--rot); }
+  .check-info { font-size: 0.78rem; color: var(--grau-mitte); margin-top: 8px; }
+</style>
+
+<div class="update-layout">
+
+  {# ── Aktuelle Version ── #}
+  <div class="update-card">
+    <h2>📌 Aktuelle Version</h2>
+    {% if status.local_short %}
+    <dl class="version-info">
+      <dt>Commit</dt>
+      <dd>{{ status.local_short }} – {{ status.local_msg or "–" }}</dd>
+      <dt>Status</dt>
+      <dd>
+        {% if status.verfuegbar %}
+          <span style="color:var(--gold);">● Update verfügbar</span>
+        {% else %}
+          <span style="color:#2d8f1a;">✓ Aktuell</span>
+        {% endif %}
+      </dd>
+    </dl>
+    {% else %}
+    <div class="fehler-box">Git-Informationen noch nicht geladen – bitte kurz warten.</div>
+    {% endif %}
+    {% if fehler %}
+    <div class="fehler-box" style="margin-top:10px;">⚠ {{ fehler }}</div>
+    {% endif %}
+    <p class="check-info">Letzte Prüfung: {{ status.letzter_check or "–" }} (automatisch alle 10 Min.)</p>
+  </div>
+
+  {# ── Update verfügbar ── #}
+  {% if status.verfuegbar %}
+  <div class="update-card">
+    <h2>🔄 Neue Version verfügbar <span class="badge">{{ commits_neu|length }} Commit{{ 's' if commits_neu|length != 1 }}</span></h2>
+
+    {% if commits_neu %}
+    <ul class="commit-liste" style="margin-bottom:16px;">
+      {% for c in commits_neu %}
+      <li class="commit-item">
+        <span class="commit-short">{{ c.short }}</span>
+        <span class="commit-msg">{{ c.msg }}</span>
+        <span class="commit-datum">{{ c.datum }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <button class="btn-update" onclick="updateAusfuehren()">
+      🔄 Update jetzt installieren
+    </button>
+    <div id="update-meldung"></div>
+    <pre id="update-log"></pre>
+  </div>
+  {% else %}
+  <div class="update-card">
+    <h2>✅ App ist aktuell</h2>
+    <div class="aktuell-box">✓ Die installierte Version entspricht dem aktuellen Stand auf GitHub.</div>
+  </div>
+  {% endif %}
+
+  {# ── Versions-Verlauf / Rollback ── #}
+  <div class="update-card">
+    <h2>🕐 Versions-Verlauf</h2>
+    <p style="font-size:0.85rem;color:var(--grau-mitte);margin:0 0 14px;">
+      Zurücksetzen stellt eine ältere Version wieder her. Ein Update holt danach wieder die neueste Version.
+    </p>
+    {% if commits_lokal %}
+    <ul class="commit-liste">
+      {% for c in commits_lokal %}
+      <li class="commit-item">
+        <span class="commit-short">{{ c.short }}</span>
+        <span class="commit-msg">{{ c.msg }}</span>
+        <span class="commit-datum">{{ c.datum }}</span>
+        {% if loop.first %}
+        <span class="commit-aktiv">Aktuell</span>
+        {% else %}
+        <button class="btn-rollback"
+                onclick="rollbackBestaetigen('{{ c.hash }}', '{{ c.short }}', {{ loop.index }})">
+          ↩ Zurücksetzen
+        </button>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="fehler-box">Keine Commit-Historie verfügbar.</div>
+    {% endif %}
+
+    <div id="rollback-meldung" style="display:none;margin-top:12px;"></div>
+    <pre id="rollback-log" style="display:none;background:#1a1a1a;color:#ffd580;border-radius:var(--radius-klein);padding:14px 18px;font-family:monospace;font-size:0.82rem;white-space:pre-wrap;max-height:160px;overflow-y:auto;"></pre>
+  </div>
+
+</div>
+
+<script>
+async function updateAusfuehren() {
+  const btn = document.querySelector('.btn-update');
+  const meldung = document.getElementById('update-meldung');
+  const log     = document.getElementById('update-log');
+  btn.disabled = true;
+  btn.textContent = '⏳ Update wird installiert …';
+  meldung.style.display = 'none';
+  log.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/update/ausfuehren', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      log.textContent = data.ausgabe || '';
+      log.style.display = data.ausgabe ? 'block' : 'none';
+      meldung.className = 'ok';
+      meldung.textContent = '✓ Update erfolgreich! App wird neu gestartet …';
+      meldung.style.display = 'block';
+      setTimeout(() => { location.href = '/'; }, 3500);
+    } else {
+      meldung.className = 'fehler';
+      meldung.textContent = '✗ Fehler: ' + (data.fehler || 'Unbekannter Fehler');
+      meldung.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '🔄 Update jetzt installieren';
+    }
+  } catch (e) {
+    meldung.className = 'fehler';
+    meldung.textContent = '✗ Netzwerkfehler: ' + e.message;
+    meldung.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '🔄 Update jetzt installieren';
+  }
+}
+
+function rollbackBestaetigen(hash, short, nr) {
+  if (!confirm(`Auf Version ${short} zurücksetzen?\n\nDie App wird neu gestartet. Alle Änderungen seit dieser Version werden lokal rückgängig gemacht.`)) return;
+  rollbackAusfuehren(hash, short);
+}
+
+async function rollbackAusfuehren(hash, short) {
+  const meldung = document.getElementById('rollback-meldung');
+  const log     = document.getElementById('rollback-log');
+  document.querySelectorAll('.btn-rollback').forEach(b => b.disabled = true);
+  meldung.style.cssText = 'display:block;padding:12px 16px;border-radius:var(--radius-klein);background:#fff3cd;color:#7d5a00;font-weight:700;';
+  meldung.textContent = `⏳ Setze auf ${short} zurück …`;
+
+  try {
+    const r = await fetch(`/api/update/rollback/${hash}`, { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      log.textContent = data.ausgabe || '';
+      log.style.display = data.ausgabe ? 'block' : 'none';
+      meldung.style.background = '#f0fdf4';
+      meldung.style.color = '#1a5c14';
+      meldung.textContent = `✓ Zurückgesetzt auf ${short}. App wird neu gestartet …`;
+      setTimeout(() => { location.href = '/'; }, 3500);
+    } else {
+      meldung.style.background = '#fff0f0';
+      meldung.style.color = 'var(--rot)';
+      meldung.textContent = '✗ Fehler: ' + (data.fehler || 'Unbekannter Fehler');
+      document.querySelectorAll('.btn-rollback').forEach(b => b.disabled = false);
+    }
+  } catch (e) {
+    meldung.style.background = '#fff0f0';
+    meldung.style.color = 'var(--rot)';
+    meldung.textContent = '✗ Netzwerkfehler: ' + e.message;
+    document.querySelectorAll('.btn-rollback').forEach(b => b.disabled = false);
+  }
+}
+</script>
+{% endblock %}

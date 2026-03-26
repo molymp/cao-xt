@@ -94,6 +94,16 @@
         header nav a:hover, header nav a.aktiv {
             background: rgba(74,148,40,0.3); color: var(--gruen-blass);
         }
+        /* Update-Badge in der Navbar */
+        header nav a.nav-update {
+            background: var(--gold); color: white !important;
+            animation: update-pulse 2.5s ease-in-out infinite;
+        }
+        header nav a.nav-update:hover { background: var(--gold-hell); }
+        @keyframes update-pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.65; }
+        }
         header .terminal-info {
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
@@ -251,6 +261,9 @@
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">📖 Handbuch</a>
+        {% endif %}
+        {% if terminal_nr == 8 and update_verfuegbar %}
+        <a href="/update" class="nav-update {% if request.path == '/update' %}aktiv{% endif %}">🔄 Update</a>
         {% endif %}
     </nav>
 
