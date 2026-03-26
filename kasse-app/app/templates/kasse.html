@@ -25,11 +25,6 @@
   font-family: 'Lobster', Georgia, serif;
   font-size: 20px; font-weight: 400; color: var(--gold);
 }
-.wk-summe {
-  margin-left: auto;
-  font-family: 'Lobster', Georgia, serif;
-  font-size: 26px; font-weight: 400; color: var(--gruen-dunkel);
-}
 
 /* Scrollbarer Warenkorb */
 .wk-liste {
@@ -182,9 +177,30 @@
 .aktionen-panel #btnZahlen:hover { background: var(--gold-hell); }
 .aktionen-panel #btnZahlen:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
+/* Anzahl-Anzeige links vom EAN-Feld */
+.ean-anzahl {
+  width: 50px; flex-shrink: 0;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--radius-klein); color: var(--gold);
+  font-size: 16px; font-weight: 700; font-family: 'Lobster', Georgia, serif;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; min-height: 38px;
+}
+
+/* MwSt-Aufschlüsselung */
+.akt-mwst-detail {
+  background: rgba(0,0,0,0.15); border-radius: var(--radius-klein);
+  padding: 6px 10px; font-size: 12px; color: var(--grau-mitte);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.akt-mwst-detail .mwst-row {
+  display: flex; justify-content: space-between;
+}
+.akt-mwst-detail .mwst-row.netto { color: var(--gruen-blass); font-weight: 700; }
+
 /* EAN-Eingabefeld */
 .ean-label { font-size: 11px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
-.ean-wrap { position: relative; }
+.ean-wrap { position: relative; flex: 1; }
 .ean-input {
   width: 100%; padding: 9px 11px;
   background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
@@ -254,13 +270,6 @@
 
   <!-- ── Warenkorb + Schnelltasten ──────────────────────────── -->
   <div class="warenkorb-panel">
-    <div class="wk-kopf">
-      <span class="wk-bon-nr" id="bonNrAnzeige">–</span>
-      <button class="btn btn-neutral btn-sm" onclick="neuerVorgang()">+ Neu</button>
-      <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
-      <span class="wk-summe" id="wkSumme">0,00 €</span>
-    </div>
-
     <!-- Scrollbarer Warenkorb -->
     <div class="wk-liste" id="wkListe">
       <div class="wk-leer">
@@ -280,10 +289,19 @@
 
   <!-- ── Rechte Spalte: Aktionen + EAN + Numpad ─────────────── -->
   <div class="aktionen-panel">
+    <!-- Bon-Nr + Neu + Parken -->
+    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+      <span class="wk-bon-nr" id="bonNrAnzeige">–</span>
+      <button class="btn btn-neutral btn-sm" onclick="neuerVorgang()">+ Neu</button>
+      <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
+    </div>
+
+    <!-- Netto + MwSt-Aufschlüsselung -->
+    <div class="akt-mwst-detail" id="aktNettomwst" style="display:none;"></div>
+
     <div class="akt-summen">
       <div class="label">Gesamtbetrag</div>
       <div class="wert" id="aktSumme">0,00 €</div>
-      <div class="mwst" id="aktMwst"></div>
     </div>
 
     <button class="btn btn-success btn-full" id="btnZahlen"
@@ -303,13 +321,16 @@
     <hr>
 
     <!-- EAN / Suche / Betrag -->
-    <div class="ean-label">Artikel · EAN · Betrag (€)</div>
-    <div class="ean-wrap">
-      <input class="ean-input" id="artikelSuche" type="text"
-             placeholder="3×EAN  oder  1,99"
-             autocomplete="off" autocorrect="off" autocapitalize="off"
-             spellcheck="false">
-      <div class="ean-ergebnisse" id="sucheErgebnisse"></div>
+    <div class="ean-label">Anzahl · EAN · Betrag (€)</div>
+    <div style="display:flex; gap:4px; align-items:stretch;">
+      <div class="ean-anzahl" id="anzahlAnzeige" title="Anzahl">1</div>
+      <div class="ean-wrap">
+        <input class="ean-input" id="artikelSuche" type="text"
+               placeholder="3×EAN  oder  1,99"
+               autocomplete="off" autocorrect="off" autocapitalize="off"
+               spellcheck="false">
+        <div class="ean-ergebnisse" id="sucheErgebnisse"></div>
+      </div>
     </div>
 
     <!-- 4×4 Numpad: 7 8 9 ⌫ / 4 5 6 × / 1 2 3 − / 00 0 , OK -->
@@ -439,6 +460,7 @@ async function neuerVorgang() {
   renderWarenkorb();
   document.getElementById('btnZahlen').disabled = true;
   document.getElementById('aktSumme').textContent = '0,00 €';
+  document.getElementById('aktNettomwst').style.display = 'none';
   toast('Neuer Bon ' + bonNr, 'ok');
 }
 
@@ -483,8 +505,28 @@ function renderWarenkorb() {
 }
 
 function aktualisierePreis(cent) {
-  document.getElementById('wkSumme').textContent  = euro(cent);
   document.getElementById('aktSumme').textContent = euro(cent);
+  // Netto + MwSt-Aufschlüsselung
+  const el = document.getElementById('aktNettomwst');
+  const aktiv = positionen.filter(p => !p.STORNIERT);
+  if (!aktiv.length) { el.style.display = 'none'; return; }
+  const mwstMap = {};
+  let nettoGes = 0;
+  for (const p of aktiv) {
+    const satz = parseFloat(p.MWST_SATZ) || 0;
+    const brutto = p.GESAMTPREIS_BRUTTO;
+    const nettoC = Math.round(brutto * 100 / (100 + satz));
+    nettoGes += nettoC;
+    if (!mwstMap[satz]) mwstMap[satz] = 0;
+    mwstMap[satz] += brutto - nettoC;
+  }
+  const saetze = Object.keys(mwstMap).sort((a, b) => a - b);
+  let html = `<div class="mwst-row netto"><span>Netto</span><span>${euro(nettoGes)}</span></div>`;
+  for (const s of saetze) {
+    html += `<div class="mwst-row"><span>MwSt ${parseFloat(s).toFixed(0)}%</span><span>${euro(mwstMap[s])}</span></div>`;
+  }
+  el.innerHTML = html;
+  el.style.display = 'flex';
 }
 
 function formatMenge(m) {
@@ -713,6 +755,12 @@ async function kundeWaehlen(id, name) {
 }
 
 // ── EAN-Eingabe ───────────────────────────────────────────────
+function anzahlAktualisieren() {
+  const val = document.getElementById('artikelSuche').value;
+  const { menge } = parseEanEingabe(val);
+  document.getElementById('anzahlAnzeige').textContent = formatMenge(menge);
+}
+
 let _sucheTimer;
 
 function parseEanEingabe(str) {
@@ -725,6 +773,7 @@ function parseEanEingabe(str) {
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('artikelSuche');
   inp.addEventListener('input', e => {
+    anzahlAktualisieren();
     clearTimeout(_sucheTimer);
     _sucheTimer = setTimeout(() => sucheAusfuehren(e.target.value), 250);
   });
@@ -739,6 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function scanEingabeVerarbeiten(str) {
   const { menge, code } = parseEanEingabe(str);
   document.getElementById('artikelSuche').value = '';
+  anzahlAktualisieren();
   const r = await fetch(`/api/artikel/barcode/${encodeURIComponent(code)}`);
   if (r.ok) {
     const art = await r.json();
@@ -805,6 +855,7 @@ document.addEventListener('click', e => {
   } else {
     inp.value = val + z;
   }
+  anzahlAktualisieren();
   clearTimeout(_sucheTimer);
   _sucheTimer = setTimeout(() => sucheAusfuehren(inp.value), 250);
   inp.focus();
@@ -868,7 +919,7 @@ function schnellRender() {
   const katSeen = new Set();
   for (const s of schnellDaten) {
     if (s.ist_warengruppe) continue;
-    const k = s.kategorie_name || 'Artikel';
+    const k = s.kategorie_name || 'Warengruppen';
     if (!katSeen.has(k)) { kategorien.push(k); katSeen.add(k); }
   }
   const hatWG = schnellDaten.some(s => s.ist_warengruppe);
@@ -906,7 +957,7 @@ function schnellArtikelRender() {
   const items = aktivKategorie === 'WG'
     ? schnellDaten.filter(s => s.ist_warengruppe)
     : schnellDaten.filter(s => !s.ist_warengruppe &&
-        (s.kategorie_name || 'Artikel') === aktivKategorie);
+        (s.kategorie_name || 'Warengruppen') === aktivKategorie);
 
   if (!items.length) {
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-dim);font-size:14px;">Keine Einträge</div>';
@@ -940,16 +991,18 @@ async function schnellHinzufuegen(s) {
 async function warengruppeBuchen(wg) {
   const eanStr = document.getElementById('artikelSuche').value.trim();
   if (!eanStr) { toast('Bitte Betrag eingeben', 'err'); return; }
-  const betragCent = Math.round(parseFloat(eanStr.replace(',', '.')) * 100);
+  const { menge, code } = parseEanEingabe(eanStr);
+  const betragCent = Math.round(parseFloat(code.replace(',', '.')) * 100);
   if (!betragCent) { toast('Ungültiger Betrag', 'err'); return; }
   document.getElementById('artikelSuche').value = '';
+  anzahlAktualisieren();
   await artikelHinzufuegen({
     id: null, bezeichnung: wg.bezeichnung,
     preis_cent: betragCent,
     steuer_code: wg.steuer_code || 2,
     mwst_satz: wg.mwst_satz || 7.0,
     ist_gutschein: false,
-  });
+  }, menge);
 }
 
 // ── Init ──────────────────────────────────────────────────────
