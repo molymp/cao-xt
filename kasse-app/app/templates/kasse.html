@@ -277,15 +277,14 @@
 
   <!-- ── Rechte Spalte: Aktionen + EAN + Numpad ─────────────── -->
   <div class="aktionen-panel">
-    <!-- Bon-Nr + Neu + Parken -->
+    <!-- Bon-Nr + Parken -->
     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
       <span class="wk-bon-nr" id="bonNrAnzeige">–</span>
-      <button class="btn btn-neutral btn-sm" onclick="neuerVorgang()">+ Neu</button>
       <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
     </div>
 
     <!-- Netto + MwSt-Aufschlüsselung -->
-    <div class="akt-mwst-detail" id="aktNettomwst" style="display:none;"></div>
+    <div class="akt-mwst-detail" id="aktNettomwst"></div>
 
     <div class="akt-summen">
       <div class="label">Gesamtbetrag</div>
@@ -448,7 +447,6 @@ async function neuerVorgang() {
   renderWarenkorb();
   document.getElementById('btnZahlen').disabled = true;
   document.getElementById('aktSumme').textContent = '0,00 €';
-  document.getElementById('aktNettomwst').style.display = 'none';
   eingabeZuruecksetzen();
   toast('Neuer Bon ' + bonNr, 'ok');
 }
@@ -498,7 +496,10 @@ function aktualisierePreis(cent) {
   // Netto + MwSt-Aufschlüsselung
   const el = document.getElementById('aktNettomwst');
   const aktiv = positionen.filter(p => !p.STORNIERT);
-  if (!aktiv.length) { el.style.display = 'none'; return; }
+  if (!aktiv.length) {
+    el.innerHTML = '<div class="mwst-row netto"><span>Netto</span><span>—</span></div>';
+    return;
+  }
   const mwstMap = {};
   let nettoGes = 0;
   for (const p of aktiv) {
@@ -515,7 +516,6 @@ function aktualisierePreis(cent) {
     html += `<div class="mwst-row"><span>MwSt ${parseFloat(s).toFixed(0)}%</span><span>${euro(mwstMap[s])}</span></div>`;
   }
   el.innerHTML = html;
-  el.style.display = 'flex';
 }
 
 function formatMenge(m) {
@@ -577,7 +577,9 @@ async function _posNeuanlegen(pos, neueMenge, steuerCode) {
 async function mengeErhoehenPos(posId) {
   const pos = positionen.find(p => p.ID === posId);
   if (!pos || !vorgangId) return;
-  await _posNeuanlegen(pos, parseFloat(pos.MENGE) + 1, pos.STEUER_CODE);
+  await api('PATCH', `/api/vorgang/${vorgangId}/position/${posId}/menge`,
+            { menge: parseFloat(pos.MENGE) + 1 });
+  await vorgangNachladen();
 }
 
 async function mengeReduzierenPos(posId) {
@@ -585,7 +587,8 @@ async function mengeReduzierenPos(posId) {
   if (!pos || !vorgangId) return;
   const neu = parseFloat(pos.MENGE) - 1;
   if (neu <= 0) { await posEntfernen(posId); return; }
-  await _posNeuanlegen(pos, neu, pos.STEUER_CODE);
+  await api('PATCH', `/api/vorgang/${vorgangId}/position/${posId}/menge`, { menge: neu });
+  await vorgangNachladen();
 }
 
 async function steuerToggle(posId) {
@@ -609,9 +612,8 @@ async function mengeBestaetigen() {
   document.getElementById('mengeOverlay').classList.add('hidden');
   const neue = parseFloat(mengeEingabe.replace(',', '.'));
   if (!neue || !selPosId || !vorgangId) return;
-  const pos = positionen.find(p => p.ID === selPosId);
-  if (!pos) return;
-  await _posNeuanlegen(pos, neue, pos.STEUER_CODE);
+  await api('PATCH', `/api/vorgang/${vorgangId}/position/${selPosId}/menge`, { menge: neue });
+  await vorgangNachladen();
   selPosId = null;
 }
 
@@ -930,7 +932,7 @@ function schnellArtikelRender() {
 
 async function schnellHinzufuegen(s) {
   if (s.ist_warengruppe) { await warengruppeBuchen(s); return; }
-  if (!s.preis_cent && s.preis_cent !== 0) return;
+  if (!s.preis_cent && s.preis_cent !== 0) { toast('Kein Preis hinterlegt', 'err'); return; }
   const menge = eingabeAnzahl;
   eingabeZuruecksetzen();
   await artikelHinzufuegen({

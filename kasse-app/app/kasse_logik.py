@@ -589,6 +589,28 @@ def position_entfernen(vorgang_id: int, position_id: int):
         _vorgang_summen_aktualisieren(vorgang_id, cur)
 
 
+def position_menge_aendern(vorgang_id: int, position_id: int, neue_menge: float):
+    """Ändert die Menge einer Position in-place (keine Delete+Insert)."""
+    with get_db_transaction() as cur:
+        cur.execute(
+            "SELECT EINZELPREIS_BRUTTO, STEUER_CODE FROM XT_KASSE_VORGAENGE_POS "
+            "WHERE ID = %s AND VORGANG_ID = %s AND STORNIERT = 0",
+            (position_id, vorgang_id)
+        )
+        pos = cur.fetchone()
+        if not pos:
+            return
+        gesamt = round(pos['EINZELPREIS_BRUTTO'] * neue_menge)
+        netto, mwst_b = mwst_berechnen(gesamt, pos['STEUER_CODE'])
+        cur.execute(
+            "UPDATE XT_KASSE_VORGAENGE_POS "
+            "SET MENGE=%s, GESAMTPREIS_BRUTTO=%s, MWST_BETRAG=%s, NETTO_BETRAG=%s "
+            "WHERE ID=%s AND VORGANG_ID=%s",
+            (neue_menge, gesamt, mwst_b, netto, position_id, vorgang_id)
+        )
+        _vorgang_summen_aktualisieren(vorgang_id, cur)
+
+
 def _vorgang_summen_aktualisieren(vorgang_id: int, cursor):
     """Berechnet Summen aus aktiven Positionen neu."""
     cursor.execute(

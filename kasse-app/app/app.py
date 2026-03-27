@@ -194,6 +194,15 @@ def api_position_entfernen(vid, pos_id):
     return jsonify({'ok': True, 'betrag_brutto': vorgang['BETRAG_BRUTTO']})
 
 
+@app.patch('/api/vorgang/<int:vid>/position/<int:pos_id>/menge')
+@_login_required
+def api_position_menge(vid, pos_id):
+    d = request.get_json()
+    kl.position_menge_aendern(vid, pos_id, float(d['menge']))
+    vorgang = kl.vorgang_laden(vid)
+    return jsonify({'ok': True, 'betrag_brutto': vorgang['BETRAG_BRUTTO']})
+
+
 @app.post('/api/vorgang/<int:vid>/parken')
 @_login_required
 def api_vorgang_parken(vid):
