@@ -247,10 +247,6 @@
 {% block nav_extra %}
 <a href="/kasse/journal" class="nav-btn">📋 Journal</a>
 <a href="/kasse/tagesabschluss" class="nav-btn">📋 Z-Bon</a>
-<button class="nav-btn" id="btnGeparkt" onclick="geparkteOverlayOeffnen()"
-        style="background:transparent; border:none; cursor:pointer;">
-  🅿 Geparkt<span class="geparkt-badge" id="geparkteAnzahl">0</span>
-</button>
 {% endblock %}
 
 {% block content %}
@@ -277,10 +273,13 @@
 
   <!-- ── Rechte Spalte: Aktionen + EAN + Numpad ─────────────── -->
   <div class="aktionen-panel">
-    <!-- Bon-Nr + Parken -->
+    <!-- Bon-Nr + Parken + Geparkt -->
     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
       <span class="wk-bon-nr" id="bonNrAnzeige">–</span>
       <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
+      <button class="btn btn-neutral btn-sm" onclick="geparkteOverlayOeffnen()" id="btnGeparkt">
+        📋 Geparkt<span class="geparkt-badge" id="geparkteAnzahl" style="display:none">0</span>
+      </button>
     </div>
 
     <!-- Netto + MwSt-Aufschlüsselung -->
@@ -493,27 +492,23 @@ function renderWarenkorb() {
 
 function aktualisierePreis(cent) {
   document.getElementById('aktSumme').textContent = euro(cent);
-  // Netto + MwSt-Aufschlüsselung
+  // Netto + MwSt-Aufschlüsselung (immer Netto + 7% + 19% anzeigen)
   const el = document.getElementById('aktNettomwst');
   const aktiv = positionen.filter(p => !p.STORNIERT);
-  if (!aktiv.length) {
-    el.innerHTML = '<div class="mwst-row netto"><span>Netto</span><span>—</span></div>';
-    return;
-  }
-  const mwstMap = {};
+  const mwstMap = { 7: 0, 19: 0 };
   let nettoGes = 0;
   for (const p of aktiv) {
     const satz = parseFloat(p.MWST_SATZ) || 0;
     const brutto = p.GESAMTPREIS_BRUTTO;
     const nettoC = Math.round(brutto * 100 / (100 + satz));
     nettoGes += nettoC;
-    if (!mwstMap[satz]) mwstMap[satz] = 0;
-    mwstMap[satz] += brutto - nettoC;
+    mwstMap[satz] = (mwstMap[satz] || 0) + (brutto - nettoC);
   }
-  const saetze = Object.keys(mwstMap).sort((a, b) => a - b);
-  let html = `<div class="mwst-row netto"><span>Netto</span><span>${euro(nettoGes)}</span></div>`;
+  const leer = aktiv.length === 0;
+  const saetze = [...new Set([7, 19, ...Object.keys(mwstMap).map(Number)])].sort((a, b) => a - b);
+  let html = `<div class="mwst-row netto"><span>Netto</span><span>${leer ? '—' : euro(nettoGes)}</span></div>`;
   for (const s of saetze) {
-    html += `<div class="mwst-row"><span>MwSt ${parseFloat(s).toFixed(0)}%</span><span>${euro(mwstMap[s])}</span></div>`;
+    html += `<div class="mwst-row"><span>MwSt ${s.toFixed(0)}%</span><span>${leer ? '—' : euro(mwstMap[s] || 0)}</span></div>`;
   }
   el.innerHTML = html;
 }
@@ -840,7 +835,7 @@ document.addEventListener('click', e => {
 });
 
 // ── Schnelltasten: Laden + Rendern ────────────────────────────
-const SCHNELL_CACHE_KEY = 'schnelltasten_v1';
+const SCHNELL_CACHE_KEY = 'schnelltasten_v2';
 const SCHNELL_CACHE_TTL = 5 * 60 * 1000;
 
 async function schnellLaden() {
@@ -974,6 +969,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     await neuerVorgang();
   }
+  aktualisierePreis(0);  // MwSt-Zeilen sofort aufbauen
   document.getElementById('artikelSuche').focus();
 });
 </script>
