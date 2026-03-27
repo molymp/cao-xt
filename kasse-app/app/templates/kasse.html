@@ -816,9 +816,20 @@ function kundeAnzeigenAktualisieren() {
     <button class="kunde-clear-btn" onclick="kundeEntfernen()">✕ Barverkauf</button>`;
 }
 
+async function _kundeSpeichern(k) {
+  if (!vorgangId) return;
+  await api('PATCH', `/api/vorgang/${vorgangId}/kunde`, {
+    kunden_id:   k ? k.id   : null,
+    kunden_nr:   k ? k.kunnum : null,
+    kunden_name: k ? k.name  : null,
+    kunden_ort:  k ? k.ort   : null,
+  });
+}
+
 async function kundeEntfernen() {
   gewaehlterKunde = null;
   kundeAnzeigenAktualisieren();
+  await _kundeSpeichern(null);
   if (vorgangId) {
     const r = await api('POST', `/api/vorgang/${vorgangId}/neuberechnen`, { pr_ebene: 5 });
     if (r.ok) { positionen = r.positionen; renderWarenkorb(); }
@@ -900,6 +911,7 @@ async function kundeWaehlen(id, name, prEbene, kunnum, ort) {
   gewaehlterKunde = { id, name, pr_ebene: prEbene || 5, kunnum: kunnum || '', ort: ort || '' };
   kundeAnzeigenAktualisieren();
   kundenSchliessen();
+  await _kundeSpeichern(gewaehlterKunde);
   if (vorgangId && prEbene !== 5) {
     const r = await api('POST', `/api/vorgang/${vorgangId}/neuberechnen`, { pr_ebene: prEbene || 5 });
     if (r.ok) { positionen = r.positionen; renderWarenkorb(); }

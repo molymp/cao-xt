@@ -208,6 +208,17 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     b.raw(_BOLD_OFF)
     b.text(f"Datum:    {datum_str}\n")
     b.text(f"Terminal: {terminal_nr}\n")
+    if vorgang.get('KUNDEN_NAME'):
+        b.trenn()
+        nr   = vorgang.get('KUNDEN_NR')
+        ort  = vorgang.get('KUNDEN_ORT')
+        b.raw(_BOLD_ON)
+        b.text(f"Kunde:  {_a(vorgang['KUNDEN_NAME'])}\n")
+        b.raw(_BOLD_OFF)
+        if nr:
+            b.text(f"Kunden-Nr: {_a(nr)}\n")
+        if ort:
+            b.text(f"Ort:    {_a(ort)}\n")
     if vorgang.get('NOTIZ'):
         b.trenn()
         b.raw(_BOLD_ON)
@@ -229,12 +240,12 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
         if menge != 1.0:
             menge_str = f"{menge:.3f}".rstrip('0').rstrip('.') if menge % 1 else str(int(menge))
             b.raw(b'\x1b\x21\x00')
-            b._buf.extend(f"{name[:48]}\n".encode('cp437', errors='replace'))
+            b.text(f"{name[:48]}\n")
             zeile2 = f"  {menge_str} x EP {ep}  {satz:.0f}%"
-            b._buf.extend(f"{zeile2:<38} {gp:>9}\n".encode('cp437', errors='replace'))
+            b.text(f"{zeile2:<38} {gp:>9}\n")
         else:
-            b._buf.extend(f"{name[:38]:<38} {gp:>9}\n".encode('cp437', errors='replace'))
-            b._buf.extend(f"  EP {ep}  {satz:.0f}%\n".encode('cp437', errors='replace'))
+            b.text(f"{name[:38]:<38} {gp:>9}\n")
+            b.text(f"  EP {ep}  {satz:.0f}%\n")
 
         if rab > 0:
             b.text(f"  Rabatt {rab:.0f}%\n")

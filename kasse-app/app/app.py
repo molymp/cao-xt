@@ -205,6 +205,22 @@ def api_position_menge(vid, pos_id):
     return jsonify({'ok': True, 'betrag_brutto': vorgang['BETRAG_BRUTTO']})
 
 
+@app.patch('/api/vorgang/<int:vid>/kunde')
+@_login_required
+def api_vorgang_kunde(vid):
+    from db import get_db_transaction
+    d = request.get_json() or {}
+    with get_db_transaction() as cur:
+        cur.execute(
+            """UPDATE XT_KASSE_VORGAENGE
+               SET KUNDEN_ID=%s, KUNDEN_NR=%s, KUNDEN_NAME=%s, KUNDEN_ORT=%s
+               WHERE ID=%s""",
+            (d.get('kunden_id'), d.get('kunden_nr') or None,
+             d.get('kunden_name') or None, d.get('kunden_ort') or None, vid)
+        )
+    return jsonify({'ok': True})
+
+
 @app.patch('/api/vorgang/<int:vid>/notiz')
 @_login_required
 def api_vorgang_notiz(vid):
