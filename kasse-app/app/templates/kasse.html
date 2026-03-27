@@ -415,14 +415,15 @@
 {% block extra_script %}
 <script>
 // ── State ─────────────────────────────────────────────────────
-let vorgangId     = null;
-let bonNr         = null;
-let positionen    = [];
-let selPosId      = null;
-let mengeEingabe  = '';
-let rabattEingabe = '';
-let schnellDaten  = [];
+let vorgangId      = null;
+let bonNr          = null;
+let positionen     = [];
+let selPosId       = null;
+let mengeEingabe   = '';
+let rabattEingabe  = '';
+let schnellDaten   = [];
 let aktivKategorie = null;
+let eingabeAnzahl  = 1;   // Menge-Feld, unabhängig vom Eingabefeld
 
 // ── Autofokus EAN-Feld ─────────────────────────────────────────
 // Immer Fokus auf Suchfeld halten (Barcodescanner)
@@ -448,6 +449,7 @@ async function neuerVorgang() {
   document.getElementById('btnZahlen').disabled = true;
   document.getElementById('aktSumme').textContent = '0,00 €';
   document.getElementById('aktNettomwst').style.display = 'none';
+  eingabeZuruecksetzen();
   toast('Neuer Bon ' + bonNr, 'ok');
 }
 
@@ -742,22 +744,14 @@ async function kundeWaehlen(id, name) {
 }
 
 // ── EAN-Eingabe ───────────────────────────────────────────────
-function anzahlAktualisieren() {
-  const val = document.getElementById('artikelSuche').value;
-  const { menge } = parseEanEingabe(val);
-  document.getElementById('anzahlAnzeige').textContent = formatMenge(menge);
-}
-
-function parseEanEingabe(str) {
-  // "3×12345" oder "-2×12345" → { menge, code }
-  const m = str.match(/^(-?\d+)[x×X](.+)$/i);
-  if (m) return { menge: parseFloat(m[1]), code: m[2].trim() };
-  return { menge: 1, code: str };
+function eingabeZuruecksetzen() {
+  document.getElementById('artikelSuche').value = '';
+  eingabeAnzahl = 1;
+  document.getElementById('anzahlAnzeige').textContent = '1';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('artikelSuche');
-  inp.addEventListener('input', () => anzahlAktualisieren());
   inp.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const q = inp.value.trim();
@@ -766,10 +760,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-async function scanEingabeVerarbeiten(str) {
-  const { menge, code } = parseEanEingabe(str);
-  document.getElementById('artikelSuche').value = '';
-  anzahlAktualisieren();
+async function scanEingabeVerarbeiten(code) {
+  const menge = eingabeAnzahl;
+  eingabeZuruecksetzen();
   const r = await fetch(`/api/artikel/barcode/${encodeURIComponent(code)}`);
   if (r.ok) {
     const art = await r.json();
@@ -787,16 +780,30 @@ document.addEventListener('click', e => {
   const val = inp.value;
 
   if (z === '⌫') {
-    inp.value = val.slice(0, -1);
+    if (val.length > 0) {
+      inp.value = val.slice(0, -1);
+    } else if (eingabeAnzahl !== 1) {
+      // Eingabefeld leer → Anzahl zurücksetzen
+      eingabeAnzahl = 1;
+      document.getElementById('anzahlAnzeige').textContent = '1';
+    }
   } else if (z === 'OK') {
     const q = inp.value.trim();
     if (q) scanEingabeVerarbeiten(q);
     return;
   } else if (z === '×') {
-    // Mengenmultiplikator: nur setzen wenn reiner Zahlwert davor
-    if (!val.includes('×') && val.match(/^-?\d+$/)) inp.value = val + '×';
+    // Menge übertragen: Eingabefeld-Integer → Anzahl-Feld, Eingabefeld leeren
+    if (val !== '' && val !== '-' && val.match(/^-?\d+$/)) {
+      eingabeAnzahl = parseInt(val, 10);
+      document.getElementById('anzahlAnzeige').textContent = String(eingabeAnzahl);
+      inp.value = '';
+    }
+    // Andernfalls ignorieren
   } else if (z === ',') {
-    if (!val.includes(',')) inp.value = val + ',';
+    if (!val.includes(',')) {
+      // Leeres Feld oder nur '-': '0,' bzw. '-0,' eintragen
+      inp.value = (val === '' || val === '-') ? val + '0,' : val + ',';
+    }
   } else if (z === '-') {
     // Vorzeichen toggeln
     if (val.startsWith('-')) inp.value = val.slice(1);
@@ -804,7 +811,6 @@ document.addEventListener('click', e => {
   } else {
     inp.value = val + z;
   }
-  anzahlAktualisieren();
   inp.focus();
 });
 
@@ -925,9 +931,8 @@ function schnellArtikelRender() {
 async function schnellHinzufuegen(s) {
   if (s.ist_warengruppe) { await warengruppeBuchen(s); return; }
   if (!s.preis_cent && s.preis_cent !== 0) return;
-  const eanStr = document.getElementById('artikelSuche').value.trim();
-  const { menge } = eanStr ? parseEanEingabe(eanStr) : { menge: 1 };
-  document.getElementById('artikelSuche').value = '';
+  const menge = eingabeAnzahl;
+  eingabeZuruecksetzen();
   await artikelHinzufuegen({
     id: s.artikel_id, bezeichnung: s.bezeichnung,
     preis_cent: s.preis_cent, steuer_code: s.steuer_code || 1,
@@ -936,13 +941,12 @@ async function schnellHinzufuegen(s) {
 }
 
 async function warengruppeBuchen(wg) {
-  const eanStr = document.getElementById('artikelSuche').value.trim();
-  if (!eanStr) { toast('Bitte Betrag eingeben', 'err'); return; }
-  const { menge, code } = parseEanEingabe(eanStr);
-  const betragCent = Math.round(parseFloat(code.replace(',', '.')) * 100);
+  const preisStr = document.getElementById('artikelSuche').value.trim();
+  if (!preisStr) { toast('Bitte Betrag eingeben', 'err'); return; }
+  const betragCent = Math.round(parseFloat(preisStr.replace(',', '.')) * 100);
   if (!betragCent) { toast('Ungültiger Betrag', 'err'); return; }
-  document.getElementById('artikelSuche').value = '';
-  anzahlAktualisieren();
+  const menge = eingabeAnzahl;
+  eingabeZuruecksetzen();
   await artikelHinzufuegen({
     id: null, bezeichnung: wg.bezeichnung,
     preis_cent: betragCent,
