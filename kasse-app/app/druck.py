@@ -208,6 +208,11 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     b.raw(_BOLD_OFF)
     b.text(f"Datum:    {datum_str}\n")
     b.text(f"Terminal: {terminal_nr}\n")
+    if vorgang.get('NOTIZ'):
+        b.trenn()
+        b.raw(_BOLD_ON)
+        b.text(f"Betreff: {_a(vorgang['NOTIZ'])}\n")
+        b.raw(_BOLD_OFF)
     b.trenn()
 
     # ── Positionen ───────────────────────────────────────────

@@ -225,13 +225,27 @@
 }
 .ean-taste.t-loeschen { background: rgba(180,60,60,0.35); border-color: rgba(255,100,100,0.3); }
 
-/* Kunden-Infobereich über Warenkorb */
+/* Kunden-Infobereich + Betreff über Warenkorb */
+.wk-kopfinfo {
+  flex-shrink: 0; background: white;
+  border-bottom: 2px solid var(--creme-dunkel);
+}
 .wk-kunde {
   padding: 5px 14px; border-bottom: 1px solid var(--creme-dunkel);
-  background: white; flex-shrink: 0;
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   font-size: 13px;
 }
+.wk-betreff {
+  padding: 4px 14px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px;
+}
+.betreff-input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font-size: 13px; font-family: 'Nunito', sans-serif;
+  color: var(--text-dunkel);
+}
+.betreff-input::placeholder { color: var(--text-hell); font-style: italic; }
 .wk-kunde .kunde-label { color: var(--text-hell); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; }
 .wk-kunde .kunde-wert  { font-weight: 700; color: var(--text-dunkel); flex: 1; }
 .wk-kunde .kunde-wert small { font-weight: 400; color: var(--text-hell); margin-right: 4px; }
@@ -284,10 +298,18 @@
 
   <!-- ── Warenkorb + Schnelltasten ──────────────────────────── -->
   <div class="warenkorb-panel">
-    <!-- Kunden-Infozeile -->
-    <div class="wk-kunde" id="wkKunde">
-      <span class="kunde-label">Kunde</span>
-      <span class="kunde-wert barverkauf">Barverkauf</span>
+    <!-- Kunden-Infozeile + Betreff -->
+    <div class="wk-kopfinfo">
+      <div class="wk-kunde" id="wkKunde">
+        <span class="kunde-label">Kunde</span>
+        <span class="kunde-wert barverkauf">Barverkauf</span>
+      </div>
+      <div class="wk-betreff">
+        <span class="kunde-label">Betreff</span>
+        <input class="betreff-input" id="betrefEingabe" type="text"
+               placeholder="Optional – erscheint auf dem Bon"
+               autocomplete="off" spellcheck="false">
+      </div>
     </div>
     <!-- Scrollbarer Warenkorb -->
     <div class="wk-liste" id="wkListe">
@@ -486,6 +508,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('.overlay:not(.hidden)')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
       e.target.tagName === 'SELECT') return;
+  if (e.target.id === 'betrefEingabe') return;
   setTimeout(() => {
     const inp = document.getElementById('artikelSuche');
     if (document.activeElement !== inp) inp.focus();
@@ -501,6 +524,7 @@ async function neuerVorgang() {
   positionen = [];
   gewaehlterKunde = null;
   kundeAnzeigenAktualisieren();
+  betrefZuruecksetzen();
   aktualisiereBonNr();
   renderWarenkorb();
   document.getElementById('btnZahlen').disabled = true;
@@ -730,6 +754,7 @@ async function entparken(vid) {
   bonNr = d.vorgang.BON_NR; positionen = d.positionen;
   gewaehlterKunde = null;
   kundeAnzeigenAktualisieren();
+  betrefLaden(d.vorgang.NOTIZ);
   aktualisiereBonNr(); renderWarenkorb();
   await geparkteAktualisieren();
   toast('Bon wieder aufgenommen', 'ok');
@@ -880,6 +905,29 @@ async function kundeWaehlen(id, name, prEbene, kunnum, ort) {
     if (r.ok) { positionen = r.positionen; renderWarenkorb(); }
   }
   toast(`Kunde: ${name}${prEbene && prEbene !== 5 ? ' (VK' + prEbene + ')' : ''}`, 'ok');
+}
+
+// ── Betreff ───────────────────────────────────────────────────
+let _betrefTimer;
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('betrefEingabe').addEventListener('input', () => {
+    clearTimeout(_betrefTimer);
+    _betrefTimer = setTimeout(betrefSpeichern, 600);
+  });
+});
+
+async function betrefSpeichern() {
+  if (!vorgangId) return;
+  const notiz = document.getElementById('betrefEingabe').value.trim();
+  await api('PATCH', `/api/vorgang/${vorgangId}/notiz`, { notiz });
+}
+
+function betrefZuruecksetzen() {
+  document.getElementById('betrefEingabe').value = '';
+}
+
+function betrefLaden(notiz) {
+  document.getElementById('betrefEingabe').value = notiz || '';
 }
 
 // ── EAN-Eingabe ───────────────────────────────────────────────
@@ -1111,6 +1159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     vorgangId  = d.vorgang.ID;
     bonNr      = d.vorgang.BON_NR;
     positionen = d.positionen || [];
+    betrefLaden(d.vorgang.NOTIZ);
     aktualisiereBonNr();
     renderWarenkorb();
     toast(`Bon ${bonNr} wiederhergestellt`, 'ok');
