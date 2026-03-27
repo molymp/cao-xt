@@ -206,14 +206,14 @@ def _schnelltasten_laden_uncached() -> list:
         cur.execute("DESCRIBE ARTIKEL_SCHNELLZUGRIFF")
         spalten = {r['Field'] for r in cur.fetchall()}
 
-        pos_col       = _erste_spalte(spalten, ['POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
+        pos_col       = _erste_spalte(spalten, ['SORT','POS','POSITION','REIHE','NR','TASTE_NR'], 'REC_ID')
         name_col      = _erste_spalte(spalten, ['BEZEICHNUNG','NAME','KURZNAME'], None)
         farbe_col     = _erste_spalte(spalten, ['FARBE','FARBE_BG','COLOR'], None)
-        schrift_col   = _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR'], None)
+        schrift_col   = _erste_spalte(spalten, ['FARBE_SCHRIFT','SCHRIFTFARBE','COLOR_TEXT','FONT_COLOR','FONT_FARBE'], None)
         seite_col     = _erste_spalte(spalten, ['SEITE','EBENE','TAB'], None)
         kategorie_col = _erste_spalte(spalten, ['KATEGORIE_NAME','KATEGORIE','CATEGORY','GRUPPE','GRUPPENNAME'], None)
         artnr_col     = _erste_spalte(spalten, ['ARTIKEL_ID'], None)
-        wg_id_col     = _erste_spalte(spalten, ['WG_ID','WGID','WARENGRUPPE_ID'], None)
+        wg_id_col     = _erste_spalte(spalten, ['WG_ID','WGID','WARENGRUPPE_ID','WARENGRUPPE'], None)
 
         select = list({'REC_ID', pos_col})
         for col in (name_col, farbe_col, schrift_col, seite_col,
@@ -234,10 +234,15 @@ def _schnelltasten_laden_uncached() -> list:
     for row in rows:
         art_ref = str(row.get(artnr_col) or '').strip() if artnr_col else ''
         wg_ref  = row.get(wg_id_col) if wg_id_col else None
-        if art_ref and art_ref != '0':
-            (ids_num if art_ref.isdigit() else ids_text).append(
-                int(art_ref) if art_ref.isdigit() else art_ref
-            )
+        # Positive Ganzzahl → Artikel-REC_ID; Text → ARTNUM; ≤0 → Warengruppe
+        try:
+            art_id_int = int(art_ref) if art_ref else 0
+        except ValueError:
+            art_id_int = None  # ARTNUM-String
+        if art_id_int is None:
+            ids_text.append(art_ref)
+        elif art_id_int > 0:
+            ids_num.append(art_id_int)
         elif wg_ref:
             wg_ids.append(wg_ref)
 
@@ -313,7 +318,11 @@ def _schnelltasten_laden_uncached() -> list:
             'kategorie_name': row.get(kategorie_col) if kategorie_col else None,
         }
 
-        if (not art_ref or art_ref == '0') and wg_ref:
+        try:
+            art_id_val = int(art_ref) if art_ref else 0
+        except ValueError:
+            art_id_val = None
+        if (art_id_val is not None and art_id_val <= 0) and wg_ref:
             # Warengruppe
             wg = wg_by_id.get(wg_ref)
             if wg:
@@ -528,8 +537,13 @@ def position_hinzufuegen(vorgang_id: int, artikel_id: int | None,
                           bezeichnung: str, menge: float,
                           einzelpreis_brutto: int, steuer_code: int,
                           rabatt_prozent: float = 0.0,
-                          ist_gutschein: bool = False) -> dict:
-    """Fügt eine Position zum Vorgang hinzu und aktualisiert die Summen."""
+                          ist_gutschein: bool = False,
+                          wg_id: int | None = None) -> dict:
+    """Fügt eine Position zum Vorgang hinzu und aktualisiert die Summen.
+
+    Für Warengruppen-Buchungen: artikel_id=None, wg_id=<WG-ID>.
+    CAO-Konvention: ARTIKEL_ID=-99 in JOURNALPOS für WG-Buchungen.
+    """
     # Menge / Rabatt berücksichtigen
     rabatt_faktor = 1.0 - (rabatt_prozent / 100.0)
     ep_nach_rabatt = round(einzelpreis_brutto * rabatt_faktor)
@@ -538,10 +552,13 @@ def position_hinzufuegen(vorgang_id: int, artikel_id: int | None,
     netto, mwst_b = mwst_berechnen(gesamt, steuer_code)
     mwst_satz = mwst_satz_fuer_code(steuer_code)
 
-    # Artikeldaten nachladen für Snapshot
+    # Artikeldaten nachladen für Snapshot; WG-Buchungen: ARTIKEL_ID=-99 (CAO-Konvention)
     artnum = ''
     barcode = ''
-    if artikel_id:
+    if wg_id and not artikel_id:
+        artikel_id = -99          # CAO-Konvention für WG-Buchungen in JOURNALPOS
+        artnum = f'WG:{wg_id}'   # WG-Referenz im ARTNUM-Feld speichern
+    elif artikel_id and artikel_id > 0:
         with get_db() as cur:
             cur.execute(
                 "SELECT ARTNUM, BARCODE FROM ARTIKEL WHERE REC_ID = %s", (artikel_id,)

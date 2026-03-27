@@ -535,6 +535,7 @@ async function artikelHinzufuegen(artikel, menge = 1, rabatt = 0) {
   }
   const r = await api('POST', `/api/vorgang/${vorgangId}/position`, {
     artikel_id:         artikel.id,
+    wg_id:              artikel.wg_id || null,
     bezeichnung:        artikel.bezeichnung,
     menge:              menge,
     einzelpreis_brutto: artikel.preis_cent,
@@ -950,7 +951,7 @@ async function warengruppeBuchen(wg) {
   const menge = eingabeAnzahl;
   eingabeZuruecksetzen();
   await artikelHinzufuegen({
-    id: null, bezeichnung: wg.bezeichnung,
+    id: null, wg_id: wg.wg_id, bezeichnung: wg.bezeichnung,
     preis_cent: betragCent,
     steuer_code: wg.steuer_code || 2,
     mwst_satz: wg.mwst_satz || 7.0,

@@ -180,6 +180,7 @@ def api_position_hinzufuegen(vid):
         steuer_code=int(d.get('steuer_code', 1)),
         rabatt_prozent=float(d.get('rabatt_prozent', 0)),
         ist_gutschein=bool(d.get('ist_gutschein', False)),
+        wg_id=d.get('wg_id'),
     )
     vorgang = kl.vorgang_laden(vid)
     return jsonify({'ok': True, 'pos_id': result['id'],
