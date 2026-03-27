@@ -117,13 +117,16 @@ def mwst_berechnen(brutto_cent: int, steuer_code: int) -> tuple[int, int]:
 # Artikel
 # ─────────────────────────────────────────────────────────────
 
+_VK_COLS = 'VK1B, VK2B, VK3B, VK4B, VK5B'
+
+
 def artikel_suchen(suchtext: str, limit: int = 30) -> list:
     """Suche in ARTNUM, BARCODE, KURZNAME, MATCHCODE."""
     pat = f"%{suchtext.strip()}%"
     with get_db() as cur:
         cur.execute(
-            """SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, MATCHCODE,
-                      VK5B AS VK_PREIS, STEUER_CODE, ARTIKELTYP
+            f"""SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, MATCHCODE,
+                      {_VK_COLS}, STEUER_CODE, ARTIKELTYP
                FROM ARTIKEL
                WHERE (ARTNUM LIKE %s OR BARCODE LIKE %s
                       OR KURZNAME LIKE %s OR MATCHCODE LIKE %s)
@@ -139,8 +142,8 @@ def artikel_suchen(suchtext: str, limit: int = 30) -> list:
 def artikel_per_barcode(barcode: str) -> dict | None:
     with get_db() as cur:
         cur.execute(
-            """SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, MATCHCODE,
-                      VK5B AS VK_PREIS, STEUER_CODE, ARTIKELTYP
+            f"""SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, MATCHCODE,
+                      {_VK_COLS}, STEUER_CODE, ARTIKELTYP
                FROM ARTIKEL WHERE BARCODE = %s LIMIT 1""",
             (barcode,)
         )
@@ -149,7 +152,11 @@ def artikel_per_barcode(barcode: str) -> dict | None:
 
 
 def _artikel_aufbereiten(row: dict) -> dict:
-    preis_cent = euro_zu_cent(row.get('VK_PREIS'))
+    # Alle VK-Preisebenen 1-5 einlesen; Fallback auf VK5B wenn Ebene = 0
+    vk_preise = {}
+    for i in range(1, 6):
+        vk_preise[i] = euro_zu_cent(row.get(f'VK{i}B') or 0)
+    preis_cent = vk_preise[5]  # Standard = Barverkauf (Ebene 5)
     steuer_code = row.get('STEUER_CODE') or 1
     netto, mwst = mwst_berechnen(preis_cent, steuer_code)
     return {
@@ -159,6 +166,7 @@ def _artikel_aufbereiten(row: dict) -> dict:
         'bezeichnung': row.get('KURZNAME', ''),
         'matchcode':   row.get('MATCHCODE', ''),
         'preis_cent':  preis_cent,
+        'vk_preise':   vk_preise,
         'netto_cent':  netto,
         'mwst_cent':   mwst,
         'steuer_code': steuer_code,
@@ -252,7 +260,7 @@ def _schnelltasten_laden_uncached() -> list:
         ph = ','.join(['%s'] * len(ids_num))
         with get_db() as cur:
             cur.execute(
-                f"SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, VK5B AS VK_PREIS, STEUER_CODE "
+                f"SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, {_VK_COLS}, STEUER_CODE "
                 f"FROM ARTIKEL WHERE REC_ID IN ({ph})",
                 ids_num
             )
@@ -265,7 +273,7 @@ def _schnelltasten_laden_uncached() -> list:
         ph = ','.join(['%s'] * len(ids_text))
         with get_db() as cur:
             cur.execute(
-                f"SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, VK5B AS VK_PREIS, STEUER_CODE "
+                f"SELECT REC_ID, ARTNUM, BARCODE, KURZNAME, {_VK_COLS}, STEUER_CODE "
                 f"FROM ARTIKEL WHERE ARTNUM IN ({ph})",
                 ids_text
             )
@@ -628,6 +636,57 @@ def position_menge_aendern(vorgang_id: int, position_id: int, neue_menge: float)
         _vorgang_summen_aktualisieren(vorgang_id, cur)
 
 
+def vorgang_preise_neuberechnen(vorgang_id: int, pr_ebene: int):
+    """Aktualisiert alle Artikel-Positionen auf die Preisebene des Kunden.
+
+    PR_EBENE 5 = Barverkauf (Standard). Wenn VK{n}B = 0, Fallback auf VK5B.
+    WG-Buchungen und bereits stornierte Positionen werden nicht verändert.
+    """
+    pr_ebene = max(1, min(5, pr_ebene))  # Clamp 1-5
+    vk_col = f'VK{pr_ebene}B'
+
+    positionen = vorgang_positionen(vorgang_id)
+    art_ids = [
+        p['ARTIKEL_ID'] for p in positionen
+        if p.get('ARTIKEL_ID') and p['ARTIKEL_ID'] > 0 and not p.get('STORNIERT')
+    ]
+    if not art_ids:
+        return
+
+    # VK-Preise batch laden
+    with get_db() as cur:
+        ph = ','.join(['%s'] * len(art_ids))
+        cur.execute(
+            f"SELECT REC_ID, {vk_col}, VK5B FROM ARTIKEL WHERE REC_ID IN ({ph})",
+            art_ids
+        )
+        vk_map = {}
+        for r in cur.fetchall():
+            # Fallback auf VK5B wenn gewählte Ebene = 0
+            preis = euro_zu_cent(r[vk_col] or 0) or euro_zu_cent(r['VK5B'] or 0)
+            vk_map[r['REC_ID']] = preis
+
+    with get_db_transaction() as cur:
+        for pos in positionen:
+            if not pos.get('ARTIKEL_ID') or pos['ARTIKEL_ID'] <= 0 or pos.get('STORNIERT'):
+                continue
+            neuer_vk = vk_map.get(pos['ARTIKEL_ID'])
+            if not neuer_vk:
+                continue
+            rabatt = float(pos.get('RABATT_PROZENT') or 0)
+            neuer_ep = round(neuer_vk * (1 - rabatt / 100))
+            gesamt   = round(neuer_ep * float(pos['MENGE']))
+            netto, mwst_b = mwst_berechnen(gesamt, pos['STEUER_CODE'])
+            cur.execute(
+                """UPDATE XT_KASSE_VORGAENGE_POS
+                   SET EINZELPREIS_BRUTTO=%s, GESAMTPREIS_BRUTTO=%s,
+                       NETTO_BETRAG=%s, MWST_BETRAG=%s
+                   WHERE ID=%s""",
+                (neuer_ep, gesamt, netto, mwst_b, pos['ID'])
+            )
+        _vorgang_summen_aktualisieren(vorgang_id, cur)
+
+
 def _vorgang_summen_aktualisieren(vorgang_id: int, cursor):
     """Berechnet Summen aus aktiven Positionen neu."""
     cursor.execute(
@@ -908,6 +967,7 @@ def vorgang_kopieren(original_id: int, terminal_nr: int, mitarbeiter: dict) -> d
         )
         offen = cur.fetchone()
     if offen and not vorgang_positionen(offen['ID']):
+        # GoBD §146 Abs. 4 AO: Kein physisches Löschen – leeren Bon auf ABGEBROCHEN setzen
         if offen.get('TSE_TX_ID'):
             try:
                 tse_modul.tse_cancel_transaktion(
@@ -918,7 +978,9 @@ def vorgang_kopieren(original_id: int, terminal_nr: int, mitarbeiter: dict) -> d
                 pass
         with get_db() as cur:
             cur.execute(
-                "DELETE FROM XT_KASSE_VORGAENGE WHERE ID=%s AND STATUS='OFFEN'",
+                "UPDATE XT_KASSE_VORGAENGE "
+                "SET STATUS='ABGEBROCHEN', ABGEBROCHEN_AM=NOW() "
+                "WHERE ID=%s AND STATUS='OFFEN'",
                 (offen['ID'],)
             )
 

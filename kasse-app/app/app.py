@@ -29,6 +29,7 @@ def _globals():
     return {
         'terminal_nr':   config.TERMINAL_NR,
         'firma_name':    config.FIRMA_NAME,
+        'db_name':       config.DB_NAME,
         'jetzt':         datetime.now(),
     }
 
@@ -228,18 +229,34 @@ def api_geparkte():
 @app.post('/api/vorgang/<int:vid>/abbrechen')
 @_login_required
 def api_vorgang_abbrechen(vid):
-    """Bricht einen offenen Vorgang ab (löscht alle Positionen, storniert TSE)."""
+    """Bricht einen offenen Vorgang ab (GoBD: Soft-Delete, keine physische Löschung)."""
     import tse as tse_modul
     vorgang = kl.vorgang_laden(vid)
-    if vorgang and vorgang.get('TSE_TX_ID') and vorgang['STATUS'] == 'OFFEN':
-        tse_modul.tse_cancel_transaktion(
-            config.TERMINAL_NR, vid,
-            vorgang['TSE_TX_ID'], vorgang['TSE_TX_REVISION']
+    if not vorgang or vorgang['STATUS'] != 'OFFEN':
+        return jsonify({'ok': False, 'fehler': 'Vorgang nicht offen'}), 400
+    # TSE-Transaktion canceln (falls bereits gestartet)
+    if vorgang.get('TSE_TX_ID'):
+        try:
+            tse_modul.tse_cancel_transaktion(
+                config.TERMINAL_NR, vid,
+                vorgang['TSE_TX_ID'], vorgang['TSE_TX_REVISION']
+            )
+        except Exception as e:
+            log.warning('TSE-Cancel bei Abbruch fehlgeschlagen (vid=%s): %s', vid, e)
+    # GoBD §146 Abs. 4 AO: Keine physische Löschung – Status auf ABGEBROCHEN setzen
+    from db import get_db_transaction
+    with get_db_transaction() as cur:
+        cur.execute(
+            "UPDATE XT_KASSE_VORGAENGE_POS SET STORNIERT=1 "
+            "WHERE VORGANG_ID=%s AND STORNIERT=0",
+            (vid,)
         )
-    from db import get_db
-    with get_db() as cur:
-        cur.execute("DELETE FROM XT_KASSE_VORGAENGE_POS WHERE VORGANG_ID=%s", (vid,))
-        cur.execute("DELETE FROM XT_KASSE_VORGAENGE WHERE ID=%s AND STATUS='OFFEN'", (vid,))
+        cur.execute(
+            "UPDATE XT_KASSE_VORGAENGE "
+            "SET STATUS='ABGEBROCHEN', ABGEBROCHEN_AM=NOW() "
+            "WHERE ID=%s AND STATUS='OFFEN'",
+            (vid,)
+        )
     return jsonify({'ok': True})
 
 
@@ -420,6 +437,56 @@ def api_kunden_suche():
         return jsonify([])
     rows = kl.kunden_suchen(q)
     return jsonify(_jsonify_rows(rows))
+
+
+@app.get('/api/kundengruppen')
+@_login_required
+def api_kundengruppen():
+    from db import get_db
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, NAME FROM ADRESSGRUPPEN "
+            "WHERE DURCHSUCHEN='Y' ORDER BY NAME"
+        )
+        rows = cur.fetchall()
+    return jsonify(_jsonify_rows(rows))
+
+
+@app.get('/api/kunden/gruppe/<int:grp_id>')
+@_login_required
+def api_kunden_gruppe(grp_id):
+    from db import get_db
+    with get_db() as cur:
+        if grp_id == -1:
+            cur.execute(
+                "SELECT REC_ID, NAME1, NAME2, ORT, KUNNUM1, KUNDENGRUPPE, PR_EBENE "
+                "FROM ADRESSEN WHERE NAME1 != '' ORDER BY NAME1 LIMIT 300"
+            )
+        else:
+            cur.execute(
+                "SELECT REC_ID, NAME1, NAME2, ORT, KUNNUM1, KUNDENGRUPPE, PR_EBENE "
+                "FROM ADRESSEN WHERE KUNDENGRUPPE=%s AND NAME1 != '' "
+                "ORDER BY NAME1 LIMIT 300",
+                (grp_id,)
+            )
+        rows = cur.fetchall()
+    return jsonify(_jsonify_rows(rows))
+
+
+@app.post('/api/vorgang/<int:vid>/neuberechnen')
+@_login_required
+def api_vorgang_neuberechnen(vid):
+    """Preise aller Artikelpositionen auf neue Preisebene anpassen."""
+    d = request.get_json() or {}
+    pr_ebene = int(d.get('pr_ebene', 5))
+    kl.vorgang_preise_neuberechnen(vid, pr_ebene)
+    vorgang = kl.vorgang_laden(vid)
+    positionen = kl.vorgang_positionen(vid)
+    return jsonify({
+        'ok': True,
+        'betrag_brutto': vorgang['BETRAG_BRUTTO'],
+        'positionen': _jsonify_rows(positionen),
+    })
 
 
 # ── Kassenbuch ────────────────────────────────────────────────
