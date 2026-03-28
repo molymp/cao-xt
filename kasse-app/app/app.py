@@ -26,17 +26,45 @@ app.config['JSON_ENSURE_ASCII'] = False
 # ── Context-Processor ─────────────────────────────────────────
 @app.context_processor
 def _globals():
+    trainings_modus = False
+    try:
+        from db import get_db as _gdb
+        with _gdb() as _cur:
+            _cur.execute(
+                "SELECT TRAININGS_MODUS FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+                (config.TERMINAL_NR,)
+            )
+            _row = _cur.fetchone()
+        trainings_modus = bool((_row or {}).get('TRAININGS_MODUS', 0))
+    except Exception:
+        pass
     return {
-        'terminal_nr':   config.TERMINAL_NR,
-        'firma_name':    config.FIRMA_NAME,
-        'db_name':       config.DB_NAME,
-        'jetzt':         datetime.now(),
+        'terminal_nr':    config.TERMINAL_NR,
+        'firma_name':     config.FIRMA_NAME,
+        'db_name':        config.DB_NAME,
+        'jetzt':          datetime.now(),
+        'trainings_modus': trainings_modus,
     }
 
 
 # ── Auth-Hilfsfunktionen ──────────────────────────────────────
 def _ist_eingeloggt() -> bool:
     return bool(session.get('ma_id'))
+
+
+def _terminal_settings(terminal_nr: int) -> dict:
+    """Liest Druck-Einstellungen des Terminals (QR-Code, Trainings-Modus)."""
+    from db import get_db
+    with get_db() as cur:
+        cur.execute(
+            "SELECT QR_CODE, TRAININGS_MODUS FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+            (terminal_nr,)
+        )
+        row = cur.fetchone() or {}
+    return {
+        'qr_code':        bool(row.get('QR_CODE', 0)),
+        'trainings_modus': bool(row.get('TRAININGS_MODUS', 0)),
+    }
 
 
 def _mitarbeiter() -> dict:
@@ -60,6 +88,8 @@ def _login_required(f):
 
 def _serial(obj):
     """JSON-serialisierbares Dict/List."""
+    if obj is None:
+        return None
     if hasattr(obj, 'isoformat'):
         return obj.isoformat()
     if hasattr(obj, '__float__'):
@@ -111,12 +141,18 @@ def index():
 @app.get('/kasse')
 @_login_required
 def kasse():
+    from db import get_db
     terminal_nr = config.TERMINAL_NR
     geparkt     = kl.geparkte_vorgaenge(terminal_nr)
     mwst_saetze = kl.mwst_saetze_laden()
+    with get_db() as cur:
+        cur.execute("SELECT * FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+                    (terminal_nr,))
+        terminal = cur.fetchone() or {}
     return render_template('kasse.html',
                            geparkte_vorgaenge=geparkt,
                            mwst_saetze=mwst_saetze,
+                           terminal=terminal,
                            mitarbeiter=_mitarbeiter())
 
 
@@ -182,6 +218,7 @@ def api_position_hinzufuegen(vid):
         rabatt_prozent=float(d.get('rabatt_prozent', 0)),
         ist_gutschein=bool(d.get('ist_gutschein', False)),
         wg_id=d.get('wg_id'),
+        ep_original=int(d['ep_original']) if d.get('ep_original') else None,
     )
     vorgang = kl.vorgang_laden(vid)
     return jsonify({'ok': True, 'pos_id': result['id'],
@@ -213,10 +250,12 @@ def api_vorgang_kunde(vid):
     with get_db_transaction() as cur:
         cur.execute(
             """UPDATE XT_KASSE_VORGAENGE
-               SET KUNDEN_ID=%s, KUNDEN_NR=%s, KUNDEN_NAME=%s, KUNDEN_ORT=%s
+               SET KUNDEN_ID=%s, KUNDEN_NR=%s, KUNDEN_NAME=%s, KUNDEN_ORT=%s,
+                   KUNDEN_PR_EBENE=%s
                WHERE ID=%s""",
             (d.get('kunden_id'), d.get('kunden_nr') or None,
-             d.get('kunden_name') or None, d.get('kunden_ort') or None, vid)
+             d.get('kunden_name') or None, d.get('kunden_ort') or None,
+             d.get('kunden_pr_ebene') or None, vid)
         )
     return jsonify({'ok': True})
 
@@ -319,15 +358,33 @@ def api_zahlung(vid):
         log.exception("Zahlung fehlgeschlagen vid=%d", vid)
         return jsonify({'ok': False, 'fehler': 'Interner Fehler'}), 500
 
-    # Bon drucken
+    # Terminal-Einstellungen lesen
+    from db import get_db as _get_db
+    with _get_db() as cur:
+        cur.execute(
+            "SELECT SOFORT_DRUCKEN, SCHUBLADE_AUTO_OEFFNEN, KASSENLADE, "
+            "QR_CODE, TRAININGS_MODUS "
+            "FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s", (terminal_nr,)
+        )
+        t_cfg = cur.fetchone() or {}
+    sofort_drucken         = bool(t_cfg.get('SOFORT_DRUCKEN', 1))
+    schublade_auto_oeffnen = bool(t_cfg.get('SCHUBLADE_AUTO_OEFFNEN', 1))
+    hat_kassenlade         = int(t_cfg.get('KASSENLADE', 0)) > 0
+    qr_code                = bool(t_cfg.get('QR_CODE', 0))
+    trainings_modus        = bool(t_cfg.get('TRAININGS_MODUS', 0))
+
+    # Bon drucken (wenn Einstellung aktiv)
     try:
         positionen  = kl.vorgang_positionen(vid)
         zahl_rows   = kl.vorgang_zahlungen(vid)
         mwst_saetze = kl.mwst_saetze_laden()
-        druck.drucke_bon(vorgang, positionen, zahl_rows,
-                         mwst_saetze, terminal_nr)
-        # Kassenlade öffnen wenn BAR-Zahlung
-        if any(z['zahlart'] == 'BAR' for z in zahlungen):
+        if sofort_drucken:
+            druck.drucke_bon(vorgang, positionen, zahl_rows,
+                             mwst_saetze, terminal_nr, qr_code=qr_code,
+                             trainings_modus=trainings_modus)
+        # Kassenlade öffnen wenn BAR-Zahlung und Einstellung aktiv
+        if schublade_auto_oeffnen and hat_kassenlade and \
+                any(z['zahlart'] == 'BAR' for z in zahlungen):
             druck.oeffne_kassenlade(terminal_nr)
     except Exception as e:
         log.warning("Bondruck fehlgeschlagen: %s", e)
@@ -338,6 +395,48 @@ def api_zahlung(vid):
                     'bon_nr': vorgang['BON_NR']})
 
 
+@app.post('/api/drucker/letzter-bon')
+@_login_required
+def api_letzter_bon():
+    """Letzten abgeschlossenen Bon nochmal drucken (Kopie)."""
+    from db import get_db
+    with get_db() as cur:
+        cur.execute(
+            "SELECT ID FROM XT_KASSE_VORGAENGE "
+            "WHERE TERMINAL_NR=%s AND STATUS='ABGESCHLOSSEN' "
+            "ORDER BY ID DESC LIMIT 1",
+            (config.TERMINAL_NR,)
+        )
+        row = cur.fetchone()
+    if not row:
+        return jsonify({'ok': False, 'fehler': 'Kein abgeschlossener Bon vorhanden'}), 404
+    vid = row['ID']
+    vorgang     = kl.vorgang_laden(vid)
+    positionen  = kl.vorgang_positionen(vid)
+    zahl_rows   = kl.vorgang_zahlungen(vid)
+    mwst_saetze = kl.mwst_saetze_laden()
+    try:
+        ts = _terminal_settings(config.TERMINAL_NR)
+        druck.drucke_bon(vorgang, positionen, zahl_rows,
+                         mwst_saetze, config.TERMINAL_NR, ist_kopie=True,
+                         qr_code=ts['qr_code'],
+                         trainings_modus=ts['trainings_modus'])
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)})
+    return jsonify({'ok': True, 'bon_nr': vorgang['BON_NR']})
+
+
+@app.post('/api/lade/oeffnen')
+@_login_required
+def api_lade_oeffnen():
+    """Kassenlade manuell öffnen."""
+    try:
+        druck.oeffne_kassenlade(config.TERMINAL_NR)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)})
+    return jsonify({'ok': True})
+
+
 @app.post('/api/vorgang/<int:vid>/bon_nochmal')
 @_login_required
 def api_bon_nochmal(vid):
@@ -346,8 +445,11 @@ def api_bon_nochmal(vid):
     zahlungen  = kl.vorgang_zahlungen(vid)
     mwst_saetze = kl.mwst_saetze_laden()
     try:
+        ts = _terminal_settings(config.TERMINAL_NR)
         druck.drucke_bon(vorgang, positionen, zahlungen,
-                         mwst_saetze, config.TERMINAL_NR, ist_kopie=True)
+                         mwst_saetze, config.TERMINAL_NR, ist_kopie=True,
+                         qr_code=ts['qr_code'],
+                         trainings_modus=ts['trainings_modus'])
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)})
     return jsonify({'ok': True})
@@ -422,8 +524,11 @@ def api_storno(vid):
         positionen  = kl.vorgang_positionen(storno_vorgang['ID'])
         zahl_rows   = kl.vorgang_zahlungen(vid)
         mwst_saetze = kl.mwst_saetze_laden()
+        ts = _terminal_settings(terminal_nr)
         druck.drucke_bon(storno_vorgang, positionen, zahl_rows,
-                         mwst_saetze, terminal_nr, ist_storno=True)
+                         mwst_saetze, terminal_nr, ist_storno=True,
+                         qr_code=ts['qr_code'],
+                         trainings_modus=ts['trainings_modus'])
     except Exception as e:
         log.warning("Storno-Bondruck fehlgeschlagen: %s", e)
 
@@ -444,10 +549,47 @@ def api_artikel_suche():
 @app.get('/api/artikel/barcode/<barcode>')
 @_login_required
 def api_artikel_barcode(barcode):
+    # 1. Normaler Artikel-Lookup
     art = kl.artikel_per_barcode(barcode)
-    if not art:
-        return jsonify(None), 404
-    return jsonify(art)
+    if art:
+        return jsonify(art)
+    # 2. Sonder-EAN (Zeitschrift / Preis-EAN / Gewichts-EAN)
+    sonder = kl.ean_sonder_erkennen(barcode)
+    if sonder:
+        return jsonify(sonder)
+    return jsonify(None), 404
+
+
+# ── EAN-Regeln (Admin) ────────────────────────────────────────
+
+@app.get('/api/ean-regeln')
+@_login_required
+def api_ean_regeln_liste():
+    return jsonify(kl.ean_regeln_liste())
+
+
+@app.post('/api/ean-regeln')
+@_login_required
+def api_ean_regel_speichern():
+    d = request.get_json()
+    rec_id = kl.ean_regel_speichern(
+        praefix       = d['ean_praefix'].strip(),
+        typ           = d['typ'],
+        bezeichnung   = d['bezeichnung'].strip(),
+        artikel_lookup = bool(d.get('artikel_lookup', False)),
+        wg_id         = d.get('wg_id'),
+        artikel_id    = d.get('artikel_id'),
+        steuer_code   = int(d.get('steuer_code', 1)),
+        preis_pro_kg  = int(d['preis_pro_kg']) if d.get('preis_pro_kg') else None,
+    )
+    return jsonify({'ok': True, 'rec_id': rec_id})
+
+
+@app.delete('/api/ean-regeln/<int:rid>')
+@_login_required
+def api_ean_regel_loeschen(rid):
+    kl.ean_regel_loeschen(rid)
+    return jsonify({'ok': True})
 
 
 @app.get('/api/schnelltasten')
@@ -635,7 +777,11 @@ def admin_index():
     import tse as tse_modul
     terminal_nr = config.TERMINAL_NR
     db_ok  = test_verbindung()
-    tse_ok = tse_modul.tse_verfuegbar(terminal_nr)
+    try:
+        tse_ok = tse_modul.tse_verfuegbar(terminal_nr)
+    except Exception as _e:
+        log.warning("tse_verfuegbar() fehlgeschlagen: %s", _e)
+        tse_ok = False
     drucker_ok = druck.test_drucker(terminal_nr)
 
     with get_db() as cur:
@@ -648,10 +794,24 @@ def admin_index():
             (terminal_nr,)
         )
         letzte_abschluesse = cur.fetchall()
+        cur.execute("SELECT * FROM FIRMA LIMIT 1")
+        firma = cur.fetchone() or {}
 
+    # TSE-Detailstatus (live von Fiskaly, Fehler abfangen)
+    tse_status = {}
+    if tse_ok:
+        try:
+            tse_status = tse_modul.tse_tss_status(terminal_nr)
+        except Exception:
+            pass
+
+    trainings_modus = bool((terminal or {}).get('TRAININGS_MODUS', 0))
     return render_template('admin/index.html',
                            db_ok=db_ok, tse_ok=tse_ok, drucker_ok=drucker_ok,
                            terminal=terminal or {},
+                           firma=firma,
+                           tse_status=tse_status,
+                           trainings_modus=trainings_modus,
                            letzte_abschluesse=_jsonify_rows(letzte_abschluesse),
                            mitarbeiter=_mitarbeiter())
 
@@ -675,6 +835,10 @@ def admin_terminal_speichern():
     from db import get_db
     f = request.form
     tnr = config.TERMINAL_NR
+    sofort_drucken         = 1 if f.get('sofort_drucken') else 0
+    schublade_auto_oeffnen = 1 if f.get('schublade_auto_oeffnen') else 0
+    qr_code                = 1 if f.get('qr_code') else 0
+    trainings_modus        = 1 if f.get('trainings_modus') else 0
     with get_db() as cur:
         # PIN/PUK nur überschreiben wenn neu eingegeben
         new_pin = f.get('admin_pin', '').strip()
@@ -685,15 +849,18 @@ def admin_terminal_speichern():
                 FISKALY_TSS_ID, FISKALY_CLIENT_ID, FISKALY_ENV,
                 FISKALY_ADMIN_PIN, FISKALY_ADMIN_PUK,
                 DRUCKER_IP, DRUCKER_PORT, KASSENLADE,
+                SOFORT_DRUCKEN, SCHUBLADE_AUTO_OEFFNEN, QR_CODE, TRAININGS_MODUS,
                 FIRMA_NAME, FIRMA_STRASSE, FIRMA_ORT,
                 FIRMA_UST_ID, FIRMA_STEUERNUMMER)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE
                BEZEICHNUNG=%s, FISKALY_API_KEY=%s, FISKALY_API_SECRET=%s,
                FISKALY_TSS_ID=%s, FISKALY_CLIENT_ID=%s, FISKALY_ENV=%s,
                FISKALY_ADMIN_PIN=IF(%s != '', %s, FISKALY_ADMIN_PIN),
                FISKALY_ADMIN_PUK=IF(%s != '', %s, FISKALY_ADMIN_PUK),
                DRUCKER_IP=%s, DRUCKER_PORT=%s, KASSENLADE=%s,
+               SOFORT_DRUCKEN=%s, SCHUBLADE_AUTO_OEFFNEN=%s, QR_CODE=%s,
+               TRAININGS_MODUS=%s,
                FIRMA_NAME=%s, FIRMA_STRASSE=%s, FIRMA_ORT=%s,
                FIRMA_UST_ID=%s, FIRMA_STEUERNUMMER=%s""",
             (tnr,
@@ -702,6 +869,7 @@ def admin_terminal_speichern():
              f.get('fiskaly_env','test'), new_pin, new_puk,
              f.get('drucker_ip',''), int(f.get('drucker_port',9100)),
              int(f.get('kassenlade',0)),
+             sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
              f.get('firma_name',''), f.get('firma_strasse',''),
              f.get('firma_ort',''), f.get('firma_ust_id',''),
              f.get('firma_steuernummer',''),
@@ -713,6 +881,7 @@ def admin_terminal_speichern():
              new_puk, new_puk,
              f.get('drucker_ip',''), int(f.get('drucker_port',9100)),
              int(f.get('kassenlade',0)),
+             sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
              f.get('firma_name',''), f.get('firma_strasse',''),
              f.get('firma_ort',''), f.get('firma_ust_id',''),
              f.get('firma_steuernummer',''))
@@ -732,6 +901,119 @@ def admin_terminal_speichern():
             session['tse_fehler'] = f'Client-Registrierung fehlgeschlagen: {e}'
 
     return redirect(url_for('admin_index'))
+
+
+@app.post('/admin/terminal/trainings_modus')
+@_login_required
+def admin_trainings_modus():
+    """Trainings-Modus für das Terminal ein- oder ausschalten."""
+    import tse as tse_modul
+    aktiv = request.form.get('trainings_modus') == '1'
+    tse_modul.tse_trainings_modus_setzen(config.TERMINAL_NR, aktiv)
+    session['tse_hinweis'] = (
+        'Trainings-Modus aktiviert – Bons werden als TRAININGSBON gedruckt.'
+        if aktiv else
+        'Trainings-Modus deaktiviert – Bons werden mit echter TSE-Signatur erstellt.'
+    )
+    return redirect(url_for('admin_index'))
+
+
+# ── TSE-Verwaltung ────────────────────────────────────────────
+
+@app.get('/admin/tse')
+@_login_required
+def admin_tse_liste():
+    import tse as tse_modul
+    from db import get_db
+    geraete = tse_modul.tse_geraete_liste()
+    with get_db() as cur:
+        cur.execute("SELECT * FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+                    (config.TERMINAL_NR,))
+        terminal = cur.fetchone() or {}
+    return render_template('admin/tse.html',
+                           geraete=_jsonify_rows(geraete),
+                           terminal=terminal,
+                           mitarbeiter=_mitarbeiter())
+
+
+@app.get('/admin/tse/neu')
+@_login_required
+def admin_tse_neu():
+    tse_id = request.args.get('edit')
+    geraet = {}
+    if tse_id:
+        import tse as tse_modul
+        geraet = tse_modul.tse_geraet_laden(int(tse_id)) or {}
+    return render_template('admin/tse_form.html',
+                           geraet=geraet,
+                           mitarbeiter=_mitarbeiter())
+
+
+@app.post('/admin/tse/neu')
+@_login_required
+def admin_tse_speichern():
+    import tse as tse_modul
+    f = request.form
+    # PIN/PUK nur überschreiben wenn neu eingegeben
+    rec_id = f.get('rec_id', '').strip()
+    new_admin_pin = f.get('fiskaly_admin_pin', '').strip()
+    new_admin_puk = f.get('fiskaly_admin_puk', '').strip()
+    new_sw_pin    = f.get('swissbit_admin_pin', '').strip()
+    new_sw_puk    = f.get('swissbit_admin_puk', '').strip()
+
+    data = {
+        'REC_ID':                  rec_id,
+        'TYP':                     f.get('typ', 'FISKALY'),
+        'BEZEICHNUNG':             f.get('bezeichnung', '').strip(),
+        'BSI_ZERTIFIZIERUNG':      f.get('bsi_zertifizierung', '').strip(),
+        'ZERTIFIKAT_GUELTIG_BIS':  f.get('zertifikat_gueltig_bis', '').strip() or None,
+        'FISKALY_ENV':             f.get('fiskaly_env', 'test'),
+        'FISKALY_API_KEY':         f.get('fiskaly_api_key', '').strip(),
+        'FISKALY_API_SECRET':      f.get('fiskaly_api_secret', '').strip(),
+        'FISKALY_TSS_ID':          f.get('fiskaly_tss_id', '').strip(),
+        'FISKALY_ADMIN_PIN':       new_admin_pin,
+        'FISKALY_ADMIN_PUK':       new_admin_puk,
+        'SWISSBIT_PFAD':           f.get('swissbit_pfad', '').strip(),
+        'SWISSBIT_ADMIN_PIN':      new_sw_pin,
+        'SWISSBIT_ADMIN_PUK':      new_sw_puk,
+        'IN_BETRIEB_SEIT':         f.get('in_betrieb_seit', '').strip() or None,
+        'BEMERKUNG':               f.get('bemerkung', '').strip(),
+    }
+    try:
+        neue_id = tse_modul.tse_geraet_speichern(data)
+        session['tse_hinweis'] = f'TSE-Gerät gespeichert (ID {neue_id}).'
+    except Exception as e:
+        log.error("TSE-Gerät speichern fehlgeschlagen: %s", e)
+        session['tse_fehler'] = f'Fehler: {e}'
+    return redirect(url_for('admin_tse_liste'))
+
+
+@app.post('/admin/tse/<int:tse_id>/aktivieren')
+@_login_required
+def admin_tse_aktivieren(tse_id: int):
+    """Setzt die aktive TSE für das aktuelle Terminal."""
+    import tse as tse_modul
+    try:
+        tse_modul.tse_geraet_aktivieren(config.TERMINAL_NR, tse_id)
+        session['tse_hinweis'] = f'TSE-Gerät {tse_id} ist jetzt aktiv für Terminal {config.TERMINAL_NR}.'
+    except Exception as e:
+        session['tse_fehler'] = f'Fehler: {e}'
+    return redirect(url_for('admin_tse_liste'))
+
+
+@app.post('/admin/tse/<int:tse_id>/ausser_betrieb')
+@_login_required
+def admin_tse_ausser_betrieb(tse_id: int):
+    """Setzt ein TSE-Gerät auf 'außer Betrieb' (Datum = heute)."""
+    from db import get_db
+    from datetime import date
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE XT_KASSE_TSE_GERAETE SET AUSSER_BETRIEB=%s WHERE REC_ID=%s",
+            (date.today().isoformat(), tse_id)
+        )
+    session['tse_hinweis'] = f'TSE-Gerät {tse_id} als außer Betrieb markiert.'
+    return redirect(url_for('admin_tse_liste'))
 
 
 @app.get('/admin/export')
