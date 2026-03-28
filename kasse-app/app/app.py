@@ -943,7 +943,7 @@ def admin_tse_neu():
     geraet = {}
     if tse_id:
         import tse as tse_modul
-        geraet = tse_modul.tse_geraet_laden(int(tse_id)) or {}
+        geraet = tse_modul.tse_geraet_laden(int(float(tse_id))) or {}
     return render_template('admin/tse_form.html',
                            geraet=geraet,
                            mitarbeiter=_mitarbeiter())
