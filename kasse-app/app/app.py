@@ -820,12 +820,21 @@ def admin_index():
 @_login_required
 def admin_terminal():
     from db import get_db
+    import tse as tse_modul
     with get_db() as cur:
         cur.execute("SELECT * FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR = %s",
                     (config.TERMINAL_NR,))
         terminal = cur.fetchone() or {}
+    # Aktive TSE laden (für Info-Anzeige)
+    aktive_tse = None
+    if terminal.get('TSE_ID'):
+        try:
+            aktive_tse = tse_modul.tse_geraet_laden(int(terminal['TSE_ID']))
+        except Exception:
+            pass
     return render_template('admin/terminal.html',
                            terminal=terminal,
+                           aktive_tse=aktive_tse,
                            mitarbeiter=_mitarbeiter())
 
 
@@ -840,66 +849,40 @@ def admin_terminal_speichern():
     qr_code                = 1 if f.get('qr_code') else 0
     trainings_modus        = 1 if f.get('trainings_modus') else 0
     with get_db() as cur:
-        # PIN/PUK nur überschreiben wenn neu eingegeben
-        new_pin = f.get('admin_pin', '').strip()
-        new_puk = f.get('admin_puk', '').strip()
         cur.execute(
             """INSERT INTO XT_KASSE_TERMINALS
-               (TERMINAL_NR, BEZEICHNUNG, FISKALY_API_KEY, FISKALY_API_SECRET,
-                FISKALY_TSS_ID, FISKALY_CLIENT_ID, FISKALY_ENV,
-                FISKALY_ADMIN_PIN, FISKALY_ADMIN_PUK,
+               (TERMINAL_NR, BEZEICHNUNG,
                 DRUCKER_IP, DRUCKER_PORT, KASSENLADE,
                 SOFORT_DRUCKEN, SCHUBLADE_AUTO_OEFFNEN, QR_CODE, TRAININGS_MODUS,
                 FIRMA_NAME, FIRMA_STRASSE, FIRMA_ORT,
                 FIRMA_UST_ID, FIRMA_STEUERNUMMER)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE
-               BEZEICHNUNG=%s, FISKALY_API_KEY=%s, FISKALY_API_SECRET=%s,
-               FISKALY_TSS_ID=%s, FISKALY_CLIENT_ID=%s, FISKALY_ENV=%s,
-               FISKALY_ADMIN_PIN=IF(%s != '', %s, FISKALY_ADMIN_PIN),
-               FISKALY_ADMIN_PUK=IF(%s != '', %s, FISKALY_ADMIN_PUK),
+               BEZEICHNUNG=%s,
                DRUCKER_IP=%s, DRUCKER_PORT=%s, KASSENLADE=%s,
                SOFORT_DRUCKEN=%s, SCHUBLADE_AUTO_OEFFNEN=%s, QR_CODE=%s,
                TRAININGS_MODUS=%s,
                FIRMA_NAME=%s, FIRMA_STRASSE=%s, FIRMA_ORT=%s,
                FIRMA_UST_ID=%s, FIRMA_STEUERNUMMER=%s""",
             (tnr,
-             f['bezeichnung'], f.get('api_key',''), f.get('api_secret',''),
-             f.get('tss_id',''), f.get('client_id',''),
-             f.get('fiskaly_env','test'), new_pin, new_puk,
-             f.get('drucker_ip',''), int(f.get('drucker_port',9100)),
-             int(f.get('kassenlade',0)),
+             f.get('bezeichnung', ''),
+             f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
+             int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
-             f.get('firma_name',''), f.get('firma_strasse',''),
-             f.get('firma_ort',''), f.get('firma_ust_id',''),
-             f.get('firma_steuernummer',''),
+             f.get('firma_name', ''), f.get('firma_strasse', ''),
+             f.get('firma_ort', ''), f.get('firma_ust_id', ''),
+             f.get('firma_steuernummer', ''),
              # ON DUPLICATE KEY
-             f['bezeichnung'], f.get('api_key',''), f.get('api_secret',''),
-             f.get('tss_id',''), f.get('client_id',''),
-             f.get('fiskaly_env','test'),
-             new_pin, new_pin,
-             new_puk, new_puk,
-             f.get('drucker_ip',''), int(f.get('drucker_port',9100)),
-             int(f.get('kassenlade',0)),
+             f.get('bezeichnung', ''),
+             f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
+             int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
-             f.get('firma_name',''), f.get('firma_strasse',''),
-             f.get('firma_ort',''), f.get('firma_ust_id',''),
-             f.get('firma_steuernummer',''))
+             f.get('firma_name', ''), f.get('firma_strasse', ''),
+             f.get('firma_ort', ''), f.get('firma_ust_id', ''),
+             f.get('firma_steuernummer', ''))
         )
-    # Token-Cache invalidieren nach Konfigurationsänderung
     import tse as tse_modul
     tse_modul._token_cache.pop(tnr, None)
-
-    # Client automatisch registrieren, wenn API-Key + TSS-ID vorhanden,
-    # aber noch keine Client-ID eingetragen wurde
-    if (f.get('api_key') and f.get('tss_id') and not f.get('client_id')):
-        try:
-            new_client_id = tse_modul.tse_client_registrieren(tnr)
-            session['tse_hinweis'] = f'Fiskaly-Client automatisch angelegt: {new_client_id}'
-        except Exception as e:
-            log.error("Fiskaly Client-Registrierung fehlgeschlagen: %s", e)
-            session['tse_fehler'] = f'Client-Registrierung fehlgeschlagen: {e}'
-
     return redirect(url_for('admin_index'))
 
 

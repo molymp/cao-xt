@@ -47,86 +47,41 @@
       </div>
     </div>
 
-    <!-- Fiskaly TSE -->
+    <!-- TSE-Gerät (Info + Link zur Verwaltung) -->
     <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin-bottom:6px; font-size:16px; color:var(--text-dim);">Fiskaly Cloud TSE</h3>
-      <div style="font-size:12px; color:var(--text-dim); margin-bottom:14px;">
-        Registrierung unter
-        <span style="color:var(--blue);">dashboard.fiskaly.com</span>
-        (kostenloser Test-Modus verfügbar)
-      </div>
-      <div class="form-group">
-        <label>Umgebung</label>
-        <select class="form-control" name="fiskaly_env" style="font-size:16px;">
-          <option value="test"  {{ 'selected' if (terminal.FISKALY_ENV or 'test') == 'test' }}>
-            Test (Sandbox)
-          </option>
-          <option value="live"  {{ 'selected' if terminal.FISKALY_ENV == 'live' }}>
-            Live (Produktion)
-          </option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>API Key</label>
-        <input class="form-control" name="api_key" type="text"
-               value="{{ terminal.FISKALY_API_KEY or '' }}"
-               autocomplete="off" placeholder="fiskaly_…">
-      </div>
-      <div class="form-group">
-        <label>API Secret</label>
-        <input class="form-control" name="api_secret" type="password"
-               value="{{ terminal.FISKALY_API_SECRET or '' }}"
-               autocomplete="off" placeholder="••••••••">
-      </div>
-      <div class="form-group">
-        <label>TSS-ID (UUID)</label>
-        <input class="form-control" name="tss_id" type="text"
-               value="{{ terminal.FISKALY_TSS_ID or '' }}"
-               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-      </div>
-      <div class="form-group">
-        <label>TSE Admin-PUK
-          <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">
-            — aus Fiskaly-Dashboard (TSS → Details), mind. 10 Zeichen
-          </span>
-        </label>
-        <input class="form-control" name="admin_puk" type="password"
-               value="{{ terminal.FISKALY_ADMIN_PUK or '' }}"
-               autocomplete="new-password" placeholder="aus Fiskaly-Dashboard">
-        {% if terminal.FISKALY_CLIENT_ID %}
-          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
-            TSE bereits initialisiert – nur ändern wenn nötig.
+      <h3 style="margin-bottom:10px; font-size:16px; color:var(--text-dim);">🔐 TSE-Gerät</h3>
+      {% if aktive_tse %}
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px;
+                  background:rgba(52,211,153,0.08); border:1px solid var(--gruen-hell);
+                  border-radius:8px; margin-bottom:12px;">
+        <span style="font-size:20px;">
+          {{ '☁️' if aktive_tse.TYP == 'FISKALY' else ('🔌' if aktive_tse.TYP == 'SWISSBIT' else '🎓') }}
+        </span>
+        <div>
+          <div style="font-weight:700;">{{ aktive_tse.BEZEICHNUNG }}</div>
+          <div style="font-size:12px; color:var(--text-dim);">
+            {{ aktive_tse.TYP }}
+            {% if aktive_tse.TYP == 'FISKALY' and aktive_tse.FISKALY_ENV %}
+              · {{ aktive_tse.FISKALY_ENV }}
+            {% endif %}
+            {% if aktive_tse.BSI_ZERTIFIZIERUNG %}
+              · {{ aktive_tse.BSI_ZERTIFIZIERUNG }}
+            {% endif %}
+            {% if terminal.FISKALY_CLIENT_ID %}
+              <br>Client-ID: <code style="font-size:11px;">{{ terminal.FISKALY_CLIENT_ID }}</code>
+            {% endif %}
           </div>
-        {% endif %}
+        </div>
       </div>
-      <div class="form-group">
-        <label>TSE Admin-PIN
-          <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">
-            — frei wählbar, mind. 6 Zeichen (z.B. Admin123)
-          </span>
-        </label>
-        <input class="form-control" name="admin_pin" type="password"
-               value="{{ terminal.FISKALY_ADMIN_PIN or '' }}"
-               autocomplete="new-password" placeholder="mind. 6 Zeichen">
+      {% else %}
+      <div style="padding:10px 14px; background:var(--grau-hell); border-radius:8px;
+                  font-size:13px; color:var(--text-dim); margin-bottom:12px;">
+        ⚠️ Kein TSE-Gerät zugewiesen.
       </div>
-      <div class="form-group">
-        <label>Client-ID (UUID)
-          {% if not terminal.FISKALY_CLIENT_ID %}
-            <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">
-              — wird beim Speichern automatisch angelegt
-            </span>
-          {% endif %}
-        </label>
-        <input class="form-control" name="client_id" type="text"
-               value="{{ terminal.FISKALY_CLIENT_ID or '' }}"
-               placeholder="wird automatisch generiert"
-               {% if terminal.FISKALY_CLIENT_ID %}readonly style="color:var(--text-hell); background:var(--grau-hell);"{% endif %}>
-        {% if terminal.FISKALY_CLIENT_ID %}
-          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
-            Einmalig angelegt — zum Zurücksetzen Feld leeren und neu speichern.
-          </div>
-        {% endif %}
-      </div>
+      {% endif %}
+      <a href="/admin/tse" class="btn btn-neutral btn-sm">
+        🔐 TSE-Verwaltung öffnen →
+      </a>
     </div>
 
     <!-- Drucker -->
@@ -152,6 +107,42 @@
           <option value="2" {{ 'selected' if terminal.KASSENLADE == 2 }}>Pin 5</option>
         </select>
       </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:4px;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="sofort_drucken" value="1"
+                 style="width:20px; height:20px; cursor:pointer;"
+                 {{ 'checked' if (terminal.SOFORT_DRUCKEN is not defined or terminal.SOFORT_DRUCKEN != 0) }}>
+          <span><b>Sofort drucken</b> – Bon wird direkt nach dem Buchen gedruckt</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="schublade_auto_oeffnen" value="1"
+                 style="width:20px; height:20px; cursor:pointer;"
+                 {{ 'checked' if (terminal.SCHUBLADE_AUTO_OEFFNEN is not defined or terminal.SCHUBLADE_AUTO_OEFFNEN != 0) }}>
+          <span><b>Schublade nach Fertigstellen öffnen</b> – nur bei Barzahlung</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="qr_code" value="1"
+                 style="width:20px; height:20px; cursor:pointer;"
+                 {{ 'checked' if terminal.QR_CODE }}>
+          <span><b>QR-Code auf Bon drucken</b> – TSE-Daten maschinenlesbar (BSI TR-03153)</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Trainings-/Demo-Modus -->
+    <div class="card" style="margin-bottom:16px; border:2px solid {{ 'var(--gold)' if terminal.TRAININGS_MODUS else 'var(--border)' }};">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">Trainings-/Demo-Modus</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">
+        Im Trainings-Modus werden keine echten TSE-Signaturen erstellt. Bons erhalten
+        den Aufdruck <b>TRAININGSBON</b> und sind steuerlich nicht relevant.
+        Ideal für Schulungen, Demonstrationen und die Einrichtung mit abgelaufener USB-TSE.
+      </div>
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+        <input type="checkbox" name="trainings_modus" value="1"
+               style="width:20px; height:20px; cursor:pointer;"
+               {{ 'checked' if terminal.TRAININGS_MODUS }}>
+        <span><b>Trainings-Modus aktiv</b> – TSE-Signierung deaktiviert</span>
+      </label>
     </div>
 
     <div style="display:flex; gap:12px;">
