@@ -333,13 +333,8 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
         b.raw(_NORMAL_SIZE)
         b.text(f"Beleg-Nr: {vorgang['VORGANGSNUMMER']}\n")
 
-    # ── QR-Code (optional, BSI TR-03153) ─────────────────────
-    if qr_code and not trainings_modus:
-        b.raw(_ALIGN_CENTER)
-        b.raw(_qr_bytes(_tse_qr_text(vorgang)))
-        b.raw(_ALIGN_LEFT)
-
-    # ── TSE-Pflichtangaben (§6 AEAO zu §146a) / Trainings-Hinweis ────────
+    # ── TSE-Pflichtangaben + QR-Code ─────────────────────────
+    # QR-Code links, TSE-Text direkt darunter – eine kompakte Einheit
     b.raw(_ALIGN_LEFT).trenn()
     if trainings_modus:
         b.raw(_FONT_B)
@@ -351,6 +346,9 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
         b.text('TRAININGSBON\n')
         b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
     else:
+        if qr_code:
+            b.raw(_ALIGN_LEFT)
+            b.raw(_qr_bytes(_tse_qr_text(vorgang)))
         b.raw(_FONT_B)
         # Font-B-Zeilenbreite: 80mm-Drucker = 576 Punkte / 9 Punkte je Zeichen = 64
         _W = 64
