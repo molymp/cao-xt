@@ -200,7 +200,7 @@ Die Zahlung erfolgt in einem Modal-Overlay über der Kassenseite, nicht als sepa
 ### Zahlarten (implementiert)
 - **BAR** – mit Numpad für gegebenen Betrag, Rückgeldberechnung
 - **BAR PASSEND** – Kurzweg ohne Betrageingabe
-- **EC-Karte** – manuelle Abwicklung am EC-Gerät (kein ZVT), mit Bedienungsanweisung im UI
+- **Unbar / Karte** – manuelle Abwicklung am Kartengerät (kein ZVT), deckt EC-Karte, Kreditkarte und Mobile Payment ab; interner Wert `EC`
 
 Nicht implementiert: Kundenkonto-Zahlung, Gutschein (bewusst weggelassen – kein Bedarf).
 

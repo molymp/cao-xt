@@ -11,7 +11,7 @@ Erfüllt §6 AEAO zu §146a AO (Pflichtangaben auf Kassenbon):
 import socket
 import io
 import config
-from db import get_db, cent_zu_euro_str
+from db import get_db
 from datetime import datetime
 import logging
 
@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 
 # ESC/POS-Kommandos
 _ESC_INIT      = b'\x1b\x40'
+_CODEPAGE_1252 = b'\x1b\x74\x10'   # WPC1252 (Windows-1252): €, Umlaute nativ
 _ALIGN_LEFT    = b'\x1b\x61\x00'
 _ALIGN_CENTER  = b'\x1b\x61\x01'
 _ALIGN_RIGHT   = b'\x1b\x61\x02'
@@ -35,13 +36,15 @@ _CUT           = b'\x1d\x56\x01'   # Teilschnitt
 _DRAWER_PIN2   = b'\x1b\x70\x00\x19\xfa'
 _DRAWER_PIN5   = b'\x1b\x70\x01\x19\xfa'
 
-# Zeichensatz
+# Zeichensatz – WPC1252 druckt Umlaute und € nativ; nur typografische Sonderzeichen ersetzen
 _UMLAUT_MAP = str.maketrans({
-    'ä': 'ae', 'ö': 'oe', 'ü': 'ue',
-    'Ä': 'Ae', 'Ö': 'Oe', 'Ü': 'Ue',
-    'ß': 'ss', '€': 'EUR',
-    '–': '-', '—': '-', '„': '"', '"': '"', '"': '"', '…': '...',
+    '–': '-', '—': '-', '„': '"', '\u201c': '"', '\u201d': '"', '…': '...',
 })
+
+
+def _e(cent: int) -> str:
+    """Cent → '1,23 €' (WPC1252-sicher)."""
+    return f"{cent / 100:.2f} €".replace(".", ",")
 
 
 def _a(text: str) -> str:
@@ -58,7 +61,7 @@ class _Bon:
         return self
 
     def text(self, s: str):
-        self._buf.extend(_a(s).encode('cp437', errors='replace'))
+        self._buf.extend(_a(s).encode('cp1252', errors='replace'))
         return self
 
     def nl(self, n: int = 1):
@@ -163,7 +166,9 @@ def _tse_qr_text(vorgang: dict) -> str:
 
 def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
                mwst_saetze: dict, terminal_nr: int,
-               ist_kopie: bool, ist_storno: bool) -> bytes:
+               ist_kopie: bool, ist_storno: bool,
+               qr_code: bool = False,
+               trainings_modus: bool = False) -> bytes:
     """
     Baut den kompletten Kassenbon als Byte-Buffer.
     vorgang: Row aus XT_KASSE_VORGAENGE
@@ -171,7 +176,7 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     """
     firma = _firma_info(terminal_nr)
     b = _Bon()
-    b.raw(_ESC_INIT)
+    b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
 
     # ── Kopf ─────────────────────────────────────────────────
     b.raw(_ALIGN_CENTER)
@@ -189,6 +194,12 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
         b.text(f"St.-Nr.: {firma['steuernummer']}\n")
     b.trenn()
 
+    if trainings_modus:
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TRAININGSBON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+        b.raw(_BOLD_ON).text('Kein steuerrelevanter Beleg!\n').raw(_BOLD_OFF)
+        b.trenn()
     if ist_storno:
         b.raw(_BOLD_ON).text('*** STORNIERUNG ***\n').raw(_BOLD_OFF)
         b.trenn()
@@ -204,10 +215,8 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
         datum_str = str(bon_datum)
 
     b.raw(_BOLD_ON)
-    b.text(f"Bon-Nr:    {vorgang['TERMINAL_NR']}-{vorgang['BON_NR']}\n")
+    b.text(f"Bon-Nr: {vorgang['TERMINAL_NR']}-{vorgang['BON_NR']}  {datum_str}\n")
     b.raw(_BOLD_OFF)
-    b.text(f"Datum:    {datum_str}\n")
-    b.text(f"Terminal: {terminal_nr}\n")
     if vorgang.get('KUNDEN_NAME'):
         b.trenn()
         nr   = vorgang.get('KUNDEN_NR')
@@ -232,25 +241,49 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
             continue
         name  = _a(pos['BEZEICHNUNG'])
         menge = float(pos['MENGE'])
-        ep    = cent_zu_euro_str(pos['EINZELPREIS_BRUTTO'])
-        gp    = cent_zu_euro_str(pos['GESAMTPREIS_BRUTTO'])
+        ep    = _e(pos['EINZELPREIS_BRUTTO'])
+        gp    = _e(pos['GESAMTPREIS_BRUTTO'])
         satz  = pos['MWST_SATZ']
-        rab   = float(pos.get('RABATT_PROZENT') or 0)
+
+        ep_orig = pos.get('EP_ORIGINAL')
+        ep_hinweis = f" (statt {_e(ep_orig)})" if ep_orig else ""
 
         if menge != 1.0:
             menge_str = f"{menge:.3f}".rstrip('0').rstrip('.') if menge % 1 else str(int(menge))
             b.raw(b'\x1b\x21\x00')
             b.text(f"{name[:48]}\n")
-            zeile2 = f"  {menge_str} x EP {ep}  {satz:.0f}%"
-            b.text(f"{zeile2:<38} {gp:>9}\n")
+            zeile2 = f"  {menge_str} x EP {ep}{ep_hinweis}  {satz:.0f}%"
+            b.text(f"{zeile2:<36} {gp:>11}\n")
         else:
-            b.text(f"{name[:38]:<38} {gp:>9}\n")
-            b.text(f"  EP {ep}  {satz:.0f}%\n")
-
-        if rab > 0:
-            b.text(f"  Rabatt {rab:.0f}%\n")
+            b.text(f"{name[:36]:<36} {gp:>11}\n")
+            b.text(f"  EP {ep}{ep_hinweis}  {satz:.0f}%\n")
 
     b.trenn('=')
+
+    # ── Gesamtbetrag ─────────────────────────────────────────
+    b.raw(_ALIGN_RIGHT).raw(_BOLD_ON)
+    b.text(f"GESAMT: {_e(vorgang['BETRAG_BRUTTO'])}\n")
+    b.raw(_BOLD_OFF).raw(_ALIGN_LEFT)
+    b.trenn()
+
+    # ── Zahlarten ─────────────────────────────────────────────
+    for z in zahlungen:
+        zahlart_text = {
+            'BAR': 'Bar', 'EC': 'Unbar / Karte', 'KUNDENKONTO': 'Kundenkonto',
+            'GUTSCHEIN': 'Gutschein', 'SONSTIGE': 'Sonstige',
+        }.get(z['ZAHLART'], z['ZAHLART'])
+        if z['ZAHLART'] == 'BAR' and z.get('BETRAG_GEGEBEN'):
+            # Zahlart in "Gegeben"-Zeile, kein separater Betrag-Posten
+            wechsel = z.get('WECHSELGELD') or 0
+            label_geg = f"{zahlart_text} Gegeben:"
+            b.text(f"{label_geg:<36} {_e(z['BETRAG_GEGEBEN']):>11}\n")
+            b.raw(_BOLD_ON)
+            b.text(f"{'Rueckgeld:':<36} {_e(wechsel):>11}\n")
+            b.raw(_BOLD_OFF)
+        else:
+            b.text(f"{zahlart_text:<36} {_e(z['BETRAG']):>11}\n")
+
+    b.trenn()
 
     # ── MwSt-Aufschlüsselung ─────────────────────────────────
     b.raw(_ALIGN_LEFT)
@@ -264,42 +297,10 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
             if p['STEUER_CODE'] == code and not p.get('STORNIERT')
         )
         if mwst_b or netto_b:
-            b.text(f"MwSt {satz:.0f}%: Netto {cent_zu_euro_str(netto_b)}"
-                   f"  MwSt {cent_zu_euro_str(mwst_b)}\n")
+            b.text(f"MwSt {satz:.0f}%: Netto {_e(netto_b)}"
+                   f"  MwSt {_e(mwst_b)}\n")
 
     b.trenn()
-
-    # ── Gesamtbetrag ─────────────────────────────────────────
-    b.raw(_ALIGN_RIGHT).raw(_BOLD_ON)
-    b.text(f"GESAMT: {cent_zu_euro_str(vorgang['BETRAG_BRUTTO'])}\n")
-    b.raw(_BOLD_OFF).raw(_ALIGN_LEFT)
-
-    # ── Zahlarten ─────────────────────────────────────────────
-    for z in zahlungen:
-        zahlart_text = {
-            'BAR': 'Bar', 'EC': 'EC-Karte', 'KUNDENKONTO': 'Kundenkonto',
-            'GUTSCHEIN': 'Gutschein', 'SONSTIGE': 'Sonstige',
-        }.get(z['ZAHLART'], z['ZAHLART'])
-        b.text(f"{zahlart_text:<20} {cent_zu_euro_str(z['BETRAG']):>9}\n")
-        if z['ZAHLART'] == 'BAR' and z.get('BETRAG_GEGEBEN'):
-            b.text(f"  Gegeben:  {cent_zu_euro_str(z['BETRAG_GEGEBEN'])}\n")
-            wechsel = (z.get('WECHSELGELD') or 0)
-            b.raw(_BOLD_ON)
-            b.text(f"  Rueckgeld: {cent_zu_euro_str(wechsel)}\n")
-            b.raw(_BOLD_OFF)
-
-    b.trenn()
-
-    # ── TSE-Pflichtangaben (§6 AEAO zu §146a) ────────────────
-    b.raw(_FONT_B)
-    b.text(f"TX:{vorgang.get('TSE_TX_ID') or 'n/a'} Sig-Z.:{vorgang.get('TSE_SIGNATUR_ZAEHLER') or 'n/a'}\n")
-    serial = vorgang.get('TSE_SERIAL') or 'n/a'
-    for i, chunk in enumerate([serial[j:j+54] for j in range(0, len(serial), 54)]):
-        b.text(('SN:' if i == 0 else '   ') + chunk + '\n')
-    sig = vorgang.get('TSE_SIGNATUR') or 'n/a'
-    for i, chunk in enumerate([sig[j:j+54] for j in range(0, min(len(sig), 162), 54)]):
-        b.text(('SIG:' if i == 0 else '    ') + chunk + '\n')
-    b.raw(_FONT_A)
 
     # ── Footer ────────────────────────────────────────────────
     b.raw(_ALIGN_CENTER)
@@ -307,6 +308,39 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     if vorgang.get('VORGANGSNUMMER'):
         b.raw(_NORMAL_SIZE)
         b.text(f"Beleg-Nr: {vorgang['VORGANGSNUMMER']}\n")
+
+    # ── QR-Code (optional, BSI TR-03153) ─────────────────────
+    if qr_code and not trainings_modus:
+        b.raw(_ALIGN_CENTER)
+        b.raw(_qr_bytes(_tse_qr_text(vorgang)))
+        b.raw(_ALIGN_LEFT)
+
+    # ── TSE-Pflichtangaben (§6 AEAO zu §146a) / Trainings-Hinweis ────────
+    b.raw(_ALIGN_LEFT).trenn()
+    if trainings_modus:
+        b.raw(_FONT_B)
+        b.text('TRAININGSMODUS – KEIN STEUERRELEVANTER BELEG\n')
+        b.text('Keine TSE-Signatur vorhanden.\n')
+        b.raw(_FONT_A)
+        b.trenn()
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TRAININGSBON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+    else:
+        b.raw(_FONT_B)
+        # Font-B-Zeilenbreite: 80mm-Drucker = 576 Punkte / 9 Punkte je Zeichen = 64
+        _W = 64
+        tx_str   = str(vorgang.get('TSE_TX_ID') or 'n/a')
+        sigz_str = str(vorgang.get('TSE_SIGNATUR_ZAEHLER') or 'n/a')
+        serial   = vorgang.get('TSE_SERIAL') or 'n/a'
+        sig      = vorgang.get('TSE_SIGNATUR') or 'n/a'
+        sig_max  = _W * 3
+        stream   = (f"TX:{tx_str} Sig-Z.:{sigz_str} SN:"
+                    + serial + " SIG:" + sig[:sig_max])
+        for i in range(0, len(stream), _W):
+            b.text(stream[i:i + _W] + '\n')
+        b.raw(_FONT_A)
+
     b.nl(6)
     b.raw(_CUT)
 
@@ -317,10 +351,11 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
 
 def drucke_bon(vorgang: dict, positionen: list, zahlungen: list,
                mwst_saetze: dict, terminal_nr: int,
-               ist_kopie: bool = False, ist_storno: bool = False):
+               ist_kopie: bool = False, ist_storno: bool = False,
+               qr_code: bool = False, trainings_modus: bool = False):
     """Druckt den Kassenbon auf dem konfigurierten Netzwerkdrucker."""
     daten = _bon_bytes(vorgang, positionen, zahlungen, mwst_saetze,
-                       terminal_nr, ist_kopie, ist_storno)
+                       terminal_nr, ist_kopie, ist_storno, qr_code, trainings_modus)
     ip, port = _drucker_addr(terminal_nr)
     _sende(ip, port, daten)
 
@@ -341,7 +376,7 @@ def oeffne_kassenlade(terminal_nr: int):
 def drucke_xbon(terminal_nr: int, daten: dict, mwst_saetze: dict):
     """Druckt den X-Bon (Zwischenabschluss ohne Nullstellung)."""
     b = _Bon()
-    b.raw(_ESC_INIT)
+    b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
     firma = _firma_info(terminal_nr)
     b.raw(_ALIGN_CENTER).raw(_BOLD_ON).raw(_DOUBLE_HW)
     b.text(firma['name'] + '\n')
@@ -360,7 +395,7 @@ def drucke_xbon(terminal_nr: int, daten: dict, mwst_saetze: dict):
 def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict):
     """Druckt den Z-Bon (Tagesabschluss mit TSE-Signatur)."""
     b = _Bon()
-    b.raw(_ESC_INIT)
+    b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
     firma = _firma_info(terminal_nr)
     b.raw(_ALIGN_CENTER).raw(_BOLD_ON).raw(_DOUBLE_HW)
     b.text(firma['name'] + '\n')
@@ -413,8 +448,8 @@ def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict):
 
 def _print_abschluss_zeilen(b: _Bon, d: dict, mwst_saetze: dict):
     b.raw(_BOLD_ON).text(f"Belege:       {d['anzahl_belege']}\n").raw(_BOLD_OFF)
-    b.text(f"Umsatz brutto:  {cent_zu_euro_str(d['umsatz_brutto'])}\n")
-    b.text(f"Umsatz netto:   {cent_zu_euro_str(d['umsatz_netto'])}\n")
+    b.text(f"Umsatz brutto:  {_e(d['umsatz_brutto'])}\n")
+    b.text(f"Umsatz netto:   {_e(d['umsatz_netto'])}\n")
     b.trenn('-', 30)
     for code, satz in sorted(mwst_saetze.items()):
         key_mwst  = f'mwst_{code}'
@@ -422,20 +457,20 @@ def _print_abschluss_zeilen(b: _Bon, d: dict, mwst_saetze: dict):
         mwst_b  = d.get(key_mwst, 0)
         netto_b = d.get(key_netto, 0)
         if mwst_b or netto_b:
-            b.text(f"MwSt {satz:.0f}%: Netto {cent_zu_euro_str(netto_b)}"
-                   f"  MwSt {cent_zu_euro_str(mwst_b)}\n")
+            b.text(f"MwSt {satz:.0f}%: Netto {_e(netto_b)}"
+                   f"  MwSt {_e(mwst_b)}\n")
     b.trenn('-', 30)
-    b.text(f"Bar:            {cent_zu_euro_str(d['umsatz_bar'])}\n")
-    b.text(f"EC-Karte:       {cent_zu_euro_str(d['umsatz_ec'])}\n")
-    b.text(f"Kundenkonto:    {cent_zu_euro_str(d['umsatz_kundenkonto'])}\n")
+    b.text(f"Bar:            {_e(d['umsatz_bar'])}\n")
+    b.text(f"Unbar/Karte:    {_e(d['umsatz_ec'])}\n")
+    b.text(f"Kundenkonto:    {_e(d['umsatz_kundenkonto'])}\n")
     if d['anzahl_stornos']:
-        b.text(f"Stornos:  {d['anzahl_stornos']}x  {cent_zu_euro_str(d['betrag_stornos'])}\n")
+        b.text(f"Stornos:  {d['anzahl_stornos']}x  {_e(d['betrag_stornos'])}\n")
     b.trenn('-', 30)
-    b.text(f"Kassenstand Anfang: {cent_zu_euro_str(d['kassenbestand_anfang'])}\n")
-    b.text(f"Einlagen:           {cent_zu_euro_str(d['einlagen'])}\n")
-    b.text(f"Entnahmen:          {cent_zu_euro_str(d['entnahmen'])}\n")
+    b.text(f"Kassenstand Anfang: {_e(d['kassenbestand_anfang'])}\n")
+    b.text(f"Einlagen:           {_e(d['einlagen'])}\n")
+    b.text(f"Entnahmen:          {_e(d['entnahmen'])}\n")
     b.raw(_BOLD_ON)
-    b.text(f"Kassenstand Ende:   {cent_zu_euro_str(d['kassenbestand_ende'])}\n")
+    b.text(f"Kassenstand Ende:   {_e(d['kassenbestand_ende'])}\n")
     b.raw(_BOLD_OFF)
 
 
