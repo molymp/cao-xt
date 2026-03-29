@@ -121,12 +121,10 @@ def _firma_info(terminal_nr: int) -> dict:
           or config.FIRMA_ORT
 
     return {
-        'name':         name,
-        'zusatz':       t.get('FIRMA_ZUSATZ') or '',
-        'strasse':      strasse,
-        'ort':          ort,
-        'ust_id':       f.get('UST_ID') or config.FIRMA_UST_ID,
-        'steuernummer': f.get('STEUERNUMMER') or config.FIRMA_STEUERNUMMER,
+        'name':    name,
+        'zusatz':  t.get('FIRMA_ZUSATZ') or '',
+        'strasse': strasse,
+        'ort':     ort,
     }
 
 
@@ -211,11 +209,6 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
 
     # ── Kopf ─────────────────────────────────────────────────
     _drucke_kopf(b, firma)
-    b.nl()
-    if firma['ust_id']:
-        b.text(f"USt-IdNr.: {firma['ust_id']}\n")
-    if firma['steuernummer']:
-        b.text(f"St.-Nr.: {firma['steuernummer']}\n")
     b.trenn()
 
     if trainings_modus:
@@ -239,7 +232,8 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
         datum_str = str(bon_datum)
 
     b.raw(_BOLD_ON)
-    b.text(f"Bon-Nr: {vorgang['TERMINAL_NR']}-{vorgang['BON_NR']}  {datum_str}\n")
+    beleg_nr = vorgang.get('VORGANGSNUMMER') or f"{vorgang['TERMINAL_NR']}-{vorgang['BON_NR']}"
+    b.text(f"Beleg-Nr: {beleg_nr}  {datum_str}\n")
     b.raw(_BOLD_OFF)
     if vorgang.get('KUNDEN_NAME'):
         b.trenn()
@@ -329,9 +323,6 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     # ── Footer ────────────────────────────────────────────────
     b.raw(_ALIGN_CENTER)
     b.text('Vielen Dank fuer Ihren Einkauf!\n')
-    if vorgang.get('VORGANGSNUMMER'):
-        b.raw(_NORMAL_SIZE)
-        b.text(f"Beleg-Nr: {vorgang['VORGANGSNUMMER']}\n")
 
     # ── TSE-Pflichtangaben + QR-Code ─────────────────────────
     # QR-Code links, TSE-Text direkt darunter – eine kompakte Einheit
