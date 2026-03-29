@@ -140,20 +140,21 @@ def _sende(ip: str, port: int, daten: bytes):
         sock.close()
 
 
-def _qr_bytes(text: str) -> bytes:
-    """Erstellt ESC/POS QR-Code Bytes (Modell 2)."""
+def _qr_bytes(text: str, groesse: int = 3) -> bytes:
+    """
+    Erstellt ESC/POS QR-Code Bytes (Modell 2).
+    groesse: Modulgröße 1 (kleinst) … 8 (größt), Standard 3.
+    """
     data = text.encode('utf-8')
     length = len(data) + 3
     buf = bytearray()
-    # QR-Code Modell 2
-    buf += b'\x1d\x28\x6b\x04\x00\x31\x41\x32\x00'   # Modell 2
-    buf += b'\x1d\x28\x6b\x03\x00\x31\x43\x06'        # Größe 6
-    buf += b'\x1d\x28\x6b\x03\x00\x31\x45\x31'        # Fehlerkorrektur M
-    # Daten
+    buf += b'\x1d\x28\x6b\x04\x00\x31\x41\x32\x00'        # Modell 2
+    buf += bytes([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, groesse])  # Größe
+    buf += b'\x1d\x28\x6b\x03\x00\x31\x45\x31'             # Fehlerkorrektur M
     pL = length & 0xFF
     pH = (length >> 8) & 0xFF
     buf += bytes([0x1d, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30]) + data
-    buf += b'\x1d\x28\x6b\x03\x00\x31\x51\x30'        # Drucken
+    buf += b'\x1d\x28\x6b\x03\x00\x31\x51\x30'             # Drucken
     return bytes(buf)
 
 
