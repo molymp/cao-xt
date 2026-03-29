@@ -74,6 +74,8 @@
 .j-tabelle tr.daten-zeile:hover td { background: var(--glh); }
 .j-tabelle tr.storniert td { opacity: 0.5; }
 .j-tabelle tr.storniert .j-aktionen { opacity: 1; text-decoration: none; }
+.j-tabelle tr.storno-bon td { color: #7030a0; opacity: 0.65; }
+.j-tabelle tr.storno-bon .j-aktionen { opacity: 1; }
 
 /* Aufklapp-Pfeil */
 .j-pfeil {
@@ -95,6 +97,7 @@
 }
 .j-badge-ok        { background: #e8f5e0; color: var(--gm); }
 .j-badge-storniert { background: #fde8e8; color: var(--rot); }
+.j-badge-storno-bon { background: #f0e8f8; color: #7030a0; }
 
 /* Aktions-Buttons */
 .j-aktionen { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
@@ -251,15 +254,31 @@ async function suchen() {
     </tr></thead>
     <tbody>
     ${rows.map(v => {
-      const ist = v.STATUS === 'STORNIERT';
-      const badge = ist
-        ? `<span class="j-badge j-badge-storniert">✕ Storniert</span>`
-        : `<span class="j-badge j-badge-ok">✓ OK</span>`;
-      const stornoBtn = !ist
+      const istStorniert = v.STATUS === 'STORNIERT';          // Original wurde storniert
+      const istStornoBon = !!v.STORNO_VON_ID;                 // Dieser Bon ist ein Storno-Bon
+
+      // Badge + Info-Text
+      let badge, zeilenKlasse;
+      if (istStorniert) {
+        const durch = v.STORNIERT_DURCH_BON_NR ? ` durch Bon ${v.STORNIERT_DURCH_BON_NR}` : '';
+        badge = `<span class="j-badge j-badge-storniert">✕ Storniert${durch}</span>`;
+        zeilenKlasse = 'storniert';
+      } else if (istStornoBon) {
+        const orig = v.STORNO_VON_BON_NR ? ` Bon ${v.STORNO_VON_BON_NR}` : '';
+        badge = `<span class="j-badge j-badge-storno-bon">↩ Storniert${orig}</span>`;
+        zeilenKlasse = 'storno-bon';
+      } else {
+        badge = `<span class="j-badge j-badge-ok">✓ OK</span>`;
+        zeilenKlasse = '';
+      }
+
+      // Storno-Button nur für normale, abgeschlossene Bons
+      const stornoBtn = (!istStorniert && !istStornoBon)
         ? `<button class="j-btn j-btn-storno" onclick="event.stopPropagation();stornoStarten(${v.ID},${v.BON_NR},${v.BETRAG_BRUTTO})">↩️ Storno</button>`
         : '';
+
       return `
-        <tr class="daten-zeile${ist?' storniert':''}" onclick="togglePos(${v.ID})">
+        <tr class="daten-zeile${zeilenKlasse ? ' '+zeilenKlasse : ''}" onclick="togglePos(${v.ID})">
           <td style="text-align:center;"><span class="j-pfeil" id="pfeil-${v.ID}">▶</span></td>
           <td><strong>Bon ${v.BON_NR}</strong></td>
           <td style="color:var(--th);">${datFmt(v.BON_DATUM)}</td>

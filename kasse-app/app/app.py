@@ -25,6 +25,8 @@ app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
 
+# Schema-Migrationen beim Start ausführen
+kl.migrationen_ausfuehren()
 
 # ── Context-Processor ─────────────────────────────────────────
 @app.context_processor
@@ -476,7 +478,11 @@ def api_vorgang_suche():
             params.append(int(bon_nr))
         cur.execute(
             f"SELECT v.ID, v.BON_NR, v.BON_DATUM, v.BETRAG_BRUTTO, "
-            f"       v.STATUS, "
+            f"       v.STATUS, v.STORNO_VON_ID, "
+            f"       (SELECT BON_NR FROM XT_KASSE_VORGAENGE "
+            f"        WHERE ID = v.STORNO_VON_ID) AS STORNO_VON_BON_NR, "
+            f"       (SELECT BON_NR FROM XT_KASSE_VORGAENGE "
+            f"        WHERE STORNO_VON_ID = v.ID LIMIT 1) AS STORNIERT_DURCH_BON_NR, "
             f"       (SELECT GROUP_CONCAT(DISTINCT z.ZAHLART ORDER BY z.ZAHLART SEPARATOR '/') "
             f"        FROM XT_KASSE_ZAHLUNGEN z WHERE z.VORGANG_ID = v.ID) AS ZAHLARTEN "
             f"FROM XT_KASSE_VORGAENGE v "
@@ -682,7 +688,9 @@ def kassenbuch_seite():
 def kassenbuch_buchung_seite():
     terminal_nr = config.TERMINAL_NR
     info        = kl.kassenbuch_info(terminal_nr)
-    mwst_saetze = kl.mwst_saetze_laden()
+    # mwst_saetze_laden() → {code: satz_float}; Template erwartet Liste mit .CODE/.SATZ
+    mwst_saetze = [{'CODE': k, 'SATZ': v}
+                   for k, v in sorted(kl.mwst_saetze_laden().items())]
     naechste_nr = kl.kassenbuch_belegnummer_naechste(terminal_nr)
     min_datum   = kl.letzter_abschluss_datum(terminal_nr)
     from datetime import date as _date
@@ -740,6 +748,142 @@ def api_kassenbuch():
     return jsonify({'ok': True, 'saldo': info['saldo_haupt'], 'saldo_neben': info['saldo_neben']})
 
 
+# ── Kassenbuch Monatsansicht & Export ─────────────────────────
+
+@app.get('/kasse/kassenbuch/monat')
+@_login_required
+def kassenbuch_monat_seite():
+    terminal_nr = config.TERMINAL_NR
+    # Jahr/Monat aus Query-String oder aktuell
+    from datetime import date as _d
+    heute = _d.today()
+    try:
+        jahr  = int(request.args.get('jahr',  heute.year))
+        monat = int(request.args.get('monat', heute.month))
+        if not (1 <= monat <= 12):
+            raise ValueError
+    except (ValueError, TypeError):
+        jahr, monat = heute.year, heute.month
+    daten = kl.kassenbuch_monat(terminal_nr, jahr, monat)
+    return render_template('kassenbuch_monat.html',
+                           daten=daten,
+                           heute=heute,
+                           info=kl.kassenbuch_info(terminal_nr),
+                           mitarbeiter=_mitarbeiter())
+
+
+@app.get('/kasse/kassenbuch/export/pdf')
+@_login_required
+def kassenbuch_export_pdf():
+    terminal_nr = config.TERMINAL_NR
+    from datetime import date as _d
+    heute = _d.today()
+    try:
+        jahr  = int(request.args.get('jahr',  heute.year))
+        monat = int(request.args.get('monat', heute.month))
+    except (ValueError, TypeError):
+        jahr, monat = heute.year, heute.month
+    import kassenbuch_export as ke
+    daten = kl.kassenbuch_monat(terminal_nr, jahr, monat)
+    try:
+        pdf_bytes = ke.als_pdf(daten, config.FIRMA_NAME)
+    except ImportError:
+        return jsonify({'ok': False,
+                        'fehler': 'reportlab nicht installiert (pip install reportlab)'}), 500
+    dateiname = f"Kassenbuch_{daten['monat_name']}_{jahr}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=dateiname,
+    )
+
+
+@app.get('/kasse/kassenbuch/export/xlsx')
+@_login_required
+def kassenbuch_export_xlsx():
+    terminal_nr = config.TERMINAL_NR
+    from datetime import date as _d
+    heute = _d.today()
+    try:
+        jahr  = int(request.args.get('jahr',  heute.year))
+        monat = int(request.args.get('monat', heute.month))
+    except (ValueError, TypeError):
+        jahr, monat = heute.year, heute.month
+    import kassenbuch_export as ke
+    daten = kl.kassenbuch_monat(terminal_nr, jahr, monat)
+    try:
+        xlsx_bytes = ke.als_xlsx(daten, config.FIRMA_NAME)
+    except ImportError:
+        return jsonify({'ok': False,
+                        'fehler': 'openpyxl nicht installiert (pip install openpyxl)'}), 500
+    dateiname = f"Kassenbuch_{daten['monat_name']}_{jahr}.xlsx"
+    return send_file(
+        io.BytesIO(xlsx_bytes),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=dateiname,
+    )
+
+
+@app.get('/kasse/kassenbuch/export/csv')
+@_login_required
+def kassenbuch_export_csv():
+    terminal_nr = config.TERMINAL_NR
+    from datetime import date as _d
+    heute = _d.today()
+    try:
+        jahr  = int(request.args.get('jahr',  heute.year))
+        monat = int(request.args.get('monat', heute.month))
+    except (ValueError, TypeError):
+        jahr, monat = heute.year, heute.month
+    import kassenbuch_export as ke
+    daten = kl.kassenbuch_monat(terminal_nr, jahr, monat)
+    csv_str = ke.als_csv(daten)
+    dateiname = f"Kassenbuch_{daten['monat_name']}_{jahr}.csv"
+    return send_file(
+        io.BytesIO(csv_str.encode('utf-8-sig')),
+        mimetype='text/csv; charset=utf-8',
+        as_attachment=True,
+        download_name=dateiname,
+    )
+
+
+# ── Zählungen (Stückelung) ──────────────────────────────────────
+
+@app.post('/api/zaehlung')
+@_login_required
+def api_zaehlung_speichern():
+    d   = request.get_json() or {}
+    typ = (d.get('typ') or '').upper()
+    if typ not in ('KASSENSTURZ', 'TRANSFER_BANK', 'TRESOR'):
+        return jsonify({'ok': False, 'fehler': 'Ungültiger Typ'}), 400
+    try:
+        zid = kl.zaehlung_speichern(
+            config.TERMINAL_NR, typ,
+            bestand     = d.get('bestand', {}),
+            betrag_cent = int(d.get('betrag_cent', 0)),
+            kassenbuch_id = d.get('kassenbuch_id'),
+        )
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True, 'id': zid})
+
+
+@app.get('/api/zaehlung/<typ>')
+@_login_required
+def api_zaehlung_laden(typ):
+    z = kl.zaehlung_laden(config.TERMINAL_NR, typ.upper())
+    if not z:
+        return jsonify({'ok': False, 'fehler': 'Keine Zählung gefunden'}), 404
+    return jsonify({
+        'ok':          True,
+        'bestand':     z['bestand'],
+        'betrag_cent': z['BETRAG_CENT'],
+        'zeitpunkt':   str(z['ZEITPUNKT']),
+    })
+
+
 # ── Manager-Hub ───────────────────────────────────────────────
 
 @app.get('/kasse/manager')
@@ -748,7 +892,9 @@ def manager_seite():
     terminal_nr  = config.TERMINAL_NR
     info         = kl.kassenbuch_info(terminal_nr)
     xbon         = kl.xbon_daten(terminal_nr)
-    mwst_saetze  = kl.mwst_saetze_laden()
+    # mwst_saetze_laden() → {code: satz_float}; Template erwartet Liste mit .CODE/.SATZ
+    mwst_saetze  = [{'CODE': k, 'SATZ': v}
+                    for k, v in sorted(kl.mwst_saetze_laden().items())]
     eintraege_kb = kl.kassenbuch_liste(terminal_nr, kasse='HAUPT', tage=30)
     return render_template('manager.html',
                            info=info,
@@ -839,9 +985,9 @@ def api_tagesabschluss():
     except Exception as e:
         log.warning("Z-Bon Druck fehlgeschlagen: %s", e)
         return jsonify({'ok': True, 'warnung': f'Druck fehlgeschlagen: {e}',
-                        'z_nr': ta['Z_NR']})
+                        'z_nr': ta['Z_NR'], 'ta_id': ta['ID']})
 
-    return jsonify({'ok': True, 'z_nr': ta['Z_NR']})
+    return jsonify({'ok': True, 'z_nr': ta['Z_NR'], 'ta_id': ta['ID']})
 
 
 # ── Bon → Lieferschein ────────────────────────────────────────
@@ -952,26 +1098,30 @@ def admin_terminal_speichern():
                (TERMINAL_NR, BEZEICHNUNG,
                 DRUCKER_IP, DRUCKER_PORT, KASSENLADE,
                 SOFORT_DRUCKEN, SCHUBLADE_AUTO_OEFFNEN, QR_CODE, TRAININGS_MODUS,
-                FIRMA_NAME, FIRMA_ZUSATZ)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                FIRMA_NAME, FIRMA_ZUSATZ,
+                KONTO_BANK, KONTO_NEBENKASSE)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE
                BEZEICHNUNG=%s,
                DRUCKER_IP=%s, DRUCKER_PORT=%s, KASSENLADE=%s,
                SOFORT_DRUCKEN=%s, SCHUBLADE_AUTO_OEFFNEN=%s, QR_CODE=%s,
                TRAININGS_MODUS=%s,
-               FIRMA_NAME=%s, FIRMA_ZUSATZ=%s""",
+               FIRMA_NAME=%s, FIRMA_ZUSATZ=%s,
+               KONTO_BANK=%s, KONTO_NEBENKASSE=%s""",
             (tnr,
              f.get('bezeichnung', ''),
              f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
              int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
              f.get('firma_name', ''), f.get('firma_zusatz', ''),
+             f.get('konto_bank', '') or None, f.get('konto_nebenkasse', '') or None,
              # ON DUPLICATE KEY
              f.get('bezeichnung', ''),
              f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
              int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
-             f.get('firma_name', ''), f.get('firma_zusatz', ''))
+             f.get('firma_name', ''), f.get('firma_zusatz', ''),
+             f.get('konto_bank', '') or None, f.get('konto_nebenkasse', '') or None)
         )
     tse_modul._token_cache.pop(tnr, None)
     return redirect(url_for('admin_index'))
