@@ -993,31 +993,31 @@ def admin_export():
 @app.post('/admin/export/starten')
 @_login_required
 def admin_export_starten():
-    datum_von = request.form['datum_von']
-    datum_bis = request.form['datum_bis']
-    terminal_nr = config.TERMINAL_NR
+    datum_von   = request.form['datum_von']
+    datum_bis   = request.form['datum_bis']
     try:
-        result = dsfinvk.dsfinvk_export_starten(terminal_nr, datum_von, datum_bis)
-        return jsonify({'ok': True, **result})
+        result = dsfinvk.dsfinvk_export_starten(config.TERMINAL_NR, datum_von, datum_bis)
+        return jsonify(result)
     except Exception as e:
-        return jsonify({'ok': False, 'fehler': str(e)})
+        return jsonify({'ok': False, 'exporte': [], 'warnungen': [],
+                        'fehler': [str(e)], 'trainings_bons': 0})
 
 
-@app.get('/admin/export/status/<export_id>')
+@app.get('/admin/export/status/<int:geraet_id>/<export_id>')
 @_login_required
-def admin_export_status(export_id):
+def admin_export_status(geraet_id, export_id):
     try:
-        status = dsfinvk.dsfinvk_export_status(config.TERMINAL_NR, export_id)
+        status = dsfinvk.dsfinvk_export_status(geraet_id, export_id)
         return jsonify(status)
     except Exception as e:
         return jsonify({'state': 'ERROR', 'fehler': str(e)})
 
 
-@app.get('/admin/export/download/<export_id>')
+@app.get('/admin/export/download/<int:geraet_id>/<export_id>')
 @_login_required
-def admin_export_download(export_id):
+def admin_export_download(geraet_id, export_id):
     try:
-        inhalt = dsfinvk.dsfinvk_export_herunterladen(config.TERMINAL_NR, export_id)
+        inhalt = dsfinvk.dsfinvk_export_herunterladen(geraet_id, export_id)
         return send_file(
             io.BytesIO(inhalt),
             mimetype='application/x-tar',

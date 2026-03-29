@@ -290,8 +290,10 @@ Nur wirksam wenn `KASSENLADE > 0` (Lade vorhanden).
 | POST | `/admin/tse/<id>/aktivieren` | TSE-Gerät für Terminal aktivieren |
 | POST | `/admin/tse/<id>/ausser_betrieb` | TSE-Gerät dekommissionieren |
 | GET | `/admin/export` | DSFinV-K Export-Seite |
-| POST | `/admin/export/starten` | DSFinV-K Export als ZIP erstellen |
-| GET | `/admin/export/download/<datei>` | Exportdatei herunterladen |
+| POST | `/admin/export/starten` | DSFinV-K Export anfordern (alle aktiven Fiskaly-live-TSEs im Zeitraum) |
+| GET | `/admin/export/status/<geraet_id>/<export_id>` | Export-Status einer TSE abfragen |
+| GET | `/admin/export/download/<geraet_id>/<export_id>` | TAR-Archiv einer TSE herunterladen |
+| GET | `/admin/export/lokal` | Lokale JSON-Übersicht aller Vorgänge im Zeitraum |
 
 ---
 
@@ -353,6 +355,61 @@ Flexible Erkennung von Inhouse-EANs über Präfix-Matching. Ergänzt den normale
 **`ARTIKEL_LOOKUP`-Flag:** Wenn gesetzt, wird der Artikel anhand von `ARTNUM` aus Stellen 3–6 der Inhouse-EAN gesucht (Format `XX AAAA Z …`). Artikel-Prüfziffer wird validiert.
 
 **Caching:** EAN-Regeln werden 60 s gecacht (`_ean_regeln_cache`). Nach Änderungen über die Admin-API wird der Cache sofort geleert (`ean_regeln_cache_loeschen()`).
+
+---
+
+## DSFinV-K Export
+
+### Architektur: Multi-TSE-fähig
+
+Der Export berücksichtigt, dass innerhalb des gewählten Zeitraums mehrere TSE-Geräte
+aktiv gewesen sein können (z. B. Wechsel Fiskaly → Swissbit, oder alte → neue Swissbit
+wegen abgelaufenem Zertifikat).
+
+**Geräteerkennung:** `XT_KASSE_TSE_GERAETE` wird gefiltert nach:
+```sql
+IN_BETRIEB_SEIT <= datum_bis
+AND (AUSSER_BETRIEB IS NULL OR AUSSER_BETRIEB >= datum_von)
+```
+
+**Klassifizierung der Geräte:**
+
+| Typ | FISKALY_ENV | Verhalten |
+|-----|-------------|-----------|
+| `FISKALY` | `live` | ✅ Export via Fiskaly Management API (TAR-Archiv) – ein Job pro TSS |
+| `FISKALY` | `test`/leer | ⚠️ Warnung – kein offizieller Export für Test-Transaktionen |
+| `SWISSBIT` | – | ⚠️ Warnung – lokaler Export noch nicht implementiert; JSON-Übersicht als Grundlage |
+| `DEMO`/sonstige | – | ⚠️ Warnung – keine prüfungsrelevanten Signaturen |
+
+**Trainings-/Demo-Bons:** Vorgänge mit `TSE_SERIAL = 'TRAININGSMODUS'` werden
+vom Export ausgeschlossen und separat gezählt.
+
+### API-Response `POST /admin/export/starten`
+
+```json
+{
+  "ok": true,
+  "exporte": [
+    { "geraet_id": 1, "bezeichnung": "Fiskaly TSE", "tss_id": "...",
+      "export_id": "...", "state": "PENDING" }
+  ],
+  "warnungen": ["Swissbit TSE war aktiv – ..."],
+  "fehler":    [],
+  "trainings_bons": 3
+}
+```
+
+### Status / Download
+
+Status und Download sind pro TSE-Gerät getrennt, da jede TSS eigene Credentials hat:
+- `GET /admin/export/status/<geraet_id>/<export_id>` → `{state, href}`
+- `GET /admin/export/download/<geraet_id>/<export_id>` → TAR-Archiv
+
+### Lokale Übersicht
+
+`GET /admin/export/lokal?von=...&bis=...` liefert JSON mit allen Vorgängen,
+Tagesabschlüssen und aktiven TSE-Geräten im Zeitraum. Trainings-Bons ausgeschlossen.
+Nützlich für Swissbit-Transaktionen und interne Prüfungen.
 
 ---
 
