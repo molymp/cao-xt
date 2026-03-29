@@ -2233,8 +2233,23 @@ function _artBrRender() {
     // Sperren & Alterscheck
     let flags = '';
     if (a.ek_sperre) flags += '<span title="EK-Sperre" style="color:var(--rot);">⛔EK</span> ';
-    if (a.vk_sperre) flags += '<span title="VK-Sperre" style="color:var(--rot);">⛔VK</span> ';
+    if (a.vk_sperre) flags += '<span title="Verkaufssperre" style="color:var(--rot);">⛔VK</span> ';
     if (a.fsk18)     flags += '<span title="Altersbeschränkung 18+" style="color:var(--gold);">🔞</span>';
+    if (a.vk_sperre) return `<tr style="opacity:0.45; cursor:not-allowed;"
+        title="Verkaufssperre – dieser Artikel darf nicht verkauft werden">
+      <td class="ab-meta">${esc(a.artnum||'–')}</td>
+      <td style="font-weight:600;">${esc(a.bezeichnung||'–')}</td>
+      <td class="ab-meta">${esc(a.plu||'–')}</td>
+      <td class="ab-meta">${esc(a.plu2||'–')}</td>
+      <td class="ab-meta">${esc(a.barcode||'–')}</td>
+      <td style="text-align:center;">${typStr}</td>
+      <td class="ab-meta">${esc(a.me||'–')}</td>
+      <td class="ab-preis">${bestStr}</td>
+      <td class="ab-preis">${preisStr}</td>
+      <td class="ab-preis">${aktStr}</td>
+      <td class="ab-meta" style="text-align:right;">${a.mwst_satz != null ? a.mwst_satz + '\u202f%' : '–'}</td>
+      <td style="font-size:11px; white-space:nowrap;">${flags}</td>
+    </tr>`;
     return `<tr onclick="artBrowserArtikelWaehlen(${JSON.stringify(a).replace(/"/g,'&quot;')})">
       <td class="ab-meta">${esc(a.artnum||'–')}</td>
       <td style="font-weight:600;">${esc(a.bezeichnung||'–')}</td>
@@ -2253,6 +2268,7 @@ function _artBrRender() {
 }
 
 function artBrowserArtikelWaehlen(a) {
+  if (a.vk_sperre) { toast('Verkaufssperre – Artikel nicht verkäuflich', 'err'); return; }
   const prEbene = gewaehlterKunde ? gewaehlterKunde.pr_ebene : 5;
   const preis   = a.vk_preise ? vkPreis(a.vk_preise, prEbene) : a.preis_cent;
   if (!preis && preis !== 0) { toast('Kein Preis hinterlegt', 'err'); return; }
