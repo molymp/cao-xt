@@ -102,18 +102,30 @@ def _kassenlade_pin(terminal_nr: int) -> int:
 def _firma_info(terminal_nr: int) -> dict:
     with get_db() as cur:
         cur.execute(
-            """SELECT FIRMA_NAME, FIRMA_STRASSE, FIRMA_ORT,
-                      FIRMA_UST_ID, FIRMA_STEUERNUMMER
-               FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR = %s""",
+            "SELECT FIRMA_NAME, FIRMA_STRASSE, FIRMA_ORT, "
+            "FIRMA_UST_ID, FIRMA_STEUERNUMMER "
+            "FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR = %s",
             (terminal_nr,)
         )
-        row = cur.fetchone()
+        t = cur.fetchone() or {}
+        cur.execute("SELECT * FROM FIRMA LIMIT 1")
+        f = cur.fetchone() or {}
+
+    name = (
+        ' '.join(filter(None, [f.get('NAME1'), f.get('NAME2'), f.get('NAME3')]))
+        or t.get('FIRMA_NAME') or config.FIRMA_NAME
+    )
+    strasse = ' '.join(filter(None, [f.get('STRASSE'), f.get('HAUSNR')])) \
+              or t.get('FIRMA_STRASSE') or config.FIRMA_STRASSE
+    ort = ' '.join(filter(None, [f.get('PLZ'), f.get('ORT')])) \
+          or t.get('FIRMA_ORT') or config.FIRMA_ORT
+
     return {
-        'name':          (row and row['FIRMA_NAME'])   or config.FIRMA_NAME,
-        'strasse':       (row and row['FIRMA_STRASSE']) or config.FIRMA_STRASSE,
-        'ort':           (row and row['FIRMA_ORT'])     or config.FIRMA_ORT,
-        'ust_id':        (row and row['FIRMA_UST_ID'])  or config.FIRMA_UST_ID,
-        'steuernummer':  (row and row['FIRMA_STEUERNUMMER']) or config.FIRMA_STEUERNUMMER,
+        'name':         name,
+        'strasse':      strasse,
+        'ort':          ort,
+        'ust_id':       f.get('UST_ID') or t.get('FIRMA_UST_ID') or config.FIRMA_UST_ID,
+        'steuernummer': f.get('STEUERNUMMER') or t.get('FIRMA_STEUERNUMMER') or config.FIRMA_STEUERNUMMER,
     }
 
 
