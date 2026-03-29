@@ -1548,6 +1548,36 @@ def migrationen_ausfuehren():
     except Exception as exc:
         _mig_log.error('Fehler bei Schema-Migration: %s', exc)
 
+    # Kassenbuch-Bereinigung: doppelte UMSATZ_BAR-Einträge entfernen, die durch den
+    # DELETE-Bug (Subquery MAX(ZEITPUNKT) innerhalb der Z-Bon-Transaktion) entstanden sind.
+    # Pro Z-Bon-Periode darf es nur EINEN UMSATZ_BAR-Eintrag mit TAGESABSCHLUSS_ID geben
+    # (der Sammelposten). Einzeleinträge (VORGANG_ID IS NOT NULL) die nach dem letzten
+    # vorangegangenen Z-Bon liegen UND bereits ein Sammelposten (TAGESABSCHLUSS_ID) für
+    # denselben Z-Bon existiert, werden gelöscht.
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """DELETE kb FROM XT_KASSE_KASSENBUCH kb
+                   INNER JOIN XT_KASSE_TAGESABSCHLUSS ta
+                          ON ta.TERMINAL_NR = kb.TERMINAL_NR
+                         AND ta.ZEITPUNKT  >= kb.BUCHUNGSDATUM
+                   WHERE kb.TYP          = 'UMSATZ_BAR'
+                     AND kb.VORGANG_ID   IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1 FROM XT_KASSE_KASSENBUCH kb2
+                         WHERE kb2.TERMINAL_NR     = kb.TERMINAL_NR
+                           AND kb2.TYP             = 'UMSATZ_BAR'
+                           AND kb2.TAGESABSCHLUSS_ID = ta.ID
+                           AND kb2.VORGANG_ID       IS NULL
+                     )"""
+            )
+            deleted = cur.rowcount
+            if deleted:
+                _mig_log.info(
+                    'Kassenbuch-Bereinigung: %d doppelte UMSATZ_BAR-Einträge entfernt.', deleted)
+    except Exception as e:
+        _mig_log.warning('Kassenbuch-Bereinigung fehlgeschlagen: %s', e)
+
     # Neue Tabelle XT_KASSE_ZAEHLUNG anlegen (falls nicht vorhanden)
     try:
         with get_db() as cur:
@@ -2065,12 +2095,19 @@ def tagesabschluss_erstellen(terminal_nr: int, mitarbeiter_id: int) -> dict:
     # Beim allerersten Z-Bon gibt es keinen Vorgänger → 0.
     with get_db() as cur:
         cur.execute(
-            """SELECT KASSENBESTAND_ENDE FROM XT_KASSE_TAGESABSCHLUSS
+            """SELECT KASSENBESTAND_ENDE, ZEITPUNKT AS LETZTER_ZEITPUNKT
+               FROM XT_KASSE_TAGESABSCHLUSS
                WHERE TERMINAL_NR = %s ORDER BY ZEITPUNKT DESC LIMIT 1""",
             (terminal_nr,)
         )
         row = cur.fetchone()
     kassenbestand_anfang = int((row or {}).get('KASSENBESTAND_ENDE') or 0)
+    # Zeitpunkt des letzten Z-Bons als fester Parameter für das spätere DELETE –
+    # wichtig: NICHT als Subquery innerhalb der Transaktion verwenden, weil der
+    # INSERT des neuen Z-Bons denselben MAX(ZEITPUNKT) verändert und der DELETE
+    # dann alle BUCHUNGSDATUM < jetzt übersieht (→ doppelter Kassenstand).
+    letzter_zbon_ts = (row or {}).get('LETZTER_ZEITPUNKT')  # datetime | None
+
     kassenbestand_ende   = kassenbuch_saldo(terminal_nr)
 
     # TSE Tagesabschluss
@@ -2111,13 +2148,17 @@ def tagesabschluss_erstellen(terminal_nr: int, mitarbeiter_id: int) -> dict:
             )
         # Per-Transaktion geschriebene UMSATZ_BAR-Einzeleinträge entfernen –
         # der Sammelposten oben ersetzt sie vollständig im Kassenbuch.
+        # WICHTIG: letzter_zbon_ts wird als direkter Parameter übergeben,
+        # NICHT per Subquery – sonst würde MAX(ZEITPUNKT) den soeben eingefügten
+        # Z-Bon zurückgeben und der DELETE würde nichts löschen (alle Einträge
+        # haben BUCHUNGSDATUM < jetzt, nicht > jetzt).
         cur.execute(
-            f"""DELETE FROM XT_KASSE_KASSENBUCH
+            """DELETE FROM XT_KASSE_KASSENBUCH
                WHERE TERMINAL_NR = %s
                  AND TYP = 'UMSATZ_BAR'
                  AND VORGANG_ID IS NOT NULL
-                 AND {seit_filter_kb}""",
-            (terminal_nr, terminal_nr)
+                 AND BUCHUNGSDATUM > COALESCE(%s, '2000-01-01')""",
+            (terminal_nr, letzter_zbon_ts)
         )
 
         # Kassenbuch-Abschlusszeile (Marker, BETRAG=0)
