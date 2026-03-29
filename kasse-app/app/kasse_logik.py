@@ -1493,15 +1493,16 @@ def kassenbuch_eintrag(terminal_nr: int, typ: str, betrag_cent: int,
 
 
 def kassenbuch_saldo(terminal_nr: int) -> int:
-    """Aktueller Kassenbestand in Cent."""
+    """Aktueller Hauptkasse-Bestand in Cent."""
     with get_db() as cur:
         cur.execute(
             """SELECT COALESCE(SUM(BETRAG), 0) AS SALDO
-               FROM XT_KASSE_KASSENBUCH WHERE TERMINAL_NR = %s""",
+               FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR = %s AND COALESCE(KASSE,'HAUPT') = 'HAUPT'""",
             (terminal_nr,)
         )
         row = cur.fetchone()
-    return row['SALDO'] if row else 0
+    return int(row['SALDO']) if row else 0
 
 
 def kassenbuch_heute(terminal_nr: int) -> list:
@@ -1513,6 +1514,181 @@ def kassenbuch_heute(terminal_nr: int) -> list:
             (terminal_nr,)
         )
         return cur.fetchall()
+
+
+# ── Kassenbuch – erweiterte manuelle Buchungen ─────────────────────────────────
+
+#: Buchungstypen für manuelle Kassenbuch-Einträge
+KASSENBUCH_TYPEN = {
+    'EINLAGE':              {'sign': +1, 'text': 'Einlage BAR',               'kasse': 'HAUPT'},
+    'ENTNAHME':             {'sign': -1, 'text': 'Entnahme BAR',              'kasse': 'HAUPT'},
+    'PRIVATENTNAHME':       {'sign': -1, 'text': 'Privatentnahme',            'kasse': 'HAUPT'},
+    'PRIVATEINLAGE':        {'sign': +1, 'text': 'Privateinlage',             'kasse': 'HAUPT'},
+    'TRANSFER_KASSE_BANK':  {'sign': -1, 'text': 'Transfer Kasse → Bank',     'kasse': 'HAUPT'},
+    'TRANSFER_BANK_KASSE':  {'sign': +1, 'text': 'Transfer Bank → Kasse',     'kasse': 'HAUPT'},
+    'TRANSFER_KASSE_NEBEN': {'sign': -1, 'text': 'Transfer Kasse → Nebenkasse','kasse':'HAUPT'},
+    'TRANSFER_NEBEN_KASSE': {'sign': +1, 'text': 'Transfer Nebenkasse → Kasse','kasse':'HAUPT'},
+}
+
+
+def kassenbuch_saldo_neben(terminal_nr: int) -> int:
+    """Nebenkasse-Saldo in Cent."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(BETRAG), 0) AS SALDO "
+            "FROM XT_KASSE_KASSENBUCH WHERE TERMINAL_NR=%s AND KASSE='NEBEN'",
+            (terminal_nr,)
+        )
+        return int((cur.fetchone() or {}).get('SALDO', 0))
+
+
+def kassenbuch_liste(terminal_nr: int, kasse: str = 'HAUPT', tage: int = 30) -> list:
+    """Kassenbuch-Einträge der letzten N Tage."""
+    with get_db() as cur:
+        cur.execute(
+            """SELECT * FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR=%s AND COALESCE(KASSE,'HAUPT')=%s
+                 AND BUCHUNGSDATUM >= DATE_SUB(NOW(), INTERVAL %s DAY)
+               ORDER BY BUCHUNGSDATUM DESC""",
+            (terminal_nr, kasse, tage)
+        )
+        return cur.fetchall()
+
+
+def kassenbuch_belegnummer_naechste(terminal_nr: int) -> str:
+    """Nächste fortlaufende Belegnummer als String."""
+    with get_db() as cur:
+        cur.execute(
+            """SELECT MAX(CAST(BELEGNUMMER AS UNSIGNED)) AS MAX_NR
+               FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR=%s AND BELEGNUMMER REGEXP '^[0-9]+$'""",
+            (terminal_nr,)
+        )
+        row = cur.fetchone()
+    return str(int((row or {}).get('MAX_NR') or 0) + 1)
+
+
+def letzter_abschluss_datum(terminal_nr: int):
+    """Datum des letzten Tagesabschlusses (date-Objekt oder None)."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT MAX(DATUM) AS D FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s",
+            (terminal_nr,)
+        )
+        row = cur.fetchone()
+    return (row or {}).get('D')
+
+
+def kassenbuch_eintrag_manuell(
+    terminal_nr: int, typ: str, betrag_cent: int, mitarbeiter_id: int,
+    buchungstext: str = '', gegenkonto: str = '', mwst_code=None,
+    belegnummer: str = '', buchungsdatum=None
+):
+    """
+    Manuelle Kassenbuch-Buchung.  Bei Transfer-Typen wird automatisch
+    eine Gegenbuchung auf die Nebenkasse geschrieben.
+    """
+    if typ not in KASSENBUCH_TYPEN:
+        raise ValueError(f'Unbekannter Buchungstyp: {typ}')
+    info = KASSENBUCH_TYPEN[typ]
+    wert = info['sign'] * abs(betrag_cent)
+    if buchungsdatum is None:
+        buchungsdatum = datetime.now()
+    btext = buchungstext.strip() or info['text']
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            """INSERT INTO XT_KASSE_KASSENBUCH
+               (TERMINAL_NR, BUCHUNGSDATUM, TYP, BETRAG, NOTIZ, BUCHUNGSTEXT,
+                GEGENKONTO, MWST_CODE, BELEGNUMMER, KASSE, MITARBEITER_ID)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'HAUPT',%s)""",
+            (terminal_nr, buchungsdatum, typ, wert, btext, btext,
+             gegenkonto or None, mwst_code or None, belegnummer or None, mitarbeiter_id)
+        )
+        # Gegenbuchung Nebenkasse für Transfer-Typen
+        if typ == 'TRANSFER_KASSE_NEBEN':
+            cur.execute(
+                """INSERT INTO XT_KASSE_KASSENBUCH
+                   (TERMINAL_NR, BUCHUNGSDATUM, TYP, BETRAG, NOTIZ, BUCHUNGSTEXT,
+                    GEGENKONTO, BELEGNUMMER, KASSE, MITARBEITER_ID)
+                   VALUES (%s,%s,'TRANSFER_KASSE_NEBEN',%s,%s,%s,%s,%s,'NEBEN',%s)""",
+                (terminal_nr, buchungsdatum, +abs(betrag_cent), btext, btext,
+                 gegenkonto or None, belegnummer or None, mitarbeiter_id)
+            )
+        elif typ == 'TRANSFER_NEBEN_KASSE':
+            cur.execute(
+                """INSERT INTO XT_KASSE_KASSENBUCH
+                   (TERMINAL_NR, BUCHUNGSDATUM, TYP, BETRAG, NOTIZ, BUCHUNGSTEXT,
+                    GEGENKONTO, BELEGNUMMER, KASSE, MITARBEITER_ID)
+                   VALUES (%s,%s,'TRANSFER_NEBEN_KASSE',%s,%s,%s,%s,%s,'NEBEN',%s)""",
+                (terminal_nr, buchungsdatum, -abs(betrag_cent), btext, btext,
+                 gegenkonto or None, belegnummer or None, mitarbeiter_id)
+            )
+
+
+def kassenbuch_info(terminal_nr: int) -> dict:
+    """Kassenstand und Workflow-Hinweise für Manager-Seite."""
+    saldo_haupt = kassenbuch_saldo(terminal_nr)
+    saldo_neben = kassenbuch_saldo_neben(terminal_nr)
+
+    with get_db() as cur:
+        # Einnahmen Bar + EC seit letztem Abschluss
+        cur.execute(
+            """SELECT
+                 COALESCE(SUM(CASE WHEN z.ZAHLART='BAR' THEN z.BETRAG ELSE 0 END),0) AS BAR,
+                 COALESCE(SUM(CASE WHEN z.ZAHLART='EC'  THEN z.BETRAG ELSE 0 END),0) AS EC
+               FROM XT_KASSE_ZAHLUNGEN z
+               JOIN XT_KASSE_VORGAENGE v ON v.ID=z.VORGANG_ID
+               WHERE v.TERMINAL_NR=%s AND v.STATUS='ABGESCHLOSSEN'
+                 AND v.BON_DATUM > COALESCE(
+                     (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                     '2000-01-01')""",
+            (terminal_nr, terminal_nr)
+        )
+        zahlarten = cur.fetchone() or {}
+
+        # Letzter Transfer Kasse → Nebenkasse (für Morning Workflow)
+        cur.execute(
+            """SELECT ABS(BETRAG) AS BETRAG FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR=%s AND TYP='TRANSFER_KASSE_NEBEN' AND KASSE='HAUPT'
+               ORDER BY BUCHUNGSDATUM DESC LIMIT 1""",
+            (terminal_nr,)
+        )
+        lt = cur.fetchone()
+
+        # Heute schon Transfer Nebenkasse → Kasse?
+        cur.execute(
+            """SELECT COUNT(*) AS C FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR=%s AND TYP='TRANSFER_NEBEN_KASSE'
+                 AND KASSE='HAUPT' AND DATE(BUCHUNGSDATUM)=CURDATE()""",
+            (terminal_nr,)
+        )
+        transfer_heute = int((cur.fetchone() or {}).get('C', 0)) > 0
+
+        # Letzter Tagesabschluss
+        abschluss_d = letzter_abschluss_datum(terminal_nr)
+
+        # Terminal-Konten (Spalten existieren ggf. noch nicht)
+        try:
+            cur.execute(
+                "SELECT KONTO_BANK, KONTO_NEBENKASSE FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+                (terminal_nr,)
+            )
+            konten = cur.fetchone() or {}
+        except Exception:
+            konten = {}
+
+    return {
+        'saldo_haupt':           saldo_haupt,
+        'saldo_neben':           saldo_neben,
+        'einnahmen_bar':         int(zahlarten.get('BAR', 0)),
+        'einnahmen_ec':          int(zahlarten.get('EC', 0)),
+        'letzter_transfer_neben': int(lt['BETRAG']) if lt else None,
+        'transfer_heute':        transfer_heute,
+        'letzter_abschluss':     abschluss_d,
+        'konto_bank':            konten.get('KONTO_BANK') or '',
+        'konto_nebenkasse':      konten.get('KONTO_NEBENKASSE') or '',
+    }
 
 
 # ─────────────────────────────────────────────────────────────

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Neue Buchung{% endblock %}
+{% block extra_style %}
+<style>
+.buchung-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 640px) {
+  .layout { grid-template-columns: 1fr 280px; }
+}
+.info-karte {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--schatten);
+}
+.info-karte .label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.info-karte .wert {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 28px;
+  color: var(--gold);
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="buchung-wrap">
+  <h1 style="font-size:24px; margin-bottom:20px;">➕ Neue Buchung</h1>
+
+  <div class="layout">
+    <!-- Formular -->
+    <div>
+      <div class="card">
+        <div class="form-group">
+          <label>Buchungsart</label>
+          <select class="form-control" id="fTyp" onchange="typGewaehlt()">
+            <option value="EINLAGE">Einlage BAR</option>
+            <option value="ENTNAHME">Entnahme BAR</option>
+            <option value="PRIVATENTNAHME">Privatentnahme</option>
+            <option value="PRIVATEINLAGE">Privateinlage</option>
+            <option value="TRANSFER_KASSE_BANK">Transfer Kasse → Bank</option>
+            <option value="TRANSFER_BANK_KASSE">Transfer Bank → Kasse</option>
+            <option value="TRANSFER_KASSE_NEBEN">Transfer Kasse → Nebenkasse</option>
+            <option value="TRANSFER_NEBEN_KASSE">Transfer Nebenkasse → Kasse</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Betrag (€)</label>
+          <input class="form-control" id="fBetrag" type="number"
+                 min="0.01" step="0.01" placeholder="0,00" inputmode="decimal">
+        </div>
+
+        <div class="form-group">
+          <label>Buchungstext</label>
+          <input class="form-control" id="fBuchungstext" type="text" placeholder="Beschreibung">
+        </div>
+
+        <div class="form-group" id="grpGegenkonto" style="display:none;">
+          <label>Gegenkonto</label>
+          <input class="form-control" id="fGegenkonto" type="text" placeholder="Kontonummer">
+        </div>
+
+        <div class="form-group" id="grpMwst" style="display:none;">
+          <label>Enthaltene MwSt</label>
+          <select class="form-control" id="fMwst">
+            <option value="">Keine MwSt</option>
+            {% for ms in mwst_saetze %}
+            <option value="{{ ms.CODE }}">{{ "%.0f"|format(ms.SATZ) }}% (Code {{ ms.CODE }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Buchungsdatum</label>
+          <input class="form-control" id="fDatum" type="date"
+                 value="{{ heute }}"
+                 max="{{ heute }}"
+                 {% if min_datum %}min="{{ min_datum }}"{% endif %}>
+        </div>
+
+        <div class="form-group">
+          <label>Belegnummer</label>
+          <input class="form-control" id="fBelegnummer" type="text"
+                 value="{{ naechste_belegnummer }}" placeholder="optional">
+        </div>
+
+        <div id="warnSaldo" class="alert alert-warn" style="display:none;"></div>
+
+        <div style="display:flex; gap:10px; margin-top:8px;">
+          <button class="btn btn-primary" style="flex:1;" onclick="buchen()">✅ Buchen</button>
+          <a href="/kasse/kassenbuch" class="btn btn-neutral">Zurück</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Info-Panel -->
+    <div>
+      <div class="info-karte">
+        <div class="label">Hauptkasse</div>
+        <div class="wert" id="saldoHaupt">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Nebenkasse</div>
+        <div class="wert" style="color:var(--gruen-hell);">{{ "%.2f"|format(info.saldo_neben/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Bar seit Abschluss</div>
+        <div style="font-size:18px; font-weight:700; color:var(--text-dunkel);">{{ "%.2f"|format(info.einnahmen_bar/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">EC seit Abschluss</div>
+        <div style="font-size:18px; font-weight:700; color:var(--text-dunkel);">{{ "%.2f"|format(info.einnahmen_ec/100) }} €</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+const TYPEN = {
+  EINLAGE:              { text: 'Einlage BAR',               gegenkonto: false, mwst: true,  sign: 1  },
+  ENTNAHME:             { text: 'Entnahme BAR',              gegenkonto: false, mwst: true,  sign: -1 },
+  PRIVATENTNAHME:       { text: 'Privatentnahme',            gegenkonto: false, mwst: false, sign: -1 },
+  PRIVATEINLAGE:        { text: 'Privateinlage',             gegenkonto: false, mwst: false, sign: 1  },
+  TRANSFER_KASSE_BANK:  { text: 'Transfer Kasse → Bank',     gegenkonto: true,  mwst: false, sign: -1, konto: '{{ info.konto_bank }}' },
+  TRANSFER_BANK_KASSE:  { text: 'Transfer Bank → Kasse',     gegenkonto: true,  mwst: false, sign: 1,  konto: '{{ info.konto_bank }}' },
+  TRANSFER_KASSE_NEBEN: { text: 'Transfer Kasse → Nebenkasse', gegenkonto: true, mwst: false, sign: -1, konto: '{{ info.konto_nebenkasse }}' },
+  TRANSFER_NEBEN_KASSE: { text: 'Transfer Nebenkasse → Kasse', gegenkonto: true, mwst: false, sign: 1,  konto: '{{ info.konto_nebenkasse }}' },
+};
+
+const saldoHaupt = {{ info.saldo_haupt }};
+
+function typGewaehlt() {
+  const typ = document.getElementById('fTyp').value;
+  const info = TYPEN[typ] || {};
+
+  // Buchungstext
+  const bt = document.getElementById('fBuchungstext');
+  if (!bt._dirty) bt.value = info.text || '';
+
+  // Gegenkonto
+  document.getElementById('grpGegenkonto').style.display = info.gegenkonto ? '' : 'none';
+  if (info.gegenkonto) document.getElementById('fGegenkonto').value = info.konto || '';
+
+  // MwSt
+  document.getElementById('grpMwst').style.display = info.mwst ? '' : 'none';
+
+  pruefeWarnung();
+}
+
+function pruefeWarnung() {
+  const typ = document.getElementById('fTyp').value;
+  const info = TYPEN[typ] || {};
+  const betrag = Math.round(parseFloat(document.getElementById('fBetrag').value || '0') * 100);
+  const warn = document.getElementById('warnSaldo');
+  if (info.sign < 0 && betrag > saldoHaupt) {
+    warn.style.display = '';
+    warn.textContent = `Betrag (${euro(betrag)}) übersteigt Kassenbestand (${euro(saldoHaupt)})`;
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
+document.getElementById('fBuchungstext').addEventListener('input', function() {
+  this._dirty = this.value !== '';
+});
+document.getElementById('fBetrag').addEventListener('input', pruefeWarnung);
+
+async function buchen() {
+  const typ     = document.getElementById('fTyp').value;
+  const betrag  = parseFloat(document.getElementById('fBetrag').value || '0');
+  if (!betrag || betrag <= 0) { toast('Betrag eingeben', 'err'); return; }
+
+  const body = {
+    typ,
+    betrag_cent:   Math.round(betrag * 100),
+    buchungstext:  document.getElementById('fBuchungstext').value.trim(),
+    gegenkonto:    document.getElementById('fGegenkonto').value.trim(),
+    mwst_code:     document.getElementById('fMwst').value || null,
+    belegnummer:   document.getElementById('fBelegnummer').value.trim(),
+    buchungsdatum: document.getElementById('fDatum').value,
+  };
+
+  const r = await api('POST', '/api/kassenbuch', body);
+  if (r.ok) {
+    toast('Buchung gespeichert', 'ok');
+    setTimeout(() => location.href = '/kasse/kassenbuch', 1000);
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+  }
+}
+
+// URL-Parameter vorausfüllen
+(function() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('typ')) {
+    document.getElementById('fTyp').value = p.get('typ');
+  }
+  if (p.get('betrag')) {
+    const cent = parseInt(p.get('betrag'), 10);
+    if (cent > 0) document.getElementById('fBetrag').value = (cent / 100).toFixed(2);
+  }
+  typGewaehlt();
+})();
+</script>
+{% endblock %}

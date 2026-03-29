@@ -666,28 +666,122 @@ def api_vorgang_neuberechnen(vid):
 @app.get('/kasse/kassenbuch')
 @_login_required
 def kassenbuch_seite():
-    terminal_nr  = config.TERMINAL_NR
-    eintraege    = kl.kassenbuch_heute(terminal_nr)
-    saldo        = kl.kassenbuch_saldo(terminal_nr)
+    terminal_nr = config.TERMINAL_NR
+    eintraege   = kl.kassenbuch_liste(terminal_nr, kasse='HAUPT', tage=30)
+    info        = kl.kassenbuch_info(terminal_nr)
+    mwst_saetze = kl.mwst_saetze_laden()
     return render_template('kassenbuch.html',
                            eintraege=_jsonify_rows(eintraege),
-                           saldo=saldo,
+                           info=info,
+                           mwst_saetze=mwst_saetze,
+                           mitarbeiter=_mitarbeiter())
+
+
+@app.get('/kasse/kassenbuch/buchung')
+@_login_required
+def kassenbuch_buchung_seite():
+    terminal_nr = config.TERMINAL_NR
+    info        = kl.kassenbuch_info(terminal_nr)
+    mwst_saetze = kl.mwst_saetze_laden()
+    naechste_nr = kl.kassenbuch_belegnummer_naechste(terminal_nr)
+    min_datum   = kl.letzter_abschluss_datum(terminal_nr)
+    from datetime import date as _date
+    return render_template('kassenbuch_buchung.html',
+                           info=info,
+                           mwst_saetze=mwst_saetze,
+                           naechste_belegnummer=naechste_nr,
+                           min_datum=min_datum.isoformat() if min_datum else None,
+                           heute=_date.today().isoformat(),
                            mitarbeiter=_mitarbeiter())
 
 
 @app.post('/api/kassenbuch')
 @_login_required
 def api_kassenbuch():
-    d   = request.get_json()
-    typ = d.get('typ', '').upper()
-    if typ not in ('EINLAGE', 'ENTNAHME', 'ANFANGSBESTAND'):
-        return jsonify({'ok': False, 'fehler': 'Ungültiger Typ'}), 400
+    d           = request.get_json()
+    typ         = (d.get('typ') or '').upper()
+    betrag_cent = int(d.get('betrag_cent', 0)) or euro_zu_cent(d.get('betrag', 0))
 
-    betrag = int(d.get('betrag_cent', 0)) or euro_zu_cent(d.get('betrag', 0))
-    kl.kassenbuch_eintrag(config.TERMINAL_NR, typ, betrag,
-                          session['ma_id'], d.get('notiz', ''))
-    saldo = kl.kassenbuch_saldo(config.TERMINAL_NR)
-    return jsonify({'ok': True, 'saldo': saldo})
+    if not betrag_cent or betrag_cent <= 0:
+        return jsonify({'ok': False, 'fehler': 'Betrag muss größer 0 sein'}), 400
+
+    # Überschuss-Prüfung: Entnahmen dürfen den Saldo nicht übersteigen
+    if kl.KASSENBUCH_TYPEN.get(typ, {}).get('sign', 1) < 0:
+        saldo = kl.kassenbuch_saldo(config.TERMINAL_NR)
+        if betrag_cent > saldo:
+            return jsonify({'ok': False,
+                            'fehler': f'Betrag ({betrag_cent/100:.2f} €) übersteigt Kassenbestand ({saldo/100:.2f} €)'}), 400
+
+    buchungsdatum = None
+    if d.get('buchungsdatum'):
+        from datetime import datetime as _dt, date as _date
+        today = _date.today()
+        try:
+            bd = _dt.fromisoformat(d['buchungsdatum']).date()
+            if bd > today:
+                return jsonify({'ok': False, 'fehler': 'Buchungsdatum darf nicht in der Zukunft liegen'}), 400
+            buchungsdatum = _dt.combine(bd, _dt.now().time())
+        except Exception:
+            pass
+
+    try:
+        kl.kassenbuch_eintrag_manuell(
+            config.TERMINAL_NR, typ, betrag_cent, session['ma_id'],
+            buchungstext=d.get('buchungstext', ''),
+            gegenkonto=d.get('gegenkonto', ''),
+            mwst_code=d.get('mwst_code') or None,
+            belegnummer=d.get('belegnummer', ''),
+            buchungsdatum=buchungsdatum,
+        )
+    except ValueError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+
+    info = kl.kassenbuch_info(config.TERMINAL_NR)
+    return jsonify({'ok': True, 'saldo': info['saldo_haupt'], 'saldo_neben': info['saldo_neben']})
+
+
+# ── Manager-Hub ───────────────────────────────────────────────
+
+@app.get('/kasse/manager')
+@_login_required
+def manager_seite():
+    terminal_nr  = config.TERMINAL_NR
+    info         = kl.kassenbuch_info(terminal_nr)
+    xbon         = kl.xbon_daten(terminal_nr)
+    mwst_saetze  = kl.mwst_saetze_laden()
+    eintraege_kb = kl.kassenbuch_liste(terminal_nr, kasse='HAUPT', tage=30)
+    return render_template('manager.html',
+                           info=info,
+                           xbon=xbon,
+                           mwst_saetze=mwst_saetze,
+                           eintraege_kb=_jsonify_rows(eintraege_kb),
+                           mitarbeiter=_mitarbeiter())
+
+
+@app.get('/kasse/nebenkasse')
+@_login_required
+def nebenkasse_seite():
+    terminal_nr = config.TERMINAL_NR
+    eintraege   = kl.kassenbuch_liste(terminal_nr, kasse='NEBEN', tage=90)
+    info        = kl.kassenbuch_info(terminal_nr)
+    return render_template('nebenkasse.html',
+                           eintraege=_jsonify_rows(eintraege),
+                           info=info,
+                           mitarbeiter=_mitarbeiter())
+
+
+@app.get('/kasse/kassensturz')
+@_login_required
+def kassensturz_seite():
+    terminal_nr = config.TERMINAL_NR
+    info        = kl.kassenbuch_info(terminal_nr)
+    xbon        = kl.xbon_daten(terminal_nr)
+    mwst_saetze = kl.mwst_saetze_laden()
+    return render_template('kassensturz.html',
+                           info=info,
+                           xbon=xbon,
+                           mwst_saetze=mwst_saetze,
+                           mitarbeiter=_mitarbeiter())
 
 
 # ── X-Bon ─────────────────────────────────────────────────────

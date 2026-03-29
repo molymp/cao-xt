@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Manager{% endblock %}
+{% block extra_style %}
+<style>
+.mgr-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--creme-dunkel);
+  flex-wrap: wrap;
+}
+.tab-btn {
+  padding: 9px 18px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.tab-btn:hover { color: var(--gruen-dunkel); }
+.tab-btn.aktiv { color: var(--gruen-dunkel); border-bottom-color: var(--gold); }
+.tab-panel { display: none; }
+.tab-panel.aktiv { display: block; }
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.info-karte {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: center;
+  box-shadow: var(--schatten);
+}
+.info-karte .label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.info-karte .wert {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 28px;
+  color: var(--gold);
+}
+.info-karte .wert.gross { font-size: 40px; }
+.info-karte .wert.gruen { color: var(--gruen-hell); }
+.workflow-karte {
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  border: 1px solid;
+}
+.workflow-orange { background: #fff8e8; border-color: var(--gold); }
+.workflow-gruen  { background: #f0f8ea; border-color: var(--gruen-hell); }
+.workflow-karte h3 { font-size: 16px; margin-bottom: 6px; }
+.workflow-karte p  { font-size: 14px; color: var(--text-mitte); margin-bottom: 10px; }
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.eintrag-zeile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--grau-hell);
+  border-radius: 8px;
+  border: 1px solid var(--creme-dunkel);
+  margin-bottom: 6px;
+}
+.eintrag-zeile .meta { font-size: 12px; color: var(--text-dim); }
+.pos { color: var(--gruen-status); }
+.neg { color: var(--rot); }
+.xbon-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--creme-dunkel);
+  font-size: 15px;
+}
+.xbon-row:last-child { border-bottom: none; }
+.xbon-row .bez { color: var(--text-mitte); }
+.xbon-row .val { font-weight: 700; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="mgr-wrap">
+  <h1 style="font-size:26px; margin-bottom:16px;">📊 Manager</h1>
+
+  <div class="tab-bar">
+    <button class="tab-btn aktiv" onclick="tab('uebersicht',this)">Übersicht</button>
+    <button class="tab-btn"       onclick="tab('kassenbuch',this)">📒 Kassenbuch</button>
+    <button class="tab-btn"       onclick="tab('xbon',this)">X-Bon</button>
+    <button class="tab-btn"       onclick="tab('zbon',this)">Z-Bon</button>
+    <button class="tab-btn"       onclick="tab('kassensturz',this)">Kassensturz</button>
+  </div>
+
+  <!-- ── Tab: Übersicht ──────────────────────────────────── -->
+  <div id="panel-uebersicht" class="tab-panel aktiv">
+
+    <div class="info-grid">
+      <div class="info-karte">
+        <div class="label">Hauptkasse</div>
+        <div class="wert gross" id="saldoHaupt">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Nebenkasse</div>
+        <div class="wert gruen">{{ "%.2f"|format(info.saldo_neben/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Bar seit Abschluss</div>
+        <div class="wert" style="font-size:22px;">{{ "%.2f"|format(info.einnahmen_bar/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">EC seit Abschluss</div>
+        <div class="wert" style="font-size:22px;">{{ "%.2f"|format(info.einnahmen_ec/100) }} €</div>
+      </div>
+    </div>
+
+    {% if info.letzter_abschluss %}
+    <div style="font-size:13px; color:var(--text-dim); margin-bottom:16px;">
+      Letzter Tagesabschluss: {{ info.letzter_abschluss }}
+    </div>
+    {% endif %}
+
+    <!-- Morning Workflow -->
+    {% if not info.transfer_heute and info.letzter_transfer_neben %}
+    <div class="workflow-karte workflow-orange">
+      <h3>☀️ Tagesstart: Aus Nebenkasse (Tresor) entnehmen</h3>
+      <p>
+        Letzter Transfer in die Nebenkasse: <strong>{{ "%.2f"|format(info.letzter_transfer_neben/100) }} €</strong><br>
+        Dieser Betrag sollte heute Morgen aus dem Tresor entnommen werden, um die Hauptkasse aufzufüllen.
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="/kasse/kassenbuch/buchung?typ=TRANSFER_NEBEN_KASSE&betrag={{ info.letzter_transfer_neben }}"
+           class="btn btn-warning btn-sm">✅ Transfer buchen</a>
+        <a href="/kasse/kassensturz" class="btn btn-neutral btn-sm">🔍 Kassensturz</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Evening Workflow -->
+    <div class="workflow-karte workflow-gruen">
+      <h3>🌙 Tagesende-Workflow</h3>
+      <p>Tagesabschluss erstellen, Kassensturz durchführen und Überschuss an Bank überweisen.</p>
+      {% set transfer_empfehlung = (info.saldo_haupt * 0.8 // 1000 * 1000)|int %}
+      <p style="font-size:13px;">
+        Empfohlener Transfer an Bank: <strong>{{ "%.2f"|format(transfer_empfehlung/100) }} €</strong>
+        (80 % des Bestands, auf 10 € gerundet)
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="/kasse/tagesabschluss" class="btn btn-primary btn-sm">📋 Z-Bon</a>
+        <a href="/kasse/kassensturz"    class="btn btn-neutral btn-sm">🔍 Kassensturz</a>
+        <a href="/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK&betrag={{ transfer_empfehlung }}"
+           class="btn btn-neutral btn-sm">🏦 Transfer → Bank</a>
+      </div>
+    </div>
+
+    <div class="action-grid">
+      <a href="/kasse/kassenbuch"         class="btn btn-neutral">📒 Kassenbuch</a>
+      <a href="/kasse/nebenkasse"         class="btn btn-neutral">🪙 Nebenkasse</a>
+      <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm" style="min-height:48px;">➕ Neue Buchung</a>
+    </div>
+  </div>
+
+  <!-- ── Tab: Kassenbuch ─────────────────────────────────── -->
+  <div id="panel-kassenbuch" class="tab-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="font-size:20px;">Kassenbuch (letzte 10 Einträge)</h2>
+      <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm">➕ Neue Buchung</a>
+    </div>
+    <div id="kb-eintraege">
+      <div style="color:var(--text-dim); text-align:center; padding:20px;">Wird geladen…</div>
+    </div>
+    <a href="/kasse/kassenbuch" class="btn btn-neutral btn-sm" style="margin-top:12px;">📒 Vollständiges Kassenbuch →</a>
+  </div>
+
+  <!-- ── Tab: X-Bon ──────────────────────────────────────── -->
+  <div id="panel-xbon" class="tab-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="font-size:20px;">X-Bon (aktueller Tag)</h2>
+      <button class="btn btn-primary btn-sm" onclick="xbonDrucken()">🖨️ Drucken</button>
+    </div>
+    <div class="card">
+      <div class="xbon-row"><span class="bez">Anzahl Belege</span><span class="val">{{ xbon.anzahl_belege }}</span></div>
+      <div class="xbon-row"><span class="bez">Umsatz Brutto</span><span class="val">{{ "%.2f"|format(xbon.umsatz_brutto/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Davon Bar</span><span class="val">{{ "%.2f"|format(xbon.umsatz_bar/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Davon EC</span><span class="val">{{ "%.2f"|format(xbon.umsatz_ec/100) }} €</span></div>
+      {% for ms in mwst_saetze %}
+      {% set mwst_key = 'mwst_' ~ loop.index %}
+      {% set netto_key = 'netto_' ~ loop.index %}
+      <div class="xbon-row">
+        <span class="bez">MwSt {{ "%.0f"|format(ms.SATZ) }}%</span>
+        <span class="val">{{ "%.2f"|format((xbon[mwst_key]|default(0))/100) }} €</span>
+      </div>
+      {% endfor %}
+      <div class="xbon-row" style="font-size:12px; color:var(--text-dim);">
+        <span>Stand</span><span>{{ xbon.zeitpunkt_von[:16] if xbon.zeitpunkt_von else '–' }} bis jetzt</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: Z-Bon ──────────────────────────────────────── -->
+  <div id="panel-zbon" class="tab-panel">
+    <h2 style="font-size:20px; margin-bottom:16px;">Z-Bon / Tagesabschluss</h2>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="xbon-row"><span class="bez">Anzahl Belege heute</span><span class="val">{{ xbon.anzahl_belege }}</span></div>
+      <div class="xbon-row"><span class="bez">Umsatz Brutto heute</span><span class="val">{{ "%.2f"|format(xbon.umsatz_brutto/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Bar-Umsatz</span><span class="val">{{ "%.2f"|format(xbon.umsatz_bar/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">EC-Umsatz</span><span class="val">{{ "%.2f"|format(xbon.umsatz_ec/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Kassenbestand</span><span class="val">{{ "%.2f"|format(info.saldo_haupt/100) }} €</span></div>
+    </div>
+    <p style="font-size:14px; color:var(--text-mitte); margin-bottom:16px;">
+      Der Tagesabschluss (Z-Bon) erstellt eine unwiderrufliche Abschlussbuchung und signiert den Abschluss per TSE.
+    </p>
+    <a href="/kasse/tagesabschluss" class="btn btn-primary">📋 Tagesabschluss durchführen →</a>
+  </div>
+
+  <!-- ── Tab: Kassensturz ────────────────────────────────── -->
+  <div id="panel-kassensturz" class="tab-panel">
+    <h2 style="font-size:20px; margin-bottom:16px;">Kassensturz</h2>
+    <p style="font-size:14px; color:var(--text-mitte); margin-bottom:16px;">
+      Bargeld zählen und mit dem Soll-Bestand abgleichen.
+    </p>
+    <div class="info-karte" style="margin-bottom:16px; text-align:center;">
+      <div class="label">Soll-Bestand laut System</div>
+      <div class="wert gross">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+    </div>
+    <a href="/kasse/kassensturz" class="btn btn-primary">🔍 Kassensturz durchführen →</a>
+  </div>
+
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+function tab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('aktiv'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('panel-' + id).classList.add('aktiv');
+  btn.classList.add('aktiv');
+  if (id === 'kassenbuch') ladeKassenbuch();
+}
+
+const EINTRAEGE_KB = {{ eintraege_kb|tojson }};
+
+function ladeKassenbuch() {
+  renderKassenbuch(EINTRAEGE_KB);
+}
+
+function renderKassenbuch(eintraege) {
+  const cont = document.getElementById('kb-eintraege');
+  if (!eintraege || eintraege.length === 0) {
+    cont.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Keine Einträge</div>';
+    return;
+  }
+  const typLabels = {
+    EINLAGE: 'Einlage', ENTNAHME: 'Entnahme', PRIVATENTNAHME: 'Privatentnahme',
+    PRIVATEINLAGE: 'Privateinlage', TRANSFER_KASSE_BANK: 'Transfer → Bank',
+    TRANSFER_BANK_KASSE: 'Transfer ← Bank', TRANSFER_KASSE_NEBEN: 'Transfer → Nebenkasse',
+    TRANSFER_NEBEN_KASSE: 'Transfer ← Nebenkasse', ANFANGSBESTAND: 'Anfangsbestand',
+    UMSATZ_BAR: 'Bar-Umsatz', TAGESABSCHLUSS: 'Tagesabschluss'
+  };
+  let html = '';
+  eintraege.slice(0, 10).forEach(e => {
+    const pos = e.BETRAG >= 0;
+    const bez = e.BUCHUNGSTEXT || e.NOTIZ || typLabels[e.TYP] || e.TYP;
+    const dat = (e.BUCHUNGSDATUM || '').substring(0, 16);
+    const farbe = pos ? 'var(--gruen-status)' : 'var(--rot)';
+    html += `<div class="eintrag-zeile">
+      <div>
+        <div style="font-weight:700;font-size:14px;">${typLabels[e.TYP] || e.TYP}</div>
+        <div class="meta">${bez !== (typLabels[e.TYP] || e.TYP) ? bez + ' · ' : ''}${dat}</div>
+      </div>
+      <div style="font-family:'Lobster',serif;font-size:18px;color:${farbe};">
+        ${euro(e.BETRAG)}
+      </div>
+    </div>`;
+  });
+  cont.innerHTML = html;
+}
+
+async function xbonDrucken() {
+  const r = await api('POST', '/api/xbon/drucken', {});
+  toast(r.ok ? 'X-Bon gedruckt' : (r.fehler || 'Fehler'), r.ok ? 'ok' : 'err');
+}
+
+// URL-Hash für direkten Tab-Aufruf
+const hash = location.hash.replace('#','');
+if (hash) {
+  const btn = document.querySelector(`.tab-btn[onclick*="${hash}"]`);
+  if (btn) tab(hash, btn);
+}
+</script>
+{% endblock %}
