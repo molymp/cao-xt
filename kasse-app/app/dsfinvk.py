@@ -143,8 +143,8 @@ def dsfinvk_export_starten(terminal_nr: int,
         if not (g.get('FISKALY_TSS_ID') and g.get('FISKALY_API_KEY')
                 and g.get('FISKALY_API_SECRET')):
             fehler.append(
-                f"Fiskaly TSE „{bezeichnung}" hat keine vollständige "
-                f"API-Konfiguration (API-Key/Secret/TSS-ID fehlt)."
+                f'Fiskaly TSE "{bezeichnung}" hat keine vollständige '
+                f'API-Konfiguration (API-Key/Secret/TSS-ID fehlt).'
             )
             continue
         try:
@@ -171,29 +171,32 @@ def dsfinvk_export_starten(terminal_nr: int,
             log.info('DSFinV-K Export gestartet: TSE %s, Export-ID %s',
                      bezeichnung, exporte[-1]['export_id'])
         except Exception as e:
-            fehler.append(f"Fiskaly TSE „{bezeichnung}": {e}")
+            fehler.append(f'Fiskaly TSE "{bezeichnung}": {e}')
             log.warning('DSFinV-K Export fehlgeschlagen für %s: %s', bezeichnung, e)
 
     # ── Fiskaly test TSEs ─────────────────────────────────────────
     for g in geraete['fiskaly_test']:
+        name = g.get('BEZEICHNUNG') or 'unbekannt'
         warnungen.append(
-            f"Fiskaly-Test-TSE „{g.get('BEZEICHNUNG', 'unbekannt')}" war im Zeitraum aktiv – "
-            f"Test-Transaktionen sind nicht Bestandteil des offiziellen Exports."
+            f'Fiskaly-Test-TSE "{name}" war im Zeitraum aktiv – '
+            'Test-Transaktionen sind nicht Bestandteil des offiziellen Exports.'
         )
 
     # ── Swissbit TSEs ─────────────────────────────────────────────
     for g in geraete['swissbit']:
+        name = g.get('BEZEICHNUNG') or 'unbekannt'
         warnungen.append(
-            f"Swissbit USB-TSE „{g.get('BEZEICHNUNG', 'unbekannt')}" war im Zeitraum aktiv. "
-            f"Für Swissbit-Transaktionen ist kein automatisierter DSFinV-K-Export implementiert – "
-            f"bitte die lokale JSON-Übersicht als Grundlage verwenden."
+            f'Swissbit USB-TSE "{name}" war im Zeitraum aktiv. '
+            'Für Swissbit-Transaktionen ist kein automatisierter DSFinV-K-Export implementiert – '
+            'bitte die lokale JSON-Übersicht als Grundlage verwenden.'
         )
 
     # ── DEMO TSEs ─────────────────────────────────────────────────
     for g in geraete['demo']:
+        name = g.get('BEZEICHNUNG') or 'unbekannt'
         warnungen.append(
-            f"DEMO-TSE „{g.get('BEZEICHNUNG', 'unbekannt')}" ist kein prüfungsrelevantes Gerät "
-            f"und wird nicht exportiert."
+            f'DEMO-TSE "{name}" ist kein prüfungsrelevantes Gerät '
+            'und wird nicht exportiert.'
         )
 
     # ── Trainings-Bons ────────────────────────────────────────────
