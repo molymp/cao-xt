@@ -207,11 +207,15 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     b = _Bon()
     b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
 
+    # Nicht-live: Terminal im Trainings-Modus ODER TSE_SERIAL kein echter Wert
+    tse_serial = (vorgang.get('TSE_SERIAL') or '').strip()
+    nicht_live = trainings_modus or tse_serial in ('', 'TRAININGSMODUS')
+
     # ── Kopf ─────────────────────────────────────────────────
     _drucke_kopf(b, firma)
     b.trenn()
 
-    if trainings_modus:
+    if nicht_live:
         b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
         b.text('TRAININGSBON\n')
         b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
@@ -327,10 +331,9 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     # ── TSE-Pflichtangaben + QR-Code ─────────────────────────
     # QR-Code links, TSE-Text direkt darunter – eine kompakte Einheit
     b.raw(_ALIGN_LEFT).trenn()
-    if trainings_modus:
+    if nicht_live:
         b.raw(_FONT_B)
-        b.text('TRAININGSMODUS – KEIN STEUERRELEVANTER BELEG\n')
-        b.text('Keine TSE-Signatur vorhanden.\n')
+        b.text('KEIN STEUERRELEVANTER BELEG – KEINE LIVE-TSE\n')
         b.raw(_FONT_A)
         b.trenn()
         b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
