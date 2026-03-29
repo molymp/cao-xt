@@ -57,14 +57,28 @@
   flex-shrink: 0;
 }
 .menge-btn:active { background: var(--gruen-blass); }
-.menge-anzeige { font-size: 16px; font-weight: 700; min-width: 22px; text-align: center; }
-.steuer-btn {
+.menge-anzeige {
+  font-size: 16px; font-weight: 700; min-width: 26px; text-align: center;
+  cursor: pointer; padding: 2px 4px; border-radius: var(--radius-klein);
+  border: 1px solid transparent;
+}
+.menge-anzeige:hover { background: var(--creme-dunkel); border-color: var(--creme-dunkel); }
+.menge-anzeige:active { background: var(--gruen-blass); }
+.steuer-label {
+  padding: 4px 7px; border-radius: var(--radius-klein);
+  border: 1px solid var(--creme-dunkel);
+  background: var(--grau-hell); color: var(--text-hell);
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+  user-select: none;
+}
+.ep-btn {
   padding: 4px 7px; border-radius: var(--radius-klein);
   border: 1px solid var(--creme-dunkel);
   background: var(--grau-hell); color: var(--text-hell);
   font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;
 }
-.steuer-btn:active { background: var(--gruen-blass); color: var(--gruen-dunkel); }
+.ep-btn.geaendert { background: #fff3cd; border-color: #f0c040; color: #9a6000; }
+.ep-btn:active { background: var(--gruen-blass); color: var(--gruen-dunkel); }
 .pos-gp {
   font-family: 'Lobster', Georgia, serif;
   font-size: 16px; font-weight: 400; text-align: right; color: var(--gold);
@@ -81,9 +95,8 @@
 /* ── Fixe Schnelltasten: unteres Drittel ─────────────────── */
 .schnell-section {
   flex-shrink: 0;
-  height: 42%;
-  min-height: 200px;
-  max-height: 340px;
+  /* 5 Reihen × 56px + 4 Gaps × 5px + Grid-Padding 12px + Nav ~44px + Border 2px */
+  height: 358px;
   display: flex; flex-direction: column; overflow: hidden;
   border-top: 2px solid var(--creme-dunkel);
   background: var(--grau-hell);
@@ -131,8 +144,8 @@
   font-family: 'Nunito', sans-serif; transition: opacity 0.1s;
 }
 .schnell-btn:active { opacity: 0.65; }
-.schnell-btn .name  { font-size: 11px; font-weight: 700; color: var(--text-dunkel); line-height: 1.2; }
-.schnell-btn .preis { font-size: 10px; color: var(--text-hell); }
+.schnell-btn .name  { font-size: 13px; font-weight: 700; color: var(--text-dunkel); line-height: 1.2; }
+.schnell-btn .preis { font-size: 12px; color: var(--text-hell); }
 .schnell-btn.wg-btn {
   border-style: dashed; border-width: 2px;
   border-color: var(--gold); position: relative;
@@ -141,6 +154,97 @@
   content: '€'; position: absolute; top: 3px; right: 5px;
   font-size: 9px; font-weight: 800; color: var(--gold); opacity: 0.8;
 }
+
+/* Artikelauswahl-Button in der Schnell-Nav */
+.schnell-art-browser-btn {
+  padding: 6px 12px; border-radius: var(--radius-klein);
+  background: var(--gruen-dunkel); border: 2px solid var(--gruen-dunkel);
+  color: white; font-size: 12px; font-weight: 700; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.schnell-art-browser-btn:hover { opacity: 0.82; }
+
+/* ── Artikel-Browser Overlay ────────────────────────────── */
+.art-browser-panel {
+  background: white; border-radius: var(--radius);
+  width: 92vw; max-width: 1100px; height: 88vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+}
+.art-browser-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; flex-shrink: 0;
+  border-bottom: 2px solid var(--creme-dunkel);
+  background: var(--gruen-dunkel);
+}
+.art-browser-header h2 { color: var(--gold); margin: 0; font-size: 17px; }
+.art-browser-suche {
+  flex: 1; padding: 7px 12px;
+  border: 1px solid rgba(255,255,255,0.3); border-radius: var(--radius-klein);
+  background: rgba(255,255,255,0.12); color: white; font-size: 14px;
+  font-family: 'Nunito', sans-serif;
+}
+.art-browser-suche::placeholder { color: rgba(255,255,255,0.5); }
+.art-browser-body { display: flex; flex: 1; overflow: hidden; }
+
+/* Linke Spalte: Warengruppen */
+.art-browser-wg {
+  width: 210px; flex-shrink: 0; overflow-y: auto;
+  border-right: 2px solid var(--creme-dunkel);
+  background: var(--grau-hell);
+}
+.art-browser-wg-btn {
+  display: flex; align-items: center; gap: 4px;
+  width: 100%; text-align: left;
+  padding: 9px 10px 9px 14px; border: none;
+  border-bottom: 1px solid var(--creme-dunkel);
+  background: transparent; cursor: pointer;
+  font-size: 13px; color: var(--text-dunkel);
+  font-family: 'Nunito', sans-serif;
+}
+.art-browser-wg-btn:hover { background: var(--creme); }
+.art-browser-wg-btn.aktiv {
+  background: var(--gruen-dunkel); color: var(--gruen-blass); font-weight: 700;
+}
+.art-browser-wg-btn.wg-wurzel {
+  font-weight: 700; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.03em; color: var(--gruen-dunkel);
+  border-top: 2px solid var(--creme-dunkel); margin-top: 2px;
+}
+.art-browser-wg-btn.wg-wurzel:first-child { border-top: none; margin-top: 0; }
+.art-browser-wg-btn.wg-wurzel.aktiv { color: var(--gruen-blass); }
+.wg-strich { opacity: 0.3; margin-right: 4px; font-size: 11px; }
+.wg-badge {
+  margin-left: auto; font-size: 10px; color: var(--text-dim);
+  background: var(--creme-dunkel); border-radius: 8px;
+  padding: 1px 5px; flex-shrink: 0;
+}
+
+/* Rechte Spalte: Artikel-Tabelle */
+.art-browser-artikel { flex: 1; overflow: auto; }
+.art-browser-tabelle {
+  width: 100%; border-collapse: collapse; font-size: 14px;
+}
+.art-browser-tabelle thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--creme); padding: 8px 14px;
+  text-align: left; border-bottom: 2px solid var(--creme-dunkel);
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-hell); white-space: nowrap;
+}
+.art-sort { cursor: pointer; user-select: none; }
+.art-sort:hover { color: var(--gruen-dunkel); }
+.art-browser-tabelle tbody tr {
+  border-bottom: 1px solid var(--creme-dunkel);
+  cursor: pointer; transition: background 0.1s;
+}
+.art-browser-tabelle tbody tr:hover { background: var(--gruen-blass); }
+.art-browser-tabelle td { padding: 9px 14px; vertical-align: middle; }
+.art-browser-tabelle td.ab-preis {
+  text-align: right; white-space: nowrap;
+  font-family: 'Lobster', Georgia, serif; font-size: 16px; color: var(--gruen-dunkel);
+}
+.art-browser-tabelle td.ab-meta { font-size: 12px; color: var(--text-dim); }
 
 /* ── Rechte Spalte: Aktionen ─────────────────────────────── */
 .aktionen-panel {
@@ -209,6 +313,11 @@
 }
 .ean-input::placeholder { color: rgba(255,255,255,0.35); }
 .ean-input:focus { outline: none; border-color: var(--gold); background: rgba(255,255,255,0.2); }
+@keyframes scanFehler {
+  0%,100% { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
+  20%,60% { background: rgba(220,50,50,0.5);   border-color: #f66; }
+}
+.ean-input.scan-fehler { animation: scanFehler 0.5s ease; }
 
 /* 4×4 Numpad */
 .ean-numpad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
@@ -285,6 +394,194 @@
   font-size: 52px; font-weight: 400; color: var(--gold);
   text-align: center; min-width: 200px; min-height: 80px;
 }
+
+/* ── Zahlungs-Overlay ── */
+.zahlung-modal {
+  display: grid;
+  grid-template-columns: 1fr 500px;
+  width: min(1020px, 98vw);
+  max-height: 96vh;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+}
+.z-bar-numpad-grid {
+  display: grid;
+  grid-template-columns: 1fr 190px;
+  gap: 10px;
+  align-items: start;
+  margin-top: 8px;
+}
+.z-bon {
+  background: var(--creme);
+  padding: 20px; overflow-y: auto; min-height: 0;
+}
+.z-bon h2 {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 20px; font-weight: 400;
+  color: var(--gruen-dunkel); margin-bottom: 14px;
+}
+.z-pos-zeile {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 8px 0; border-bottom: 1px solid var(--creme-dunkel); font-size: 14px;
+}
+.z-pos-zeile .zp-name  { flex: 1; color: var(--text-dunkel); }
+.z-pos-zeile .zp-menge { color: var(--text-hell); margin: 0 12px; }
+.z-pos-zeile .zp-preis { font-weight: 700; color: var(--gold); font-family: 'Lobster', Georgia, serif; font-size: 15px; min-width: 72px; text-align: right; }
+.z-summen {
+  margin-top: 14px; background: white;
+  border-radius: var(--radius-klein); padding: 12px;
+  border: 1px solid var(--creme-dunkel);
+}
+.z-summen-zeile {
+  display: flex; justify-content: space-between;
+  padding: 4px 0; font-size: 13px; color: var(--text-mitte);
+}
+.z-summen-zeile.gesamt {
+  font-size: 19px; font-weight: 800;
+  border-top: 2px solid var(--creme-dunkel); padding-top: 10px; margin-top: 6px;
+  color: var(--gruen-dunkel);
+}
+.z-panel {
+  background: var(--gruen-dunkel);
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  overflow-y: auto; min-height: 0;
+}
+.z-panel .gesamt-gross {
+  text-align: center;
+  background: rgba(0,0,0,0.2); border-radius: var(--radius); padding: 12px;
+}
+.z-panel .gesamt-gross .label { font-size: 12px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
+.z-panel .gesamt-gross .betrag {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 42px; font-weight: 400; color: var(--gold);
+}
+.zahlart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.zahlart-btn {
+  padding: 14px 8px; border-radius: var(--radius-klein);
+  border: 2px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08); color: var(--gruen-blass);
+  font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'Nunito', sans-serif;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.zahlart-btn .icon { font-size: 22px; }
+.zahlart-btn.aktiv { border-color: var(--gold); background: rgba(200,120,10,0.25); color: var(--gold-hell); }
+.zahlart-btn:active { opacity: 0.75; }
+.zahlart-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.z-bar-display {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 26px; font-weight: 400; text-align: center;
+  background: rgba(0,0,0,0.2); border-radius: var(--radius-klein); padding: 10px;
+  color: var(--gold-hell); border: 2px solid rgba(255,255,255,0.15);
+  min-height: 52px; display: flex; align-items: center; justify-content: center;
+}
+.z-feld-label {
+  text-align: center; font-size: 11px; color: rgba(255,255,255,0.5);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
+}
+.z-panel .numpad {
+  gap: 5px;
+}
+.z-panel .numpad .btn {
+  background: rgba(255,255,255,0.1); color: var(--gruen-blass);
+  border-color: rgba(255,255,255,0.15); min-height: 44px; font-size: 18px;
+  padding: 4px 2px;
+}
+.z-panel .numpad .btn:active { background: var(--gold); color: white; }
+.z-wechselgeld {
+  text-align: center; font-size: 22px; font-weight: 700;
+  color: var(--gruen-blass);
+  background: rgba(0,0,0,0.2); border-radius: var(--radius-klein); padding: 10px;
+  border: 2px solid rgba(255,255,255,0.1);
+  min-height: 52px; display: flex; align-items: center; justify-content: center;
+}
+.z-wechselgeld.negativ { color: #f9c0c0; }
+.z-kasse-label {
+  font-size: 11px; color: rgba(255,255,255,0.5);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
+}
+.z-kasse-grid {
+  display: grid; gap: 4px;
+}
+.z-muenzen-grid { grid-template-columns: repeat(4, 1fr); }
+.z-scheine-grid { grid-template-columns: repeat(3, 1fr); }
+.z-kasse-btn {
+  background: rgba(255,255,255,0.1); color: var(--gruen-blass);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-klein);
+  padding: 8px 4px; font-size: 13px; font-weight: 700; cursor: pointer;
+  font-family: 'Nunito', sans-serif; text-align: center; line-height: 1.2;
+}
+.z-kasse-btn:active { background: var(--gold); color: white; border-color: var(--gold); }
+.z-schein-btn { background: rgba(200,160,0,0.15); border-color: rgba(200,160,0,0.35); }
+.z-panel .btn-neutral {
+  background: rgba(255,255,255,0.1); color: var(--gruen-blass);
+  border-color: rgba(255,255,255,0.15);
+}
+.z-panel .btn-neutral:hover { background: rgba(255,255,255,0.18); }
+.btn-zahlen-final {
+  min-height: 68px; font-size: 20px; font-weight: 800;
+  background: var(--gold); border: none; border-radius: var(--radius);
+  color: white; cursor: pointer; width: 100%; margin-top: auto;
+  font-family: 'Nunito', sans-serif;
+  box-shadow: 0 3px 12px rgba(200,120,10,0.4);
+}
+.btn-zahlen-final:disabled { opacity: 0.4; pointer-events: none; }
+.btn-zahlen-final:active   { opacity: 0.85; transform: scale(0.97); }
+.btn-abbrechen {
+  min-height: 42px; font-size: 14px; font-weight: 700;
+  background: transparent; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-klein); color: var(--grau-mitte);
+  cursor: pointer; width: 100%; font-family: 'Nunito', sans-serif;
+}
+.btn-abbrechen:hover { background: rgba(255,255,255,0.08); }
+
+/* ── Bildschirmtastatur ── */
+#tastatur {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--gruen-dunkel);
+  padding: 10px 14px 14px;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.35);
+  z-index: 7000;
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.34,1.2,0.64,1);
+  touch-action: none;
+}
+#tastatur.sichtbar { transform: translateY(0); }
+.tastatur-kopf {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.tastatur-feld-info {
+  font-size: 0.78rem; font-weight: 700; color: var(--gruen-blass);
+  text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75;
+}
+.tastatur-schliessen {
+  background: rgba(255,255,255,0.12); border: none;
+  border-radius: var(--radius-klein); color: var(--creme);
+  font-size: 0.85rem; font-weight: 700; padding: 6px 16px;
+  cursor: pointer; font-family: 'Nunito', sans-serif;
+}
+.tastatur-schliessen:hover { background: rgba(255,255,255,0.22); }
+.tastatur-zeile {
+  display: flex; gap: 6px; justify-content: center; margin-bottom: 6px;
+}
+.tastatur-zeile:last-child { margin-bottom: 0; }
+.t-taste {
+  min-width: 48px; height: 48px; border: none; border-radius: 8px;
+  background: #e8e0cc; color: var(--text-dunkel);
+  font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  padding: 0 8px; user-select: none;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.t-taste:active { transform: scale(0.93); background: #d4c8a8; }
+.t-taste.t-leer  { flex: 1; min-width: 140px; background: #d4ccb8; font-size: 0.85rem; }
+.t-taste.t-del   { min-width: 60px; background: #c0a880; color: white; font-size: 1.1rem; }
+.t-taste.t-shift { min-width: 60px; background: #a0b488; color: white; }
+.t-taste.t-shift.aktiv { background: var(--gold); }
+.t-taste.t-weiter { min-width: 70px; background: var(--gruen-hell); color: white; font-size: 0.82rem; }
+.t-taste.t-sonder { background: #c8d4b0; color: var(--gruen-dunkel); font-size: 0.88rem; }
 </style>
 {% endblock %}
 
@@ -294,6 +591,7 @@
 {% endblock %}
 
 {% block content %}
+{% set terminal = terminal|default({}) %}
 <div class="kasse-layout">
 
   <!-- ── Warenkorb + Schnelltasten ──────────────────────────── -->
@@ -301,14 +599,20 @@
     <!-- Kunden-Infozeile + Betreff -->
     <div class="wk-kopfinfo">
       <div class="wk-kunde" id="wkKunde">
-        <span class="kunde-label">Kunde</span>
+        <button class="btn btn-sm btn-neutral" onclick="kundenkonto()" style="flex-shrink:0; padding:3px 9px; font-size:12px;">👤 Kunde</button>
         <span class="kunde-wert barverkauf">Barverkauf</span>
       </div>
-      <div class="wk-betreff">
+      <div class="wk-betreff" style="display:flex;align-items:center;gap:4px;">
         <span class="kunde-label">Betreff</span>
         <input class="betreff-input" id="betrefEingabe" type="text"
                placeholder="Optional – erscheint auf dem Bon"
-               autocomplete="off" spellcheck="false">
+               autocomplete="off" spellcheck="false" readonly
+               onclick="zeigeTastatur(this)" style="flex:1;">
+        <button id="betrefLoeschen" onclick="betrefLeeren()"
+                style="display:none;background:none;border:none;cursor:pointer;
+                       color:var(--text-hell);font-size:16px;line-height:1;
+                       padding:2px 4px;border-radius:4px;"
+                title="Betreff löschen">✕</button>
       </div>
     </div>
     <!-- Scrollbarer Warenkorb -->
@@ -355,10 +659,12 @@
     <hr>
 
     <div class="akt-grid">
-      <button class="btn btn-neutral" onclick="mengaendern()">✏️ Menge</button>
-      <button class="btn btn-warning" onclick="rabattDialog()">% Rabatt</button>
-      <button class="btn btn-neutral" onclick="kundenkonto()">👤 Kunde</button>
-      <button class="btn btn-neutral" onclick="kundeEntfernen()">🛒 Barverkauf</button>
+      <button class="btn btn-neutral" onclick="letzterBonDrucken()">🖨 Letzter Bon</button>
+      <button class="btn btn-neutral" id="btnLadeOeffnen"
+              onclick="ladeOeffnen()"
+              {% if not terminal.KASSENLADE %}disabled title="Keine Kassenlade konfiguriert"{% endif %}>
+        🗄 Lade öffnen
+      </button>
     </div>
 
     <hr>
@@ -400,6 +706,53 @@
   </div>
 </div>
 
+<!-- ── Artikel-Browser Overlay ────────────────────────────────── -->
+<div class="overlay hidden" id="artBrowserOverlay">
+  <div class="art-browser-panel">
+    <!-- Header -->
+    <div class="art-browser-header">
+      <h2>📦 Artikelauswahl</h2>
+      <input type="text" id="artBrowserSuche" class="art-browser-suche"
+             placeholder="🔍 Artikel suchen (Name, Art.-Nr., Barcode)…"
+             oninput="artBrowserFiltern()" autocomplete="off">
+      <button class="btn btn-neutral btn-sm" onclick="artBrowserSchliessen()">✕ Schließen</button>
+    </div>
+    <!-- Body -->
+    <div class="art-browser-body">
+      <!-- Linke Spalte: Warengruppen -->
+      <div class="art-browser-wg" id="artBrowserWGListe">
+        <div style="padding:14px; color:var(--text-dim); font-size:13px;">Lade…</div>
+      </div>
+      <!-- Rechte Spalte: Artikel -->
+      <div class="art-browser-artikel">
+        <div id="artBrowserStatus"
+             style="padding:40px; text-align:center; color:var(--text-dim); font-size:15px;">
+          ← Warengruppe wählen
+        </div>
+        <table class="art-browser-tabelle" id="artBrowserTabelle" style="display:none;">
+          <thead>
+            <tr>
+              <th class="art-sort" onclick="artBrowserSortieren('artnum')"    title="Artikelnummer">Art.-Nr. <span id="artSortPfeil_artnum"></span></th>
+              <th class="art-sort" onclick="artBrowserSortieren('bezeichnung')">Bezeichnung <span id="artSortPfeil_bezeichnung">▲</span></th>
+              <th title="PLU (USERFELD_04)">PLU</th>
+              <th title="PLU-2 (USERFELD_05)">PLU-2</th>
+              <th title="EAN / Barcode (BARCODE)">EAN</th>
+              <th title="Artikeltyp (N=Normal, L=Lohn, S=Stückliste)">Typ</th>
+              <th title="Mengeneinheit">ME</th>
+              <th class="art-sort" onclick="artBrowserSortieren('bestand')"   title="Aktueller Bestand" style="text-align:right;">Bestand <span id="artSortPfeil_bestand"></span></th>
+              <th class="art-sort" onclick="artBrowserSortieren('preis_cent')" style="text-align:right;">VK <span id="artSortPfeil_preis_cent"></span></th>
+              <th class="art-sort" onclick="artBrowserSortieren('aktionspreis_cent')" style="text-align:right;" title="Aktionspreis (aktuell gültig)">Akt. <span id="artSortPfeil_aktionspreis_cent"></span></th>
+              <th class="art-sort" onclick="artBrowserSortieren('mwst_satz')" title="MwSt.-Satz">MwSt. <span id="artSortPfeil_mwst_satz"></span></th>
+              <th title="Sperren &amp; Altersbeschränkung">🔒</th>
+            </tr>
+          </thead>
+          <tbody id="artBrowserListe"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Geparkte Bons Overlay ──────────────────────────────────── -->
 <div class="overlay hidden" id="geparkteOverlay">
   <div class="modal">
@@ -431,24 +784,181 @@
   </div>
 </div>
 
-<!-- ── Rabatt-Modal ──────────────────────────────────────────── -->
-<div class="overlay hidden" id="rabattOverlay">
+<!-- ── EP-Modal ───────────────────────────────────────────────── -->
+<div class="overlay hidden" id="epOverlay">
   <div class="modal">
-    <h2>Rabatt auf aktuelle Position</h2>
+    <h2>Einzelpreis ändern</h2>
     <div class="menge-modal-content">
-      <div class="menge-display" id="rabattDisplay">0</div>
-      <div style="color:var(--text-dim); font-size:14px;">Prozent (%)</div>
+      <div style="color:var(--text-dim); font-size:13px;" id="epAktuell"></div>
+      <div class="menge-display" id="epDisplay">0,00</div>
+      <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
       <div class="numpad">
-        {% for z in ['7','8','9','4','5','6','1','2','3','','0','⌫'] %}
-        <button class="btn numpad-taste" data-z="{{ z }}" {% if not z %}disabled{% endif %}>{{ z }}</button>
+        {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
+        <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
         {% endfor %}
       </div>
       <div style="display:flex; gap:12px; width:100%;">
-        <button class="btn btn-danger btn-full" onclick="rabattAbbrechen()">Abbrechen</button>
-        <button class="btn btn-success btn-full" onclick="rabattPosBestaetigen()">Anwenden</button>
+        <button class="btn btn-danger btn-full" onclick="epAbbrechen()">Abbrechen</button>
+        <button class="btn btn-success btn-full" onclick="epPosBestaetigen()">Anwenden</button>
       </div>
     </div>
   </div>
+</div>
+
+<!-- ── Sonder-EAN: Preis-Dialog (Zeitschriften / unbekannte EAN) ── -->
+<div class="overlay hidden" id="sonderEanOverlay">
+  <div class="modal">
+    <h2 id="sonderEanTitel">Zeitschrift</h2>
+    <div class="menge-modal-content">
+      <input type="text" id="sonderEanBezeichnung"
+             style="width:100%; padding:6px 10px; border:1px solid var(--creme-dunkel);
+                    border-radius:var(--radius-klein); font-size:14px; text-align:center;
+                    color:var(--text-dunkel); background:white;"
+             placeholder="Bezeichnung (editierbar)">
+      <div style="color:var(--text-dim); font-size:13px; margin-top:4px;">Preis eingeben</div>
+      <div class="menge-display" id="sonderEanDisplay">0,00</div>
+      <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
+      <div class="numpad">
+        {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
+        <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
+        {% endfor %}
+      </div>
+      <div style="display:flex; gap:12px; width:100%;">
+        <button class="btn btn-danger btn-full" onclick="sonderEanAbbrechen()">Abbrechen</button>
+        <button class="btn btn-success btn-full" onclick="sonderEanBestaetigen()">Buchen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Zahlungs-Overlay ───────────────────────────────────────── -->
+<div class="overlay hidden" id="zahlungOverlay" style="align-items:stretch; padding:16px;">
+  <div class="zahlung-modal">
+
+    <!-- Linke Seite: Bon-Übersicht -->
+    <div class="z-bon">
+      <h2>Bon <span id="zBonNr">–</span></h2>
+      <div id="zKundenInfo"></div>
+      <div id="zBetreff"></div>
+      <div id="zPositionen"></div>
+      <div class="z-summen" id="zSummen"></div>
+    </div>
+
+    <!-- Rechte Seite: Zahlung -->
+    <div class="z-panel">
+      <div class="gesamt-gross">
+        <div class="label">Zu zahlen</div>
+        <div class="betrag" id="zZuZahlen">–</div>
+      </div>
+
+      <!-- Zahlart + Lieferschein in einer Zeile -->
+      <div class="zahlart-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+        <button class="zahlart-btn aktiv" id="zBtnBAR" onclick="zZahlartWaehlen('BAR')">
+          <span class="icon">💵</span>Bar
+        </button>
+        <button class="zahlart-btn" id="zBtnBAR_PASSEND" onclick="zZahlartWaehlen('BAR_PASSEND')">
+          <span class="icon">🪙</span>Bar passend
+        </button>
+        <button class="zahlart-btn" id="zBtnEC" onclick="zZahlartWaehlen('EC')">
+          <span class="icon">💳</span>EC-Karte
+        </button>
+        <button class="zahlart-btn" disabled>
+          <span class="icon">📄</span>Lieferschein
+        </button>
+      </div>
+
+      <!-- EC-Hinweis -->
+      <div id="zEcHinweis" style="display:none; background:rgba(0,0,0,0.25); border-radius:var(--radius-klein); padding:14px 16px; color:var(--gruen-blass); font-size:14px; line-height:1.7;">
+        <div style="font-weight:800; font-size:15px; margin-bottom:8px; color:var(--gold);">💳 EC-Zahlung – Ablauf</div>
+        <ol style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px;">
+          <li>Betrag am EC-Terminal bestätigen</li>
+          <li>Karte auffordern / PIN-Eingabe abwarten</li>
+          <li>Auf „<b>Zahlung genehmigt</b>" warten</li>
+          <li>Erst dann hier <b>„Zahlung abschließen"</b> drücken</li>
+        </ol>
+        <div style="margin-top:10px; padding:8px 10px; background:rgba(255,80,80,0.15); border-radius:var(--radius-klein); border-left:3px solid #f08080; font-size:13px; color:#f9c0c0;">
+          ⚠️ Nicht buchen, wenn das Terminal die Zahlung abgelehnt hat.
+        </div>
+      </div>
+
+      <!-- Bar-Eingabe -->
+      <div id="zBarBlock">
+        <!-- Gegeben / Rückgeld nebeneinander -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <div class="z-feld-label">Gegeben</div>
+            <div class="z-bar-display" id="zBarDisplay">0,00 €</div>
+          </div>
+          <div>
+            <div class="z-feld-label">Rückgeld</div>
+            <div class="z-wechselgeld" id="zWechselgeld">–</div>
+          </div>
+        </div>
+
+        <!-- Münzen+Scheine LINKS · Numpad RECHTS -->
+        <div class="z-bar-numpad-grid">
+          <!-- Links: Münzen + Scheine -->
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div>
+              <div class="z-kasse-label">Münzen</div>
+              <div class="z-kasse-grid" style="grid-template-columns:repeat(4,1fr);">
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(1)">1 ct</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(2)">2 ct</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(5)">5 ct</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(10)">10 ct</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(20)">20 ct</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(50)">50 ct</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(100)">1,00 €</button>
+                <button class="z-kasse-btn" onclick="_zKasseHinzufuegen(200)">2,00 €</button>
+              </div>
+            </div>
+            <div>
+              <div class="z-kasse-label">Scheine</div>
+              <div class="z-kasse-grid" style="grid-template-columns:repeat(3,1fr);">
+                <button class="z-kasse-btn z-schein-btn" onclick="_zKasseHinzufuegen(500)">5 €</button>
+                <button class="z-kasse-btn z-schein-btn" onclick="_zKasseHinzufuegen(1000)">10 €</button>
+                <button class="z-kasse-btn z-schein-btn" onclick="_zKasseHinzufuegen(2000)">20 €</button>
+                <button class="z-kasse-btn z-schein-btn" onclick="_zKasseHinzufuegen(5000)">50 €</button>
+                <button class="z-kasse-btn z-schein-btn" onclick="_zKasseHinzufuegen(10000)">100 €</button>
+                <button class="z-kasse-btn z-schein-btn" onclick="_zKasseHinzufuegen(20000)">200 €</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rechts: Numpad + C -->
+          <div>
+            <div class="numpad">
+              {% for z in ['7','8','9','4','5','6','1','2','3','00','0','⌫'] %}
+              <button class="btn z-numpad-taste" data-z="{{ z }}">{{ z }}</button>
+              {% endfor %}
+              <button class="btn z-numpad-taste" data-z="C"
+                      style="grid-column:span 3; min-height:34px; font-size:13px;">
+                C – Löschen
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-zahlen-final" id="zBtnZahlen" onclick="zZahlungAbschliessen()">
+        ✓ Zahlung abschließen
+      </button>
+      <button class="btn-abbrechen" onclick="zahlungSchliessen()">← Zurück zur Kasse</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bildschirmtastatur ─────────────────────────────────────── -->
+<div id="tastatur">
+  <div class="tastatur-kopf">
+    <span class="tastatur-feld-info" id="tastatur-info">Betreff</span>
+    <button class="tastatur-schliessen" onclick="verbergeTastatur()">✕ Schließen</button>
+  </div>
+  <div class="tastatur-zeile" id="tz-zahlen"></div>
+  <div class="tastatur-zeile" id="tz-q"></div>
+  <div class="tastatur-zeile" id="tz-a"></div>
+  <div class="tastatur-zeile" id="tz-z"></div>
+  <div class="tastatur-zeile" id="tz-sonder"></div>
 </div>
 
 <!-- ── Kunden-Modal ──────────────────────────────────────────── -->
@@ -505,6 +1015,7 @@ function vkPreis(vkPreise, prEbene) {
 // ── Autofokus EAN-Feld ─────────────────────────────────────────
 // Immer Fokus auf Suchfeld halten (Barcodescanner)
 document.addEventListener('click', e => {
+  if (_tastaturAktiv) return;  // Tastatur offen → kein Autofokus
   if (e.target.closest('.overlay:not(.hidden)')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
       e.target.tagName === 'SELECT') return;
@@ -556,13 +1067,14 @@ function renderWarenkorb() {
     <div class="wk-pos" id="pos-${p.ID}">
       <div class="pos-info">
         <div class="pos-name">${esc(p.BEZEICHNUNG)}</div>
-        <div class="pos-meta">EP ${euro(p.EINZELPREIS_BRUTTO)}${p.RABATT_PROZENT > 0 ? ` · ${p.RABATT_PROZENT}% Rabatt` : ''}</div>
+        <div class="pos-meta">EP ${euro(p.EINZELPREIS_BRUTTO)}${(p.EP_ORIGINAL != null) ? ` <span style="color:var(--gold);font-weight:700;">(statt ${euro(p.EP_ORIGINAL)})</span>` : ''}</div>
       </div>
       <div class="wk-pos-controls">
         <button class="menge-btn" onclick="mengeReduzierenPos(${p.ID})">−</button>
-        <span class="menge-anzeige">${formatMenge(p.MENGE)}</span>
+        <span class="menge-anzeige" onclick="mengaendernPos(${p.ID})" title="Menge ändern">${formatMenge(p.MENGE)}</span>
         <button class="menge-btn" onclick="mengeErhoehenPos(${p.ID})">+</button>
-        <button class="steuer-btn" onclick="steuerToggle(${p.ID})">${mwstAnzeige(p.MWST_SATZ)}</button>
+        <button class="ep-btn" onclick="epPos(${p.ID})">EP</button>
+        <span class="steuer-label">${mwstAnzeige(p.MWST_SATZ)}</span>
       </div>
       <div class="pos-gp">${euro(p.GESAMTPREIS_BRUTTO)}</div>
       <button class="pos-del" onclick="posEntfernen(${p.ID})">✕</button>
@@ -605,6 +1117,23 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ── Scan-Töne (Web Audio API) ─────────────────────────────────
+function _ton(freq, dauer, typ = 'sine', gainStart = 0.3, gainEnde = 0) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = typ; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(gainStart, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(gainEnde, ctx.currentTime + dauer);
+    osc.start(); osc.stop(ctx.currentTime + dauer);
+    osc.onended = () => ctx.close();
+  } catch (_) {}
+}
+function tonErfolg() { _ton(1047, 0.08); }   // C6, kurzer heller Piepton
+function tonFehler()  { _ton(220, 0.25, 'sawtooth', 0.35); }  // A2, raues Warnsignal
+
 // ── Artikel hinzufügen ────────────────────────────────────────
 async function artikelHinzufuegen(artikel, menge = 1, rabatt = 0) {
   if (!vorgangId) {
@@ -623,6 +1152,7 @@ async function artikelHinzufuegen(artikel, menge = 1, rabatt = 0) {
   });
   if (!r.ok) { toast('Fehler', 'err'); return; }
   await vorgangNachladen();
+  tonErfolg();
 }
 
 async function vorgangNachladen() {
@@ -677,14 +1207,13 @@ async function steuerToggle(posId) {
 }
 
 // ── Menge per Modal ───────────────────────────────────────────
-function mengaendern() {
-  const aktiv = positionen.filter(p => !p.STORNIERT);
-  if (aktiv.length > 0) {
-    selPosId = aktiv.at(-1).ID;
-    mengeEingabe = String(Math.round(aktiv.at(-1).MENGE));
-    document.getElementById('mengeDisplay').textContent = mengeEingabe;
-    document.getElementById('mengeOverlay').classList.remove('hidden');
-  }
+function mengaendernPos(posId) {
+  const pos = positionen.find(p => p.ID === posId);
+  if (!pos) return;
+  selPosId = posId;
+  mengeEingabe = formatMenge(pos.MENGE);
+  document.getElementById('mengeDisplay').textContent = mengeEingabe;
+  document.getElementById('mengeOverlay').classList.remove('hidden');
 }
 
 async function mengeBestaetigen() {
@@ -701,35 +1230,44 @@ function mengeAbbrechen() {
   selPosId = null;
 }
 
-// ── Rabatt ────────────────────────────────────────────────────
-function rabattDialog() {
-  const aktiv = positionen.filter(p => !p.STORNIERT);
-  if (!aktiv.length) return;
-  selPosId = aktiv.at(-1).ID;
-  rabattEingabe = '0';
-  document.getElementById('rabattDisplay').textContent = '0';
-  document.getElementById('rabattOverlay').classList.remove('hidden');
-}
+// ── EP ändern ─────────────────────────────────────────────────
+let epEingabe = '';
 
-async function rabattPosBestaetigen() {
-  document.getElementById('rabattOverlay').classList.add('hidden');
-  const proz = parseFloat(rabattEingabe) || 0;
-  if (!selPosId || !vorgangId) return;
-  const pos = positionen.find(p => p.ID === selPosId);
+function epPos(posId) {
+  const pos = positionen.find(p => p.ID === posId);
   if (!pos) return;
-  const ep_orig = Math.round(pos.EINZELPREIS_BRUTTO / (1 - (pos.RABATT_PROZENT||0)/100));
-  await api('DELETE', `/api/vorgang/${vorgangId}/position/${selPosId}`);
-  await api('POST', `/api/vorgang/${vorgangId}/position`, {
-    artikel_id: pos.ARTIKEL_ID, bezeichnung: pos.BEZEICHNUNG,
-    menge: pos.MENGE, einzelpreis_brutto: ep_orig,
-    steuer_code: pos.STEUER_CODE, rabatt_prozent: proz,
-  });
-  await vorgangNachladen();
-  selPosId = null;
+  selPosId = posId;
+  epEingabe = '';  // leer – Nutzer tippt neuen Preis frisch ein
+  document.getElementById('epDisplay').textContent = '0,00';
+  document.getElementById('epAktuell').textContent =
+    'Aktuell: ' + euro(pos.EINZELPREIS_BRUTTO);
+  document.getElementById('epOverlay').classList.remove('hidden');
 }
 
-function rabattAbbrechen() {
-  document.getElementById('rabattOverlay').classList.add('hidden');
+async function epPosBestaetigen() {
+  document.getElementById('epOverlay').classList.add('hidden');
+  const neuerEP = Math.round(parseFloat(epEingabe.replace(',', '.')) * 100);
+  if (!neuerEP || !selPosId || !vorgangId) { selPosId = null; return; }
+  const pos = positionen.find(p => p.ID === selPosId);
+  if (!pos) { selPosId = null; return; }
+  // EP_ORIGINAL: nur numerische Werte übernehmen (null-sicher)
+  const epOrig = (typeof pos.EP_ORIGINAL === 'number') ? pos.EP_ORIGINAL : pos.EINZELPREIS_BRUTTO;
+  try {
+    await api('DELETE', `/api/vorgang/${vorgangId}/position/${selPosId}`);
+    await api('POST', `/api/vorgang/${vorgangId}/position`, {
+      artikel_id: pos.ARTIKEL_ID, bezeichnung: pos.BEZEICHNUNG,
+      menge: pos.MENGE, einzelpreis_brutto: neuerEP,
+      steuer_code: pos.STEUER_CODE, rabatt_prozent: 0,
+      ep_original: neuerEP !== epOrig ? epOrig : null,
+    });
+  } finally {
+    await vorgangNachladen();
+    selPosId = null;
+  }
+}
+
+function epAbbrechen() {
+  document.getElementById('epOverlay').classList.add('hidden');
   selPosId = null;
 }
 
@@ -794,8 +1332,201 @@ function geparkteOverlaySchliessen() {
 }
 
 // ── Zahlung / X-Bon ──────────────────────────────────────────
-function zahlungStarten() { if (vorgangId) window.location.href = `/kasse/zahlung/${vorgangId}`; }
 function xBon() { window.location.href = '/kasse/xbon'; }
+
+// ── Zahlungs-Overlay ─────────────────────────────────────────
+let _zGesamtCent   = 0;
+let _zZahlart      = 'BAR';
+let _zBarStr       = '';
+let _zBarCent      = 0;
+let _zBarFresh     = true;  // true = nächste Numpad-Eingabe ersetzt Wert
+
+function zahlungStarten() {
+  if (!vorgangId || !positionen.filter(p => !p.STORNIERT).length) return;
+
+  _zGesamtCent = positionen.filter(p => !p.STORNIERT)
+                            .reduce((s, p) => s + p.GESAMTPREIS_BRUTTO, 0);
+  _zZahlart  = 'BAR';
+  _zBarStr   = '';
+  _zBarCent  = 0;
+  _zBarFresh = true;
+
+  // Bon-Übersicht füllen
+  document.getElementById('zBonNr').textContent = bonNr;
+  const aktiv = positionen.filter(p => !p.STORNIERT);
+
+  // Kundendaten
+  const ki = document.getElementById('zKundenInfo');
+  if (gewaehlterKunde) {
+    const k = gewaehlterKunde;
+    const ort = k.ort ? ` · ${esc(k.ort)}` : '';
+    const nr  = k.kunnum ? `<div style="font-size:11px;color:var(--text-hell);margin-top:2px;">Kunden-Nr. ${esc(k.kunnum)}</div>` : '';
+    ki.innerHTML = `<div style="background:white;border:1px solid var(--creme-dunkel);
+      border-radius:var(--radius-klein);padding:7px 10px;margin-bottom:10px;">
+      <div style="font-weight:700;font-size:13px;color:var(--gruen-dunkel);">👤 ${esc(k.name)}${ort}</div>${nr}
+    </div>`;
+  } else {
+    ki.innerHTML = '';
+  }
+
+  // Betreff
+  const betreff = document.getElementById('betrefEingabe').value.trim();
+  const zb = document.getElementById('zBetreff');
+  if (betreff) {
+    zb.innerHTML = `<div style="background:#fffbe6;border:1px solid #ffe082;
+      border-radius:var(--radius-klein);padding:6px 10px;margin-bottom:10px;
+      font-size:12px;color:var(--text-dunkel);">
+      <span style="font-weight:700;color:var(--gold);">Betreff:</span> ${esc(betreff)}
+    </div>`;
+  } else {
+    zb.innerHTML = '';
+  }
+
+  // Positionen mit EP und MwSt
+  document.getElementById('zPositionen').innerHTML = aktiv.map(p => {
+    const satz = parseFloat(p.MWST_SATZ) || 0;
+    const epOrig = (p.EP_ORIGINAL != null)
+      ? ` <span style="color:var(--gold);font-weight:700;">(statt ${euro(p.EP_ORIGINAL)})</span>` : '';
+    return `
+    <div class="z-pos-zeile">
+      <span class="zp-name">${esc(p.BEZEICHNUNG)}</span>
+      <span class="zp-menge">${formatMenge(p.MENGE)}×</span>
+      <span class="zp-preis">${euro(p.GESAMTPREIS_BRUTTO)}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-hell);padding:0 0 5px 2px;">
+      EP ${euro(p.EINZELPREIS_BRUTTO)}${epOrig} &middot; MwSt ${satz}%
+    </div>`;
+  }).join('');
+
+  // MwSt-Aufschlüsselung mit Netto
+  const mwstMap = {};
+  for (const p of aktiv) {
+    const satz = parseFloat(p.MWST_SATZ) || 0;
+    const netto = Math.round(p.GESAMTPREIS_BRUTTO * 100 / (100 + satz));
+    if (!mwstMap[satz]) mwstMap[satz] = { netto: 0, mwst: 0 };
+    mwstMap[satz].netto += netto;
+    mwstMap[satz].mwst  += (p.GESAMTPREIS_BRUTTO - netto);
+  }
+  let sumHtml = '';
+  for (const [satz, v] of Object.entries(mwstMap).sort((a, b) => a[0] - b[0])) {
+    sumHtml += `<div class="z-summen-zeile">
+      <span>MwSt ${satz}%</span>
+      <span style="font-size:12px;color:var(--text-hell);">Netto ${euro(v.netto)} · MwSt ${euro(v.mwst)}</span>
+    </div>`;
+  }
+  sumHtml += `<div class="z-summen-zeile gesamt"><span>GESAMT</span><span>${euro(_zGesamtCent)}</span></div>`;
+  document.getElementById('zSummen').innerHTML = sumHtml;
+
+  document.getElementById('zZuZahlen').textContent = euro(_zGesamtCent);
+
+  // Zahlart-Buttons zurücksetzen
+  document.querySelectorAll('.zahlart-btn').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('zBtnBAR').classList.add('aktiv');
+  document.getElementById('zBarBlock').style.display = '';
+
+  _zBarAktualisieren();
+
+  document.getElementById('zBtnZahlen').disabled = false;
+  document.getElementById('zBtnZahlen').textContent = '✓ Zahlung abschließen';
+  document.getElementById('zahlungOverlay').classList.remove('hidden');
+}
+
+function zahlungSchliessen() {
+  document.getElementById('zahlungOverlay').classList.add('hidden');
+  document.getElementById('artikelSuche').focus();
+}
+
+function zZahlartWaehlen(art) {
+  _zZahlart = art;
+  document.querySelectorAll('.zahlart-btn').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('zBtn' + art).classList.add('aktiv');
+  document.getElementById('zBarBlock').style.display   = (art === 'BAR')  ? '' : 'none';
+  document.getElementById('zEcHinweis').style.display  = (art === 'EC')   ? '' : 'none';
+  document.getElementById('zWechselgeld').textContent  = '';
+  if (art === 'BAR_PASSEND') {
+    document.getElementById('zBtnZahlen').textContent = `✓ Bar passend ${euro(_zGesamtCent)}`;
+  } else {
+    document.getElementById('zBtnZahlen').textContent = '✓ Zahlung abschließen';
+  }
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('.z-numpad-taste');
+  if (!t) return;
+  const z = t.dataset.z;
+  if (z === 'C') {
+    _zBarStr = ''; _zBarFresh = true;
+  } else if (z === '⌫') {
+    if (_zBarFresh) { _zBarStr = ''; _zBarFresh = false; }
+    else _zBarStr = _zBarStr.slice(0, -1);
+  } else {
+    if (_zBarFresh) { _zBarStr = ''; _zBarFresh = false; }
+    _zBarStr += (z === '00') ? '00' : z;
+    if (_zBarStr.length > 7) _zBarStr = _zBarStr.slice(-7);
+  }
+  _zBarAktualisieren();
+});
+
+function _zKasseHinzufuegen(cent) {
+  _zBarStr = String(parseInt(_zBarStr || '0') + cent);
+  // _zBarFresh bleibt false: nächste Numpad-Eingabe setzt fort, nicht überschreibt
+  _zBarAktualisieren();
+}
+
+function _zBarAktualisieren() {
+  _zBarCent = parseInt(_zBarStr || '0');
+  document.getElementById('zBarDisplay').textContent =
+    (_zBarCent / 100).toFixed(2).replace('.', ',') + ' €';
+  const wechsel = _zBarCent - _zGesamtCent;
+  const el = document.getElementById('zWechselgeld');
+  if (_zBarCent > 0) {
+    if (wechsel >= 0) {
+      el.textContent = (wechsel / 100).toFixed(2).replace('.', ',') + ' €';
+      el.className = 'z-wechselgeld';
+    } else {
+      el.textContent = '− ' + ((-wechsel) / 100).toFixed(2).replace('.', ',') + ' €';
+      el.className = 'z-wechselgeld negativ';
+    }
+  } else {
+    el.textContent = '–';
+    el.className = 'z-wechselgeld';
+  }
+}
+
+async function zZahlungAbschliessen() {
+  const zahlungen = [];
+  if (_zZahlart === 'BAR') {
+    const gegeben = _zBarCent || _zGesamtCent;
+    if (gegeben < _zGesamtCent) { toast('Betrag zu gering', 'err'); return; }
+    zahlungen.push({ zahlart: 'BAR', betrag: _zGesamtCent,
+                     betrag_gegeben: gegeben, wechselgeld: gegeben - _zGesamtCent });
+  } else if (_zZahlart === 'BAR_PASSEND') {
+    zahlungen.push({ zahlart: 'BAR', betrag: _zGesamtCent,
+                     betrag_gegeben: _zGesamtCent, wechselgeld: 0 });
+  } else {
+    zahlungen.push({ zahlart: _zZahlart, betrag: _zGesamtCent });
+  }
+
+  const btn = document.getElementById('zBtnZahlen');
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird verarbeitet…';
+
+  const r = await api('POST', `/api/vorgang/${vorgangId}/zahlung`, { zahlungen });
+  if (r.ok) {
+    if (_zZahlart === 'BAR' && _zBarCent > _zGesamtCent) {
+      const w = (_zBarCent - _zGesamtCent) / 100;
+      btn.textContent = `✓ Rückgeld: ${w.toFixed(2).replace('.',',')} €`;
+      await new Promise(res => setTimeout(res, 1500));
+    }
+    zahlungSchliessen();
+    await neuerVorgang();
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+    btn.disabled = false;
+    btn.textContent = '✓ Zahlung abschließen';
+    if (r.warnung) toast(r.warnung, 'warn');
+  }
+}
 
 // ── Kunden ────────────────────────────────────────────────────
 let _kundenTimer;
@@ -803,15 +1534,15 @@ let _aktiveGruppeId = null;
 
 function kundeAnzeigenAktualisieren() {
   const el = document.getElementById('wkKunde');
+  const btn = `<button class="btn btn-sm btn-neutral" onclick="kundenkonto()" style="flex-shrink:0; padding:3px 9px; font-size:12px;">👤 Kunde</button>`;
   if (!gewaehlterKunde) {
-    el.innerHTML = '<span class="kunde-label">Kunde</span><span class="kunde-wert barverkauf">Barverkauf</span>';
+    el.innerHTML = `${btn}<span class="kunde-wert barverkauf">Barverkauf</span>`;
     return;
   }
   const k = gewaehlterKunde;
   const nr  = k.kunnum ? `<small>${esc(k.kunnum)}</small> ` : '';
   const ort = k.ort    ? `, ${esc(k.ort)}`                  : '';
-  el.innerHTML = `
-    <span class="kunde-label">Kunde</span>
+  el.innerHTML = `${btn}
     <span class="kunde-wert">${nr}${esc(k.name)}${ort}</span>
     <button class="kunde-clear-btn" onclick="kundeEntfernen()">✕ Barverkauf</button>`;
 }
@@ -819,10 +1550,11 @@ function kundeAnzeigenAktualisieren() {
 async function _kundeSpeichern(k) {
   if (!vorgangId) return;
   await api('PATCH', `/api/vorgang/${vorgangId}/kunde`, {
-    kunden_id:   k ? k.id   : null,
-    kunden_nr:   k ? k.kunnum : null,
-    kunden_name: k ? k.name  : null,
-    kunden_ort:  k ? k.ort   : null,
+    kunden_id:       k ? k.id       : null,
+    kunden_nr:       k ? k.kunnum   : null,
+    kunden_name:     k ? k.name     : null,
+    kunden_ort:      k ? k.ort      : null,
+    kunden_pr_ebene: k ? (k.pr_ebene || 5) : null,
   });
 }
 
@@ -923,6 +1655,7 @@ async function kundeWaehlen(id, name, prEbene, kunnum, ort) {
 let _betrefTimer;
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('betrefEingabe').addEventListener('input', () => {
+    _betrefXToggle();
     clearTimeout(_betrefTimer);
     _betrefTimer = setTimeout(betrefSpeichern, 600);
   });
@@ -934,12 +1667,25 @@ async function betrefSpeichern() {
   await api('PATCH', `/api/vorgang/${vorgangId}/notiz`, { notiz });
 }
 
+function _betrefXToggle() {
+  const val = document.getElementById('betrefEingabe').value;
+  document.getElementById('betrefLoeschen').style.display = val ? 'inline' : 'none';
+}
+
 function betrefZuruecksetzen() {
   document.getElementById('betrefEingabe').value = '';
+  _betrefXToggle();
 }
 
 function betrefLaden(notiz) {
   document.getElementById('betrefEingabe').value = notiz || '';
+  _betrefXToggle();
+}
+
+async function betrefLeeren() {
+  document.getElementById('betrefEingabe').value = '';
+  _betrefXToggle();
+  if (vorgangId) await api('PATCH', `/api/vorgang/${vorgangId}/notiz`, { notiz: '' });
 }
 
 // ── EAN-Eingabe ───────────────────────────────────────────────
@@ -966,13 +1712,89 @@ async function scanEingabeVerarbeiten(code) {
   if (r.ok) {
     const art = await r.json();
     if (art) {
+      if (art.sonder_ean) {
+        await _sonderEanVerarbeiten(art, menge);
+        return;
+      }
       const prEbene = gewaehlterKunde ? gewaehlterKunde.pr_ebene : 5;
       const preis = art.vk_preise ? vkPreis(art.vk_preise, prEbene) : art.preis_cent;
       await artikelHinzufuegen({ ...art, preis_cent: preis }, menge);
       return;
     }
   }
-  toast('Artikel nicht gefunden: ' + code, 'err');
+  // Artikel nicht im Stamm und kein bekannter Sonder-EAN-Präfix →
+  // Preisdialog öffnen (typisch für Zeitschriften mit unbekanntem EAN-Prefix)
+  if (r.status === 404) {
+    await _sonderEanVerarbeiten({
+      sonder_ean:   true,
+      ean_typ:      'zeitschrift',
+      preis_dialog: true,
+      bezeichnung:  'Zeitschrift',
+      steuer_code:  2,    // 7%
+      wg_id:        7,    // WG Zeitschriften
+      artikel_id:   null,
+    }, menge);
+    return;
+  }
+  tonFehler();
+  const inp = document.getElementById('artikelSuche');
+  inp.classList.remove('scan-fehler');
+  void inp.offsetWidth; // reflow, damit Animation neu startet
+  inp.classList.add('scan-fehler');
+  inp.addEventListener('animationend', () => inp.classList.remove('scan-fehler'), { once: true });
+  toast('Fehler beim Artikelabruf: ' + code, 'err');
+}
+
+// ── Sonder-EAN Handling ───────────────────────────────────────
+let _sonderEanPending = null;   // { ean-dict, menge }
+let _sonderEanEingabe = '';
+
+async function _sonderEanVerarbeiten(ean, menge) {
+  if (ean.preis_dialog) {
+    // Zeitschrift / unbekannte EAN: Nutzer muss Preis eintippen
+    _sonderEanPending = { ean, menge };
+    _sonderEanEingabe = '';
+    document.getElementById('sonderEanTitel').textContent = ean.bezeichnung;
+    document.getElementById('sonderEanBezeichnung').value = ean.bezeichnung;
+    document.getElementById('sonderEanDisplay').textContent = '0,00';
+    document.getElementById('sonderEanOverlay').classList.remove('hidden');
+  } else {
+    // Preis-EAN / Gewichts-EAN: Preis liegt vor, direkt buchen
+    const hinweis = (ean.ean_typ === 'gewicht' && ean.gewicht_g != null)
+      ? ` (${ean.gewicht_g} g)` : '';
+    await _sonderEanBuchen(ean, menge, ean.preis_cent, hinweis);
+  }
+}
+
+async function sonderEanBestaetigen() {
+  document.getElementById('sonderEanOverlay').classList.add('hidden');
+  if (!_sonderEanPending) return;
+  const { ean, menge } = _sonderEanPending;
+  _sonderEanPending = null;
+  const preisCent = Math.round(parseFloat(_sonderEanEingabe.replace(',', '.')) * 100);
+  if (!preisCent) { toast('Bitte Preis eingeben', 'warn'); return; }
+  // Bezeichnung aus dem editierbaren Feld übernehmen
+  const bezeichnung = document.getElementById('sonderEanBezeichnung').value.trim() || ean.bezeichnung;
+  await _sonderEanBuchen({ ...ean, bezeichnung }, menge, preisCent, '');
+}
+
+function sonderEanAbbrechen() {
+  document.getElementById('sonderEanOverlay').classList.add('hidden');
+  _sonderEanPending = null;
+}
+
+async function _sonderEanBuchen(ean, menge, preisCent, hinweis) {
+  if (!vorgangId) return;
+  tonErfolg();
+  await api('POST', `/api/vorgang/${vorgangId}/position`, {
+    artikel_id:         ean.artikel_id || null,
+    bezeichnung:        ean.bezeichnung + hinweis,
+    menge:              menge,
+    einzelpreis_brutto: preisCent,
+    steuer_code:        ean.steuer_code,
+    wg_id:              ean.wg_id || null,
+  });
+  await vorgangNachladen();
 }
 
 // ── EAN 4×4 Numpad ────────────────────────────────────────────
@@ -1023,9 +1845,18 @@ document.addEventListener('click', e => {
   const t = e.target.closest('.numpad-taste');
   if (!t) return;
   const z = t.dataset.z;
-  const mengeAktiv  = !document.getElementById('mengeOverlay').classList.contains('hidden');
-  const rabattAktiv = !document.getElementById('rabattOverlay').classList.contains('hidden');
-  if (!mengeAktiv && !rabattAktiv) return;
+  const mengeAktiv    = !document.getElementById('mengeOverlay').classList.contains('hidden');
+  const epAktiv       = !document.getElementById('epOverlay').classList.contains('hidden');
+  const sonderAktiv   = !document.getElementById('sonderEanOverlay').classList.contains('hidden');
+  if (!mengeAktiv && !epAktiv && !sonderAktiv) return;
+
+  if (sonderAktiv) {
+    if (z === '⌫') _sonderEanEingabe = _sonderEanEingabe.slice(0, -1) || '0';
+    else if (z === ',') { if (!_sonderEanEingabe.includes(',')) _sonderEanEingabe += ','; }
+    else _sonderEanEingabe = (_sonderEanEingabe === '0' ? '' : _sonderEanEingabe) + z;
+    document.getElementById('sonderEanDisplay').textContent = _sonderEanEingabe || '0';
+    return;
+  }
 
   if (mengeAktiv) {
     if (z === '⌫') mengeEingabe = mengeEingabe.slice(0, -1) || '0';
@@ -1033,10 +1864,10 @@ document.addEventListener('click', e => {
     else mengeEingabe = (mengeEingabe === '0' ? '' : mengeEingabe) + z;
     document.getElementById('mengeDisplay').textContent = mengeEingabe || '0';
   } else {
-    if (z === '⌫') rabattEingabe = rabattEingabe.slice(0, -1) || '0';
-    else rabattEingabe = (rabattEingabe === '0' ? '' : rabattEingabe) + z;
-    rabattEingabe = String(Math.min(parseInt(rabattEingabe) || 0, 100));
-    document.getElementById('rabattDisplay').textContent = rabattEingabe;
+    if (z === '⌫') epEingabe = epEingabe.slice(0, -1) || '0';
+    else if (z === ',') { if (!epEingabe.includes(',')) epEingabe += ','; }
+    else epEingabe = (epEingabe === '0' ? '' : epEingabe) + z;
+    document.getElementById('epDisplay').textContent = epEingabe || '0';
   }
 });
 
@@ -1098,6 +1929,9 @@ function schnellRender() {
     `<button class="schnell-kat-tab${aktivKategorie === k ? ' aktiv' : ''}"
              onclick="schnellKatWechseln('${k.replace(/'/g,"\\'")}')">${esc(k)}</button>`
   ).join('');
+  // Artikelauswahl-Button ganz rechts
+  navHtml += `<button class="schnell-art-browser-btn" style="margin-left:auto;"
+                      onclick="artBrowserOeffnen()">📦 Artikelauswahl</button>`;
   nav.innerHTML = navHtml || '<span style="color:var(--text-dim);font-size:13px;padding:4px 8px;">Keine Kategorien</span>';
 
   schnellArtikelRender();
@@ -1162,6 +1996,387 @@ async function warengruppeBuchen(wg) {
   }, menge);
 }
 
+// ── Artikel-Browser ───────────────────────────────────────────
+let _artBrWGs        = null;  // [{id, bezeichnung, parent_id, artikel_anzahl}]
+let _artBrArtikel    = [];    // Artikel der gewählten WG (inkl. Untergruppen)
+let _artBrAlleArt    = null;  // Alle Artikel, lazy-geladen beim ersten Suchen
+let _artBrGefiltert  = [];    // aktuell angezeigte Treffer
+let _artBrAktivWG    = 0;     // gewählte WG-ID; 0 = Alle; null = Suchmodus
+let _artBrVorSucheWG = 0;    // zuletzt aktive WG vor dem Suchmodus
+let _artBrSortCol    = 'bezeichnung';
+let _artBrSortDir    = 1;     // 1 = aufsteigend, -1 = absteigend
+// Gecachte Artikel-Summen (WG-ID → Gesamtanzahl inkl. Untergruppen)
+let _artBrWGSummen   = {};
+
+async function artBrowserOeffnen() {
+  document.getElementById('artBrowserOverlay').classList.remove('hidden');
+  document.getElementById('artBrowserSuche').value = '';
+  if (!_artBrWGs) {
+    await _artBrWGsLaden();
+  } else {
+    document.getElementById('artBrowserSuche').focus();
+  }
+}
+
+function artBrowserSchliessen() {
+  document.getElementById('artBrowserOverlay').classList.add('hidden');
+  document.getElementById('artikelSuche').focus();
+  _artBrAlleArt = null;  // Alle-Artikel-Cache invalidieren (könnte veraltet sein)
+}
+
+async function _artBrWGsLaden() {
+  const liste = document.getElementById('artBrowserWGListe');
+  liste.innerHTML = '<div style="padding:14px; color:var(--text-dim); font-size:13px;">Lade…</div>';
+  try {
+    _artBrWGs = await (await fetch('/api/artikel/warengruppen')).json();
+  } catch (_) {
+    _artBrWGs = [];
+  }
+  // Artikel-Gesamtsummen pro WG (inkl. Nachkommen) vorausberechnen
+  _artBrWGSummen = _artBrBerechneWGSummen(_artBrWGs);
+  _artBrWGsRender();
+  if (_artBrWGs.length) {
+    await artBrowserWGWaehlen(0);  // „Alle" als Standard
+  } else {
+    document.getElementById('artBrowserSuche').focus();
+  }
+}
+
+function _artBrBerechneWGSummen(wgs) {
+  // Aufbauen: byParent-Map
+  const byParent = {};
+  for (const wg of wgs) {
+    const p = wg.parent_id ?? '__root__';
+    (byParent[p] = byParent[p] || []).push(wg.id);
+  }
+  const direktArt = {};
+  for (const wg of wgs) direktArt[wg.id] = wg.artikel_anzahl || 0;
+
+  // Für jede WG: Summe aller Nachkommen-Artikel (BFS)
+  const summen = {};
+  for (const wg of wgs) {
+    let sum = 0;
+    const queue = [wg.id];
+    const besucht = new Set();
+    while (queue.length) {
+      const curr = queue.pop();
+      if (besucht.has(curr)) continue;
+      besucht.add(curr);
+      sum += direktArt[curr] || 0;
+      queue.push(...(byParent[curr] || []));
+    }
+    summen[wg.id] = sum;
+  }
+  return summen;
+}
+
+function _artBrWGsRender() {
+  const liste = document.getElementById('artBrowserWGListe');
+  if (!_artBrWGs || !_artBrWGs.length) {
+    liste.innerHTML = '<div style="padding:14px; color:var(--text-dim); font-size:13px;">Keine Warengruppen</div>';
+    return;
+  }
+
+  // Baum aufbauen
+  const byParent = {};
+  for (const wg of _artBrWGs) {
+    const p = wg.parent_id ?? '__root__';
+    (byParent[p] = byParent[p] || []).push(wg);
+  }
+
+  function renderKnoten(wg, tiefe) {
+    const aktiv     = _artBrAktivWG === wg.id;
+    const pl        = 10 + tiefe * 16;
+    const istWurzel = tiefe === 0;
+    const summe     = _artBrWGSummen[wg.id] || 0;
+    let html = `<button
+      class="art-browser-wg-btn${aktiv ? ' aktiv' : ''}${istWurzel ? ' wg-wurzel' : ''}"
+      style="padding-left:${pl}px;"
+      onclick="artBrowserWGWaehlen(${wg.id})">`;
+    if (tiefe > 0) html += `<span class="wg-strich">└</span>`;
+    html += `<span>${esc(wg.bezeichnung)}</span>`;
+    if (summe > 0) html += `<span class="wg-badge">${summe}</span>`;
+    html += `</button>`;
+    for (const kind of (byParent[wg.id] || [])) {
+      html += renderKnoten(kind, tiefe + 1);
+    }
+    return html;
+  }
+
+  const wurzeln = byParent['__root__'] || [];
+  const totalAnzahl = _artBrWGs.reduce((s, w) => s + (w.artikel_anzahl || 0), 0);
+  const alleAktiv = _artBrAktivWG === 0;
+  const alleBtn = `<button
+      class="art-browser-wg-btn wg-wurzel${alleAktiv ? ' aktiv' : ''}"
+      style="padding-left:10px; border-top:none; margin-top:0;"
+      onclick="artBrowserWGWaehlen(0)">
+    <span>Alle</span>
+    ${totalAnzahl > 0 ? `<span class="wg-badge">${totalAnzahl}</span>` : ''}
+  </button>`;
+  liste.innerHTML = alleBtn + wurzeln.map(w => renderKnoten(w, 0)).join('');
+}
+
+async function artBrowserWGWaehlen(wgId) {
+  // Suche zurücksetzen, WG aktivieren
+  document.getElementById('artBrowserSuche').value = '';
+  _artBrAktivWG = wgId;
+  _artBrWGsRender();
+  const status  = document.getElementById('artBrowserStatus');
+  const tabelle = document.getElementById('artBrowserTabelle');
+  status.textContent = 'Lade…';
+  status.style.display = '';
+  tabelle.style.display = 'none';
+  try {
+    const url = wgId > 0 ? `/api/artikel/browser?wg=${wgId}` : '/api/artikel/browser';
+    _artBrArtikel = await (await fetch(url)).json();
+  } catch (_) {
+    _artBrArtikel = [];
+  }
+  _artBrGefiltert = [..._artBrArtikel];
+  _artBrRender();
+}
+
+async function artBrowserFiltern() {
+  const q = (document.getElementById('artBrowserSuche').value || '').toLowerCase().trim();
+  if (!q) {
+    // Zurück zum WG-Modus: zuletzt aktive WG wiederherstellen
+    _artBrAktivWG = _artBrVorSucheWG;
+    _artBrWGsRender();
+    _artBrGefiltert = [..._artBrArtikel];
+    _artBrRender();
+    return;
+  }
+  // Suchmodus: WG-Auswahl visuell abwählen, über alle Artikel suchen
+  if (_artBrAktivWG !== null) _artBrVorSucheWG = _artBrAktivWG;
+  _artBrAktivWG = null;
+  _artBrWGsRender();
+  // Alle Artikel lazy laden
+  if (_artBrAlleArt === null) {
+    const status  = document.getElementById('artBrowserStatus');
+    const tabelle = document.getElementById('artBrowserTabelle');
+    status.textContent = 'Lade alle Artikel…';
+    status.style.display = '';
+    tabelle.style.display = 'none';
+    try {
+      _artBrAlleArt = await (await fetch('/api/artikel/browser')).json();
+    } catch (_) {
+      _artBrAlleArt = [];
+    }
+  }
+  _artBrGefiltert = _artBrAlleArt.filter(a =>
+    (a.bezeichnung || '').toLowerCase().includes(q) ||
+    (a.artnum      || '').toLowerCase().includes(q) ||
+    (a.plu         || '').toLowerCase().includes(q) ||
+    (a.plu2        || '').toLowerCase().includes(q) ||
+    (a.barcode     || '').toLowerCase().includes(q) ||
+    (a.matchcode   || '').toLowerCase().includes(q));
+  _artBrRender();
+}
+
+const _ART_SORT_COLS = ['artnum','bezeichnung','bestand','preis_cent','aktionspreis_cent','mwst_satz'];
+
+function artBrowserSortieren(col) {
+  if (_artBrSortCol === col) {
+    _artBrSortDir *= -1;
+  } else {
+    _artBrSortCol = col;
+    _artBrSortDir = 1;
+  }
+  _ART_SORT_COLS.forEach(c => {
+    const el = document.getElementById(`artSortPfeil_${c}`);
+    if (el) el.textContent = c === _artBrSortCol ? (_artBrSortDir === 1 ? '▲' : '▼') : '';
+  });
+  _artBrRender();
+}
+
+function _artBrRender() {
+  const status  = document.getElementById('artBrowserStatus');
+  const tabelle = document.getElementById('artBrowserTabelle');
+  const liste   = document.getElementById('artBrowserListe');
+
+  if (!_artBrGefiltert.length) {
+    status.style.display = '';
+    tabelle.style.display = 'none';
+    status.textContent = _artBrArtikel.length
+      ? 'Keine Treffer für diese Suche'
+      : 'Keine Artikel in dieser Warengruppe';
+    return;
+  }
+
+  const sorted = [..._artBrGefiltert].sort((a, b) => {
+    const av = a[_artBrSortCol] ?? '';
+    const bv = b[_artBrSortCol] ?? '';
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * _artBrSortDir;
+    return av.toString().localeCompare(bv.toString(), 'de') * _artBrSortDir;
+  });
+
+  status.style.display = 'none';
+  tabelle.style.display = '';
+
+  const prEbene = gewaehlterKunde ? gewaehlterKunde.pr_ebene : 5;
+  liste.innerHTML = sorted.map(a => {
+    const preis    = a.vk_preise ? vkPreis(a.vk_preise, prEbene) : a.preis_cent;
+    const preisStr = preis != null ? euro(preis) : '–';
+    // Aktionspreis
+    const aktStr   = a.aktionspreis_cent
+      ? `<span style="color:var(--rot); font-weight:700;">${euro(a.aktionspreis_cent)}</span>`
+      : '<span style="color:var(--text-dim);">–</span>';
+    // Bestand: negative = rot, 0 = gedimmt, positiv = normal
+    const bestand  = a.bestand ?? null;
+    const bestStr  = bestand === null ? '–'
+      : bestand < 0 ? `<span style="color:var(--rot);">${bestand.toFixed(bestand % 1 !== 0 ? 2 : 0)}</span>`
+      : bestand === 0 ? `<span style="color:var(--text-dim);">0</span>`
+      : bestand.toFixed(bestand % 1 !== 0 ? 2 : 0);
+    // Typ-Badge
+    const typFarbe = a.artikeltyp === 'L' ? 'var(--gold)' : a.artikeltyp === 'S' ? '#8b5cf6' : 'var(--gruen-dunkel)';
+    const typStr   = `<span style="background:${typFarbe};color:#fff;border-radius:3px;padding:1px 4px;font-size:10px;font-weight:800;">${esc(a.artikeltyp||'N')}</span>`;
+    // Sperren & Alterscheck
+    let flags = '';
+    if (a.ek_sperre) flags += '<span title="EK-Sperre" style="color:var(--rot);">⛔EK</span> ';
+    if (a.vk_sperre) flags += '<span title="VK-Sperre" style="color:var(--rot);">⛔VK</span> ';
+    if (a.fsk18)     flags += '<span title="Altersbeschränkung 18+" style="color:var(--gold);">🔞</span>';
+    return `<tr onclick="artBrowserArtikelWaehlen(${JSON.stringify(a).replace(/"/g,'&quot;')})">
+      <td class="ab-meta">${esc(a.artnum||'–')}</td>
+      <td style="font-weight:600;">${esc(a.bezeichnung||'–')}</td>
+      <td class="ab-meta">${esc(a.plu||'–')}</td>
+      <td class="ab-meta">${esc(a.plu2||'–')}</td>
+      <td class="ab-meta">${esc(a.barcode||'–')}</td>
+      <td style="text-align:center;">${typStr}</td>
+      <td class="ab-meta">${esc(a.me||'–')}</td>
+      <td class="ab-preis" style="color:${(a.bestand??0)<0?'var(--rot)':((a.bestand??0)===0?'var(--text-dim)':'var(--gruen-dunkel)')};">${bestStr}</td>
+      <td class="ab-preis">${preisStr}</td>
+      <td class="ab-preis">${aktStr}</td>
+      <td class="ab-meta" style="text-align:right;">${a.mwst_satz != null ? a.mwst_satz + '\u202f%' : '–'}</td>
+      <td style="font-size:11px; white-space:nowrap;">${flags}</td>
+    </tr>`;
+  }).join('');
+}
+
+function artBrowserArtikelWaehlen(a) {
+  const prEbene = gewaehlterKunde ? gewaehlterKunde.pr_ebene : 5;
+  const preis   = a.vk_preise ? vkPreis(a.vk_preise, prEbene) : a.preis_cent;
+  if (!preis && preis !== 0) { toast('Kein Preis hinterlegt', 'err'); return; }
+  artBrowserSchliessen();
+  const menge = eingabeAnzahl;
+  eingabeZuruecksetzen();
+  artikelHinzufuegen({
+    id: a.id, bezeichnung: a.bezeichnung,
+    preis_cent: preis, steuer_code: a.steuer_code || 1,
+    mwst_satz: a.mwst_satz || 19.0, ist_gutschein: false,
+  }, menge);
+}
+
+// ── Letzter Bon / Lade öffnen ─────────────────────────────────
+async function letzterBonDrucken() {
+  const r = await api('POST', '/api/drucker/letzter-bon');
+  toast(r.ok ? `🖨 Bon ${r.bon_nr} gedruckt` : '❌ ' + (r.fehler || 'Fehler'), r.ok ? 'ok' : 'err', 3000);
+}
+
+async function ladeOeffnen() {
+  const r = await api('POST', '/api/lade/oeffnen');
+  toast(r.ok ? '🗄 Lade geöffnet' : '❌ ' + (r.fehler || 'Fehler'), r.ok ? 'ok' : 'err', 2500);
+}
+
+// ── Bildschirmtastatur ────────────────────────────────────────
+const TASTATUR_LAYOUT = {
+  normal: [
+    ['1','2','3','4','5','6','7','8','9','0'],
+    ['q','w','e','r','t','z','u','i','o','p','ü'],
+    ['a','s','d','f','g','h','j','k','l','ö','ä'],
+    ['y','x','c','v','b','n','m','ß','-'],
+  ],
+  shift: [
+    ['1','2','3','4','5','6','7','8','9','0'],
+    ['Q','W','E','R','T','Z','U','I','O','P','Ü'],
+    ['A','S','D','F','G','H','J','K','L','Ö','Ä'],
+    ['Y','X','C','V','B','N','M','ß','-'],
+  ]
+};
+const TASTATUR_SONDER = [',','.','–','(',')','/','#','@','!','?'];
+let _tastaturAktiv = null;
+let _shiftAn = false;
+
+function _tkTaste(text, cls, aktion) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 't-taste ' + (cls || '');
+  btn.textContent = text;
+  btn.onpointerdown = e => e.preventDefault();
+  btn.onclick = aktion;
+  return btn;
+}
+
+function tastaturAufbauen() {
+  const layout = _shiftAn ? TASTATUR_LAYOUT.shift : TASTATUR_LAYOUT.normal;
+
+  const z1 = document.getElementById('tz-zahlen');
+  z1.innerHTML = '';
+  layout[0].forEach(z => z1.appendChild(_tkTaste(z, '', () => _tkEinfuegen(z))));
+  z1.appendChild(_tkTaste('⌫', 't-del', _tkLoeschen));
+
+  ['tz-q','tz-a'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.innerHTML = '';
+    layout[i+1].forEach(z => el.appendChild(_tkTaste(z, '', () => _tkEinfuegen(z))));
+  });
+
+  const tz = document.getElementById('tz-z');
+  tz.innerHTML = '';
+  const shiftL = _tkTaste('⇧', 't-shift' + (_shiftAn ? ' aktiv' : ''), _tkToggleShift);
+  tz.appendChild(shiftL);
+  layout[3].forEach(z => tz.appendChild(_tkTaste(z, '', () => _tkEinfuegen(z))));
+  tz.appendChild(_tkTaste('⇧', 't-shift' + (_shiftAn ? ' aktiv' : ''), _tkToggleShift));
+
+  const ts = document.getElementById('tz-sonder');
+  ts.innerHTML = '';
+  TASTATUR_SONDER.forEach(z => ts.appendChild(_tkTaste(z, 't-sonder', () => _tkEinfuegen(z))));
+  ts.appendChild(_tkTaste('Leerzeichen', 't-leer', () => _tkEinfuegen(' ')));
+  ts.appendChild(_tkTaste('Fertig ✓', 't-weiter', verbergeTastatur));
+}
+
+function _tkEinfuegen(z) {
+  if (!_tastaturAktiv) return;
+  const el = _tastaturAktiv;
+  const s = el.selectionStart ?? el.value.length;
+  const e = el.selectionEnd   ?? el.value.length;
+  el.value = el.value.substring(0, s) + z + el.value.substring(e);
+  el.selectionStart = el.selectionEnd = s + z.length;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  if (_shiftAn && z.length === 1 && z.match(/[A-ZÄÖÜa-zäöü]/)) {
+    _shiftAn = false; tastaturAufbauen();
+  }
+}
+
+function _tkLoeschen() {
+  if (!_tastaturAktiv) return;
+  const el = _tastaturAktiv;
+  const s = el.selectionStart ?? el.value.length;
+  const e = el.selectionEnd   ?? el.value.length;
+  if (s !== e) {
+    el.value = el.value.substring(0, s) + el.value.substring(e);
+    el.selectionStart = el.selectionEnd = s;
+  } else if (s > 0) {
+    el.value = el.value.substring(0, s - 1) + el.value.substring(e);
+    el.selectionStart = el.selectionEnd = s - 1;
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function _tkToggleShift() { _shiftAn = !_shiftAn; tastaturAufbauen(); }
+
+function zeigeTastatur(el) {
+  _tastaturAktiv = el;
+  tastaturAufbauen();
+  document.getElementById('tastatur').classList.add('sichtbar');
+}
+
+function verbergeTastatur() {
+  document.getElementById('tastatur').classList.remove('sichtbar');
+  _tastaturAktiv = null;
+  // Fokus zurück auf EAN-Feld
+  setTimeout(() => document.getElementById('artikelSuche').focus(), 50);
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await schnellLaden();
@@ -1171,14 +2386,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     vorgangId  = d.vorgang.ID;
     bonNr      = d.vorgang.BON_NR;
     positionen = d.positionen || [];
+    // Kunden-State wiederherstellen
+    if (d.vorgang.KUNDEN_ID) {
+      gewaehlterKunde = {
+        id:       d.vorgang.KUNDEN_ID,
+        kunnum:   d.vorgang.KUNDEN_NR  || '',
+        name:     d.vorgang.KUNDEN_NAME || '',
+        ort:      d.vorgang.KUNDEN_ORT  || '',
+        pr_ebene: d.vorgang.KUNDEN_PR_EBENE || 5,
+      };
+    }
     betrefLaden(d.vorgang.NOTIZ);
     aktualisiereBonNr();
-    renderWarenkorb();
+    renderWarenkorb();  // ruft aktualisierePreis() intern auf
     toast(`Bon ${bonNr} wiederhergestellt`, 'ok');
   } else {
     await neuerVorgang();
+    aktualisierePreis(0);  // MwSt-Zeilen beim leeren Bon aufbauen
   }
-  aktualisierePreis(0);  // MwSt-Zeilen sofort aufbauen
   kundeAnzeigenAktualisieren();
   document.getElementById('artikelSuche').focus();
 });

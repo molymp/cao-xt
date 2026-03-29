@@ -151,19 +151,366 @@ def artikel_per_barcode(barcode: str) -> dict | None:
     return _artikel_aufbereiten(row) if row else None
 
 
+# ─────────────────────────────────────────────────────────────
+# Sonder-EAN (Zeitschriften, Inhouse Preis-/Gewichts-EAN)
+# ─────────────────────────────────────────────────────────────
+
+def _ean13_pruefen(ean: str) -> bool:
+    """Prüft die EAN-13-Prüfziffer (Stelle 13)."""
+    if len(ean) != 13 or not ean.isdigit():
+        return False
+    summe = sum(int(z) * (3 if i % 2 == 1 else 1) for i, z in enumerate(ean[:12]))
+    return (10 - summe % 10) % 10 == int(ean[12])
+
+
+def _inhouse_artikelteil_pruefen(ean: str) -> bool:
+    """
+    Prüft die interne Artikelteil-Prüfziffer (Stellen 1–6 → Stelle 7).
+    Inhouse-Format: XX AAAA Z PPPPP Z
+                    ------          ← diese 6 Stellen → Prüfziffer an Position 7
+    """
+    if len(ean) < 7 or not ean[:7].isdigit():
+        return False
+    summe = sum(int(z) * (3 if i % 2 == 1 else 1) for i, z in enumerate(ean[:6]))
+    return (10 - summe % 10) % 10 == int(ean[6])
+
+
+_ean_regeln_cache: list[dict] | None = None
+_ean_regeln_cache_ts: float = 0.0
+_EAN_CACHE_TTL = 60.0   # Sekunden; nach Migration automatisch neu eingelesen
+
+# WG-Spaltename in ARTIKEL (einmalig per DESCRIBE ermittelt, dann gecacht)
+_artikel_wg_col: str | None = None
+_artikel_wg_col_detected: bool = False
+
+# WARENGRUPPEN-Schema (einmalig per DESCRIBE ermittelt, dann gecacht)
+_wg_schema_cache: dict | None = None
+
+
+def ean_regeln_cache_loeschen():
+    """Leert den EAN-Regeln-Cache (nach Änderungen sofort wirksam)."""
+    global _ean_regeln_cache, _ean_regeln_cache_ts
+    _ean_regeln_cache = None
+    _ean_regeln_cache_ts = 0.0
+
+
+def _ean_regeln_laden() -> list[dict]:
+    """
+    Lädt alle aktiven EAN-Regeln, längste Präfixe zuerst.
+    Ergebnis wird 60 s gecacht – bei fehlender Tabelle wird leere Liste gecacht
+    (verhindert wiederholte DB-Verbindungen die den Pool belasten).
+    """
+    global _ean_regeln_cache, _ean_regeln_cache_ts
+    if _ean_regeln_cache is not None and time.time() - _ean_regeln_cache_ts < _EAN_CACHE_TTL:
+        return _ean_regeln_cache
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT REC_ID, EAN_PRAEFIX, TYP, ARTIKEL_LOOKUP,
+                          BEZEICHNUNG, WG_ID, ARTIKEL_ID, STEUER_CODE, PREIS_PRO_KG
+                   FROM XT_KASSE_EAN_REGELN
+                   WHERE AKTIV = 1
+                   ORDER BY LENGTH(EAN_PRAEFIX) DESC, EAN_PRAEFIX"""
+            )
+            result = cur.fetchall() or []
+    except Exception as e:
+        log.warning('EAN-Regeln nicht ladbar (Migration noch nicht ausgeführt?): %s', e)
+        result = []
+    _ean_regeln_cache = result
+    _ean_regeln_cache_ts = time.time()
+    return result
+
+
+def _artikel_wg_spalte() -> str | None:
+    """
+    Ermittelt einmalig den Namen der WG-Spalte in ARTIKEL per DESCRIBE.
+    CAO verwendet je nach Version WG_ID, WGID oder WARENGRUPPE_ID.
+    Ergebnis wird dauerhaft gecacht (ändert sich nicht zur Laufzeit).
+    """
+    global _artikel_wg_col, _artikel_wg_col_detected
+    if _artikel_wg_col_detected:
+        return _artikel_wg_col
+    try:
+        with get_db() as cur:
+            cur.execute('DESCRIBE ARTIKEL')
+            spalten = {r['Field'] for r in cur.fetchall()}
+        _artikel_wg_col = _erste_spalte(
+            spalten, ['WG_ID', 'WGID', 'WARENGRUPPE_ID', 'WARENGRUPPE'], None
+        )
+    except Exception as e:
+        log.warning('DESCRIBE ARTIKEL fehlgeschlagen: %s', e)
+        _artikel_wg_col = None
+    _artikel_wg_col_detected = True
+    return _artikel_wg_col
+
+
+def _wg_schema() -> dict:
+    """
+    Ermittelt einmalig das Schema der WARENGRUPPEN-Tabelle per DESCRIBE.
+    Ergebnis wird dauerhaft gecacht (ändert sich nicht zur Laufzeit).
+    Gibt {id_col, name_col, top_col, sort_col, order} zurück.
+    """
+    global _wg_schema_cache
+    if _wg_schema_cache is not None:
+        return _wg_schema_cache
+    try:
+        with get_db() as cur:
+            cur.execute('DESCRIBE WARENGRUPPEN')
+            spalten = {r['Field'] for r in cur.fetchall()}
+    except Exception as e:
+        log.warning('DESCRIBE WARENGRUPPEN fehlgeschlagen: %s', e)
+        spalten = set()
+    id_col   = _erste_spalte(spalten, ['REC_ID', 'WG_ID', 'ID'], 'REC_ID')
+    name_col = _erste_spalte(spalten, ['BEZEICHNUNG', 'NAME', 'KURZNAME', 'WGNAME'], None)
+    top_col  = _erste_spalte(spalten, ['TOP_ID', 'PARENT_ID', 'PARENT', 'OBERGRUPPE_ID'], None)
+    sort_col = _erste_spalte(spalten, ['SORT', 'SORTIERUNG', 'REIHENFOLGE'], None)
+    order    = (f"{sort_col}, {name_col}" if sort_col and name_col
+                else name_col or sort_col or id_col)
+    _wg_schema_cache = {
+        'id_col': id_col, 'name_col': name_col,
+        'top_col': top_col, 'sort_col': sort_col, 'order': order,
+    }
+    return _wg_schema_cache
+
+
+def _artikel_aus_ean(ean: str) -> dict | None:
+    """
+    Schlägt den CAO-Artikel anhand der in der Inhouse-EAN enthaltenen ARTNUM nach.
+    Format: XX AAAA Z ...  → AAAA = ean[2:6]
+    Gibt {artikel_id, bezeichnung, steuer_code, mwst_satz, wg_id} zurück oder None.
+    Die WG-ID wird direkt aus dem Artikelstamm gelesen (kein Fallback auf Regel nötig).
+    """
+    artnum = ean[2:6]
+    wg_col = _artikel_wg_spalte()
+    select_wg = f', {wg_col}' if wg_col else ''
+    try:
+        with get_db() as cur:
+            cur.execute(
+                f"""SELECT REC_ID, KURZNAME, STEUER_CODE{select_wg}
+                   FROM ARTIKEL WHERE ARTNUM = %s LIMIT 1""",
+                (artnum,)
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        steuer = int(row.get('STEUER_CODE') or 1)
+        wg_id  = row.get(wg_col) if wg_col else None
+        return {
+            'artikel_id':    row['REC_ID'],
+            'bezeichnung':   row['KURZNAME'] or f'Art. {artnum}',
+            'steuer_code':   steuer,
+            'mwst_satz':     mwst_satz_fuer_code(steuer),
+            'wg_id':         int(wg_id) if wg_id else None,
+            'preis_pro_kg':  euro_zu_cent(row.get('VK5B') or 0) or None,
+        }
+    except Exception as e:
+        log.warning('Artikel-Lookup für ARTNUM %s fehlgeschlagen: %s', artnum, e)
+        return None
+
+
+def ean_sonder_erkennen(barcode: str) -> dict | None:
+    """
+    Erkennt und dekodiert Sonder-EAN-Codes anhand der XT_KASSE_EAN_REGELN.
+
+    Inhouse-Format (13-stellig):  XX AAAA Z PPPPP Z
+      XX    = Bereichs-ID  (EAN_PRAEFIX)
+      AAAA  = 4-stellige CAO-ARTNUM  (Stellen 3–6, 0-basiert: [2:6])
+      Z     = interne Artikelteil-Prüfziffer (Stelle 7)
+      PPPPP = 5-stelliger Wert [7:12]: Preis in Cent (TYP=PREIS) oder Gramm (TYP=GEWICHT)
+      Z     = EAN-13-Prüfziffer
+
+    Presse-EAN / VDZ-Format (TYP=PRESSE):
+      KKK VVVVV PPPP C  (13 Stellen Basis + optionales 2–5-stelliges Add-on)
+      KKK   = 3-stellige Kennung: 419 = 7% MwSt, 414 = 19% MwSt
+      VVVVV = VDZ-Objektnummer  [3:8]
+      PPPP  = Preis in Cent      [8:12]  z.B. 0950 = 9,50 EUR
+      C     = EAN-13-Prüfziffer  [12]
+      Scanner liefert ggf. 15–18 Stellen (Basis + Add-on für Ausgabennummer).
+
+    Zeitschriften-EAN (z.B. 977xxx): Preis-Dialog, kein Artikel-Lookup.
+
+    Rückgabe-Dict (sonder_ean=True):
+      ean_typ, bezeichnung, steuer_code, mwst_satz, wg_id, artikel_id,
+      preis_cent (None = Dialog), preis_dialog, gewicht_g
+    """
+    if not barcode.isdigit() or len(barcode) < 2:
+        return None
+
+    # 13-stellige EAN: Prüfziffer validieren (nicht für längere Presse-Codes mit Add-on)
+    if len(barcode) == 13 and not _ean13_pruefen(barcode):
+        return None
+
+    for regel in _ean_regeln_laden():
+        if not barcode.startswith(regel['EAN_PRAEFIX']):
+            continue
+
+        typ            = regel['TYP']
+        artikel_lookup = int(regel.get('ARTIKEL_LOOKUP') or 0)
+
+        # ── Presse-EAN (VDZ): Preis in EAN[8:12], opt. Add-on-Suffix ────
+        if typ == 'PRESSE':
+            # Basis = erste 13 Stellen; Add-on (Stellen 14–18) wird ignoriert
+            basis = barcode[:13]
+            if len(basis) != 13:
+                continue
+            if not _ean13_pruefen(basis):
+                log.warning('Presse-EAN Prüfziffer ungültig: %s', barcode)
+                continue
+            try:
+                preis_cent = int(basis[8:12])
+            except ValueError:
+                continue
+            if not preis_cent:
+                log.warning('Presse-EAN Preis = 0: %s', barcode)
+                continue
+            steuer_code = int(regel['STEUER_CODE'] or 1)
+            return {
+                'sonder_ean':   True,
+                'ean_typ':      'presse',
+                'bezeichnung':  regel['BEZEICHNUNG'],
+                'steuer_code':  steuer_code,
+                'mwst_satz':    mwst_satz_fuer_code(steuer_code),
+                'wg_id':        regel.get('WG_ID'),
+                'artikel_id':   None,
+                'preis_cent':   preis_cent,
+                'preis_dialog': False,
+                'gewicht_g':    None,
+            }
+
+        # ── Zeitschrift: Preis-Dialog, direkte Fallback-Daten ────────
+        if typ == 'ZEITSCHRIFT':
+            return {
+                'sonder_ean':   True,
+                'ean_typ':      'zeitschrift',
+                'bezeichnung':  regel['BEZEICHNUNG'],
+                'steuer_code':  int(regel['STEUER_CODE'] or 1),
+                'mwst_satz':    mwst_satz_fuer_code(int(regel['STEUER_CODE'] or 1)),
+                'wg_id':        regel.get('WG_ID'),
+                'artikel_id':   regel.get('ARTIKEL_ID'),
+                'preis_cent':   None,
+                'preis_dialog': True,
+                'gewicht_g':    None,
+            }
+
+        # ── Preis- / Gewichts-EAN: 13-stellig + Artikelteil-Prüfziffer ─
+        if len(barcode) != 13:
+            log.warning('Inhouse-EAN muss 13-stellig sein: %s', barcode)
+            continue
+
+        if not _inhouse_artikelteil_pruefen(barcode):
+            log.warning('Inhouse-EAN Artikelteil-Prüfziffer ungültig: %s', barcode)
+            continue
+
+        # Wert aus Stellen 8–12 (0-basiert [7:12])
+        try:
+            wert = int(barcode[7:12])
+        except ValueError:
+            continue
+
+        # Artikel nachschlagen (Name + Steuer aus ARTIKEL-Tabelle)
+        art = _artikel_aus_ean(barcode) if artikel_lookup else None
+        bezeichnung = (art and art['bezeichnung']) or regel['BEZEICHNUNG']
+        steuer_code = (art and art['steuer_code']) or int(regel['STEUER_CODE'] or 1)
+        mwst        = (art and art['mwst_satz'])   or mwst_satz_fuer_code(steuer_code)
+        wg_id       = (art and art['wg_id'])       or regel.get('WG_ID')
+        artikel_id  = (art and art['artikel_id'])  or regel.get('ARTIKEL_ID')
+
+        if typ == 'PREIS':
+            return {
+                'sonder_ean':   True,
+                'ean_typ':      'preis',
+                'bezeichnung':  bezeichnung,
+                'steuer_code':  steuer_code,
+                'mwst_satz':    mwst,
+                'wg_id':        wg_id,
+                'artikel_id':   artikel_id,
+                'preis_cent':   wert,       # 5-stellig in Cent: 02560 = 25,60 EUR
+                'preis_dialog': False,
+                'gewicht_g':    None,
+            }
+
+        if typ == 'GEWICHT':
+            # Preis/kg: Artikel (VK5B) hat Vorrang vor der Regel (PREIS_PRO_KG als Fallback)
+            ppkg = (art and art.get('preis_pro_kg')) or int(regel.get('PREIS_PRO_KG') or 0)
+            if not ppkg:
+                log.warning('Gewichts-EAN ohne Preis/kg (weder VK5B noch PREIS_PRO_KG): %s', barcode)
+                continue
+            return {
+                'sonder_ean':   True,
+                'ean_typ':      'gewicht',
+                'bezeichnung':  bezeichnung,
+                'steuer_code':  steuer_code,
+                'mwst_satz':    mwst,
+                'wg_id':        wg_id,
+                'artikel_id':   artikel_id,
+                'preis_cent':   round(wert * ppkg / 1000),
+                'preis_dialog': False,
+                'gewicht_g':    wert,
+            }
+
+    return None
+
+
+def ean_regeln_liste() -> list[dict]:
+    """Gibt alle EAN-Regeln zurück (für Admin-Ansicht)."""
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT REC_ID, EAN_PRAEFIX, TYP, ARTIKEL_LOOKUP, BEZEICHNUNG,
+                          WG_ID, ARTIKEL_ID, STEUER_CODE, PREIS_PRO_KG, AKTIV
+                   FROM XT_KASSE_EAN_REGELN ORDER BY EAN_PRAEFIX"""
+            )
+            return cur.fetchall() or []
+    except Exception as e:
+        log.warning('EAN-Regeln-Liste fehlgeschlagen: %s', e)
+        return []
+
+
+def ean_regel_speichern(praefix: str, typ: str, bezeichnung: str,
+                         artikel_lookup: bool,
+                         wg_id: int | None, artikel_id: int | None,
+                         steuer_code: int, preis_pro_kg: int | None) -> int:
+    """Legt eine EAN-Regel an oder aktualisiert die bestehende (per PRAEFIX, UPSERT)."""
+    al = 1 if artikel_lookup else 0
+    with get_db_transaction() as cur:
+        cur.execute(
+            """INSERT INTO XT_KASSE_EAN_REGELN
+               (EAN_PRAEFIX, TYP, ARTIKEL_LOOKUP, BEZEICHNUNG,
+                WG_ID, ARTIKEL_ID, STEUER_CODE, PREIS_PRO_KG, AKTIV)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+               ON DUPLICATE KEY UPDATE
+                 TYP=%s, ARTIKEL_LOOKUP=%s, BEZEICHNUNG=%s,
+                 WG_ID=%s, ARTIKEL_ID=%s, STEUER_CODE=%s, PREIS_PRO_KG=%s, AKTIV=1""",
+            (praefix, typ, al, bezeichnung, wg_id, artikel_id, steuer_code, preis_pro_kg,
+             typ, al, bezeichnung, wg_id, artikel_id, steuer_code, preis_pro_kg)
+        )
+        rid = cur.lastrowid
+    ean_regeln_cache_loeschen()
+    return rid
+
+
+def ean_regel_loeschen(rec_id: int):
+    """Löscht eine EAN-Regel."""
+    with get_db_transaction() as cur:
+        cur.execute("DELETE FROM XT_KASSE_EAN_REGELN WHERE REC_ID = %s", (rec_id,))
+    ean_regeln_cache_loeschen()
+
+
 def _artikel_aufbereiten(row: dict) -> dict:
     # Alle VK-Preisebenen 1-5 einlesen; Fallback auf VK5B wenn Ebene = 0
     vk_preise = {}
     for i in range(1, 6):
         vk_preise[i] = euro_zu_cent(row.get(f'VK{i}B') or 0)
-    preis_cent = vk_preise[5]  # Standard = Barverkauf (Ebene 5)
+    preis_cent  = vk_preise[5]  # Standard = Barverkauf (Ebene 5)
     steuer_code = row.get('STEUER_CODE') or 1
     netto, mwst = mwst_berechnen(preis_cent, steuer_code)
-    return {
+    # KAS_NAME bevorzugen (falls im Row vorhanden), sonst KURZNAME
+    bezeichnung = (row.get('KAS_NAME') or '').strip() or row.get('KURZNAME', '')
+    result = {
         'id':          row['REC_ID'],
         'artnum':      row.get('ARTNUM', ''),
         'barcode':     row.get('BARCODE', ''),
-        'bezeichnung': row.get('KURZNAME', ''),
+        'bezeichnung': bezeichnung,
         'matchcode':   row.get('MATCHCODE', ''),
         'preis_cent':  preis_cent,
         'vk_preise':   vk_preise,
@@ -172,6 +519,17 @@ def _artikel_aufbereiten(row: dict) -> dict:
         'steuer_code': steuer_code,
         'mwst_satz':   mwst_satz_fuer_code(steuer_code),
     }
+    # ── Erweiterte Felder (nur wenn vom Browser-Query mitgeliefert) ──
+    if 'USERFELD_04'   in row: result['plu']              = row.get('USERFELD_04') or ''
+    if 'USERFELD_05'   in row: result['plu2']             = row.get('USERFELD_05') or ''
+    if 'ARTIKELTYP'    in row: result['artikeltyp']       = row.get('ARTIKELTYP') or 'N'
+    if 'MENGE_AKT'     in row: result['bestand']          = float(row['MENGE_AKT']) if row.get('MENGE_AKT') is not None else None
+    if 'ME_BEZEICHNUNG'in row: result['me']               = row.get('ME_BEZEICHNUNG') or ''
+    if 'NO_EK_FLAG'    in row: result['ek_sperre']        = row.get('NO_EK_FLAG') == 'Y'
+    if 'NO_VK_FLAG'    in row: result['vk_sperre']        = row.get('NO_VK_FLAG') == 'Y'
+    if 'FSK18_FLAG'    in row: result['fsk18']            = row.get('FSK18_FLAG') == 'Y'
+    if 'AKTIONSPREIS'  in row: result['aktionspreis_cent']= euro_zu_cent(row['AKTIONSPREIS']) if row.get('AKTIONSPREIS') else None
+    return result
 
 
 # ─────────────────────────────────────────────────────────────
@@ -419,6 +777,131 @@ def _warengruppe_laden(wg_id) -> dict | None:
         return None
 
 
+def warengruppen_alle_laden() -> list:
+    """
+    Gibt alle Warengruppen mit parent_id und direkter Artikelanzahl.
+    parent_id=None bedeutet Wurzel-Knoten (TOP_ID=-1 oder ungültige TOP_ID).
+    Sortierung: SORT (falls vorhanden) dann NAME.
+    """
+    try:
+        s = _wg_schema()
+        id_col, name_col, top_col, sort_col = (
+            s['id_col'], s['name_col'], s['top_col'], s['sort_col']
+        )
+        with get_db() as cur:
+            felder = list({id_col,
+                           *([name_col]  if name_col  else []),
+                           *([top_col]   if top_col   else []),
+                           *([sort_col]  if sort_col  else [])})
+            cur.execute(f"SELECT {', '.join(felder)} FROM WARENGRUPPEN ORDER BY {s['order']}")
+            rows = cur.fetchall()
+
+            # Direkte Artikelanzahl pro WG (alle Typen, keine Einschränkung)
+            wg_art_col = _artikel_wg_spalte()
+            anzahl_by_wg: dict = {}
+            if wg_art_col:
+                cur.execute(
+                    f"SELECT {wg_art_col}, COUNT(*) as N FROM ARTIKEL GROUP BY {wg_art_col}"
+                )
+                for r2 in cur.fetchall():
+                    wg_key = r2.get(wg_art_col)
+                    if wg_key is not None:
+                        anzahl_by_wg[int(wg_key)] = r2['N']
+
+        alle_ids = {r[id_col] for r in rows}
+        result = []
+        for r in rows:
+            raw_top = r.get(top_col) if top_col else None
+            parent_id = int(raw_top) if (raw_top is not None
+                                         and int(raw_top) in alle_ids
+                                         and int(raw_top) != r[id_col]) else None
+            result.append({
+                'id':             r[id_col],
+                'bezeichnung':    (r.get(name_col) or f'WG {r[id_col]}') if name_col else f'WG {r[id_col]}',
+                'parent_id':      parent_id,
+                'artikel_anzahl': anzahl_by_wg.get(r[id_col], 0),
+            })
+        return result
+    except Exception as e:
+        log.warning('warengruppen_alle_laden fehlgeschlagen: %s', e)
+        return []
+
+
+def _wg_nachkommen(wg_id: int, alle_wgs: list) -> set:
+    """Gibt wg_id + alle rekursiven Kinder-IDs zurück (BFS)."""
+    by_parent: dict[int, list[int]] = {}
+    for wg in alle_wgs:
+        p = wg['parent_id']
+        if p is not None:
+            by_parent.setdefault(p, []).append(wg['id'])
+    result, queue = set(), [wg_id]
+    while queue:
+        curr = queue.pop()
+        result.add(curr)
+        queue.extend(by_parent.get(curr, []))
+    return result
+
+
+_BROWSER_SELECT = """
+    a.REC_ID, a.ARTNUM, a.BARCODE,
+    a.KURZNAME, a.KAS_NAME, a.MATCHCODE,
+    a.VK1B, a.VK2B, a.VK3B, a.VK4B, a.VK5B,
+    a.STEUER_CODE, a.ARTIKELTYP,
+    a.MENGE_AKT, a.ME_ID,
+    a.NO_EK_FLAG, a.NO_VK_FLAG, a.FSK18_FLAG,
+    a.USERFELD_04, a.USERFELD_05,
+    COALESCE(me.BEZEICHNUNG, '') AS ME_BEZEICHNUNG,
+    ap.AKTIONSPREIS
+"""
+
+_BROWSER_JOINS = """
+    LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID AND me.SPRACHE_ID = 0
+    LEFT JOIN (
+        SELECT ARTIKEL_ID, MIN(PREIS) AS AKTIONSPREIS
+        FROM ARTIKEL_PREIS
+        WHERE PT2 = 'AP'
+          AND (GUELTIG_VON IS NULL OR GUELTIG_VON <= CURDATE())
+          AND (GUELTIG_BIS IS NULL OR GUELTIG_BIS >= CURDATE())
+        GROUP BY ARTIKEL_ID
+    ) ap ON ap.ARTIKEL_ID = a.REC_ID
+"""
+
+_BROWSER_ORDER = "COALESCE(NULLIF(a.KAS_NAME, ''), a.KURZNAME)"
+
+
+def artikel_nach_warengruppe(wg_id: int | None, limit: int = 1000) -> list:
+    """
+    Artikel einer Warengruppe inkl. aller Untergruppen (oder alle wenn wg_id=None).
+    Gibt alle Artikeltypen zurück (N=Normal, L=Lohn, S=Stückliste usw.)
+    mit erweiterten Feldern für den Artikel-Browser.
+    """
+    wg_col = _artikel_wg_spalte()
+    try:
+        with get_db() as cur:
+            if wg_id is not None and wg_col:
+                wg_ids = _wg_nachkommen(wg_id, warengruppen_alle_laden())
+                ph = ','.join(['%s'] * len(wg_ids))
+                cur.execute(
+                    f"""SELECT {_BROWSER_SELECT}
+                        FROM ARTIKEL a {_BROWSER_JOINS}
+                        WHERE a.{wg_col} IN ({ph})
+                        ORDER BY {_BROWSER_ORDER} LIMIT %s""",
+                    (*sorted(wg_ids), limit)
+                )
+            else:
+                cur.execute(
+                    f"""SELECT {_BROWSER_SELECT}
+                        FROM ARTIKEL a {_BROWSER_JOINS}
+                        ORDER BY {_BROWSER_ORDER} LIMIT %s""",
+                    (limit,)
+                )
+            rows = cur.fetchall()
+        return [_artikel_aufbereiten(r) for r in rows]
+    except Exception as e:
+        log.warning('artikel_nach_warengruppe wg=%s fehlgeschlagen: %s', wg_id, e)
+        return []
+
+
 # ─────────────────────────────────────────────────────────────
 # Kunden (ADRESSEN read-only)
 # ─────────────────────────────────────────────────────────────
@@ -546,7 +1029,8 @@ def position_hinzufuegen(vorgang_id: int, artikel_id: int | None,
                           einzelpreis_brutto: int, steuer_code: int,
                           rabatt_prozent: float = 0.0,
                           ist_gutschein: bool = False,
-                          wg_id: int | None = None) -> dict:
+                          wg_id: int | None = None,
+                          ep_original: int | None = None) -> dict:
     """Fügt eine Position zum Vorgang hinzu und aktualisiert die Summen.
 
     Für Warengruppen-Buchungen: artikel_id=None, wg_id=<WG-ID>.
@@ -590,12 +1074,13 @@ def position_hinzufuegen(vorgang_id: int, artikel_id: int | None,
                (VORGANG_ID, POSITION, ARTIKEL_ID, ARTNUM, BARCODE, BEZEICHNUNG,
                 MENGE, EINZELPREIS_BRUTTO, GESAMTPREIS_BRUTTO,
                 RABATT_PROZENT, STEUER_CODE, MWST_SATZ, MWST_BETRAG,
-                NETTO_BETRAG, IST_GUTSCHEIN)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                NETTO_BETRAG, IST_GUTSCHEIN, EP_ORIGINAL)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (vorgang_id, pos_nr, artikel_id, artnum, barcode, bezeichnung,
              menge, ep_nach_rabatt, gesamt,
              rabatt_prozent, steuer_code, mwst_satz, mwst_b, netto,
-             1 if ist_gutschein else 0)
+             1 if ist_gutschein else 0,
+             ep_original)
         )
         pos_id = cur.lastrowid
         _vorgang_summen_aktualisieren(vorgang_id, cur)
@@ -958,7 +1443,7 @@ def vorgang_kopieren(original_id: int, terminal_nr: int, mitarbeiter: dict) -> d
     if not aktive_pos:
         raise ValueError("Keine kopierbaren Positionen vorhanden.")
 
-    # Leeren offenen Vorgang dieses Terminals aufräumen
+    # Leeren offenen Vorgang dieses Terminals wiederverwenden (spart eine Bon-Nummer)
     with get_db() as cur:
         cur.execute(
             "SELECT * FROM XT_KASSE_VORGAENGE "
@@ -966,26 +1451,13 @@ def vorgang_kopieren(original_id: int, terminal_nr: int, mitarbeiter: dict) -> d
             (terminal_nr,)
         )
         offen = cur.fetchone()
-    if offen and not vorgang_positionen(offen['ID']):
-        # GoBD §146 Abs. 4 AO: Kein physisches Löschen – leeren Bon auf ABGEBROCHEN setzen
-        if offen.get('TSE_TX_ID'):
-            try:
-                tse_modul.tse_cancel_transaktion(
-                    terminal_nr, offen['ID'],
-                    offen['TSE_TX_ID'], offen['TSE_TX_REVISION']
-                )
-            except Exception:
-                pass
-        with get_db() as cur:
-            cur.execute(
-                "UPDATE XT_KASSE_VORGAENGE "
-                "SET STATUS='ABGEBROCHEN', ABGEBROCHEN_AM=NOW() "
-                "WHERE ID=%s AND STATUS='OFFEN'",
-                (offen['ID'],)
-            )
 
-    # Neuen Vorgang anlegen (inkl. TSE-Start)
-    neuer = vorgang_neu(terminal_nr, mitarbeiter)
+    if offen and not vorgang_positionen(offen['ID']):
+        # Leeren Bon direkt nutzen – keine neue Bon-Nummer nötig
+        neuer = offen
+    else:
+        # Belegter oder kein offener Bon → neuen anlegen
+        neuer = vorgang_neu(terminal_nr, mitarbeiter)
 
     # Positionen 1:1 übertragen
     for pos in aktive_pos:
