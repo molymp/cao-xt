@@ -197,7 +197,8 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
                mwst_saetze: dict, terminal_nr: int,
                ist_kopie: bool, ist_storno: bool,
                qr_code: bool = False,
-               trainings_modus: bool = False) -> bytes:
+               trainings_modus: bool = False,
+               nicht_produktiv: bool = False) -> bytes:
     """
     Baut den kompletten Kassenbon als Byte-Buffer.
     vorgang: Row aus XT_KASSE_VORGAENGE
@@ -207,19 +208,28 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     b = _Bon()
     b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
 
-    # Nicht-live: Terminal im Trainings-Modus ODER TSE_SERIAL kein echter Wert
-    tse_serial = (vorgang.get('TSE_SERIAL') or '').strip()
-    nicht_live = trainings_modus or tse_serial in ('', 'TRAININGSMODUS')
+    # Klassifizierung: training = kein TSE / Trainings-Modus
+    #                  sandbox  = Fiskaly-Testumgebung (echte Sig, aber nicht produktiv)
+    tse_serial  = (vorgang.get('TSE_SERIAL') or '').strip()
+    ist_training = trainings_modus or tse_serial in ('', 'TRAININGSMODUS')
+    ist_sandbox  = nicht_produktiv and not ist_training
+    nicht_live   = ist_training or ist_sandbox
 
     # ── Kopf ─────────────────────────────────────────────────
     _drucke_kopf(b, firma)
     b.trenn()
 
-    if nicht_live:
+    if ist_training:
         b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
         b.text('TRAININGSBON\n')
         b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
         b.raw(_BOLD_ON).text('Kein steuerrelevanter Beleg!\n').raw(_BOLD_OFF)
+        b.trenn()
+    elif ist_sandbox:
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TEST-BON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+        b.raw(_BOLD_ON).text('Fiskaly Sandbox – kein steuerrelevanter Beleg!\n').raw(_BOLD_OFF)
         b.trenn()
     if ist_storno:
         b.raw(_BOLD_ON).text('*** STORNIERUNG ***\n').raw(_BOLD_OFF)
@@ -331,13 +341,32 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     # ── TSE-Pflichtangaben + QR-Code ─────────────────────────
     # QR-Code links, TSE-Text direkt darunter – eine kompakte Einheit
     b.raw(_ALIGN_LEFT).trenn()
-    if nicht_live:
+    if ist_training:
         b.raw(_FONT_B)
         b.text('KEIN STEUERRELEVANTER BELEG – KEINE LIVE-TSE\n')
         b.raw(_FONT_A)
         b.trenn()
         b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
         b.text('TRAININGSBON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+    elif ist_sandbox:
+        # Echte TSE-Signatur vorhanden, aber Testumgebung
+        if qr_code:
+            b.raw(_ALIGN_LEFT)
+            b.raw(_qr_bytes(_tse_qr_text(vorgang)))
+        b.raw(_FONT_B)
+        _W = 64
+        tx_str   = str(vorgang.get('TSE_TX_ID') or 'n/a')
+        sigz_str = str(vorgang.get('TSE_SIGNATUR_ZAEHLER') or 'n/a')
+        serial   = vorgang.get('TSE_SERIAL') or 'n/a'
+        sig      = vorgang.get('TSE_SIGNATUR') or 'n/a'
+        stream   = f"TX:{tx_str} Sig-Z.:{sigz_str} SN:" + serial + " SIG:" + sig[:_W * 3]
+        for i in range(0, len(stream), _W):
+            b.text(stream[i:i + _W] + '\n')
+        b.raw(_FONT_A)
+        b.trenn()
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TEST-BON\n')
         b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
     else:
         if qr_code:
@@ -368,10 +397,12 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
 def drucke_bon(vorgang: dict, positionen: list, zahlungen: list,
                mwst_saetze: dict, terminal_nr: int,
                ist_kopie: bool = False, ist_storno: bool = False,
-               qr_code: bool = False, trainings_modus: bool = False):
+               qr_code: bool = False, trainings_modus: bool = False,
+               nicht_produktiv: bool = False):
     """Druckt den Kassenbon auf dem konfigurierten Netzwerkdrucker."""
     daten = _bon_bytes(vorgang, positionen, zahlungen, mwst_saetze,
-                       terminal_nr, ist_kopie, ist_storno, qr_code, trainings_modus)
+                       terminal_nr, ist_kopie, ist_storno, qr_code,
+                       trainings_modus, nicht_produktiv)
     ip, port = _drucker_addr(terminal_nr)
     _sende(ip, port, daten)
 

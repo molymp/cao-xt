@@ -29,23 +29,21 @@ app.config['JSON_ENSURE_ASCII'] = False
 # ── Context-Processor ─────────────────────────────────────────
 @app.context_processor
 def _globals():
-    trainings_modus = False
+    trainings_modus     = False
+    tse_nicht_produktiv = False
     try:
-        with get_db() as cur:
-            cur.execute(
-                "SELECT TRAININGS_MODUS FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
-                (config.TERMINAL_NR,)
-            )
-            row = cur.fetchone()
-        trainings_modus = bool((row or {}).get('TRAININGS_MODUS', 0))
+        ts = _terminal_settings(config.TERMINAL_NR)
+        trainings_modus     = ts['trainings_modus']
+        tse_nicht_produktiv = ts['tse_nicht_produktiv']
     except Exception:
         pass
     return {
-        'terminal_nr':    config.TERMINAL_NR,
-        'firma_name':     config.FIRMA_NAME,
-        'db_name':        config.DB_NAME,
-        'jetzt':          datetime.now(),
-        'trainings_modus': trainings_modus,
+        'terminal_nr':         config.TERMINAL_NR,
+        'firma_name':          config.FIRMA_NAME,
+        'db_name':             config.DB_NAME,
+        'jetzt':               datetime.now(),
+        'trainings_modus':     trainings_modus,
+        'tse_nicht_produktiv': tse_nicht_produktiv,
     }
 
 
@@ -55,21 +53,32 @@ def _ist_eingeloggt() -> bool:
 
 
 def _terminal_settings(terminal_nr: int) -> dict:
-    """Liest alle relevanten Einstellungen des Terminals aus XT_KASSE_TERMINALS."""
+    """Liest Terminal-Einstellungen inkl. TSE-Typ aus XT_KASSE_TERMINALS + XT_KASSE_TSE_GERAETE."""
     with get_db() as cur:
         cur.execute(
-            "SELECT QR_CODE, TRAININGS_MODUS, SOFORT_DRUCKEN, "
-            "SCHUBLADE_AUTO_OEFFNEN, KASSENLADE "
-            "FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+            """SELECT t.QR_CODE, t.TRAININGS_MODUS, t.SOFORT_DRUCKEN,
+                      t.SCHUBLADE_AUTO_OEFFNEN, t.KASSENLADE,
+                      g.TYP AS TSE_TYP, g.FISKALY_ENV
+               FROM XT_KASSE_TERMINALS t
+               LEFT JOIN XT_KASSE_TSE_GERAETE g ON g.REC_ID = t.TSE_ID
+               WHERE t.TERMINAL_NR = %s""",
             (terminal_nr,)
         )
         row = cur.fetchone() or {}
+    tse_typ     = (row.get('TSE_TYP') or '').upper()
+    fiskaly_env = (row.get('FISKALY_ENV') or '').lower()
+    # Nicht-produktiv: Fiskaly-Test/Sandbox oder DEMO-TSE
+    tse_nicht_produktiv = (
+        (tse_typ == 'FISKALY' and fiskaly_env != 'live') or
+        tse_typ == 'DEMO'
+    )
     return {
         'qr_code':                bool(row.get('QR_CODE', 0)),
         'trainings_modus':        bool(row.get('TRAININGS_MODUS', 0)),
         'sofort_drucken':         bool(row.get('SOFORT_DRUCKEN', 1)),
         'schublade_auto_oeffnen': bool(row.get('SCHUBLADE_AUTO_OEFFNEN', 1)),
         'kassenlade':             int(row.get('KASSENLADE', 0)) > 0,
+        'tse_nicht_produktiv':    tse_nicht_produktiv,
     }
 
 
@@ -106,7 +115,8 @@ def _bon_drucken(vid: int, *, ist_kopie: bool = False, ist_storno: bool = False,
                      mwst_saetze, config.TERMINAL_NR,
                      ist_kopie=ist_kopie, ist_storno=ist_storno,
                      qr_code=ts['qr_code'],
-                     trainings_modus=ts['trainings_modus'])
+                     trainings_modus=ts['trainings_modus'],
+                     nicht_produktiv=ts['tse_nicht_produktiv'])
     return vorgang
 
 

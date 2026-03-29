@@ -83,6 +83,48 @@ h1, h2, h3 {
   position: relative;
   z-index: 100;
 }
+.navbar.trainings-aktiv {
+  background: #7a4800;
+  box-shadow: 0 2px 16px rgba(180,100,0,0.45);
+}
+.navbar.sandbox-aktiv {
+  background: #4a0070;
+  box-shadow: 0 2px 16px rgba(120,0,180,0.45);
+}
+.navbar .sandbox-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #cc44ff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: training-pulse 2s ease-in-out infinite;
+}
+.navbar .training-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffb300;
+  color: #3a2000;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: training-pulse 2s ease-in-out infinite;
+}
+@keyframes training-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.75; }
+}
 .navbar .logo {
   font-family: 'Lobster', Georgia, serif;
   font-size: 20px;
@@ -281,11 +323,16 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 {% block extra_style %}{% endblock %}
 </head>
 <body>
-<div class="navbar">
+<div class="navbar{% if trainings_modus %} trainings-aktiv{% elif tse_nicht_produktiv %} sandbox-aktiv{% endif %}">
   <span class="logo">🌾 {{ firma_name }}</span>
+  {% if trainings_modus %}
+  <span class="training-badge">🎓 Trainingsmodus</span>
+  {% elif tse_nicht_produktiv %}
+  <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
+  {% endif %}
   {% block nav_extra %}{% endblock %}
   <span class="ma-info">
-    Terminal {{ terminal_nr }}
+    Terminal {{ terminal_nr }} · {{ db_name }}
   </span>
   <a href="/kasse/kassenbuch" class="nav-btn">📒 Kasse</a>
   <a href="/kasse/xbon"       class="nav-btn">📊 X-Bon</a>
