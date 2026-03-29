@@ -170,11 +170,10 @@ def _drucke_kopf(b: _Bon, firma: dict):
     b.raw(_BOLD_ON).raw(_DOUBLE_HW)
     b.text(firma['name'] + '\n')
     b.raw(_NORMAL_SIZE).raw(_BOLD_OFF)
-    if firma['strasse']:
-        b.text(firma['strasse'] + '\n')
-    if firma['ort']:
-        b.text(firma['ort'] + '\n')
-    b.text('Der  Laden  von  Bürgern  für  Bürger\n')
+    b.text('Der Laden von Bürgern für Bürger\n')
+    adresse = ' '.join(filter(None, [firma['strasse'], firma['ort']]))
+    if adresse:
+        b.text(adresse + '\n')
     b.text('Mo.-Fr. 6:30h-18:00h     Sa. 7:00-12:00h\n')
     b.text('Tel. 08847/6956156    habacher-dorfladen.de\n')
 
