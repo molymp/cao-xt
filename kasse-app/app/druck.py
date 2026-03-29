@@ -233,7 +233,7 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
 
     b.raw(_BOLD_ON)
     beleg_nr = vorgang.get('VORGANGSNUMMER') or f"{vorgang['TERMINAL_NR']}-{vorgang['BON_NR']}"
-    b.text(f"Beleg-Nr: {beleg_nr}  {datum_str}\n")
+    b.text(f"Beleg: {beleg_nr}  {datum_str}\n")
     b.raw(_BOLD_OFF)
     if vorgang.get('KUNDEN_NAME'):
         b.trenn()
