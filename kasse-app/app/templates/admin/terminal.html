@@ -17,33 +17,21 @@
 
     <!-- Firma -->
     <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Firmendaten (für Bondruck)</h3>
-      <div class="form-group">
-        <label>Firmenname</label>
-        <input class="form-control" name="firma_name" type="text"
-               value="{{ terminal.FIRMA_NAME or '' }}" placeholder="z.B. Habacher Dorfladen">
+      <h3 style="margin-bottom:4px; font-size:16px; color:var(--text-dim);">Bon-Kopf</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Name, Adresse und Steuerdaten kommen aus der CAO-Datenbank (Tabelle FIRMA).
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div class="form-group">
-          <label>Straße</label>
-          <input class="form-control" name="firma_strasse" type="text"
-                 value="{{ terminal.FIRMA_STRASSE or '' }}">
-        </div>
-        <div class="form-group">
-          <label>PLZ / Ort</label>
-          <input class="form-control" name="firma_ort" type="text"
-                 value="{{ terminal.FIRMA_ORT or '' }}" placeholder="12345 Musterstadt">
-        </div>
-        <div class="form-group">
-          <label>USt-IdNr.</label>
-          <input class="form-control" name="firma_ust_id" type="text"
-                 value="{{ terminal.FIRMA_UST_ID or '' }}" placeholder="DE123456789">
-        </div>
-        <div class="form-group">
-          <label>Steuernummer</label>
-          <input class="form-control" name="firma_steuernummer" type="text"
-                 value="{{ terminal.FIRMA_STEUERNUMMER or '' }}">
-        </div>
+      <div class="form-group">
+        <label>Firmenname <span style="font-weight:400; color:var(--text-dim);">(leer = aus Datenbank)</span></label>
+        <input class="form-control" name="firma_name" type="text"
+               value="{{ terminal.FIRMA_NAME or '' }}"
+               placeholder="Leer lassen um FIRMA.NAME1 zu verwenden">
+      </div>
+      <div class="form-group">
+        <label>Zusatz <span style="font-weight:400; color:var(--text-dim);">(Zeile unter dem Namen, optional)</span></label>
+        <input class="form-control" name="firma_zusatz" type="text"
+               value="{{ terminal.FIRMA_ZUSATZ or '' }}"
+               placeholder="z.B. Der Laden von Bürgern für Bürger">
       </div>
     </div>
 

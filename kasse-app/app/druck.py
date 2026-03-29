@@ -102,30 +102,31 @@ def _kassenlade_pin(terminal_nr: int) -> int:
 def _firma_info(terminal_nr: int) -> dict:
     with get_db() as cur:
         cur.execute(
-            "SELECT FIRMA_NAME, FIRMA_STRASSE, FIRMA_ORT, "
-            "FIRMA_UST_ID, FIRMA_STEUERNUMMER "
+            "SELECT FIRMA_NAME, FIRMA_ZUSATZ "
             "FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR = %s",
             (terminal_nr,)
         )
         t = cur.fetchone() or {}
-        cur.execute("SELECT * FROM FIRMA LIMIT 1")
+        cur.execute("SELECT * FROM FIRMA ORDER BY REC_ID DESC LIMIT 1")
         f = cur.fetchone() or {}
 
-    name = (
-        ' '.join(filter(None, [f.get('NAME1'), f.get('NAME2'), f.get('NAME3')]))
-        or t.get('FIRMA_NAME') or config.FIRMA_NAME
-    )
+    # Firmenname: Terminal-Eintrag hat Vorrang (wenn gesetzt)
+    name = t.get('FIRMA_NAME') or \
+           ' '.join(filter(None, [f.get('NAME1'), f.get('NAME2'), f.get('NAME3')])) or \
+           config.FIRMA_NAME
+
     strasse = ' '.join(filter(None, [f.get('STRASSE'), f.get('HAUSNR')])) \
-              or t.get('FIRMA_STRASSE') or config.FIRMA_STRASSE
+              or config.FIRMA_STRASSE
     ort = ' '.join(filter(None, [f.get('PLZ'), f.get('ORT')])) \
-          or t.get('FIRMA_ORT') or config.FIRMA_ORT
+          or config.FIRMA_ORT
 
     return {
         'name':         name,
+        'zusatz':       t.get('FIRMA_ZUSATZ') or '',
         'strasse':      strasse,
         'ort':          ort,
-        'ust_id':       f.get('UST_ID') or t.get('FIRMA_UST_ID') or config.FIRMA_UST_ID,
-        'steuernummer': f.get('STEUERNUMMER') or t.get('FIRMA_STEUERNUMMER') or config.FIRMA_STEUERNUMMER,
+        'ust_id':       f.get('UST_ID') or config.FIRMA_UST_ID,
+        'steuernummer': f.get('STEUERNUMMER') or config.FIRMA_STEUERNUMMER,
     }
 
 
@@ -182,7 +183,8 @@ def _drucke_kopf(b: _Bon, firma: dict):
     b.raw(_BOLD_ON).raw(_DOUBLE_HW)
     b.text(firma['name'] + '\n')
     b.raw(_NORMAL_SIZE).raw(_BOLD_OFF)
-    b.text('Der Laden von Bürgern für Bürger\n')
+    if firma.get('zusatz'):
+        b.text(firma['zusatz'] + '\n')
     adresse = ' '.join(filter(None, [firma['strasse'], firma['ort']]))
     if adresse:
         b.text(adresse + '\n')

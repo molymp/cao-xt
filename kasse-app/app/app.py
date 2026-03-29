@@ -848,32 +848,26 @@ def admin_terminal_speichern():
                (TERMINAL_NR, BEZEICHNUNG,
                 DRUCKER_IP, DRUCKER_PORT, KASSENLADE,
                 SOFORT_DRUCKEN, SCHUBLADE_AUTO_OEFFNEN, QR_CODE, TRAININGS_MODUS,
-                FIRMA_NAME, FIRMA_STRASSE, FIRMA_ORT,
-                FIRMA_UST_ID, FIRMA_STEUERNUMMER)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                FIRMA_NAME, FIRMA_ZUSATZ)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE
                BEZEICHNUNG=%s,
                DRUCKER_IP=%s, DRUCKER_PORT=%s, KASSENLADE=%s,
                SOFORT_DRUCKEN=%s, SCHUBLADE_AUTO_OEFFNEN=%s, QR_CODE=%s,
                TRAININGS_MODUS=%s,
-               FIRMA_NAME=%s, FIRMA_STRASSE=%s, FIRMA_ORT=%s,
-               FIRMA_UST_ID=%s, FIRMA_STEUERNUMMER=%s""",
+               FIRMA_NAME=%s, FIRMA_ZUSATZ=%s""",
             (tnr,
              f.get('bezeichnung', ''),
              f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
              int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
-             f.get('firma_name', ''), f.get('firma_strasse', ''),
-             f.get('firma_ort', ''), f.get('firma_ust_id', ''),
-             f.get('firma_steuernummer', ''),
+             f.get('firma_name', ''), f.get('firma_zusatz', ''),
              # ON DUPLICATE KEY
              f.get('bezeichnung', ''),
              f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
              int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
-             f.get('firma_name', ''), f.get('firma_strasse', ''),
-             f.get('firma_ort', ''), f.get('firma_ust_id', ''),
-             f.get('firma_steuernummer', ''))
+             f.get('firma_name', ''), f.get('firma_zusatz', ''))
         )
     tse_modul._token_cache.pop(tnr, None)
     return redirect(url_for('admin_index'))

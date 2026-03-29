@@ -6,28 +6,63 @@
 -- "Bon → Lieferschein" beschrieben.
 -- ============================================================
 
+-- ── TSE-Geräteregister ───────────────────────────────────────
+-- Alle je genutzten TSEs bleiben gespeichert (Auditpflicht).
+-- Dekommissionierte TSEs haben AUSSER_BETRIEB gesetzt.
+CREATE TABLE IF NOT EXISTS XT_KASSE_TSE_GERAETE (
+    REC_ID              INT AUTO_INCREMENT PRIMARY KEY,
+    TYP                 ENUM('FISKALY','SWISSBIT','DEMO') NOT NULL DEFAULT 'FISKALY'
+                            COMMENT 'FISKALY=Cloud-TSE, SWISSBIT=USB-TSE, DEMO=Trainings-Modus',
+    BEZEICHNUNG         VARCHAR(200) NOT NULL COMMENT 'Frei wählbarer Name, z.B. "Fiskaly Cloud 2024"',
+    SERIENNUMMER        VARCHAR(200) COMMENT 'TSE-Seriennummer (hex/base64, von TSE geliefert)',
+    BSI_ZERTIFIZIERUNG  VARCHAR(50)  COMMENT 'BSI-Zertifizierungs-ID, z.B. BSI-K-TR-0374-2022',
+    ZERTIFIKAT_GUELTIG_BIS DATE      COMMENT 'Ablaufdatum des BSI-Zertifikats (bei Swissbit USB-TSEs)',
+    -- Fiskaly Cloud TSE
+    FISKALY_ENV         ENUM('test','live') NOT NULL DEFAULT 'test',
+    FISKALY_API_KEY     VARCHAR(200),
+    FISKALY_API_SECRET  VARCHAR(200),
+    FISKALY_TSS_ID      VARCHAR(36)  COMMENT 'UUID der Technical Security System',
+    FISKALY_ADMIN_PIN   VARCHAR(100) COMMENT 'TSS Admin-PIN',
+    FISKALY_ADMIN_PUK   VARCHAR(100) COMMENT 'TSS Admin-PUK (aus Fiskaly-Dashboard)',
+    -- Swissbit USB TSE (libWorm)
+    SWISSBIT_PFAD       VARCHAR(200) COMMENT 'Gerätepfad, z.B. /dev/sda1 oder /media/swissbit',
+    SWISSBIT_ADMIN_PIN  VARCHAR(100),
+    SWISSBIT_ADMIN_PUK  VARCHAR(100),
+    -- Verwaltung / Historie
+    IN_BETRIEB_SEIT     DATE         COMMENT 'Datum der Erstinbetriebnahme',
+    AUSSER_BETRIEB      DATE         COMMENT 'Außerbetriebnahme (NULL = noch aktiv)',
+    BEMERKUNG           TEXT         COMMENT 'Freitext: Grund für Wechsel, Ablaufdatum-Hinweis, etc.',
+    ERSTELLT            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='TSE-Geräteregister: Alle genutzten TSEs bleiben zur Nachvollziehbarkeit erhalten.';
+
 -- ── Terminal-Konfiguration ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS XT_KASSE_TERMINALS (
     ID                  INT AUTO_INCREMENT PRIMARY KEY,
     TERMINAL_NR         INT NOT NULL UNIQUE COMMENT 'Eindeutige Terminalnummer 1–9',
     BEZEICHNUNG         VARCHAR(100),
-    -- Fiskaly TSE
+    -- Aktive TSE (Verweis auf Geräteregister)
+    TSE_ID              INT NULL    COMMENT 'FK → XT_KASSE_TSE_GERAETE.REC_ID (aktuell aktive TSE)',
+    TRAININGS_MODUS     TINYINT NOT NULL DEFAULT 0
+                            COMMENT '1=Trainings-/Demo-Modus: keine echte TSE-Signierung, Bon mit TRAININGSBON-Aufdruck',
+    -- Legacy Fiskaly TSE (Backward-Compat; wird durch TSE_ID abgelöst)
     FISKALY_API_KEY     VARCHAR(200),
     FISKALY_API_SECRET  VARCHAR(200),
     FISKALY_TSS_ID      VARCHAR(36)  COMMENT 'UUID der Technical Security System',
-    FISKALY_CLIENT_ID   VARCHAR(36)  COMMENT 'UUID des Kassenclients in der TSS',
+    FISKALY_CLIENT_ID   VARCHAR(36)  COMMENT 'UUID des Kassenclients in der TSS (pro Terminal)',
     FISKALY_ENV         ENUM('test','live') NOT NULL DEFAULT 'test',
-    FISKALY_ADMIN_PIN   VARCHAR(100)         COMMENT 'TSS Admin-PIN (wird beim Initialisieren gesetzt)',
+    FISKALY_ADMIN_PIN   VARCHAR(100) COMMENT 'TSS Admin-PIN',
+    FISKALY_ADMIN_PUK   VARCHAR(100) COMMENT 'TSS Admin-PUK (aus Fiskaly-Dashboard)',
     -- Drucker / Kassenlade
     DRUCKER_IP          VARCHAR(50),
     DRUCKER_PORT        INT NOT NULL DEFAULT 9100,
     KASSENLADE          TINYINT NOT NULL DEFAULT 0 COMMENT '0=keine, 1=Pin2, 2=Pin5',
-    -- Firma (für Bondruck, falls abweichend vom globalen Default)
+    SOFORT_DRUCKEN      TINYINT NOT NULL DEFAULT 1,
+    SCHUBLADE_AUTO_OEFFNEN TINYINT NOT NULL DEFAULT 1,
+    QR_CODE             TINYINT NOT NULL DEFAULT 0 COMMENT '1 = QR-Code auf Bon drucken',
+    -- Bon-Kopf: Firmenname überschreibt FIRMA.NAME1/2/3; Zusatz ist freier Slogan
     FIRMA_NAME          VARCHAR(100),
-    FIRMA_STRASSE       VARCHAR(100),
-    FIRMA_ORT           VARCHAR(100),
-    FIRMA_UST_ID        VARCHAR(30),
-    FIRMA_STEUERNUMMER  VARCHAR(30),
+    FIRMA_ZUSATZ        VARCHAR(150),
     STANDORT            VARCHAR(100),
     AKTIV               TINYINT NOT NULL DEFAULT 1,
     ERSTELLT            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -209,6 +244,37 @@ CREATE TABLE IF NOT EXISTS XT_KASSE_TSE_LOG (
     INDEX idx_vorgang       (VORGANG_ID)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ── Sonder-EAN-Regeln ────────────────────────────────────────
+-- Konfiguriert Zeitschriften (977xxx), Inhouse-Preis-EAN (z.B. 2100421)
+-- und Inhouse-Gewichts-EAN für die automatische Kassenerkennung.
+CREATE TABLE IF NOT EXISTS XT_KASSE_EAN_REGELN (
+    REC_ID         INT AUTO_INCREMENT PRIMARY KEY,
+    --
+    -- Inhouse-EAN Format: XX AAAA Z PPPPP Z  (13 Stellen)
+    --   XX    = EAN_BEREICH  (2-stellige Bereichs-ID, z.B. "21"=Preis, "25"=Gewicht)
+    --   AAAA  = 4-stellige CAO-Artikelnummer (ARTNUM) → wird per ARTIKEL_LOOKUP nachgeschlagen
+    --   Z     = interne Prüfziffer des Artikelteils (Stellen 1-6, GS1-Gewichtung)
+    --   PPPPP = 5-stelliger Wert: Preis in Cent (TYP=PREIS) oder Gramm (TYP=GEWICHT)
+    --   Z     = EAN-13-Prüfziffer
+    --
+    -- Zeitschriften-EAN: beliebige Länge ("977"), kein Artikel-Lookup, Preis-Dialog
+    --
+    EAN_PRAEFIX    VARCHAR(13)  NOT NULL        COMMENT 'Bereichs-Präfix: "21", "25" oder "977"',
+    TYP            ENUM('ZEITSCHRIFT','PREIS','GEWICHT','PRESSE') NOT NULL DEFAULT 'PREIS'
+                                                COMMENT 'ZEITSCHRIFT=Preis-Dialog; PREIS/GEWICHT=Inhouse EAN; PRESSE=Preis in EAN[8:12] (VDZ)',
+    ARTIKEL_LOOKUP TINYINT      NOT NULL DEFAULT 0
+                                                COMMENT '1=ARTNUM aus EAN[3-6] in ARTIKEL nachschlagen',
+    BEZEICHNUNG    VARCHAR(200) NOT NULL        COMMENT 'Fallback-Text auf dem Bon (wenn ARTIKEL_LOOKUP=0 oder nicht gefunden)',
+    WG_ID          INT          NULL            COMMENT 'Fallback-Warengruppe',
+    ARTIKEL_ID     INT          NULL            COMMENT 'Fester Sammelartikel (Alternative zu ARTIKEL_LOOKUP)',
+    STEUER_CODE    TINYINT      NOT NULL DEFAULT 1 COMMENT 'Fallback-Steuercode 1=19%/2=7%/3=0%',
+    PREIS_PRO_KG   INT          NULL            COMMENT 'Nur TYP=GEWICHT: Preis in Cent/kg',
+    AKTIV          TINYINT      NOT NULL DEFAULT 1,
+    ERSTELLT       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_praefix (EAN_PRAEFIX)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Sonder-EAN-Regeln: Zeitschriften (977), Inhouse Preis-EAN (21), Gewichts-EAN (25)';
+
 -- ── Initial-Zeilen Kassenzähler einfügen ─────────────────────
 -- Für Terminal 1–7 (wird durch config.py / Admin angelegt)
 INSERT IGNORE INTO XT_KASSE_ZAEHLER (TERMINAL_NR, BON_NR_LETZT, Z_NR_LETZT)
@@ -218,3 +284,48 @@ INSERT IGNORE INTO XT_KASSE_ZAEHLER (TERMINAL_NR, BON_NR_LETZT, Z_NR_LETZT)
 INSERT IGNORE INTO XT_KASSE_TERMINALS
     (TERMINAL_NR, BEZEICHNUNG, FISKALY_ENV, DRUCKER_IP, DRUCKER_PORT, KASSENLADE, AKTIV)
     VALUES (1, 'Hauptkasse', 'test', '', 9100, 1, 1);
+
+-- ── Migration: Neue Spalten für bestehende Installationen ─────
+-- Idempotent – ignoriert Fehler wenn Spalte bereits existiert.
+-- In MariaDB 10.x: ADD COLUMN IF NOT EXISTS
+ALTER TABLE XT_KASSE_TERMINALS
+    ADD COLUMN IF NOT EXISTS FISKALY_ADMIN_PUK  VARCHAR(100)
+        COMMENT 'TSS Admin-PUK (aus Fiskaly-Dashboard)'
+        AFTER FISKALY_ADMIN_PIN,
+    ADD COLUMN IF NOT EXISTS TSE_ID             INT NULL
+        COMMENT 'FK → XT_KASSE_TSE_GERAETE.REC_ID (aktuell aktive TSE)'
+        AFTER FISKALY_ADMIN_PUK,
+    ADD COLUMN IF NOT EXISTS TRAININGS_MODUS    TINYINT NOT NULL DEFAULT 0
+        COMMENT '1=Trainings-/Demo-Modus: keine echte TSE-Signierung'
+        AFTER TSE_ID;
+
+-- ── Migration: Bestehende Fiskaly-Konfiguration → TSE-Geräteregister ─────────
+-- Legt für jede Terminal-Konfiguration mit vorhandenem API-Key einen
+-- TSE-Geräteeintrag an, sofern noch keiner mit gleicher TSS-ID existiert.
+INSERT INTO XT_KASSE_TSE_GERAETE
+    (TYP, BEZEICHNUNG, FISKALY_ENV, FISKALY_API_KEY, FISKALY_API_SECRET,
+     FISKALY_TSS_ID, FISKALY_ADMIN_PIN, FISKALY_ADMIN_PUK, IN_BETRIEB_SEIT)
+    SELECT 'FISKALY',
+           CONCAT('Fiskaly Cloud TSE (', IFNULL(FISKALY_ENV,'test'), ')'),
+           IFNULL(FISKALY_ENV,'test'), FISKALY_API_KEY, FISKALY_API_SECRET,
+           FISKALY_TSS_ID, FISKALY_ADMIN_PIN, FISKALY_ADMIN_PUK,
+           DATE(ERSTELLT)
+      FROM XT_KASSE_TERMINALS
+     WHERE FISKALY_API_KEY IS NOT NULL AND FISKALY_API_KEY != ''
+       AND NOT EXISTS (
+           SELECT 1 FROM XT_KASSE_TSE_GERAETE g
+            WHERE g.TYP = 'FISKALY'
+              AND g.FISKALY_TSS_ID = XT_KASSE_TERMINALS.FISKALY_TSS_ID
+       );
+
+-- TSE_ID für Terminals setzen die noch keine haben aber eine passende TSE im Register haben
+UPDATE XT_KASSE_TERMINALS t
+   SET t.TSE_ID = (
+       SELECT g.REC_ID FROM XT_KASSE_TSE_GERAETE g
+        WHERE g.TYP = 'FISKALY'
+          AND g.FISKALY_TSS_ID = t.FISKALY_TSS_ID
+        LIMIT 1
+   )
+ WHERE t.TSE_ID IS NULL
+   AND t.FISKALY_TSS_ID IS NOT NULL
+   AND t.FISKALY_TSS_ID != '';
