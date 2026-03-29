@@ -970,8 +970,8 @@ def vorgang_neu(terminal_nr: int, mitarbeiter: dict) -> dict:
         cur.execute(
             """INSERT INTO XT_KASSE_VORGAENGE
                (TERMINAL_NR, BON_NR, BON_DATUM, MITARBEITER_ID, MITARBEITER_NAME,
-                STATUS, VORGANGSNUMMER)
-               VALUES (%s,%s,%s,%s,%s,'OFFEN',%s)""",
+                STATUS, VORGANGSNUMMER, VORGANG_TYP)
+               VALUES (%s,%s,%s,%s,%s,'OFFEN',%s,'Beleg')""",
             (terminal_nr, bon_nr, jetzt,
              mitarbeiter.get('MA_ID'),
              f"{mitarbeiter.get('VNAME','')} {mitarbeiter.get('NAME','')}".strip(),
@@ -1279,6 +1279,8 @@ def zahlung_abschliessen(vorgang_id: int, terminal_nr: int,
             log.error("TSE Finish fehlgeschlagen (Vorgang %d): %s", vorgang_id, e)
             # Fehler protokollieren aber Kassiervorgang nicht blockieren
 
+    abschluss_zeitpunkt = datetime.now()
+
     with get_db_transaction() as cur:
         # Zahlungen speichern
         for z in zahlungen:
@@ -1292,10 +1294,14 @@ def zahlung_abschliessen(vorgang_id: int, terminal_nr: int,
                  z.get('referenz'), z.get('adressen_id'))
             )
 
-        # Vorgang abschließen + TSE-Daten speichern
+        # Vorgang abschließen + TSE-Daten speichern.
+        # ABSCHLUSS_DATUM wird mit Python-Zeitstempel gesetzt (nicht MySQL NOW()),
+        # damit er konsistent mit ZEITPUNKT in XT_KASSE_TAGESABSCHLUSS ist
+        # und der Z-Bon-Periodenfilter korrekt greift.
         cur.execute(
             """UPDATE XT_KASSE_VORGAENGE
                SET STATUS = 'ABGESCHLOSSEN',
+                   ABSCHLUSS_DATUM       = %s,
                    TSE_TX_ID             = COALESCE(%s, TSE_TX_ID),
                    TSE_TX_REVISION       = COALESCE(%s, TSE_TX_REVISION),
                    TSE_SIGNATUR          = %s,
@@ -1307,13 +1313,15 @@ def zahlung_abschliessen(vorgang_id: int, terminal_nr: int,
                    TSE_PROCESS_TYPE      = %s,
                    TSE_PROCESS_DATA      = %s
                WHERE ID = %s""",
-            (tse_data.get('tx_id'), tse_data.get('revision'),
+            (abschluss_zeitpunkt,
+             tse_data.get('tx_id'), tse_data.get('revision'),
              tse_data.get('signatur'), tse_data.get('signatur_zaehler'),
              tse_data.get('zeitpunkt_start'), tse_data.get('zeitpunkt_ende'),
              tse_data.get('tss_serial'), tse_data.get('log_time_format'),
              tse_data.get('process_type'), tse_data.get('process_data'),
              vorgang_id)
         )
+        log.info("Vorgang %d abgeschlossen, ABSCHLUSS_DATUM=%s", vorgang_id, abschluss_zeitpunkt)
 
         # Kassenbuch-Eintrag für BAR
         bar_gesamt = sum(z['betrag'] for z in zahlungen if z['zahlart'] == 'BAR')
@@ -1322,7 +1330,7 @@ def zahlung_abschliessen(vorgang_id: int, terminal_nr: int,
                 """INSERT INTO XT_KASSE_KASSENBUCH
                    (TERMINAL_NR, BUCHUNGSDATUM, TYP, BETRAG, VORGANG_ID, MITARBEITER_ID)
                    VALUES (%s, %s, 'UMSATZ_BAR', %s, %s, %s)""",
-                (terminal_nr, datetime.now(), bar_gesamt,
+                (terminal_nr, abschluss_zeitpunkt, bar_gesamt,
                  vorgang_id, vorgang.get('MITARBEITER_ID'))
             )
 
@@ -1344,6 +1352,8 @@ def vorgang_stornieren(original_id: int, terminal_nr: int,
     original = vorgang_laden(original_id)
     if not original or original['STATUS'] != 'ABGESCHLOSSEN':
         raise ValueError("Nur abgeschlossene Vorgänge können storniert werden.")
+    if original.get('STORNO_VON_ID'):
+        raise ValueError("Stornobelege können nicht erneut storniert werden.")
 
     orig_pos = vorgang_positionen(original_id)
     mwst_saetze = mwst_saetze_laden()
@@ -1364,17 +1374,17 @@ def vorgang_stornieren(original_id: int, terminal_nr: int,
 
         cur.execute(
             """INSERT INTO XT_KASSE_VORGAENGE
-               (TERMINAL_NR, BON_NR, BON_DATUM, MITARBEITER_ID, MITARBEITER_NAME,
+               (TERMINAL_NR, BON_NR, BON_DATUM, ABSCHLUSS_DATUM, MITARBEITER_ID, MITARBEITER_NAME,
                 STATUS, STORNO_VON_ID, VORGANGSNUMMER, VORGANG_TYP,
                 BETRAG_BRUTTO, BETRAG_NETTO,
                 MWST_BETRAG_1, MWST_BETRAG_2, MWST_BETRAG_3,
                 NETTO_BETRAG_1, NETTO_BETRAG_2, NETTO_BETRAG_3,
                 TSE_TX_ID, TSE_TX_REVISION, TSE_SIGNATUR, TSE_SIGNATUR_ZAEHLER,
                 TSE_ZEITPUNKT_START, TSE_ZEITPUNKT_ENDE, TSE_SERIAL)
-               VALUES (%s,%s,%s,%s,%s,'ABGESCHLOSSEN',%s,%s,'Beleg',
+               VALUES (%s,%s,%s,%s,%s,%s,'ABGESCHLOSSEN',%s,%s,'Beleg',
                        %s,%s,%s,%s,%s,%s,%s,%s,
                        %s,%s,%s,%s,%s,%s,%s)""",
-            (terminal_nr, bon_nr, jetzt,
+            (terminal_nr, bon_nr, jetzt, jetzt,
              mitarbeiter.get('MA_ID'),
              f"{mitarbeiter.get('VNAME','')} {mitarbeiter.get('NAME','')}".strip(),
              original_id, vorgangsnummer,
@@ -1478,6 +1488,128 @@ def vorgang_kopieren(original_id: int, terminal_nr: int, mitarbeiter: dict) -> d
 # ─────────────────────────────────────────────────────────────
 # Kassenbuch
 # ─────────────────────────────────────────────────────────────
+# Schema-Migrationen
+# ─────────────────────────────────────────────────────────────
+
+import logging as _logging
+_mig_log = _logging.getLogger(__name__)
+
+
+def _spalte_vorhanden(cur, tabelle: str, spalte: str) -> bool:
+    cur.execute(
+        "SELECT COUNT(*) AS N FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s",
+        (tabelle, spalte)
+    )
+    return bool((cur.fetchone() or {}).get('N', 0))
+
+
+def migrationen_ausfuehren():
+    """Legt fehlende Spalten an (idempotent, sicher bei mehrfachem Aufruf)."""
+    migrationen = [
+        # XT_KASSE_KASSENBUCH – neue Spalten für Kassenbuch-Erweiterung
+        ("XT_KASSE_KASSENBUCH", "BUCHUNGSTEXT",
+         "ALTER TABLE XT_KASSE_KASSENBUCH ADD COLUMN BUCHUNGSTEXT VARCHAR(255) AFTER NOTIZ"),
+        ("XT_KASSE_KASSENBUCH", "GEGENKONTO",
+         "ALTER TABLE XT_KASSE_KASSENBUCH ADD COLUMN GEGENKONTO VARCHAR(50) AFTER BUCHUNGSTEXT"),
+        ("XT_KASSE_KASSENBUCH", "MWST_CODE",
+         "ALTER TABLE XT_KASSE_KASSENBUCH ADD COLUMN MWST_CODE TINYINT AFTER GEGENKONTO"),
+        ("XT_KASSE_KASSENBUCH", "BELEGNUMMER",
+         "ALTER TABLE XT_KASSE_KASSENBUCH ADD COLUMN BELEGNUMMER VARCHAR(50) AFTER MWST_CODE"),
+        ("XT_KASSE_KASSENBUCH", "KASSE",
+         "ALTER TABLE XT_KASSE_KASSENBUCH ADD COLUMN KASSE VARCHAR(10) NOT NULL DEFAULT 'HAUPT' AFTER BELEGNUMMER"),
+        # Abschlusszeitpunkt des Bons – für korrekte Z-Bon-Perioden-Zuordnung
+        ("XT_KASSE_VORGAENGE", "ABSCHLUSS_DATUM",
+         "ALTER TABLE XT_KASSE_VORGAENGE ADD COLUMN ABSCHLUSS_DATUM DATETIME NULL AFTER BON_DATUM"),
+        # TYP-Spalte auf VARCHAR(40) erweitern (war VARCHAR(20))
+        # XT_KASSE_TERMINALS – Konten und Firmen-Zusatz
+        ("XT_KASSE_TERMINALS", "FIRMA_ZUSATZ",
+         "ALTER TABLE XT_KASSE_TERMINALS ADD COLUMN FIRMA_ZUSATZ VARCHAR(150) AFTER FIRMA_NAME"),
+        ("XT_KASSE_TERMINALS", "KONTO_BANK",
+         "ALTER TABLE XT_KASSE_TERMINALS ADD COLUMN KONTO_BANK VARCHAR(30) AFTER FIRMA_ZUSATZ"),
+        ("XT_KASSE_TERMINALS", "KONTO_NEBENKASSE",
+         "ALTER TABLE XT_KASSE_TERMINALS ADD COLUMN KONTO_NEBENKASSE VARCHAR(30) AFTER KONTO_BANK"),
+    ]
+    try:
+        with get_db() as cur:
+            for tabelle, spalte, sql in migrationen:
+                if not _spalte_vorhanden(cur, tabelle, spalte):
+                    _mig_log.info('Migration: %s.%s anlegen …', tabelle, spalte)
+                    cur.execute(sql)
+                    _mig_log.info('Migration: %s.%s ✓', tabelle, spalte)
+        # TYP VARCHAR-Breite – MODIFY ist immer sicher (kein doppelter Fehler)
+        try:
+            with get_db() as cur:
+                cur.execute(
+                    "ALTER TABLE XT_KASSE_KASSENBUCH MODIFY COLUMN TYP VARCHAR(40) NOT NULL"
+                )
+        except Exception:
+            pass  # Spalte bereits breit genug oder andere harmlose Abweichung
+    except Exception as exc:
+        _mig_log.error('Fehler bei Schema-Migration: %s', exc)
+
+    # Neue Tabelle XT_KASSE_ZAEHLUNG anlegen (falls nicht vorhanden)
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_KASSE_ZAEHLUNG (
+                    ID          INT AUTO_INCREMENT PRIMARY KEY,
+                    TERMINAL_NR INT          NOT NULL,
+                    TYP         VARCHAR(20)  NOT NULL,
+                    ZEITPUNKT   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    BETRAG_CENT INT          NOT NULL DEFAULT 0,
+                    BESTAND_JSON TEXT        NOT NULL,
+                    KASSENBUCH_ID INT        NULL,
+                    INDEX idx_zaehlung (TERMINAL_NR, TYP, ZEITPUNKT)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """)
+    except Exception as e:
+        _mig_log.warning('XT_KASSE_ZAEHLUNG: %s', e)
+
+
+def zaehlung_speichern(terminal_nr: int, typ: str, bestand: dict,
+                       betrag_cent: int, kassenbuch_id=None) -> int:
+    """Speichert eine Stückelung (Kassensturz/Transfer) in XT_KASSE_ZAEHLUNG.
+    bestand: dict {nennwert_cent: anzahl}
+    Gibt die neue ID zurück."""
+    import json as _json
+    with get_db_transaction() as cur:
+        cur.execute(
+            """INSERT INTO XT_KASSE_ZAEHLUNG
+               (TERMINAL_NR, TYP, BETRAG_CENT, BESTAND_JSON, KASSENBUCH_ID)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (terminal_nr, typ.upper(), betrag_cent,
+             _json.dumps({str(k): v for k, v in bestand.items() if v}),
+             kassenbuch_id)
+        )
+        return cur.lastrowid
+
+
+def zaehlung_laden(terminal_nr: int, typ: str) -> dict | None:
+    """Lädt die letzte Zählung eines Typs für dieses Terminal.
+    Gibt None zurück wenn keine vorhanden.
+    Ergebnis enthält 'bestand' als dict {int: int}."""
+    import json as _json
+    with get_db() as cur:
+        cur.execute(
+            """SELECT * FROM XT_KASSE_ZAEHLUNG
+               WHERE TERMINAL_NR = %s AND TYP = %s
+               ORDER BY ZEITPUNKT DESC LIMIT 1""",
+            (terminal_nr, typ.upper())
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    try:
+        raw = _json.loads(row['BESTAND_JSON'])
+        result['bestand'] = {int(k): int(v) for k, v in raw.items()}
+    except Exception:
+        result['bestand'] = {}
+    return result
+
+
+# ─────────────────────────────────────────────────────────────
 
 def kassenbuch_eintrag(terminal_nr: int, typ: str, betrag_cent: int,
                         mitarbeiter_id: int, notiz: str = ''):
@@ -1528,6 +1660,9 @@ KASSENBUCH_TYPEN = {
     'TRANSFER_BANK_KASSE':  {'sign': +1, 'text': 'Transfer Bank → Kasse',     'kasse': 'HAUPT'},
     'TRANSFER_KASSE_NEBEN': {'sign': -1, 'text': 'Transfer Kasse → Nebenkasse','kasse':'HAUPT'},
     'TRANSFER_NEBEN_KASSE': {'sign': +1, 'text': 'Transfer Nebenkasse → Kasse','kasse':'HAUPT'},
+    'ANFANGSBESTAND':       {'sign': +1, 'text': 'Kassenanfangsbestand',        'kasse': 'HAUPT'},
+    'JAHRESABSCHLUSS':      {'sign': -1, 'text': 'Jahresabschluss',             'kasse': 'HAUPT'},
+    'JAHRESANFANG':         {'sign': +1, 'text': 'Kassenanfang (Neujahr)',      'kasse': 'HAUPT'},
 }
 
 
@@ -1543,16 +1678,148 @@ def kassenbuch_saldo_neben(terminal_nr: int) -> int:
 
 
 def kassenbuch_liste(terminal_nr: int, kasse: str = 'HAUPT', tage: int = 30) -> list:
-    """Kassenbuch-Einträge der letzten N Tage."""
+    """Kassenbuch-Einträge der letzten N Tage.
+
+    Einzelne UMSATZ_BAR-Transaktionsbuchungen (VORGANG_ID IS NOT NULL) werden
+    ausgeblendet – sie entstehen pro Bon und werden beim Z-Bon durch einen
+    Sammelposten (VORGANG_ID IS NULL) ersetzt.  Im Kassenbuch erscheint damit
+    genau eine Bar-Buchung pro Z-Bon-Periode.  Details stehen im Journal.
+    """
     with get_db() as cur:
         cur.execute(
             """SELECT * FROM XT_KASSE_KASSENBUCH
                WHERE TERMINAL_NR=%s AND COALESCE(KASSE,'HAUPT')=%s
                  AND BUCHUNGSDATUM >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                 AND NOT (TYP = 'UMSATZ_BAR' AND VORGANG_ID IS NOT NULL)
                ORDER BY BUCHUNGSDATUM DESC""",
             (terminal_nr, kasse, tage)
         )
         return cur.fetchall()
+
+
+def kassenbuch_monat(terminal_nr: int, jahr: int, monat: int) -> dict:
+    """Kassenbuch eines Kalendermonats mit Anfangs-/Endsaldo und Gegenkonto-Auflösung.
+
+    Anfangssaldo = Summe ALLER Kassenbuch-Einträge vor dem Monatsstart.
+    Endsaldo     = Anfangssaldo + Summe der Monatsbuchungen.
+    UMSATZ_BAR-Einzeleinträge (VORGANG_ID IS NOT NULL) werden ausgeblendet –
+    der Z-Bon-Sammelposten (VORGANG_ID IS NULL) erscheint stattdessen.
+    TAGESABSCHLUSS-Marker (BETRAG=0) werden nicht in die Zeilen aufgenommen.
+    """
+    import calendar
+    from datetime import date as _date, timedelta as _td
+
+    erster  = _date(jahr, monat, 1)
+    naechster_erster = (_date(jahr, monat, calendar.monthrange(jahr, monat)[1])
+                        + _td(days=1))
+
+    with get_db() as cur:
+        # Gegenkonto-Infos aus Terminal-Einstellungen
+        cur.execute(
+            "SELECT KONTO_BANK, KONTO_NEBENKASSE, FIRMA_NAME, FIRMA_ZUSATZ "
+            "FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+            (terminal_nr,)
+        )
+        ts = cur.fetchone() or {}
+
+        # Anfangssaldo: alles vor Monatsanfang (keine Einzelbuchungen UMSATZ_BAR)
+        cur.execute(
+            """SELECT COALESCE(SUM(BETRAG), 0) AS S
+               FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR=%s AND COALESCE(KASSE,'HAUPT')='HAUPT'
+                 AND BUCHUNGSDATUM < %s""",
+            (terminal_nr, erster)
+        )
+        anfangssaldo = int((cur.fetchone() or {}).get('S', 0))
+
+        # Buchungen des Monats (ohne Einzelbuchungen UMSATZ_BAR + ohne TAGESABSCHLUSS-Marker)
+        cur.execute(
+            """SELECT k.*,
+                      CASE WHEN k.TYP='UMSATZ_BAR' AND k.TAGESABSCHLUSS_ID IS NOT NULL
+                           THEN (SELECT ANZAHL_BELEGE FROM XT_KASSE_TAGESABSCHLUSS
+                                 WHERE ID=k.TAGESABSCHLUSS_ID)
+                           ELSE NULL END AS ANZAHL_BELEGE_ZBON
+               FROM XT_KASSE_KASSENBUCH k
+               WHERE k.TERMINAL_NR=%s
+                 AND COALESCE(k.KASSE,'HAUPT')='HAUPT'
+                 AND NOT (k.TYP='UMSATZ_BAR' AND k.VORGANG_ID IS NOT NULL)
+                 AND k.TYP != 'TAGESABSCHLUSS'
+                 AND k.BUCHUNGSDATUM >= %s AND k.BUCHUNGSDATUM < %s
+               ORDER BY k.BUCHUNGSDATUM ASC""",
+            (terminal_nr, erster, naechster_erster)
+        )
+        roh = cur.fetchall()
+
+    konto_bank  = ts.get('KONTO_BANK')  or ''
+    konto_neben = ts.get('KONTO_NEBENKASSE') or ''
+    GEGENKONTO_MAP = {
+        'TRANSFER_KASSE_BANK':  konto_bank,
+        'TRANSFER_BANK_KASSE':  konto_bank,
+        'TRANSFER_KASSE_NEBEN': konto_neben,
+        'TRANSFER_NEBEN_KASSE': konto_neben,
+    }
+    TYP_LABELS = {
+        'EINLAGE':              'Einlage BAR',
+        'ENTNAHME':             'Entnahme BAR',
+        'PRIVATENTNAHME':       'Privatentnahme',
+        'PRIVATEINLAGE':        'Privateinlage',
+        'TRANSFER_KASSE_BANK':  'Transfer Kasse → Bank',
+        'TRANSFER_BANK_KASSE':  'Transfer Bank → Kasse',
+        'TRANSFER_KASSE_NEBEN': 'Transfer → Nebenkasse',
+        'TRANSFER_NEBEN_KASSE': 'Transfer ← Nebenkasse',
+        'ANFANGSBESTAND':       'Kassenanfangsbestand',
+        'JAHRESABSCHLUSS':      'Jahresabschluss',
+        'JAHRESANFANG':         'Kassenanfang (Neujahr)',
+        'UMSATZ_BAR':           'Bareinnahmen',
+    }
+
+    eintraege = []
+    laufend   = anfangssaldo
+    for row in roh:
+        e = dict(row)
+        typ = e.get('TYP', '')
+
+        # Gegenkonto
+        e['gegenkonto_eff'] = (
+            e.get('GEGENKONTO') or GEGENKONTO_MAP.get(typ, '')
+        )
+
+        # Buchungstext anreichern
+        base_text = e.get('BUCHUNGSTEXT') or e.get('NOTIZ') or TYP_LABELS.get(typ, typ)
+        if typ == 'UMSATZ_BAR' and e.get('ANZAHL_BELEGE_ZBON'):
+            base_text = f"{base_text} ({e['ANZAHL_BELEGE_ZBON']} Belege)"
+        e['buchungstext_eff'] = base_text
+
+        # Beleg-Nr: 'diverse' für Z-Bon-Bareinnahmen
+        if typ == 'UMSATZ_BAR' and e.get('TAGESABSCHLUSS_ID'):
+            e['belegnr_eff'] = 'diverse'
+        else:
+            e['belegnr_eff'] = str(e.get('BELEGNUMMER') or '')
+
+        # Laufenden Saldo fortschreiben
+        laufend += int(e.get('BETRAG', 0))
+        e['laufender_saldo'] = laufend
+        eintraege.append(e)
+
+    import locale, calendar as _cal
+    try:
+        locale.setlocale(locale.LC_TIME, 'de_DE.UTF-8')
+    except Exception:
+        pass
+    monat_name = erster.strftime('%B')
+
+    return {
+        'eintraege':    eintraege,
+        'anfangssaldo': anfangssaldo,
+        'endsaldo':     laufend,
+        'erster':       erster,
+        'naechster':    naechster_erster,
+        'monat_name':   monat_name,
+        'jahr':         jahr,
+        'monat':        monat,
+        'firma_name':   ts.get('FIRMA_NAME') or '',
+        'firma_zusatz': ts.get('FIRMA_ZUSATZ') or '',
+    }
 
 
 def kassenbuch_belegnummer_naechste(terminal_nr: int) -> str:
@@ -1640,7 +1907,7 @@ def kassenbuch_info(terminal_nr: int) -> dict:
                FROM XT_KASSE_ZAHLUNGEN z
                JOIN XT_KASSE_VORGAENGE v ON v.ID=z.VORGANG_ID
                WHERE v.TERMINAL_NR=%s AND v.STATUS='ABGESCHLOSSEN'
-                 AND v.BON_DATUM > COALESCE(
+                 AND COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) > COALESCE(
                      (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
                      '2000-01-01')""",
             (terminal_nr, terminal_nr)
@@ -1697,19 +1964,33 @@ def kassenbuch_info(terminal_nr: int) -> dict:
 
 def tagesabschluss_erstellen(terminal_nr: int, mitarbeiter_id: int) -> dict:
     """
-    Erstellt den Z-Bon für heute:
-      1. Tagessummen berechnen
+    Erstellt den Z-Bon:
+      1. Summen seit letztem Z-Bon berechnen
       2. TSE-Transaktion für Tagesabschluss
       3. Z-Bon in DB speichern
       4. Kassenbuch abschließen
     """
     import tse as tse_modul
 
-    heute = date.today()
+    # Zeitstempel des letzten Z-Bons als Schnittgrenze.
+    # ABSCHLUSS_DATUM (Buchungszeitpunkt) ist maßgeblich für die Perioden-Zuordnung,
+    # nicht BON_DATUM (Erstellzeitpunkt). COALESCE fällt auf BON_DATUM zurück für
+    # Altdaten ohne ABSCHLUSS_DATUM.
+    seit_filter = """COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')"""
+    seit_filter_plain = """COALESCE(ABSCHLUSS_DATUM, BON_DATUM) > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')"""
+    seit_filter_kb = """BUCHUNGSDATUM > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')"""
+
     with get_db() as cur:
-        # Umsätze des Tages
+        # Umsätze seit letztem Z-Bon – KUNDENKONTO-Vorgänge werden ausgeschlossen;
+        # sie sind keine Kassenvorgänge, sondern werden als Lieferscheine in CAO gebucht.
         cur.execute(
-            """SELECT
+            f"""SELECT
                  COUNT(DISTINCT v.ID) AS ANZAHL_BELEGE,
                  COALESCE(SUM(v.BETRAG_BRUTTO),0) AS UMSATZ_BRUTTO,
                  COALESCE(SUM(v.BETRAG_NETTO),0)  AS UMSATZ_NETTO,
@@ -1721,52 +2002,81 @@ def tagesabschluss_erstellen(terminal_nr: int, mitarbeiter_id: int) -> dict:
                  COALESCE(SUM(v.NETTO_BETRAG_3),0) AS NETTO_3
                FROM XT_KASSE_VORGAENGE v
                WHERE v.TERMINAL_NR = %s
-                 AND DATE(v.BON_DATUM) = %s
+                 AND {seit_filter}
                  AND v.STATUS = 'ABGESCHLOSSEN'
-                 AND v.VORGANG_TYP = 'Beleg'
-                 AND (v.STORNO_VON_ID IS NULL)""",
-            (terminal_nr, heute)
+                 AND COALESCE(v.VORGANG_TYP, 'Beleg') = 'Beleg'
+                 AND (v.STORNO_VON_ID IS NULL)
+                 AND NOT EXISTS (
+                     SELECT 1 FROM XT_KASSE_ZAHLUNGEN kk
+                     WHERE kk.VORGANG_ID = v.ID AND kk.ZAHLART = 'KUNDENKONTO'
+                 )""",
+            (terminal_nr, terminal_nr)
         )
         umsatz = cur.fetchone()
 
         cur.execute(
-            """SELECT
+            f"""SELECT
                  COALESCE(SUM(CASE WHEN z.ZAHLART='BAR' THEN z.BETRAG ELSE 0 END),0) AS BAR,
-                 COALESCE(SUM(CASE WHEN z.ZAHLART='EC'  THEN z.BETRAG ELSE 0 END),0) AS EC,
-                 COALESCE(SUM(CASE WHEN z.ZAHLART='KUNDENKONTO' THEN z.BETRAG ELSE 0 END),0) AS KK
+                 COALESCE(SUM(CASE WHEN z.ZAHLART='EC'  THEN z.BETRAG ELSE 0 END),0) AS EC
                FROM XT_KASSE_ZAHLUNGEN z
                JOIN XT_KASSE_VORGAENGE v ON v.ID = z.VORGANG_ID
-               WHERE v.TERMINAL_NR = %s AND DATE(v.BON_DATUM) = %s
-                 AND v.STATUS = 'ABGESCHLOSSEN'""",
-            (terminal_nr, heute)
+               WHERE v.TERMINAL_NR = %s AND {seit_filter}
+                 AND v.STATUS = 'ABGESCHLOSSEN'
+                 AND v.STORNO_VON_ID IS NULL""",
+            (terminal_nr, terminal_nr)
         )
         zahlarten = cur.fetchone()
 
+        # Kundenkonto separat – nur zur Information, kein Kassenumsatz
         cur.execute(
-            """SELECT COUNT(*) AS ANZ, COALESCE(SUM(ABS(BETRAG_BRUTTO)),0) AS BET
+            f"""SELECT
+                 COUNT(DISTINCT v.ID) AS KK_BELEGE,
+                 COALESCE(SUM(z.BETRAG), 0) AS KK_BETRAG
+               FROM XT_KASSE_ZAHLUNGEN z
+               JOIN XT_KASSE_VORGAENGE v ON v.ID = z.VORGANG_ID
+               WHERE z.ZAHLART = 'KUNDENKONTO'
+                 AND v.TERMINAL_NR = %s AND {seit_filter}
+                 AND v.STATUS = 'ABGESCHLOSSEN'""",
+            (terminal_nr, terminal_nr)
+        )
+        kk_info = cur.fetchone()
+
+        cur.execute(
+            f"""SELECT COUNT(*) AS ANZ, COALESCE(SUM(ABS(BETRAG_BRUTTO)),0) AS BET
                FROM XT_KASSE_VORGAENGE
-               WHERE TERMINAL_NR = %s AND DATE(BON_DATUM) = %s
-                 AND STATUS = 'STORNIERT'""",
-            (terminal_nr, heute)
+               WHERE TERMINAL_NR = %s AND {seit_filter_plain}
+                 AND STATUS = 'STORNIERT'
+                 AND STORNO_VON_ID IS NULL""",
+            (terminal_nr, terminal_nr)
         )
         stornos = cur.fetchone()
 
         cur.execute(
-            """SELECT COALESCE(SUM(CASE WHEN TYP='EINLAGE' THEN BETRAG ELSE 0 END),0) AS EIN,
+            f"""SELECT COALESCE(SUM(CASE WHEN TYP='EINLAGE' THEN BETRAG ELSE 0 END),0) AS EIN,
                       COALESCE(SUM(CASE WHEN TYP='ENTNAHME' THEN ABS(BETRAG) ELSE 0 END),0) AS ENT
                FROM XT_KASSE_KASSENBUCH
-               WHERE TERMINAL_NR = %s AND DATE(BUCHUNGSDATUM) = %s""",
-            (terminal_nr, heute)
+               WHERE TERMINAL_NR = %s AND {seit_filter_kb}""",
+            (terminal_nr, terminal_nr)
         )
         kb = cur.fetchone()
 
-    kassenbestand_anfang = kassenbuch_saldo(terminal_nr) - \
-        (umsatz['UMSATZ_BAR'] or 0) - (kb['EIN'] or 0) + (kb['ENT'] or 0)
+    # Anfangssaldo = KASSENBESTAND_ENDE des letzten Z-Bons (robust gegenüber
+    # allen Buchungstypen, die zwischen zwei Z-Bons anfallen können).
+    # Beim allerersten Z-Bon gibt es keinen Vorgänger → 0.
+    with get_db() as cur:
+        cur.execute(
+            """SELECT KASSENBESTAND_ENDE FROM XT_KASSE_TAGESABSCHLUSS
+               WHERE TERMINAL_NR = %s ORDER BY ZEITPUNKT DESC LIMIT 1""",
+            (terminal_nr,)
+        )
+        row = cur.fetchone()
+    kassenbestand_anfang = int((row or {}).get('KASSENBESTAND_ENDE') or 0)
     kassenbestand_ende   = kassenbuch_saldo(terminal_nr)
 
     # TSE Tagesabschluss
     tse_data = {}
     jetzt = datetime.now()
+    heute = jetzt.date()
 
     with get_db_transaction() as cur:
         z_nr = naechste_z_nr(terminal_nr, cur)
@@ -1783,13 +2093,34 @@ def tagesabschluss_erstellen(terminal_nr: int, mitarbeiter_id: int) -> dict:
              umsatz['ANZAHL_BELEGE'], umsatz['UMSATZ_BRUTTO'], umsatz['UMSATZ_NETTO'],
              umsatz['MWST_1'], umsatz['MWST_2'], umsatz['MWST_3'],
              umsatz['NETTO_1'], umsatz['NETTO_2'], umsatz['NETTO_3'],
-             zahlarten['BAR'], zahlarten['EC'], zahlarten['KK'],
+             zahlarten['BAR'], zahlarten['EC'], kk_info['KK_BETRAG'],
              kassenbestand_anfang, kb['EIN'], kb['ENT'], kassenbestand_ende,
              stornos['ANZ'], stornos['BET'])
         )
         ta_id = cur.lastrowid
 
-        # Kassenbuch-Abschlusszeile
+        # Kassenbuch: Sammelposten Bar-Einnahmen für diese Z-Bon-Periode
+        if zahlarten['BAR']:
+            cur.execute(
+                """INSERT INTO XT_KASSE_KASSENBUCH
+                   (TERMINAL_NR, BUCHUNGSDATUM, TYP, BETRAG,
+                    TAGESABSCHLUSS_ID, MITARBEITER_ID, BUCHUNGSTEXT)
+                   VALUES (%s, %s, 'UMSATZ_BAR', %s, %s, %s, %s)""",
+                (terminal_nr, jetzt, zahlarten['BAR'], ta_id, mitarbeiter_id,
+                 f'Bareinnahmen Z-Bon {z_nr}')
+            )
+        # Per-Transaktion geschriebene UMSATZ_BAR-Einzeleinträge entfernen –
+        # der Sammelposten oben ersetzt sie vollständig im Kassenbuch.
+        cur.execute(
+            f"""DELETE FROM XT_KASSE_KASSENBUCH
+               WHERE TERMINAL_NR = %s
+                 AND TYP = 'UMSATZ_BAR'
+                 AND VORGANG_ID IS NOT NULL
+                 AND {seit_filter_kb}""",
+            (terminal_nr, terminal_nr)
+        )
+
+        # Kassenbuch-Abschlusszeile (Marker, BETRAG=0)
         cur.execute(
             """INSERT INTO XT_KASSE_KASSENBUCH
                (TERMINAL_NR, BUCHUNGSDATUM, TYP, BETRAG, TAGESABSCHLUSS_ID, MITARBEITER_ID)
@@ -1968,11 +2299,33 @@ def vorgang_zu_lieferschein(vorgang_id: int, adressen_id: int,
 # ─────────────────────────────────────────────────────────────
 
 def xbon_daten(terminal_nr: int) -> dict:
-    """Sammelt Zwischenabschluss-Daten ohne Nullstellung."""
-    heute = date.today()
+    """Sammelt Zwischenabschluss-Daten ohne Nullstellung.
+    Erfasst alle Buchungen seit dem letzten Z-Bon (nicht nur heute)."""
+    # ABSCHLUSS_DATUM (Buchungszeitpunkt) ist maßgeblich für die Perioden-Zuordnung,
+    # nicht BON_DATUM (Erstellzeitpunkt).
+    seit_filter = """COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')"""
+    seit_filter_plain = """COALESCE(ABSCHLUSS_DATUM, BON_DATUM) > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')"""
+    seit_filter_kb = """BUCHUNGSDATUM > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')"""
+
     with get_db() as cur:
+        # Letzten Z-Bon-Zeitpunkt ermitteln (für Logging)
         cur.execute(
-            """SELECT
+            "SELECT MAX(ZEITPUNKT) AS SEIT FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s",
+            (terminal_nr,)
+        )
+        _seit_row = cur.fetchone()
+        _seit_val = (_seit_row or {}).get('SEIT') or '2000-01-01'
+        log.info("xbon_daten Terminal %d: Periode seit %s", terminal_nr, _seit_val)
+
+        # Kassenumsatz – KUNDENKONTO-Vorgänge ausgeschlossen (→ Lieferscheine in CAO)
+        cur.execute(
+            f"""SELECT
                  COUNT(DISTINCT v.ID) AS ANZAHL_BELEGE,
                  COALESCE(SUM(v.BETRAG_BRUTTO),0) AS UMSATZ_BRUTTO,
                  COALESCE(SUM(v.BETRAG_NETTO),0)  AS UMSATZ_NETTO,
@@ -1983,44 +2336,94 @@ def xbon_daten(terminal_nr: int) -> dict:
                  COALESCE(SUM(v.NETTO_BETRAG_2),0) AS NETTO_2,
                  COALESCE(SUM(v.NETTO_BETRAG_3),0) AS NETTO_3
                FROM XT_KASSE_VORGAENGE v
-               WHERE v.TERMINAL_NR = %s AND DATE(v.BON_DATUM) = %s
-                 AND v.STATUS = 'ABGESCHLOSSEN'""",
-            (terminal_nr, heute)
+               WHERE v.TERMINAL_NR = %s AND {seit_filter}
+                 AND v.STATUS = 'ABGESCHLOSSEN'
+                 AND COALESCE(v.VORGANG_TYP, 'Beleg') = 'Beleg'
+                 AND v.STORNO_VON_ID IS NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM XT_KASSE_ZAHLUNGEN kk
+                     WHERE kk.VORGANG_ID = v.ID AND kk.ZAHLART = 'KUNDENKONTO'
+                 )""",
+            (terminal_nr, terminal_nr)
         )
         umsatz = cur.fetchone()
+        log.info("xbon_daten Terminal %d: %d Belege, %d ct Brutto",
+                 terminal_nr, umsatz['ANZAHL_BELEGE'], umsatz['UMSATZ_BRUTTO'])
 
         cur.execute(
-            """SELECT
+            f"""SELECT
                  COALESCE(SUM(CASE WHEN z.ZAHLART='BAR' THEN z.BETRAG ELSE 0 END),0) AS BAR,
-                 COALESCE(SUM(CASE WHEN z.ZAHLART='EC'  THEN z.BETRAG ELSE 0 END),0) AS EC,
-                 COALESCE(SUM(CASE WHEN z.ZAHLART='KUNDENKONTO' THEN z.BETRAG ELSE 0 END),0) AS KK
+                 COALESCE(SUM(CASE WHEN z.ZAHLART='EC'  THEN z.BETRAG ELSE 0 END),0) AS EC
                FROM XT_KASSE_ZAHLUNGEN z
                JOIN XT_KASSE_VORGAENGE v ON v.ID = z.VORGANG_ID
-               WHERE v.TERMINAL_NR = %s AND DATE(v.BON_DATUM) = %s
-                 AND v.STATUS = 'ABGESCHLOSSEN'""",
-            (terminal_nr, heute)
+               WHERE v.TERMINAL_NR = %s AND {seit_filter}
+                 AND v.STATUS = 'ABGESCHLOSSEN'
+                 AND v.STORNO_VON_ID IS NULL""",
+            (terminal_nr, terminal_nr)
         )
         zahlarten = cur.fetchone()
 
+        # Kundenkonto-Info (kein Kassenumsatz, nur zur Anzeige)
         cur.execute(
-            """SELECT COUNT(*) AS ANZ, COALESCE(SUM(ABS(BETRAG_BRUTTO)),0) AS BET
+            f"""SELECT
+                 COUNT(DISTINCT v.ID) AS KK_BELEGE,
+                 COALESCE(SUM(z.BETRAG), 0) AS KK_BETRAG
+               FROM XT_KASSE_ZAHLUNGEN z
+               JOIN XT_KASSE_VORGAENGE v ON v.ID = z.VORGANG_ID
+               WHERE z.ZAHLART = 'KUNDENKONTO'
+                 AND v.TERMINAL_NR = %s AND {seit_filter}
+                 AND v.STATUS = 'ABGESCHLOSSEN'""",
+            (terminal_nr, terminal_nr)
+        )
+        kk_info = cur.fetchone()
+
+        cur.execute(
+            f"""SELECT COUNT(*) AS ANZ, COALESCE(SUM(ABS(BETRAG_BRUTTO)),0) AS BET
                FROM XT_KASSE_VORGAENGE
-               WHERE TERMINAL_NR = %s AND DATE(BON_DATUM) = %s AND STATUS='STORNIERT'""",
-            (terminal_nr, heute)
+               WHERE TERMINAL_NR = %s AND {seit_filter_plain}
+                 AND STATUS='STORNIERT'
+                 AND STORNO_VON_ID IS NULL""",
+            (terminal_nr, terminal_nr)
         )
         stornos = cur.fetchone()
 
         cur.execute(
-            """SELECT COALESCE(SUM(CASE WHEN TYP='EINLAGE' THEN BETRAG ELSE 0 END),0) AS EIN,
+            f"""SELECT COALESCE(SUM(CASE WHEN TYP='EINLAGE' THEN BETRAG ELSE 0 END),0) AS EIN,
                       COALESCE(SUM(CASE WHEN TYP='ENTNAHME' THEN ABS(BETRAG) ELSE 0 END),0) AS ENT
                FROM XT_KASSE_KASSENBUCH
-               WHERE TERMINAL_NR = %s AND DATE(BUCHUNGSDATUM) = %s""",
-            (terminal_nr, heute)
+               WHERE TERMINAL_NR = %s AND {seit_filter_kb}""",
+            (terminal_nr, terminal_nr)
         )
         kb = cur.fetchone()
 
+        # Diagnose-Log: einzelne Belege dieser Periode (nur Info-Level)
+        cur.execute(
+            f"""SELECT v.ID, v.BON_NR, v.STATUS, v.VORGANG_TYP,
+                       v.BON_DATUM, v.ABSCHLUSS_DATUM, v.BETRAG_BRUTTO, v.STORNO_VON_ID
+               FROM XT_KASSE_VORGAENGE v
+               WHERE v.TERMINAL_NR = %s
+                 AND COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) > COALESCE(
+                       (SELECT MAX(ZEITPUNKT) FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR=%s),
+                       '2000-01-01')
+               ORDER BY COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM)""",
+            (terminal_nr, terminal_nr)
+        )
+        _diag_bons = cur.fetchall()
+        for _b in _diag_bons:
+            log.info("  Bon %d Nr.%s Status=%s Typ=%s Abschluss=%s Brutto=%d ct Storno=%s",
+                     _b['ID'], _b['BON_NR'], _b['STATUS'], _b['VORGANG_TYP'],
+                     _b['ABSCHLUSS_DATUM'], _b['BETRAG_BRUTTO'], _b['STORNO_VON_ID'])
+
     saldo = kassenbuch_saldo(terminal_nr)
-    anfang = saldo - (zahlarten['BAR'] or 0) - (kb['EIN'] or 0) + (kb['ENT'] or 0)
+
+    with get_db() as cur:
+        cur.execute(
+            """SELECT KASSENBESTAND_ENDE FROM XT_KASSE_TAGESABSCHLUSS
+               WHERE TERMINAL_NR = %s ORDER BY ZEITPUNKT DESC LIMIT 1""",
+            (terminal_nr,)
+        )
+        row = cur.fetchone()
+    anfang = int((row or {}).get('KASSENBESTAND_ENDE') or 0)
 
     return {
         'anzahl_belege':        umsatz['ANZAHL_BELEGE'],
@@ -2032,10 +2435,11 @@ def xbon_daten(terminal_nr: int) -> dict:
         'netto_1':              umsatz['NETTO_1'],
         'netto_2':              umsatz['NETTO_2'],
         'netto_3':              umsatz['NETTO_3'],
-        'umsatz_bar':           zahlarten['BAR'],
-        'umsatz_ec':            zahlarten['EC'],
-        'umsatz_kundenkonto':   zahlarten['KK'],
-        'umsatz_sonstige':      0,
+        'umsatz_bar':                zahlarten['BAR'],
+        'umsatz_ec':                 zahlarten['EC'],
+        'umsatz_kundenkonto':        kk_info['KK_BETRAG'],
+        'anzahl_belege_kundenkonto': kk_info['KK_BELEGE'],
+        'umsatz_sonstige':           0,
         'anzahl_stornos':       stornos['ANZ'],
         'betrag_stornos':       stornos['BET'],
         'kassenbestand_anfang': anfang,
