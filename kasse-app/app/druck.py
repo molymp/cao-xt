@@ -162,6 +162,23 @@ def _tse_qr_text(vorgang: dict) -> str:
     )
 
 
+# ── Bon-Kopf (Name + Adresse + Slogan) ───────────────────────
+
+def _drucke_kopf(b: _Bon, firma: dict):
+    """Druckt den zentrierten Firmenkopf auf den Bon (Name, Adresse, Infos)."""
+    b.raw(_ALIGN_CENTER)
+    b.raw(_BOLD_ON).raw(_DOUBLE_HW)
+    b.text(firma['name'] + '\n')
+    b.raw(_NORMAL_SIZE).raw(_BOLD_OFF)
+    if firma['strasse']:
+        b.text(firma['strasse'] + '\n')
+    if firma['ort']:
+        b.text(firma['ort'] + '\n')
+    b.text('Der  Laden  von  Buergern  fuer  Buerger\n')
+    b.text('Mo.-Fr. 6:30h-18:00h     Sa. 7:00-12:00h\n')
+    b.text('Tel. 08847/6956156    habacher-dorfladen.de\n')
+
+
 # ── Bon-Bytes bauen ───────────────────────────────────────────
 
 def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
@@ -179,14 +196,7 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
     b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
 
     # ── Kopf ─────────────────────────────────────────────────
-    b.raw(_ALIGN_CENTER)
-    b.raw(_BOLD_ON).raw(_DOUBLE_HW)
-    b.text(firma['name'] + '\n')
-    b.raw(_NORMAL_SIZE).raw(_BOLD_OFF)
-    if firma['strasse']:
-        b.text(firma['strasse'] + '\n')
-    if firma['ort']:
-        b.text(firma['ort'] + '\n')
+    _drucke_kopf(b, firma)
     b.nl()
     if firma['ust_id']:
         b.text(f"USt-IdNr.: {firma['ust_id']}\n")
@@ -378,9 +388,7 @@ def drucke_xbon(terminal_nr: int, daten: dict, mwst_saetze: dict):
     b = _Bon()
     b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
     firma = _firma_info(terminal_nr)
-    b.raw(_ALIGN_CENTER).raw(_BOLD_ON).raw(_DOUBLE_HW)
-    b.text(firma['name'] + '\n')
-    b.raw(_NORMAL_SIZE).raw(_BOLD_OFF)
+    _drucke_kopf(b, firma)
     b.trenn()
     b.raw(_BOLD_ON).text('X-BON (Zwischenabschluss)\n').raw(_BOLD_OFF)
     b.text(f"{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
@@ -397,9 +405,7 @@ def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict):
     b = _Bon()
     b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
     firma = _firma_info(terminal_nr)
-    b.raw(_ALIGN_CENTER).raw(_BOLD_ON).raw(_DOUBLE_HW)
-    b.text(firma['name'] + '\n')
-    b.raw(_NORMAL_SIZE).raw(_BOLD_OFF)
+    _drucke_kopf(b, firma)
     b.trenn()
     b.raw(_BOLD_ON).text('Z-BON (Tagesabschluss)\n').raw(_BOLD_OFF)
     b.raw(_ALIGN_LEFT)
