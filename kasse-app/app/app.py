@@ -984,8 +984,11 @@ def api_tagesabschluss():
         return jsonify({'ok': False, 'fehler': str(e)}), 500
 
     mwst_saetze = kl.mwst_saetze_laden()
+    ts = _terminal_settings(terminal_nr)
     try:
-        druck.drucke_zbon(terminal_nr, ta, mwst_saetze)
+        druck.drucke_zbon(terminal_nr, ta, mwst_saetze,
+                          trainings_modus=ts['trainings_modus'],
+                          nicht_produktiv=ts['tse_nicht_produktiv'])
     except Exception as e:
         log.warning("Z-Bon Druck fehlgeschlagen: %s", e)
         return jsonify({'ok': True, 'warnung': f'Druck fehlgeschlagen: {e}',
@@ -1350,8 +1353,11 @@ def api_zbon_nochmal(ta_id):
     if not ta:
         return jsonify({'ok': False, 'fehler': 'Nicht gefunden'}), 404
     mwst_saetze = kl.mwst_saetze_laden()
+    ts = _terminal_settings(config.TERMINAL_NR)
     try:
-        druck.drucke_zbon(config.TERMINAL_NR, ta, mwst_saetze)
+        druck.drucke_zbon(config.TERMINAL_NR, ta, mwst_saetze,
+                          trainings_modus=ts['trainings_modus'],
+                          nicht_produktiv=ts['tse_nicht_produktiv'])
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)})
     return jsonify({'ok': True})

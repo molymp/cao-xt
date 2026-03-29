@@ -437,13 +437,31 @@ def drucke_xbon(terminal_nr: int, daten: dict, mwst_saetze: dict):
     _sende(ip, port, b.bytes())
 
 
-def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict):
+def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict,
+                trainings_modus: bool = False, nicht_produktiv: bool = False):
     """Druckt den Z-Bon (Tagesabschluss mit TSE-Signatur)."""
+    ist_training = trainings_modus
+    ist_sandbox  = nicht_produktiv and not ist_training
+
     b = _Bon()
     b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
     firma = _firma_info(terminal_nr)
     _drucke_kopf(b, firma)
     b.trenn()
+
+    if ist_training:
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TRAININGSBON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+        b.raw(_BOLD_ON).text('Kein steuerrelevanter Beleg!\n').raw(_BOLD_OFF)
+        b.trenn()
+    elif ist_sandbox:
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TEST-BON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+        b.raw(_BOLD_ON).text('Fiskaly Sandbox – kein steuerrelevanter Beleg!\n').raw(_BOLD_OFF)
+        b.trenn()
+
     b.raw(_BOLD_ON).text('Z-BON (Tagesabschluss)\n').raw(_BOLD_OFF)
     b.raw(_ALIGN_LEFT)
     zeitpunkt = tagesabschluss.get('ZEITPUNKT') or datetime.now()
@@ -463,9 +481,10 @@ def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict):
         'netto_1':              tagesabschluss['NETTO_1'],
         'netto_2':              tagesabschluss['NETTO_2'],
         'netto_3':              tagesabschluss.get('NETTO_3', 0),
-        'umsatz_bar':           tagesabschluss['UMSATZ_BAR'],
-        'umsatz_ec':            tagesabschluss['UMSATZ_EC'],
-        'umsatz_kundenkonto':   tagesabschluss['UMSATZ_KUNDENKONTO'],
+        'umsatz_bar':                tagesabschluss['UMSATZ_BAR'],
+        'umsatz_ec':                 tagesabschluss['UMSATZ_EC'],
+        'umsatz_kundenkonto':        tagesabschluss.get('UMSATZ_KUNDENKONTO') or 0,
+        'anzahl_belege_kundenkonto': tagesabschluss.get('ANZAHL_BELEGE_KUNDENKONTO') or 0,
         'anzahl_stornos':       tagesabschluss['ANZAHL_STORNOS'],
         'betrag_stornos':       tagesabschluss['BETRAG_STORNOS'],
         'kassenbestand_anfang': tagesabschluss['KASSENBESTAND_ANFANG'],
@@ -483,6 +502,17 @@ def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict):
     sig = tagesabschluss.get('TSE_SIGNATUR') or 'n/a'
     for i in range(0, min(len(sig), 96), 48):
         b.text(sig[i:i+48] + '\n')
+
+    if ist_training:
+        b.trenn()
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TRAININGSBON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
+    elif ist_sandbox:
+        b.trenn()
+        b.raw(_ALIGN_CENTER).raw(_DOUBLE_HW)
+        b.text('TEST-BON\n')
+        b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
 
     b.nl(6).raw(_CUT)
     ip, port = _drucker_addr(terminal_nr)
@@ -505,7 +535,6 @@ def _print_abschluss_zeilen(b: _Bon, d: dict, mwst_saetze: dict):
     b.trenn('-', 30)
     b.text(f"Bar:            {_e(d['umsatz_bar'])}\n")
     b.text(f"Unbar/Karte:    {_e(d['umsatz_ec'])}\n")
-    b.text(f"Kundenkonto:    {_e(d['umsatz_kundenkonto'])}\n")
     if d['anzahl_stornos']:
         b.text(f"Stornos:  {d['anzahl_stornos']}x  {_e(d['betrag_stornos'])}\n")
     b.trenn('-', 30)
@@ -515,6 +544,11 @@ def _print_abschluss_zeilen(b: _Bon, d: dict, mwst_saetze: dict):
     b.raw(_BOLD_ON)
     b.text(f"Kassenstand Ende:   {_e(d['kassenbestand_ende'])}\n")
     b.raw(_BOLD_OFF)
+    if d.get('umsatz_kundenkonto'):
+        b.trenn('-', 30)
+        b.text(f"Info Kundenkonto:  {d.get('anzahl_belege_kundenkonto', 0)}x"
+               f"  {_e(d['umsatz_kundenkonto'])}\n")
+        b.text(f"(kein Kassenumsatz - Lieferschein in CAO)\n")
 
 
 def test_drucker(terminal_nr: int) -> bool:
