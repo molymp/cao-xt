@@ -484,7 +484,11 @@ def api_vorgang_suche():
             f"       (SELECT BON_NR FROM XT_KASSE_VORGAENGE "
             f"        WHERE STORNO_VON_ID = v.ID LIMIT 1) AS STORNIERT_DURCH_BON_NR, "
             f"       (SELECT GROUP_CONCAT(DISTINCT z.ZAHLART ORDER BY z.ZAHLART SEPARATOR '/') "
-            f"        FROM XT_KASSE_ZAHLUNGEN z WHERE z.VORGANG_ID = v.ID) AS ZAHLARTEN "
+            f"        FROM XT_KASSE_ZAHLUNGEN z WHERE z.VORGANG_ID = v.ID) AS ZAHLARTEN, "
+            f"       (SELECT ta.Z_NR FROM XT_KASSE_TAGESABSCHLUSS ta "
+            f"        WHERE ta.TERMINAL_NR = v.TERMINAL_NR "
+            f"          AND ta.ZEITPUNKT >= COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) "
+            f"        ORDER BY ta.ZEITPUNKT ASC LIMIT 1) AS Z_BON_NR "
             f"FROM XT_KASSE_VORGAENGE v "
             f"WHERE {' AND '.join(bedingungen)} ORDER BY v.BON_DATUM DESC LIMIT 100",
             params
