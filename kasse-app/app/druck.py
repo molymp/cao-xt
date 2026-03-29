@@ -174,7 +174,7 @@ def _drucke_kopf(b: _Bon, firma: dict):
         b.text(firma['strasse'] + '\n')
     if firma['ort']:
         b.text(firma['ort'] + '\n')
-    b.text('Der  Laden  von  Buergern  fuer  Buerger\n')
+    b.text('Der  Laden  von  Bürgern  für  Bürger\n')
     b.text('Mo.-Fr. 6:30h-18:00h     Sa. 7:00-12:00h\n')
     b.text('Tel. 08847/6956156    habacher-dorfladen.de\n')
 
@@ -288,7 +288,7 @@ def _bon_bytes(vorgang: dict, positionen: list, zahlungen: list,
             label_geg = f"{zahlart_text} Gegeben:"
             b.text(f"{label_geg:<36} {_e(z['BETRAG_GEGEBEN']):>11}\n")
             b.raw(_BOLD_ON)
-            b.text(f"{'Rueckgeld:':<36} {_e(wechsel):>11}\n")
+            b.text(f"{'Rückgeld:':<36} {_e(wechsel):>11}\n")
             b.raw(_BOLD_OFF)
         else:
             b.text(f"{zahlart_text:<36} {_e(z['BETRAG']):>11}\n")
