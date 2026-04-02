@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Habacher Dorfladen – Mitarbeiter-Handbuch Kasse</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+/* ── Grundlayout ──────────────────────────────────────── */
+:root {
+  --gruen:      #2d5a27;
+  --gruen-hell: #4a8a3f;
+  --creme:      #faf7f2;
+  --creme-dark: #ede8df;
+  --text:       #1a1a1a;
+  --text-hell:  #555;
+  --blau:       #1e40af;
+  --gelb:       #854d0e;
+  --rot:        #991b1b;
+  --sidebar-w:  260px;
+  --radius:     10px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--creme); color: var(--text); line-height: 1.65; font-size: 15px; }
+
+/* ── Seitenstruktur ───────────────────────────────────── */
+.layout { display: flex; min-height: 100vh; }
+
+/* ── Sidebar ──────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--gruen); color: white;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; padding: 0 0 2rem;
+}
+.sidebar-logo {
+  background: rgba(0,0,0,0.25); padding: 1.4rem 1.2rem;
+  font-size: 1.05rem; font-weight: 700; line-height: 1.35;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.sidebar-logo small {
+  display: block; font-size: 0.75rem; font-weight: 400;
+  opacity: 0.75; margin-top: 2px;
+}
+.sidebar nav { padding: 0.5rem 0; }
+.nav-group-title {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: rgba(255,255,255,0.5);
+  padding: 1rem 1.2rem 0.3rem;
+}
+.sidebar nav a {
+  display: block; padding: 0.5rem 1.2rem 0.5rem 1.4rem;
+  color: rgba(255,255,255,0.85); text-decoration: none;
+  font-size: 0.88rem; border-left: 3px solid transparent; transition: all 0.15s;
+}
+.sidebar nav a:hover, .sidebar nav a.aktiv {
+  background: rgba(255,255,255,0.12); color: white; border-left-color: #8bc34a;
+}
+.sidebar nav a.kapitel { font-weight: 700; font-size: 0.92rem; padding-top: 0.65rem; }
+.sidebar nav a.unter   { padding-left: 2.2rem; }
+
+/* ── Hauptinhalt ──────────────────────────────────────── */
+.inhalt { flex: 1; padding: 2rem 2.5rem; max-width: 860px; overflow-x: hidden; }
+
+/* ── Titelseite ───────────────────────────────────────── */
+.titelseite {
+  background: linear-gradient(135deg, var(--gruen) 0%, var(--gruen-hell) 100%);
+  color: white; border-radius: var(--radius); padding: 2.5rem 2rem;
+  margin-bottom: 2.5rem; text-align: center;
+}
+.titelseite h1  { font-size: 2rem; margin-bottom: 0.4rem; }
+.titelseite .sub { font-size: 1.1rem; opacity: 0.85; margin-bottom: 1rem; }
+.version-info { display: flex; gap: 1.2rem; flex-wrap: wrap; justify-content: center;
+  font-size: 0.82rem; opacity: 0.75; }
+
+/* ── Inhaltsverzeichnis ───────────────────────────────── */
+.kapitel-liste { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+  gap: 1rem; margin-top: 1rem; }
+.kapitel-karte {
+  display: block; background: white; border: 1px solid var(--creme-dark);
+  border-radius: var(--radius); padding: 1.1rem 1.2rem; text-decoration: none;
+  color: var(--text); transition: transform 0.12s, box-shadow 0.12s;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+.kapitel-karte:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
+.kapitel-karte .nr   { font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--gruen); margin-bottom: 0.25rem; }
+.kapitel-karte .titel { font-size: 1rem; font-weight: 700; margin-bottom: 0.3rem; }
+.kapitel-karte .beschr { font-size: 0.8rem; color: var(--text-hell); line-height: 1.4; }
+
+/* ── Kapitel-Elemente ─────────────────────────────────── */
+.abschnitt { margin-bottom: 2.5rem; }
+.kapitel-header {
+  display: flex; align-items: center; gap: 1.2rem;
+  background: linear-gradient(135deg, var(--gruen) 0%, var(--gruen-hell) 100%);
+  color: white; border-radius: var(--radius); padding: 1.2rem 1.5rem; margin-bottom: 1.5rem;
+}
+.kapitel-nr { font-size: 2.5rem; font-weight: 900; opacity: 0.35; line-height: 1; }
+.kapitel-header h1 { font-size: 1.5rem; margin-bottom: 0.15rem; }
+.untertitel { font-size: 0.85rem; opacity: 0.8; }
+
+h2 { font-size: 1.15rem; color: var(--gruen); margin: 1.6rem 0 0.6rem;
+  border-bottom: 2px solid var(--creme-dark); padding-bottom: 0.4rem; }
+h3 { font-size: 1rem; color: var(--text); margin: 1.2rem 0 0.5rem; font-weight: 700; }
+p  { margin-bottom: 0.8rem; }
+
+/* ── Schritt-für-Schritt ──────────────────────────────── */
+.schritte { list-style: none; padding: 0; margin: 0.8rem 0 1.2rem; }
+.schritte li {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: white; border: 1px solid var(--creme-dark);
+  border-radius: var(--radius); padding: 0.9rem 1rem; margin-bottom: 0.6rem;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+.schritt-nr {
+  background: var(--gruen); color: white; font-weight: 700; font-size: 0.85rem;
+  border-radius: 50%; width: 28px; height: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.schritt-text { flex: 1; line-height: 1.55; font-size: 0.92rem; }
+.schritt-text strong { display: block; margin-bottom: 0.15rem; }
+
+/* ── Hinweis-Boxen ────────────────────────────────────── */
+.hinweis, .achtung, .tipp {
+  border-radius: var(--radius); padding: 0.9rem 1rem;
+  margin: 0.8rem 0 1.2rem; font-size: 0.88rem;
+}
+.hinweis { background: #eff6ff; border-left: 4px solid #3b82f6; }
+.achtung { background: #fff7ed; border-left: 4px solid #f59e0b; }
+.tipp    { background: #f0fdf4; border-left: 4px solid var(--gruen-hell); }
+.hinweis-titel { font-weight: 700; margin-bottom: 0.3rem; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── Screenshot-Platzhalter ───────────────────────────── */
+.screenshot {
+  border: 2px dashed var(--creme-dark); border-radius: var(--radius);
+  background: #f8fafc; padding: 2rem 1.5rem; text-align: center;
+  margin: 1.2rem 0; color: #64748b; position: relative;
+}
+.screenshot .foto-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.screenshot .beschr { font-weight: 700; font-size: 0.95rem; color: #334155; margin-bottom: 0.3rem; }
+.screenshot .hinweis-text { font-size: 0.8rem; color: #94a3b8; }
+.screenshot img { max-width: 100%; border-radius: 8px; display: block; margin: 0 auto; }
+.upload-knopf-leiste { margin-top: 0.8rem; display: flex; gap: 8px;
+  justify-content: center; flex-wrap: wrap; }
+.upload-knopf {
+  padding: 7px 16px; background: var(--gruen); color: white;
+  border: none; border-radius: 6px; cursor: pointer;
+  font-size: 0.85rem; font-weight: 700; font-family: 'Segoe UI', Arial, sans-serif;
+}
+.upload-knopf:hover { background: var(--gruen-hell); }
+.upload-knopf:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Diagramme ────────────────────────────────────────── */
+.diagramm-container {
+  background: white; border-radius: var(--radius); padding: 1.5rem;
+  margin: 1.2rem 0; box-shadow: 0 1px 6px rgba(0,0,0,0.07); overflow-x: auto;
+}
+.diagramm-container h4 {
+  margin-top: 0; margin-bottom: 1rem; color: var(--gruen);
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
+}
+/* Mermaid-Kontrast */
+.mermaid .edgeLabel .label p,
+.mermaid .edgeLabel foreignObject div,
+.mermaid span.edgeLabel { color: #1a3a17 !important; font-weight: 700; }
+.mermaid .edgeLabel rect  { fill: #ffffff !important; stroke: none !important; }
+.mermaid .edgePath .path  { stroke: #2d5a27 !important; }
+.mermaid marker path      { fill:   #2d5a27 !important; }
+
+/* ── UI-Elemente ──────────────────────────────────────── */
+.taste {
+  display: inline-block; background: var(--gruen); color: white;
+  font-weight: 700; font-size: 0.82rem; padding: 2px 10px;
+  border-radius: 5px; white-space: nowrap;
+}
+.taste.grau { background: #64748b; }
+.taste.rot  { background: var(--rot); }
+.taste.gelb { background: #d97706; }
+
+/* ── Tabellen ─────────────────────────────────────────── */
+table {
+  width: 100%; border-collapse: collapse; font-size: 0.88rem;
+  margin: 0.8rem 0 1.2rem; background: white;
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+th { background: var(--gruen); color: white; padding: 9px 14px; text-align: left;
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--creme-dark); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--creme); }
+
+/* ── Abschnitt-Trenner ────────────────────────────────── */
+hr { border: none; border-top: 2px solid var(--creme-dark); margin: 2.5rem 0; }
+
+/* ── Edit-Toolbar ─────────────────────────────────────── */
+#edit-toolbar {
+  position: fixed; top: 12px; right: 16px; z-index: 9999;
+  background: white; border-radius: 10px; padding: 8px 12px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.18);
+  font-family: 'Segoe UI', Arial, sans-serif; font-size: 0.88rem;
+}
+#toolbar-ansicht, #toolbar-bearbeitung { display: flex; gap: 8px; align-items: center; }
+.tbtn { padding: 7px 15px; border: none; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; font-weight: 700; }
+.tbtn-zurueck    { background: #f1f5f9; color: var(--text); }
+.tbtn-zurueck:hover    { background: #e2e8f0; }
+.tbtn-bearbeiten { background: var(--gruen); color: white; }
+.tbtn-bearbeiten:hover { background: var(--gruen-hell); }
+.tbtn-speichern  { background: #2563eb; color: white; }
+.tbtn-speichern:hover  { background: #1d4ed8; }
+.tbtn-abbrechen  { background: #f1f5f9; color: var(--text); }
+.tbtn-abbrechen:hover  { background: var(--creme-dark); }
+.edit-badge { background: #fef9c3; color: #854d0e; font-weight: 700;
+  font-size: 0.78rem; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid #fde68a; white-space: nowrap; }
+
+/* Edit-Modus */
+body.edit-mode [contenteditable="true"] {
+  outline: 2px dashed #93c5fd; border-radius: 3px;
+  cursor: text; min-height: 1em; padding: 1px 3px;
+}
+body.edit-mode [contenteditable="true"]:hover { outline-color: #3b82f6; }
+body.edit-mode [contenteditable="true"]:focus {
+  outline: 2px solid #2563eb; background: rgba(37,99,235,0.04);
+}
+
+/* ── Toast ────────────────────────────────────────────── */
+#edit-toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  padding: 10px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  pointer-events: none; transition: opacity 0.4s; opacity: 0;
+}
+
+/* ── Druck ────────────────────────────────────────────── */
+@media print {
+  .sidebar { display: none; }
+  .inhalt { padding: 1rem; max-width: 100%; }
+  #edit-toolbar { display: none !important; }
+  h2, h3 { page-break-after: avoid; }
+}
+
+html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+
+<script>
+mermaid.initialize({
+  startOnLoad: false, theme: 'base',
+  themeVariables: {
+    primaryColor: '#2d5a27', primaryTextColor: '#ffffff', primaryBorderColor: '#1a3a17',
+    secondaryColor: '#e8f5e3', secondaryTextColor: '#1a3a17', secondaryBorderColor: '#4a8a3f',
+    tertiaryColor: '#fef9ee', tertiaryTextColor: '#2d2d2d', tertiaryBorderColor: '#c8a63a',
+    lineColor: '#2d5a27', edgeLabelBackground: '#ffffff', fontSize: '14px'
+  },
+  flowchart: { curve: 'basis', padding: 20 }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.mermaid').forEach(el => {
+    if (!el.hasAttribute('data-source'))
+      el.setAttribute('data-source', el.textContent.trim());
+  });
+  mermaid.run();
+
+  // Admin-Flag aus Injektion
+  const ADMIN = !!window.HANDBUCH_ADMIN;
+  if (ADMIN) {
+    const btn = document.getElementById('btn-bearbeiten');
+    if (btn) btn.style.display = '';
+  }
+
+  // Aktive Sidebar-Links bei Scroll
+  const abschnitte = document.querySelectorAll('[id]');
+  const links = document.querySelectorAll('.sidebar nav a[href^="#"]');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        links.forEach(a => {
+          a.classList.toggle('aktiv', a.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  abschnitte.forEach(el => observer.observe(el));
+});
+
+// ── Navigation ──────────────────────────────────────────────
+function zurueckZurApp() {
+  window.location.href = '/kasse/manager';
+}
+
+// ── Edit-Modus ───────────────────────────────────────────────
+let editOriginal = '';
+function startEdit() {
+  editOriginal = document.body.innerHTML;
+  document.body.classList.add('edit-mode');
+  document.querySelectorAll(
+    '.inhalt h1, .inhalt h2, .inhalt h3, .inhalt p, ' +
+    '.schritt-text, .hinweis, .achtung, .tipp, ' +
+    '.kapitel-karte .beschr, .untertitel'
+  ).forEach(el => { el.setAttribute('contenteditable', 'true'); });
+  document.getElementById('toolbar-ansicht').style.display = 'none';
+  document.getElementById('toolbar-bearbeitung').style.display = 'flex';
+}
+
+function abbrechenEdit() {
+  document.body.innerHTML = editOriginal;
+  document.body.classList.remove('edit-mode');
+  document.getElementById('toolbar-ansicht').style.display = 'flex';
+  document.getElementById('toolbar-bearbeitung').style.display = 'none';
+  mermaid.run();
+}
+
+async function speichernHandbuch() {
+  const btn = document.getElementById('btn-speichern');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Speichert …'; }
+  // Vor dem Speichern: contenteditable entfernen, Mermaid-SVGs durch Quelltext ersetzen
+  document.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  document.querySelectorAll('.mermaid svg').forEach(svg => {
+    const parent = svg.closest('.mermaid');
+    if (parent && parent.dataset.source) {
+      parent.innerHTML = parent.dataset.source;
+    }
+  });
+  document.body.classList.remove('edit-mode');
+  const html = '<!DOCTYPE html>\n<html lang="de">' + document.documentElement.innerHTML + '</html>';
+  try {
+    const r = await fetch('/kasse/handbuch/speichern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html })
+    });
+    const data = await r.json();
+    zeigToast(data.ok ? '✓ Gespeichert' : ('Fehler: ' + data.fehler),
+              data.ok ? '#f0fdf4' : '#fef2f2',
+              data.ok ? '#14532d' : '#7f1d1d',
+              data.ok ? '#86efac' : '#fca5a5');
+    if (data.ok) {
+      document.getElementById('toolbar-ansicht').style.display = 'flex';
+      document.getElementById('toolbar-bearbeitung').style.display = 'none';
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Speichern'; }
+    }
+  } catch(e) {
+    zeigToast('Netzwerkfehler: ' + e, '#fef2f2', '#7f1d1d', '#fca5a5');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Speichern'; }
+  }
+}
+
+function zeigToast(msg, bg, col, border) {
+  const t = document.getElementById('edit-toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.background = bg; t.style.color = col;
+  t.style.border = '1px solid ' + border;
+  t.style.opacity = '1';
+  setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// ── Bild-Upload ──────────────────────────────────────────────
+function uploadScreenshot(inputEl, targetId, beschrId) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const dateiname = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const r = await fetch('/kasse/handbuch/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: dateiname, data: e.target.result })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const box = document.getElementById(targetId);
+      if (box) {
+        box.innerHTML = `<img src="${data.filename}" alt="${beschrId}">`;
+      }
+      zeigToast('✓ Bild hochgeladen', '#f0fdf4', '#14532d', '#86efac');
+    } else {
+      zeigToast('Fehler: ' + data.fehler, '#fef2f2', '#7f1d1d', '#fca5a5');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+</script>
+
+<!-- ── Toolbar ── -->
+<div id="edit-toolbar">
+  <div id="toolbar-ansicht" style="display:flex;">
+    <button class="tbtn tbtn-zurueck" onclick="zurueckZurApp()">← Kasse</button>
+    <button class="tbtn tbtn-bearbeiten" id="btn-bearbeiten" onclick="startEdit()" style="display:none;">✏️ Bearbeiten</button>
+  </div>
+  <div id="toolbar-bearbeitung" style="display:none;">
+    <button class="tbtn tbtn-zurueck" onclick="abbrechenEdit(); zurueckZurApp()">← Kasse</button>
+    <span class="edit-badge">● Bearbeitungsmodus</span>
+    <button class="tbtn tbtn-speichern" id="btn-speichern" onclick="speichernHandbuch()">💾 Speichern</button>
+    <button class="tbtn tbtn-abbrechen" onclick="abbrechenEdit()">✕ Abbrechen</button>
+  </div>
+</div>
+<div id="edit-toast"></div>
+
+<div class="layout">
+
+<!-- ══════════════════════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    🌾 Habacher Dorfladen
+    <small>Mitarbeiter-Handbuch Kasse</small>
+  </div>
+  <nav>
+    <div class="nav-group-title">Übersicht</div>
+    <a href="#start" class="kapitel">📋 Inhaltsverzeichnis</a>
+
+    <div class="nav-group-title">Kapitel 1</div>
+    <a href="#kap1" class="kapitel">🖥️ Kassieren</a>
+    <a href="#kap1-artikel" class="unter">Artikel erfassen</a>
+    <a href="#kap1-warenkorb" class="unter">Warenkorb</a>
+    <a href="#kap1-zahlung" class="unter">Zahlung</a>
+    <a href="#kap1-lieferschein" class="unter">Rechnung / Lieferschein</a>
+
+    <div class="nav-group-title">Kapitel 2</div>
+    <a href="#kap2" class="kapitel">↩️ Storno &amp; Journal</a>
+    <a href="#kap2-storno" class="unter">Bon stornieren</a>
+    <a href="#kap2-journal" class="unter">Journal</a>
+    <a href="#kap2-nachdruck" class="unter">Nachdruck</a>
+
+    <div class="nav-group-title">Kapitel 3</div>
+    <a href="#kap3" class="kapitel">📒 Kassenbuch</a>
+    <a href="#kap3-typen" class="unter">Buchungsarten</a>
+    <a href="#kap3-neu" class="unter">Neue Buchung</a>
+    <a href="#kap3-uebersicht" class="unter">Übersicht</a>
+
+    <div class="nav-group-title">Kapitel 4</div>
+    <a href="#kap4" class="kapitel">🌙 Abend-Routine</a>
+    <a href="#kap4-kassensturz" class="unter">① Kassensturz</a>
+    <a href="#kap4-zbon" class="unter">② Z-Bon (Tagesabschluss)</a>
+    <a href="#kap4-bank" class="unter">③ Transfer → Bank</a>
+    <a href="#kap4-tresor" class="unter">④ Transfer → Tresor</a>
+
+    <div class="nav-group-title">Kapitel 5</div>
+    <a href="#kap5" class="kapitel">☀️ Tagesstart</a>
+    <a href="#kap5-transfer" class="unter">Tresor → Kasse buchen</a>
+
+    <div class="nav-group-title">Kapitel 6</div>
+    <a href="#kap6" class="kapitel">📊 Manager-Übersicht</a>
+    <a href="#kap6-xbon" class="unter">X-Bon</a>
+    <a href="#kap6-kassenbuch" class="unter">Kassenbuch-Tab</a>
+    <a href="#kap6-abschluesse" class="unter">Abschlüsse</a>
+
+    <div class="nav-group-title">Kapitel 7</div>
+    <a href="#kap7" class="kapitel">⚙️ Administration</a>
+    <a href="#kap7-terminal" class="unter">Terminal</a>
+    <a href="#kap7-tse" class="unter">TSE-Gerät</a>
+    <a href="#kap7-export" class="unter">DSFinV-K Export</a>
+  </nav>
+</aside>
+
+<!-- ══════════════════════════════════════════════════════
+     HAUPTINHALT
+══════════════════════════════════════════════════════ -->
+<main class="inhalt">
+
+<!-- ── Titelseite ── -->
+<div class="titelseite" id="start">
+  <div style="font-size:3rem; margin-bottom:1rem;">🖥️</div>
+  <h1>Habacher Dorfladen</h1>
+  <p class="sub">Mitarbeiter-Handbuch – Kassensystem</p>
+  <div class="version-info">
+    <span>📅 Stand: 2026</span>
+    <span>💻 Kassen-App v1.0</span>
+    <span>📍 KassenSichV-konform</span>
+  </div>
+  <p style="margin-top:1.5rem; color:rgba(255,255,255,0.8); font-size:0.88rem;">
+    Dieses Handbuch erklärt die Bedienung des Kassensystems.<br>
+    Bei Fragen bitte Filialleitung ansprechen.
+  </p>
+</div>
+
+<!-- ── Inhaltsverzeichnis ── -->
+<div class="abschnitt" id="toc">
+  <h2>Inhaltsverzeichnis</h2>
+  <div class="kapitel-liste">
+    <a href="#kap1" class="kapitel-karte">
+      <div class="nr">Kapitel 1</div>
+      <div class="titel">🖥️ Kassieren</div>
+      <div class="beschr">Artikel erfassen, Warenkorb, Zahlung Bar &amp; EC, Wechselgeld</div>
+    </a>
+    <a href="#kap2" class="kapitel-karte">
+      <div class="nr">Kapitel 2</div>
+      <div class="titel">↩️ Storno &amp; Journal</div>
+      <div class="beschr">Bon stornieren, Journal einsehen, Nachdruck</div>
+    </a>
+    <a href="#kap3" class="kapitel-karte">
+      <div class="nr">Kapitel 3</div>
+      <div class="titel">📒 Kassenbuch</div>
+      <div class="beschr">Einlagen, Entnahmen, Privatbuchungen, Transfers erfassen</div>
+    </a>
+    <a href="#kap4" class="kapitel-karte">
+      <div class="nr">Kapitel 4</div>
+      <div class="titel">🌙 Abend-Routine</div>
+      <div class="beschr">Kassensturz → Z-Bon → Bank → Tresor – der komplette Abendlauf</div>
+    </a>
+    <a href="#kap5" class="kapitel-karte">
+      <div class="nr">Kapitel 5</div>
+      <div class="titel">☀️ Tagesstart</div>
+      <div class="beschr">Tresor-Inhalt in die Kasse buchen, Stückelung anpassen</div>
+    </a>
+    <a href="#kap6" class="kapitel-karte">
+      <div class="nr">Kapitel 6</div>
+      <div class="titel">📊 Manager-Übersicht</div>
+      <div class="beschr">X-Bon, Kassenbuch, Abschlüsse, Dashboard-Überblick</div>
+    </a>
+    <a href="#kap7" class="kapitel-karte">
+      <div class="nr">Kapitel 7</div>
+      <div class="titel">⚙️ Administration</div>
+      <div class="beschr">Terminal, TSE-Gerät, DSFinV-K Export – nur für Administratoren</div>
+    </a>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 1 – KASSIEREN
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap1">
+  <div class="kapitel-nr">01</div>
+  <div>
+    <h1>Kassieren</h1>
+    <div class="untertitel">Artikel erfassen · Warenkorb prüfen · Zahlung abschließen</div>
+  </div>
+</div>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Kassieren</h4>
+  <div class="mermaid">flowchart TD
+    A([🟢 Kassenbon starten]) --> B[Artikel erfassen]
+    B --> C{Weitere Artikel?}
+    C -->|Ja| B
+    C -->|Nein| D{Korrekt?}
+    D -->|Nein| E[Menge / Preis anpassen]
+    E --> C
+    D -->|Ja| F[💳 Zahlung]
+    F --> G{Bar oder EC?}
+    G -->|Bar| H[Betrag eingeben]
+    H --> I[Wechselgeld anzeigen]
+    I --> J[Bon drucken]
+    G -->|EC| K[EC-Terminal bestätigen]
+    K --> J
+    J --> L([✅ Fertig])
+  </div>
+</div>
+
+<h2 id="kap1-artikel">Artikel erfassen</h2>
+<p>Es gibt drei Wege, einen Artikel in den Warenkorb zu legen:</p>
+
+<table>
+  <tr><th>Methode</th><th>Wie</th><th>Wann sinnvoll</th></tr>
+  <tr>
+    <td><strong>Barcode scannen</strong></td>
+    <td>Scanner auf den Artikel halten oder Barcode eintippen</td>
+    <td>Immer, wenn Barcode vorhanden (schnellste Methode)</td>
+  </tr>
+  <tr>
+    <td><strong>Suche</strong></td>
+    <td>Suchfeld oben links antippen, Artikelname eintippen</td>
+    <td>Wenn kein Barcode – nach 2 Zeichen erscheinen Vorschläge</td>
+  </tr>
+  <tr>
+    <td><strong>Artikel-Browser</strong></td>
+    <td>Button <span class="taste">📦 Artikel</span> → Warengruppe wählen</td>
+    <td>Wenn Artikelname unbekannt oder geblättert werden soll</td>
+  </tr>
+</table>
+
+<div class="tipp">
+  <div class="hinweis-titel">💡 Tipp: Offene Bons</div>
+  Der aktuelle Bon bleibt offen bis zur Zahlung. Es gibt immer genau einen offenen Bon pro Kasse. Beim Neustart der App wird der offene Bon automatisch weitergeladen.
+</div>
+
+<h2 id="kap1-warenkorb">Warenkorb</h2>
+<p>Jede erfasste Position erscheint in der linken Spalte mit Name, Menge und Preis.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Menge anpassen</strong>
+      <span class="taste">−</span> und <span class="taste">+</span> neben der Position tippen. Oder die Zahl antippen – es öffnet sich ein Numpad für direkte Eingabe.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Einzelpreis ändern</strong>
+      Auf den grauen Preis-Button rechts neben der Position tippen. Im Dialogfeld den neuen Preis eingeben und bestätigen. Der Button färbt sich dann gelb als Hinweis.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Position entfernen</strong>
+      Menge auf 0 setzen – die Position verschwindet automatisch.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Kunde zuordnen</strong>
+      (Optional) Button <span class="taste">👤 Kunde</span> antippen, Namen eingeben und Kunden aus der Liste wählen. Der Name erscheint dann im Bon-Kopf.
+    </div>
+  </li>
+</ol>
+
+<div class="screenshot" id="ss-warenkorb">
+  <div class="foto-icon">📸</div>
+  <div class="beschr">Screenshot: Warenkorb mit Positionen</div>
+  <div class="hinweis-text">Bild noch nicht vorhanden – im Bearbeitungsmodus hochladen</div>
+  <div class="upload-knopf-leiste">
+    <label class="upload-knopf"><input type="file" accept="image/*" style="display:none"
+      onchange="uploadScreenshot(this,'ss-warenkorb','Warenkorb')">📷 Bild hochladen</label>
+  </div>
+</div>
+
+<h2 id="kap1-zahlung">Zahlung</h2>
+<p>Wenn alle Artikel erfasst sind, auf den grünen <span class="taste">💳 Zahlung</span>-Button rechts unten tippen. Es öffnet sich das Zahlungs-Overlay.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Zahlungsart wählen</strong>
+      <span class="taste">💵 Bar</span> oder <span class="taste">💳 EC</span> (Kartenzahlung).
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Barbezahlung: Betrag eingeben</strong>
+      Den erhaltenen Betrag im Numpad eingeben. Das Wechselgeld wird sofort angezeigt. Schnell-Tasten für häufige Beträge (z. B. 10 €, 20 €, 50 €) stehen bereit.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Bezahlung bestätigen</strong>
+      Auf <span class="taste">✅ Abschließen</span> tippen. Der Bon wird gedruckt, der Kassenbestand aktualisiert.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>EC-Zahlung</strong>
+      Nach Tippen auf <span class="taste">💳 EC</span> die Transaktion am EC-Terminal durchführen und bestätigen. Dann <span class="taste">✅ Abschließen</span>.
+    </div>
+  </li>
+</ol>
+
+<div class="achtung">
+  <div class="hinweis-titel">⚠️ Wichtig</div>
+  Jede abgeschlossene Zahlung wird durch die TSE (Technische Sicherheitseinrichtung) signiert und ist unveränderlich. Fehler können nur per Storno korrigiert werden.
+</div>
+
+<h2 id="kap1-lieferschein">Rechnung &amp; Lieferschein</h2>
+
+<h3>Lieferschein erstellen</h3>
+<p>Anstelle einer normalen Zahlung kann ein Vorgang direkt als CAO-Lieferschein abgeschlossen werden. Der Lieferschein wird sofort in CAO angelegt und ein Bon ohne Preisangaben gedruckt.</p>
+
+<div class="hinweis">
+  <strong>Voraussetzung:</strong> Dem Vorgang muss ein Kunde zugewiesen sein. Die Kundenauswahl erfolgt über die Schaltfläche <span class="taste">👤 Kunde</span> im Kassenfenster.
+</div>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Artikel erfassen</strong><br>
+      Artikel wie gewohnt in den Warenkorb legen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>„In Lieferschein wandeln" antippen</strong><br>
+      Den Button <span class="taste">📋 In Lieferschein wandeln</span> antippen – er erscheint im Zahlungsbereich sobald ein Kunde zugewiesen ist.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Kopie wählen (optional)</strong><br>
+      „Mit Kopie" aktivieren, wenn der Lieferschein-Bon zweifach gedruckt werden soll (z.&nbsp;B. Kundenexemplar + Archiv).
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Bestätigen</strong><br>
+      Der Lieferschein wird in CAO (Faktura → Lieferscheine) angelegt und der Bon gedruckt.
+    </div>
+  </li>
+</ol>
+
+<p><strong>Was auf dem Lieferschein-Bon erscheint:</strong></p>
+<ul>
+  <li>Firmenname und -adresse (Kopf)</li>
+  <li>Kundendaten</li>
+  <li>Positionen mit Bezeichnung, Artikelnummer und Menge – <em>keine Preise</em></li>
+  <li>Unterschriftszeilen: „Empfangen von", „Datum", „Unterschrift"</li>
+</ul>
+
+<div class="hinweis">
+  Der Vorgang wird als <strong>Lieferschein</strong> abgeschlossen und fließt <em>nicht</em> in den Kassenumsatz oder den Z-Bon ein. In CAO ist der Lieferschein unter Faktura → Lieferscheine sichtbar.
+</div>
+
+<h3>Rechnung drucken</h3>
+<p>Nach einer abgeschlossenen Barzahlung kann aus dem Journal eine Rechnung gedruckt werden. Dazu den fertigen Bon im Journal aufrufen und <span class="taste">📄 Rechnung</span> antippen.</p>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 2 – STORNO & JOURNAL
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap2">
+  <div class="kapitel-nr">02</div>
+  <div>
+    <h1>Storno &amp; Journal</h1>
+    <div class="untertitel">Fehler korrigieren · Bons nachschlagen · Nachdruck</div>
+  </div>
+</div>
+
+<h2 id="kap2-storno">Bon stornieren</h2>
+<p>Ein bereits abgeschlossener Bon kann nicht geändert, wohl aber storniert werden. Die Kasse erstellt dann automatisch einen Gegenbon mit negativen Beträgen.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Journal öffnen</strong>
+      Oben in der Navigationsleiste auf <span class="taste">📋 Journal</span> tippen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Bon suchen</strong>
+      Bon-Nummer, Datum oder Artikelname im Suchfeld eingeben. Der gesuchte Bon erscheint in der Liste.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Bon öffnen</strong>
+      Auf den Bon in der Liste tippen – die Detail-Ansicht öffnet sich.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Storno durchführen</strong>
+      Auf <span class="taste rot">↩️ Stornieren</span> tippen. Sicherheitsabfrage bestätigen. Der Stornobon wird sofort gedruckt und erscheint im Journal mit dem Hinweis „Storniert durch Bon #XYZ".
+    </div>
+  </li>
+</ol>
+
+<div class="achtung">
+  <div class="hinweis-titel">⚠️ Storno ist endgültig</div>
+  Ein Storno kann nicht rückgängig gemacht werden. Bitte immer erst prüfen, ob der richtige Bon gewählt ist. Nach dem Storno den Kassenbestand überprüfen (Kassensturz).
+</div>
+
+<h2 id="kap2-journal">Journal</h2>
+<p>Das Journal zeigt alle Bons des aktuellen und vergangener Kassentage. Im Live-Betrieb werden Test- und Trainings-Bons nicht angezeigt.</p>
+
+<table>
+  <tr><th>Symbol</th><th>Bedeutung</th></tr>
+  <tr><td>🟢</td><td>Regulärer Bon – abgeschlossen</td></tr>
+  <tr><td>🔴</td><td>Stornierter Bon</td></tr>
+  <tr><td>↩️</td><td>Stornobon (Gegenbon zu einem anderen)</td></tr>
+  <tr><td>📄</td><td>Lieferschein / Rechnung wurde erstellt</td></tr>
+</table>
+
+<h2 id="kap2-nachdruck">Nachdruck</h2>
+<p>Einen Bon im Journal öffnen und auf <span class="taste">🖨️ Kopie drucken</span> tippen. Der Nachdruck wird mit dem Vermerk „KOPIE" gedruckt und ist steuerrechtlich kein neuer Bon.</p>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 3 – KASSENBUCH
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap3">
+  <div class="kapitel-nr">03</div>
+  <div>
+    <h1>Kassenbuch</h1>
+    <div class="untertitel">Einlagen · Entnahmen · Privatbuchungen · Transfers</div>
+  </div>
+</div>
+
+<p>Das Kassenbuch erfasst alle Geldbewegungen, die <em>nicht</em> direkt aus einem Verkauf stammen. Jede Buchung ist unveränderlich – Fehler nur per Gegenbuchung korrigierbar.</p>
+
+<h2 id="kap3-typen">Buchungsarten</h2>
+<table>
+  <tr><th>Typ</th><th>Bedeutung</th><th>Auswirkung auf Kassenbestand</th></tr>
+  <tr><td>Einlage</td><td>Bargeld wird in die Kasse gelegt (z. B. Wechselgeld auffüllen)</td><td>+</td></tr>
+  <tr><td>Entnahme</td><td>Bargeld wird aus der Kasse genommen</td><td>−</td></tr>
+  <tr><td>Privateinlage</td><td>Privatgeld des Inhabers in den Betrieb</td><td>+</td></tr>
+  <tr><td>Privatentnahme</td><td>Privatentnahme des Inhabers</td><td>−</td></tr>
+  <tr><td>Anfangsbestand</td><td>Erstbuchung zu Beginn – setzt den Startkassenbestand</td><td>+</td></tr>
+  <tr><td>Transfer → Bank</td><td>Bargeld aus der Kasse wird zur Bank gebracht</td><td>−</td></tr>
+  <tr><td>Transfer ← Bank</td><td>Bargeld von der Bank in die Kasse</td><td>+</td></tr>
+  <tr><td>Transfer → Tresor</td><td>Bargeld in Nebenkasse (Tresor) legen</td><td>− Hauptkasse, + Nebenkasse</td></tr>
+  <tr><td>Transfer ← Tresor</td><td>Geld aus Tresor in Hauptkasse holen (Tagesstart)</td><td>+ Hauptkasse, − Nebenkasse</td></tr>
+</table>
+
+<h2 id="kap3-neu">Neue Buchung erfassen</h2>
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Kassenbuch öffnen</strong>
+      Im Manager <span class="taste">📒 Kassenbuch</span> antippen oder direkt über den Tab im Manager-Bereich.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Buchungsart wählen</strong>
+      Aus dem Dropdown den gewünschten Typ auswählen (z. B. „Einlage").
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Betrag eingeben</strong>
+      Betrag in Euro (Komma oder Punkt als Dezimaltrennzeichen möglich).
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Buchungstext eingeben</strong>
+      (Optional aber empfohlen) Kurze Beschreibung, z. B. „Wechselgeld Montag".
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">5</div>
+    <div class="schritt-text">
+      <strong>Buchen</strong>
+      Auf <span class="taste">✅ Buchen</span> tippen. Die Buchung erscheint sofort im Kassenbuch.
+    </div>
+  </li>
+</ol>
+
+<div class="tipp">
+  <div class="hinweis-titel">💡 Betrag vorbefüllt</div>
+  Bei Transfers aus der Abend-Routine (Bank/Tresor) wird der Betrag automatisch aus dem Kassensturz übernommen.
+</div>
+
+<h2 id="kap3-uebersicht">Kassenbuch-Übersicht</h2>
+<p>Das vollständige Kassenbuch erreicht man über <span class="taste">📒 Vollständiges Kassenbuch</span>. Es zeigt alle Buchungen chronologisch. Zwischen Abschlüssen (Z-Bons) sind die Buchungen nach Datum gruppiert.</p>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 4 – ABEND-ROUTINE
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap4">
+  <div class="kapitel-nr">04</div>
+  <div>
+    <h1>Abend-Routine</h1>
+    <div class="untertitel">Kassensturz → Z-Bon → Bank → Tresor</div>
+  </div>
+</div>
+
+<p>Die Abend-Routine schließt den Kassentag ordnungsgemäß ab. Sie besteht aus vier Schritten, die im Manager unter <strong>Abend-Routine</strong> geführt werden.</p>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Abend-Routine</h4>
+  <div class="mermaid">flowchart LR
+    A([🌙 Abend]) --> B["① Kassensturz\nBargeld zählen"]
+    B --> C["② Z-Bon\nTagesabschluss"]
+    C --> D["③ Transfer → Bank\nScheine zählen"]
+    D --> E["④ Transfer → Tresor\nRest einschließen"]
+    E --> F([✅ Fertig])
+  </div>
+</div>
+
+<h2 id="kap4-kassensturz">① Kassensturz</h2>
+<p>Beim Kassensturz wird der tatsächliche Bargeldbestand der Kasse gezählt und mit dem Soll-Bestand laut System verglichen.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Manager öffnen</strong>
+      In der Navigationsleiste auf <span class="taste">📊 Manager</span> tippen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Scheine zählen</strong>
+      In der linken Spalte (Scheine) die Anzahl jedes Nennwerts eingeben. <span class="taste">+</span> und <span class="taste">−</span> tippen oder die Zahl direkt antippen für Numpad-Eingabe.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Münzen zählen</strong>
+      In der rechten Spalte (Münzen) ebenso vorgehen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Ist-Bestand prüfen</strong>
+      Unten rechts erscheint der gezählte Ist-Betrag. Darunter die Differenz zum Soll. Bei grüner Anzeige stimmt alles überein.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">5</div>
+    <div class="schritt-text">
+      <strong>Differenz buchen (wenn nötig)</strong>
+      Bei einer Abweichung erscheint ein roter Hinweis. Grund eingeben und auf <span class="taste">⚖ Differenz buchen</span> tippen – die Differenz wird als Kassendifferenz verbucht.
+    </div>
+  </li>
+</ol>
+
+<div class="tipp">
+  <div class="hinweis-titel">💡 Automatisch gespeichert</div>
+  Der Kassensturz wird automatisch in der Datenbank gespeichert. Nach dem Z-Bon werden die gezählten Mengen für den Bank- und Tresor-Transfer wiederverwendet.
+</div>
+
+<h2 id="kap4-zbon">② Z-Bon (Tagesabschluss)</h2>
+<p>Der Z-Bon schließt den Kassentag ab, summiert alle Umsätze und speichert den Kassenbestand unwiderruflich. Er wird durch die TSE signiert.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Z-Bon starten</strong>
+      Im Manager auf <span class="taste">📋 Z-Bon erstellen →</span> tippen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Zusammenfassung prüfen</strong>
+      Die Seite zeigt Anfangsbestand, Umsätze, Einlagen/Entnahmen und Kassenstand. Bitte kurz prüfen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Z-Bon bestätigen</strong>
+      Auf <span class="taste">✅ Tagesabschluss jetzt durchführen</span> tippen. Der Bon wird gedruckt und signiert.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Weiter zur Abendroutine</strong>
+      Nach dem Druck auf <span class="taste">Weiter zur Abendroutine →</span> tippen. Die gezählten Stückelungen werden automatisch in den Bank- und Tresor-Abschnitt übertragen.
+    </div>
+  </li>
+</ol>
+
+<div class="achtung">
+  <div class="hinweis-titel">⚠️ Kein Z-Bon rückgängig</div>
+  Der Z-Bon ist eine unwiderrufliche Abschluss-Buchung. Er darf nur einmal pro Kassentag durchgeführt werden. Der neue Kassentag beginnt direkt danach.
+</div>
+
+<h2 id="kap4-bank">③ Transfer → Bank</h2>
+<p>Nach dem Z-Bon wird das Bargeld, das zur Bank gebracht werden soll, festgelegt. Die Kasse schlägt eine Stückelung automatisch vor:</p>
+
+<ul style="margin: 0.6rem 0 1rem 1.5rem; line-height: 1.8;">
+  <li>500 €, 200 €, 100 €, 50 € Scheine → <strong>alle</strong> zur Bank</li>
+  <li>20 €, 10 €, 5 € Scheine → zur Bank, wenn <strong>mehr als 5 Stück</strong> vorhanden</li>
+  <li>Münzen → <strong>bleiben in der Kasse</strong> (können aber manuell hinzugefügt werden)</li>
+  <li>Transfer-Gesamtbetrag wird auf <strong>volle 50 €</strong> abgerundet</li>
+</ul>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Vorschlag prüfen</strong>
+      Die Stückelung wird in zwei Spalten (Scheine | Münzen) mit <span class="taste">+</span> <span class="taste">−</span> angezeigt. Der Verbleib in der Kasse erscheint rechts (Ziel: 350–450 €, grün = OK).
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Anpassen (optional)</strong>
+      Mit <span class="taste">+</span> / <span class="taste">−</span> die Anzahl je Nennwert anpassen. Auch Münzen können zur Bank hinzugefügt werden.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Transfer buchen</strong>
+      Auf <span class="taste">🏦 Transfer → Bank buchen</span> tippen. Die Kasse navigiert zur Kassenbuch-Buchungsmaske mit vorausgefülltem Betrag.
+    </div>
+  </li>
+</ol>
+
+<h2 id="kap4-tresor">④ Transfer → Tresor</h2>
+<p>Der verbleibende Betrag (Kassensturz minus Bank-Transfer) wird in die Nebenkasse (Tresor) gelegt. Die Stückelung wird automatisch berechnet – kein weiteres Zählen nötig.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Stückelung prüfen</strong>
+      Die Anzeige zeigt Scheine und Münzen, die im Tresor landen. Dieser Betrag = Kassensturz − Bank.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Transfer buchen</strong>
+      Auf <span class="taste">🔒 Transfer → Tresor buchen</span> tippen. Betrag vorausgefüllt, einfach bestätigen.
+    </div>
+  </li>
+</ol>
+
+<div class="tipp">
+  <div class="hinweis-titel">💡 Stückelung wird gespeichert</div>
+  Die Tresor-Stückelung wird automatisch gespeichert und am nächsten Morgen im Tagesstart-Abschnitt angezeigt – so muss nicht erneut gezählt werden.
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 5 – TAGESSTART
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap5">
+  <div class="kapitel-nr">05</div>
+  <div>
+    <h1>Tagesstart</h1>
+    <div class="untertitel">Tresor → Kasse · Stückelung anpassen · Transfer buchen</div>
+  </div>
+</div>
+
+<p>Am Morgen erscheint oben im Manager die <strong>Tagesstart-Karte</strong> (orange), sobald noch kein Transfer vom Tresor in die Kasse gebucht wurde.</p>
+
+<div class="diagramm-container">
+  <h4>📊 Ablauf: Tagesstart</h4>
+  <div class="mermaid">flowchart TD
+    A([☀️ Kasse öffnen]) --> B{Tagesstart-Karte sichtbar?}
+    B -->|Nein – bereits gebucht| C([✅ Fertig])
+    B -->|Ja| D[Stückelung aus Tresor prüfen]
+    D --> E{Stimmt sie überein?}
+    E -->|Ja| F[Transfer buchen]
+    E -->|Nein – Abweichung| G[Mengen anpassen]
+    G --> F
+    F --> H([✅ Kasse einsatzbereit])
+  </div>
+</div>
+
+<h2 id="kap5-transfer">Tresor → Kasse buchen</h2>
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Tagesstart-Karte öffnen</strong>
+      Die orange Karte „☀️ Tagesstart: Tresor → Kasse" erscheint automatisch im Manager, wenn der Transfer noch nicht gebucht ist.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Stückelung prüfen</strong>
+      Die Karte zeigt die gestrige Tresor-Stückelung (Scheine und Münzen mit <span class="taste">+</span> / <span class="taste">−</span>). Der Gesamtbetrag erscheint rechts unten.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Anpassen, falls nötig</strong>
+      Stimmt eine Anzahl nicht (z. B. weil nachts Wechselgeld nachgelegt wurde), einfach die Menge korrigieren. Der Betrag aktualisiert sich automatisch.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">4</div>
+    <div class="schritt-text">
+      <strong>Transfer buchen</strong>
+      Auf <span class="taste">✅ Transfer → Kasse buchen</span> tippen. Die Kassenbuch-Buchungsmaske öffnet sich mit vorausgefülltem Betrag. Bestätigen – fertig.
+    </div>
+  </li>
+</ol>
+
+<div class="hinweis">
+  <div class="hinweis-titel">ℹ️ Betrag muss nicht exakt stimmen</div>
+  Der übertragene Betrag kann abweichen (z. B. wenn nur ein Teil des Tresors in die Kasse kommt). Die Buchung spiegelt den tatsächlich entnommenen Betrag wider.
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 6 – MANAGER-ÜBERSICHT
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap6">
+  <div class="kapitel-nr">06</div>
+  <div>
+    <h1>Manager-Übersicht</h1>
+    <div class="untertitel">X-Bon · Kassenbuch · Abschlüsse · Dashboard</div>
+  </div>
+</div>
+
+<p>Den Manager erreicht man über <span class="taste">📊 Manager</span> in der Navigationsleiste. Er bietet fünf Tabs:</p>
+
+<table>
+  <tr><th>Tab</th><th>Inhalt</th></tr>
+  <tr>
+    <td><strong>Übersicht</strong></td>
+    <td>Hauptkasse- und Nebenkasse-Saldo, Bar- und EC-Umsatz seit letztem Abschluss, Workflow-Karten für Tagesstart und Abend-Routine</td>
+  </tr>
+  <tr>
+    <td><strong>📒 Kassenbuch</strong></td>
+    <td>Letzte 10 Einträge des Kassenbuchs mit Link zum vollständigen Buch</td>
+  </tr>
+  <tr>
+    <td><strong>X-Bon</strong></td>
+    <td>Zwischenauswertung (ohne Abschluss): Anzahl Belege, Umsatz, MwSt-Aufteilung für den aktuellen Kassentag</td>
+  </tr>
+  <tr>
+    <td><strong>Z-Bon</strong></td>
+    <td>Kurzübersicht zum Tagesabschluss – Link zum Tagesabschluss-Formular</td>
+  </tr>
+  <tr>
+    <td><strong>Kassensturz</strong></td>
+    <td>Link zum separaten Kassensturz-Formular</td>
+  </tr>
+</table>
+
+<h2 id="kap6-xbon">X-Bon</h2>
+<p>Der X-Bon ist eine <strong>Zwischenauswertung</strong> ohne Tagesabschluss. Er darf beliebig oft gedruckt werden und hat keine Auswirkung auf den Kassenbestand. Auf <span class="taste">🖨️ Drucken</span> tippen, um ihn auszudrucken.</p>
+
+<h2 id="kap6-kassenbuch">Kassenbuch-Tab</h2>
+<p>Zeigt die letzten 10 Buchungen. Für ältere Einträge oder Monatsansicht auf <span class="taste">📒 Vollständiges Kassenbuch →</span> tippen.</p>
+
+<h2 id="kap6-abschluesse">Abschlüsse</h2>
+<p>Alle bisherigen Z-Bons sind unter <span class="taste">Abschlüsse</span> (direkte URL: <em>/kasse/abschluesse</em>) einsehbar. Einzelne Z-Bons können nochmals gedruckt werden.</p>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════
+     KAPITEL 7 – ADMINISTRATION
+══════════════════════════════════════════════════════ -->
+<div class="kapitel-header" id="kap7">
+  <div class="kapitel-nr">07</div>
+  <div>
+    <h1>Administration</h1>
+    <div class="untertitel">Nur für Administratoren · Terminal · TSE · Export</div>
+  </div>
+</div>
+
+<div class="achtung">
+  <div class="hinweis-titel">⚠️ Nur für Administratoren</div>
+  Die Admin-Einstellungen sind ausschließlich für die Systemverwaltung. Falsche Einstellungen können den Kassenbetrieb beeinträchtigen. Im Zweifelsfall bitte Filialleitung oder IT-Support kontaktieren.
+</div>
+
+<p>Das Admin-Bereich erreicht man über <em>/kasse/admin</em>.</p>
+
+<h2 id="kap7-terminal">Terminal-Konfiguration</h2>
+<table>
+  <tr><th>Einstellung</th><th>Bedeutung</th></tr>
+  <tr><td>Terminal-Nummer</td><td>Eindeutige Kennung dieses Kassenplatzes – nie ändern im laufenden Betrieb</td></tr>
+  <tr><td>Bezeichnung</td><td>Anzeigename (z. B. „Kasse 1 – Backtheke")</td></tr>
+  <tr><td>Trainings-Modus</td><td>Aktiviert den Sandbox-Modus – Bons gelten als Testbons, separate Datenhaltung</td></tr>
+  <tr><td>Drucker-IP/-Port</td><td>Netzwerkadresse des ESC/POS-Druckers</td></tr>
+  <tr><td>QR-Code auf Bon</td><td>Zeigt den TSE-Prüf-QR-Code auf jedem Bon an</td></tr>
+</table>
+
+<h2 id="kap7-tse">TSE-Gerät</h2>
+<p>Die Technische Sicherheitseinrichtung (TSE) ist gesetzlich vorgeschrieben. Sie signiert jeden Bon und Z-Bon kryptografisch.</p>
+<table>
+  <tr><th>TSE-Typ</th><th>Beschreibung</th></tr>
+  <tr><td>Fiskaly Cloud (Live)</td><td>Produktiv-TSE über Fiskaly-API – für den echten Kassenbetrieb</td></tr>
+  <tr><td>Fiskaly Cloud (Test)</td><td>Test-Umgebung – Bons werden als Testbons gekennzeichnet</td></tr>
+  <tr><td>Swissbit USB</td><td>Lokale Hardware-TSE am USB-Anschluss</td></tr>
+  <tr><td>Demo</td><td>Kein TSE – nur für Schulungen und Präsentationen</td></tr>
+</table>
+
+<h2 id="kap7-export">DSFinV-K Export</h2>
+<p>Der DSFinV-K-Export erzeugt eine strukturierte Datenmenge für das Finanzamt (Kassenprüfung). Er kann für beliebige Zeiträume gestartet werden.</p>
+
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      <strong>Admin → Export</strong>
+      Im Admin-Bereich auf <span class="taste">📦 DSFinV-K Export</span> tippen.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      <strong>Zeitraum wählen</strong>
+      Von- und Bis-Datum eingeben. Empfehlung: immer vollständige abgeschlossene Monate exportieren.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">3</div>
+    <div class="schritt-text">
+      <strong>Export starten und herunterladen</strong>
+      Auf <span class="taste">▶ Export starten</span> tippen, dann die ZIP-Datei herunterladen.
+    </div>
+  </li>
+</ol>
+
+<div class="hinweis">
+  <div class="hinweis-titel">ℹ️ Aufbewahrungspflicht</div>
+  Exportierte Dateien müssen mindestens 10 Jahre aufbewahrt werden (§ 147 AO). Bitte regelmäßig extern sichern.
+</div>
+
+<hr>
+<p style="text-align:center; color:var(--text-hell); font-size:0.8rem; margin-top:2rem; padding-bottom:2rem;">
+  🌾 Habacher Dorfladen · Mitarbeiter-Handbuch Kasse · Stand 2026<br>
+  Bei Fragen bitte Filialleitung ansprechen.
+</p>
+
+</main>
+</div>
+</body>
+</html>

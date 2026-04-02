@@ -117,6 +117,115 @@
       </div>
     </div>
 
+    <!-- EC-Terminal -->
+    <div class="card" style="margin-bottom:16px;" id="ecCard">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">💳 EC-Terminal (Kartenzahlung)</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Ingenico Desk 3500 oder kompatibles ZVT-TCP-Terminal.
+        Im Modus <b>Vollintegration</b> wird die Zahlung direkt vom System ausgelöst;
+        der Kassierer muss nur noch Karte und PIN bestätigen.
+      </div>
+
+      <div class="form-group">
+        <label>Modus</label>
+        <select class="form-control" name="ec_modus" id="ecModus"
+                style="font-size:16px;" onchange="ecModusGeaendert()">
+          <option value="manuell" {{ 'selected' if (terminal.EC_MODUS or 'manuell') == 'manuell' }}>
+            Manuell – Kassierer bestätigt nach Terminalanzeige
+          </option>
+          <option value="zvt" {{ 'selected' if terminal.EC_MODUS == 'zvt' }}>
+            Vollintegration – ZVT-Protokoll (TCP/IP)
+          </option>
+        </select>
+      </div>
+
+      <div id="ecZvtFelder" style="display:{{ 'block' if terminal.EC_MODUS == 'zvt' else 'none' }}">
+        <div style="display:grid; grid-template-columns:1fr 120px; gap:12px;">
+          <div class="form-group">
+            <label>IP-Adresse des Terminals</label>
+            <input class="form-control" name="ec_terminal_ip" id="ecIp" type="text"
+                   value="{{ terminal.EC_TERMINAL_IP or '' }}" placeholder="192.168.1.50">
+          </div>
+          <div class="form-group">
+            <label>Port</label>
+            <input class="form-control" name="ec_terminal_port" type="number"
+                   value="{{ terminal.EC_TERMINAL_PORT or 20007 }}">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 160px; gap:12px; align-items:end;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>ZVT-Passwort
+              <span style="font-weight:400; color:var(--text-dim);">(6 Stellen, Standard: 010203)</span>
+            </label>
+            <input class="form-control" name="ec_zvt_passwort" type="text"
+                   inputmode="numeric" maxlength="6" pattern="[0-9]{6}"
+                   value="{{ terminal.EC_ZVT_PASSWORT or '010203' }}"
+                   placeholder="010203"
+                   style="font-family:monospace; letter-spacing:0.1em;">
+          </div>
+          <div style="padding-bottom:1px;">
+            <div style="font-size:12px; color:var(--text-dim); margin-bottom:4px;">
+              Im Terminal-Admin-Menü prüfen.
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tagesabschluss am Terminal</label>
+          <select class="form-control" name="ec_tagesabschluss" style="font-size:16px;">
+            <option value="manuell"
+              {{ 'selected' if (terminal.EC_TAGESABSCHLUSS or 'manuell') == 'manuell' }}>
+              Manuell – nur auf Anforderung am Gerät durchführen
+            </option>
+            <option value="auto"
+              {{ 'selected' if terminal.EC_TAGESABSCHLUSS == 'auto' }}>
+              Empfohlen beim Z-Bon – Button im Tagesabschluss-Screen
+            </option>
+            <option value="auto_vergleich"
+              {{ 'selected' if terminal.EC_TAGESABSCHLUSS == 'auto_vergleich' }}>
+              Empfohlen + Vergleich – EC-Summe Terminal vs. App
+            </option>
+          </select>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button type="button" class="btn btn-neutral btn-sm" onclick="ecVerbindungTesten()">
+            🔌 Verbindung testen
+          </button>
+          <span id="ecTestStatus" style="margin-left:10px; font-size:13px; color:var(--text-dim);"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kontenverwaltung -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">Konten (für Kassenbuch)</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        SKR03/SKR04-Kontonummern für automatische DATEV-Zuordnung (optional).
+      </div>
+      <div class="form-group">
+        <label>Bankkonto <span style="font-weight:400; color:var(--text-dim);">(z.B. 1200)</span></label>
+        <input class="form-control" name="konto_bank" type="text"
+               value="{{ terminal.KONTO_BANK or '' }}" placeholder="1200">
+      </div>
+      <div class="form-group">
+        <label>Nebenkasse <span style="font-weight:400; color:var(--text-dim);">(z.B. 1610)</span></label>
+        <input class="form-control" name="konto_nebenkasse" type="text"
+               value="{{ terminal.KONTO_NEBENKASSE or '' }}" placeholder="1610">
+      </div>
+      <div class="form-group">
+        <label>Kassendifferenz Manko <span style="font-weight:400; color:var(--text-dim);">Sonstiger Aufwand, unregelmäßig (SKR03)</span></label>
+        <input class="form-control" name="konto_kassendiff_aufwand" type="text"
+               value="{{ terminal.KONTO_KASSENDIFF_AUFWAND or '' }}" placeholder="z.B. 2309">
+      </div>
+      <div class="form-group">
+        <label>Kassendifferenz Mehrbetrag <span style="font-weight:400; color:var(--text-dim);">Sonstiger Ertrag, unregelmäßig (SKR03)</span></label>
+        <input class="form-control" name="konto_kassendiff_ertrag" type="text"
+               value="{{ terminal.KONTO_KASSENDIFF_ERTRAG or '' }}" placeholder="z.B. 2309">
+      </div>
+    </div>
+
     <!-- Trainings-/Demo-Modus -->
     <div class="card" style="margin-bottom:16px; border:2px solid {{ 'var(--gold)' if terminal.TRAININGS_MODUS else 'var(--border)' }};">
       <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">Trainings-/Demo-Modus</h3>
@@ -139,4 +248,34 @@
     </div>
   </form>
 </div>
+{% endblock %}
+{% block extra_script %}
+<script>
+function ecModusGeaendert() {
+  const modus = document.getElementById('ecModus').value;
+  document.getElementById('ecZvtFelder').style.display = (modus === 'zvt') ? 'block' : 'none';
+}
+
+async function ecVerbindungTesten() {
+  const ip = document.getElementById('ecIp').value.trim();
+  const el = document.getElementById('ecTestStatus');
+  if (!ip) { el.textContent = '⚠️ Bitte zuerst IP-Adresse eingeben und speichern.'; return; }
+  el.textContent = '⏳ Verbindung wird geprüft…';
+  el.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/api/ec/status');
+    const d = await r.json();
+    if (d.erreichbar) {
+      el.textContent = `✓ Erreichbar (${d.ip}:${d.port})`;
+      el.style.color = 'var(--gruen-dunkel)';
+    } else {
+      el.textContent = d.fehler || '✗ Nicht erreichbar – IP/Kabel prüfen';
+      el.style.color = 'var(--rot)';
+    }
+  } catch(e) {
+    el.textContent = 'Fehler: ' + e;
+    el.style.color = 'var(--rot)';
+  }
+}
+</script>
 {% endblock %}

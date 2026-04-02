@@ -45,13 +45,20 @@
     <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);">
       <span>Bar</span><span>{{ "%.2f"|format(daten.umsatz_bar/100) }} €</span>
     </div>
-    <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);">
+    <div style="display:flex; justify-content:space-between; padding:8px 0;">
       <span>Unbar / Karte</span><span>{{ "%.2f"|format(daten.umsatz_ec/100) }} €</span>
     </div>
-    <div style="display:flex; justify-content:space-between; padding:8px 0;">
-      <span>Kundenkonto</span><span>{{ "%.2f"|format(daten.umsatz_kundenkonto/100) }} €</span>
+  </div>
+
+  {% if daten.umsatz_kundenkonto %}
+  <div class="card" style="margin-bottom:16px; border-color:var(--text-dim); background:#fafafa;">
+    <h3 style="margin-bottom:8px; font-size:14px; color:var(--text-dim);">ℹ️ Kundenkonto (kein Kassenumsatz)</h3>
+    <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-mitte);">
+      <span>{{ daten.anzahl_belege_kundenkonto }} Beleg(e) · wird als Lieferschein in CAO gebucht</span>
+      <span>{{ "%.2f"|format(daten.umsatz_kundenkonto/100) }} €</span>
     </div>
   </div>
+  {% endif %}
 
   <div class="card" style="margin-bottom:24px;">
     <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Kassenbuch</h3>

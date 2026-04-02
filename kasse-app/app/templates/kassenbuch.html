@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Kassenbuch{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+<a href="/kasse/manager" class="nav-btn">📊 Manager</a>
+{% endblock %}
 {% block extra_style %}
 <style>
 .kb-wrap {
@@ -66,9 +70,12 @@
 {% endblock %}
 {% block content %}
 <div class="kb-wrap">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
     <h1 style="font-size:26px;">📒 Kassenbuch</h1>
-    <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm">➕ Neue Buchung →</a>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm">➕ Neue Buchung →</a>
+      <a href="/kasse/kassenbuch/monat" class="btn btn-neutral btn-sm">📆 Monatsbericht →</a>
+    </div>
   </div>
 
   <!-- Info-Karten -->
@@ -96,7 +103,8 @@
     <h3 style="margin-bottom:12px; font-size:17px;">Letzte 30 Tage</h3>
     {% if eintraege %}
     {% for e in eintraege %}
-    <div class="eintrag-zeile">
+    {% set ist_abschluss = e.TYP == 'TAGESABSCHLUSS' %}
+    <div class="eintrag-zeile" style="{{ 'opacity:0.5; background:none; border-color:transparent;' if ist_abschluss else '' }}">
       <div>
         <div class="titel">
           {% if e.TYP == 'EINLAGE' %}Einlage
@@ -108,22 +116,24 @@
           {% elif e.TYP == 'TRANSFER_KASSE_NEBEN' %}Transfer → Nebenkasse
           {% elif e.TYP == 'TRANSFER_NEBEN_KASSE' %}Transfer ← Nebenkasse
           {% elif e.TYP == 'ANFANGSBESTAND' %}Anfangsbestand
-          {% elif e.TYP == 'UMSATZ_BAR' %}Bar-Umsatz
-          {% elif e.TYP == 'TAGESABSCHLUSS' %}Tagesabschluss
+          {% elif e.TYP == 'UMSATZ_BAR' %}Bareinnahmen
+          {% elif ist_abschluss %}Z-Bon
           {% else %}{{ e.TYP }}{% endif %}
-          {% if e.BELEGNUMMER %}<span class="belegnr">Beleg {{ e.BELEGNUMMER }}</span>{% endif %}
+          {% if e.BELEGNUMMER %}<span class="belegnr">{{ e.BELEGNUMMER }}</span>{% endif %}
         </div>
         {% set btext = e.BUCHUNGSTEXT or e.NOTIZ %}
-        {% if btext %}
-        <div class="meta">{{ btext }}</div>
-        {% endif %}
+        {% if btext %}<div class="meta">{{ btext }}</div>{% endif %}
         <div class="meta">
-          {{ e.BUCHUNGSDATUM[:16] if e.BUCHUNGSDATUM is string else '' }}
+          {% if e.BUCHUNGSDATUM is string %}{{ e.BUCHUNGSDATUM[:16] }}
+          {% elif e.BUCHUNGSDATUM %}{{ e.BUCHUNGSDATUM.strftime('%Y-%m-%d %H:%M') }}
+          {% endif %}
         </div>
       </div>
+      {% if not ist_abschluss %}
       <div class="betrag" style="color:{{ 'var(--gruen-status)' if e.BETRAG >= 0 else 'var(--rot)' }};">
         {{ "%.2f"|format(e.BETRAG/100) }} €
       </div>
+      {% endif %}
     </div>
     {% endfor %}
     {% else %}

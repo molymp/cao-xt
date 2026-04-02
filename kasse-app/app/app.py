@@ -3,11 +3,14 @@ CAO-XT Kassen-App – Flask-Hauptanwendung
 Starten: cd kasse-app/app && python3 app.py
 """
 from flask import (Flask, render_template, request, jsonify,
-                   redirect, url_for, session, send_file, abort)
+                   redirect, url_for, session, send_file, abort,
+                   send_from_directory)
 from functools import wraps
 from datetime import datetime, date
 import io
 import json
+import os
+import base64
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
@@ -25,7 +28,7 @@ app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
 
-# Schema-Migrationen beim Start ausführen
+# Schema-Migrationen beim Start ausführen (inkl. virtuelle Terminal-Nummer falls Sandbox-Modus)
 kl.migrationen_ausfuehren()
 
 # ── Context-Processor ─────────────────────────────────────────
@@ -33,10 +36,14 @@ kl.migrationen_ausfuehren()
 def _globals():
     trainings_modus     = False
     tse_nicht_produktiv = False
+    ec_modus            = 'manuell'
+    ec_tagesabschluss   = 'manuell'
     try:
         ts = _terminal_settings(config.TERMINAL_NR)
         trainings_modus     = ts['trainings_modus']
         tse_nicht_produktiv = ts['tse_nicht_produktiv']
+        ec_modus            = ts['ec_modus']
+        ec_tagesabschluss   = ts['ec_tagesabschluss']
     except Exception:
         pass
     return {
@@ -46,6 +53,8 @@ def _globals():
         'jetzt':               datetime.now(),
         'trainings_modus':     trainings_modus,
         'tse_nicht_produktiv': tse_nicht_produktiv,
+        'ec_modus':            ec_modus,
+        'ec_tagesabschluss':   ec_tagesabschluss,
     }
 
 
@@ -60,6 +69,8 @@ def _terminal_settings(terminal_nr: int) -> dict:
         cur.execute(
             """SELECT t.QR_CODE, t.TRAININGS_MODUS, t.SOFORT_DRUCKEN,
                       t.SCHUBLADE_AUTO_OEFFNEN, t.KASSENLADE,
+                      t.EC_MODUS, t.EC_TERMINAL_IP, t.EC_TERMINAL_PORT,
+                      t.EC_TAGESABSCHLUSS,
                       g.TYP AS TSE_TYP, g.FISKALY_ENV
                FROM XT_KASSE_TERMINALS t
                LEFT JOIN XT_KASSE_TSE_GERAETE g ON g.REC_ID = t.TSE_ID
@@ -81,7 +92,24 @@ def _terminal_settings(terminal_nr: int) -> dict:
         'schublade_auto_oeffnen': bool(row.get('SCHUBLADE_AUTO_OEFFNEN', 1)),
         'kassenlade':             int(row.get('KASSENLADE', 0)) > 0,
         'tse_nicht_produktiv':    tse_nicht_produktiv,
+        # EC-Terminal
+        'ec_modus':               (row.get('EC_MODUS') or 'manuell').lower(),
+        'ec_terminal_ip':         row.get('EC_TERMINAL_IP') or '',
+        'ec_terminal_port':       int(row.get('EC_TERMINAL_PORT') or 20007),
+        'ec_tagesabschluss':      (row.get('EC_TAGESABSCHLUSS') or 'manuell').lower(),
+        'ec_zvt_passwort':        row.get('EC_ZVT_PASSWORT') or '010203',
     }
+
+
+def _eff_terminal_nr() -> int:
+    """Effektive Terminal-Nummer für DB-Operationen.
+    Im Trainings-/Sandbox-Modus wird terminal_nr + 10000 verwendet,
+    damit Live- und Trainingsdaten vollständig getrennt in denselben Tabellen liegen.
+    Die echte Terminal-Nummer (config.TERMINAL_NR) wird nur für Anzeige/Druck verwendet."""
+    ts = _terminal_settings(config.TERMINAL_NR)
+    if ts['trainings_modus'] or ts['tse_nicht_produktiv']:
+        return config.TERMINAL_NR + 10000
+    return config.TERMINAL_NR
 
 
 def _mitarbeiter() -> dict:
@@ -177,12 +205,12 @@ def index():
 @app.get('/kasse')
 @_login_required
 def kasse():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     geparkt     = kl.geparkte_vorgaenge(terminal_nr)
     mwst_saetze = kl.mwst_saetze_laden()
     with get_db() as cur:
         cur.execute("SELECT * FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
-                    (terminal_nr,))
+                    (config.TERMINAL_NR,))
         terminal = cur.fetchone() or {}
     return render_template('kasse.html',
                            geparkte_vorgaenge=geparkt,
@@ -196,7 +224,7 @@ def kasse():
 @app.post('/api/vorgang/neu')
 @_login_required
 def api_vorgang_neu():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     vorgang = kl.vorgang_neu(terminal_nr, _mitarbeiter())
     return jsonify({'ok': True, 'vorgang_id': vorgang['ID'],
                     'bon_nr': vorgang['BON_NR']})
@@ -206,7 +234,7 @@ def api_vorgang_neu():
 @_login_required
 def api_vorgang_offen():
     """Gibt den aktuell offenen Vorgang dieses Terminals zurück (oder null)."""
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     with get_db() as cur:
         cur.execute(
             "SELECT * FROM XT_KASSE_VORGAENGE "
@@ -322,7 +350,7 @@ def api_vorgang_entparken(vid):
 @app.get('/api/geparkte')
 @_login_required
 def api_geparkte():
-    rows = kl.geparkte_vorgaenge(config.TERMINAL_NR)
+    rows = kl.geparkte_vorgaenge(_eff_terminal_nr())
     return jsonify(_jsonify_rows(rows))
 
 
@@ -378,7 +406,7 @@ def zahlung_seite(vid):
 def api_zahlung(vid):
     d = request.get_json()
     zahlungen = d.get('zahlungen', [])
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
 
     try:
         vorgang = kl.zahlung_abschliessen(vid, terminal_nr, zahlungen)
@@ -390,12 +418,12 @@ def api_zahlung(vid):
 
     # Terminal-Einstellungen, Bon drucken, Kassenlade öffnen
     try:
-        ts = _terminal_settings(terminal_nr)
+        ts = _terminal_settings(config.TERMINAL_NR)
         if ts['sofort_drucken']:
             _bon_drucken(vid, vorgang=vorgang)
         if ts['schublade_auto_oeffnen'] and ts['kassenlade'] and \
                 any(z['zahlart'] == 'BAR' for z in zahlungen):
-            druck.oeffne_kassenlade(terminal_nr)
+            druck.oeffne_kassenlade(config.TERMINAL_NR)
     except Exception as e:
         log.warning("Bondruck fehlgeschlagen: %s", e)
         return jsonify({'ok': True, 'warnung': f'Druck fehlgeschlagen: {e}',
@@ -414,7 +442,7 @@ def api_letzter_bon():
             "SELECT ID FROM XT_KASSE_VORGAENGE "
             "WHERE TERMINAL_NR=%s AND STATUS='ABGESCHLOSSEN' "
             "ORDER BY ID DESC LIMIT 1",
-            (config.TERMINAL_NR,)
+            (_eff_terminal_nr(),)
         )
         row = cur.fetchone()
     if not row:
@@ -467,7 +495,7 @@ def api_vorgang_suche():
     bon_nr      = request.args.get('bon_nr', '')
     datum_von   = request.args.get('datum_von', date.today().isoformat())
     datum_bis   = request.args.get('datum_bis', date.today().isoformat())
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
 
     with get_db() as cur:
         bedingungen = ["v.TERMINAL_NR = %s", "DATE(v.BON_DATUM) BETWEEN %s AND %s",
@@ -477,7 +505,7 @@ def api_vorgang_suche():
             bedingungen.append("v.BON_NR = %s")
             params.append(int(bon_nr))
         cur.execute(
-            f"SELECT v.ID, v.BON_NR, v.BON_DATUM, v.BETRAG_BRUTTO, "
+            f"SELECT v.ID, v.BON_NR, v.BON_DATUM, v.BETRAG_BRUTTO, v.IST_TRAINING, "
             f"       v.STATUS, v.STORNO_VON_ID, "
             f"       (SELECT BON_NR FROM XT_KASSE_VORGAENGE "
             f"        WHERE ID = v.STORNO_VON_ID) AS STORNO_VON_BON_NR, "
@@ -501,7 +529,7 @@ def api_vorgang_suche():
 @_login_required
 def api_vorgang_kopieren(vid):
     """Neuen Bon mit identischen Positionen anlegen."""
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     try:
         neuer = kl.vorgang_kopieren(vid, terminal_nr, _mitarbeiter())
     except ValueError as e:
@@ -512,7 +540,7 @@ def api_vorgang_kopieren(vid):
 @app.post('/api/vorgang/<int:vid>/storno')
 @_login_required
 def api_storno(vid):
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     try:
         storno_vorgang = kl.vorgang_stornieren(vid, terminal_nr, _mitarbeiter())
     except ValueError as e:
@@ -523,9 +551,9 @@ def api_storno(vid):
         positionen  = kl.vorgang_positionen(storno_vorgang['ID'])
         zahl_rows   = kl.vorgang_zahlungen(vid)
         mwst_saetze = kl.mwst_saetze_laden()
-        ts = _terminal_settings(terminal_nr)
+        ts = _terminal_settings(config.TERMINAL_NR)
         druck.drucke_bon(storno_vorgang, positionen, zahl_rows,
-                         mwst_saetze, terminal_nr, ist_storno=True,
+                         mwst_saetze, config.TERMINAL_NR, ist_storno=True,
                          qr_code=ts['qr_code'],
                          trainings_modus=ts['trainings_modus'])
     except Exception as e:
@@ -641,14 +669,22 @@ def api_kunden_gruppe(grp_id):
     with get_db() as cur:
         if grp_id == -1:
             cur.execute(
-                "SELECT REC_ID, NAME1, NAME2, ORT, KUNNUM1, KUNDENGRUPPE, PR_EBENE "
-                "FROM ADRESSEN WHERE NAME1 != '' ORDER BY NAME1 LIMIT 300"
+                """SELECT a.REC_ID, a.NAME1, a.NAME2, a.ORT, a.KUNNUM1,
+                          a.KUNDENGRUPPE, a.PR_EBENE,
+                          a.KUN_ZAHLART, za.NAME AS ZAHLART_NAME
+                   FROM ADRESSEN a
+                   LEFT JOIN ZAHLUNGSARTEN za ON za.REC_ID = a.KUN_ZAHLART
+                   WHERE a.NAME1 != '' ORDER BY a.NAME1 LIMIT 300"""
             )
         else:
             cur.execute(
-                "SELECT REC_ID, NAME1, NAME2, ORT, KUNNUM1, KUNDENGRUPPE, PR_EBENE "
-                "FROM ADRESSEN WHERE KUNDENGRUPPE=%s AND NAME1 != '' "
-                "ORDER BY NAME1 LIMIT 300",
+                """SELECT a.REC_ID, a.NAME1, a.NAME2, a.ORT, a.KUNNUM1,
+                          a.KUNDENGRUPPE, a.PR_EBENE,
+                          a.KUN_ZAHLART, za.NAME AS ZAHLART_NAME
+                   FROM ADRESSEN a
+                   LEFT JOIN ZAHLUNGSARTEN za ON za.REC_ID = a.KUN_ZAHLART
+                   WHERE a.KUNDENGRUPPE=%s AND a.NAME1 != ''
+                   ORDER BY a.NAME1 LIMIT 300""",
                 (grp_id,)
             )
         rows = cur.fetchall()
@@ -676,7 +712,7 @@ def api_vorgang_neuberechnen(vid):
 @app.get('/kasse/kassenbuch')
 @_login_required
 def kassenbuch_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     eintraege   = kl.kassenbuch_liste(terminal_nr, kasse='HAUPT', tage=30)
     info        = kl.kassenbuch_info(terminal_nr)
     mwst_saetze = kl.mwst_saetze_laden()
@@ -690,17 +726,21 @@ def kassenbuch_seite():
 @app.get('/kasse/kassenbuch/buchung')
 @_login_required
 def kassenbuch_buchung_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     info        = kl.kassenbuch_info(terminal_nr)
     # mwst_saetze_laden() → {code: satz_float}; Template erwartet Liste mit .CODE/.SATZ
     mwst_saetze = [{'CODE': k, 'SATZ': v}
                    for k, v in sorted(kl.mwst_saetze_laden().items())]
-    naechste_nr = kl.kassenbuch_belegnummer_naechste(terminal_nr)
-    min_datum   = kl.letzter_abschluss_datum(terminal_nr)
+    naechste_nr      = kl.kassenbuch_belegnummer_naechste(terminal_nr)
+    min_datum        = kl.letzter_abschluss_datum(terminal_nr)
+    fibu_bankkonten  = kl.fibu_konten_laden(kontoart=20)   # Bankkonten
+    fibu_kassenkonten = kl.fibu_konten_laden(kontoart=3)   # Kassenkonten
     from datetime import date as _date
     return render_template('kassenbuch_buchung.html',
                            info=info,
                            mwst_saetze=mwst_saetze,
+                           fibu_bankkonten=fibu_bankkonten,
+                           fibu_kassenkonten=fibu_kassenkonten,
                            naechste_belegnummer=naechste_nr,
                            min_datum=min_datum.isoformat() if min_datum else None,
                            heute=_date.today().isoformat(),
@@ -719,7 +759,7 @@ def api_kassenbuch():
 
     # Überschuss-Prüfung: Entnahmen dürfen den Saldo nicht übersteigen
     if kl.KASSENBUCH_TYPEN.get(typ, {}).get('sign', 1) < 0:
-        saldo = kl.kassenbuch_saldo(config.TERMINAL_NR)
+        saldo = kl.kassenbuch_saldo(_eff_terminal_nr())
         if betrag_cent > saldo:
             return jsonify({'ok': False,
                             'fehler': f'Betrag ({betrag_cent/100:.2f} €) übersteigt Kassenbestand ({saldo/100:.2f} €)'}), 400
@@ -738,7 +778,7 @@ def api_kassenbuch():
 
     try:
         kl.kassenbuch_eintrag_manuell(
-            config.TERMINAL_NR, typ, betrag_cent, session['ma_id'],
+            _eff_terminal_nr(), typ, betrag_cent, session['ma_id'],
             buchungstext=d.get('buchungstext', ''),
             gegenkonto=d.get('gegenkonto', ''),
             mwst_code=d.get('mwst_code') or None,
@@ -748,7 +788,7 @@ def api_kassenbuch():
     except ValueError as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
 
-    info = kl.kassenbuch_info(config.TERMINAL_NR)
+    info = kl.kassenbuch_info(_eff_terminal_nr())
     return jsonify({'ok': True, 'saldo': info['saldo_haupt'], 'saldo_neben': info['saldo_neben']})
 
 
@@ -757,7 +797,7 @@ def api_kassenbuch():
 @app.get('/kasse/kassenbuch/monat')
 @_login_required
 def kassenbuch_monat_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     # Jahr/Monat aus Query-String oder aktuell
     from datetime import date as _d
     heute = _d.today()
@@ -779,7 +819,7 @@ def kassenbuch_monat_seite():
 @app.get('/kasse/kassenbuch/export/pdf')
 @_login_required
 def kassenbuch_export_pdf():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     from datetime import date as _d
     heute = _d.today()
     try:
@@ -806,7 +846,7 @@ def kassenbuch_export_pdf():
 @app.get('/kasse/kassenbuch/export/xlsx')
 @_login_required
 def kassenbuch_export_xlsx():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     from datetime import date as _d
     heute = _d.today()
     try:
@@ -833,7 +873,7 @@ def kassenbuch_export_xlsx():
 @app.get('/kasse/kassenbuch/export/csv')
 @_login_required
 def kassenbuch_export_csv():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     from datetime import date as _d
     heute = _d.today()
     try:
@@ -864,7 +904,7 @@ def api_zaehlung_speichern():
         return jsonify({'ok': False, 'fehler': 'Ungültiger Typ'}), 400
     try:
         zid = kl.zaehlung_speichern(
-            config.TERMINAL_NR, typ,
+            _eff_terminal_nr(), typ,
             bestand     = d.get('bestand', {}),
             betrag_cent = int(d.get('betrag_cent', 0)),
             kassenbuch_id = d.get('kassenbuch_id'),
@@ -877,7 +917,7 @@ def api_zaehlung_speichern():
 @app.get('/api/zaehlung/<typ>')
 @_login_required
 def api_zaehlung_laden(typ):
-    z = kl.zaehlung_laden(config.TERMINAL_NR, typ.upper())
+    z = kl.zaehlung_laden(_eff_terminal_nr(), typ.upper())
     if not z:
         return jsonify({'ok': False, 'fehler': 'Keine Zählung gefunden'}), 404
     return jsonify({
@@ -893,7 +933,7 @@ def api_zaehlung_laden(typ):
 @app.get('/kasse/manager')
 @_login_required
 def manager_seite():
-    terminal_nr  = config.TERMINAL_NR
+    terminal_nr  = _eff_terminal_nr()
     info         = kl.kassenbuch_info(terminal_nr)
     xbon         = kl.xbon_daten(terminal_nr)
     # mwst_saetze_laden() → {code: satz_float}; Template erwartet Liste mit .CODE/.SATZ
@@ -911,7 +951,7 @@ def manager_seite():
 @app.get('/kasse/nebenkasse')
 @_login_required
 def nebenkasse_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     eintraege   = kl.kassenbuch_liste(terminal_nr, kasse='NEBEN', tage=90)
     info        = kl.kassenbuch_info(terminal_nr)
     return render_template('nebenkasse.html',
@@ -923,7 +963,7 @@ def nebenkasse_seite():
 @app.get('/kasse/kassensturz')
 @_login_required
 def kassensturz_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     info        = kl.kassenbuch_info(terminal_nr)
     xbon        = kl.xbon_daten(terminal_nr)
     mwst_saetze = kl.mwst_saetze_laden()
@@ -939,7 +979,7 @@ def kassensturz_seite():
 @app.get('/kasse/xbon')
 @_login_required
 def xbon_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     daten       = kl.xbon_daten(terminal_nr)
     mwst_saetze = kl.mwst_saetze_laden()
     return render_template('xbon.html', daten=daten,
@@ -950,11 +990,11 @@ def xbon_seite():
 @app.post('/api/xbon/drucken')
 @_login_required
 def api_xbon_drucken():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     daten       = kl.xbon_daten(terminal_nr)
     mwst_saetze = kl.mwst_saetze_laden()
     try:
-        druck.drucke_xbon(terminal_nr, daten, mwst_saetze)
+        druck.drucke_xbon(config.TERMINAL_NR, daten, mwst_saetze)
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)})
     return jsonify({'ok': True})
@@ -965,7 +1005,7 @@ def api_xbon_drucken():
 @app.get('/kasse/tagesabschluss')
 @_login_required
 def tagesabschluss_seite():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     daten       = kl.xbon_daten(terminal_nr)   # gleiche Zahlen, ohne Z-Bon zu erstellen
     mwst_saetze = kl.mwst_saetze_laden()
     return render_template('tagesabschluss.html', daten=daten,
@@ -976,7 +1016,7 @@ def tagesabschluss_seite():
 @app.post('/api/tagesabschluss')
 @_login_required
 def api_tagesabschluss():
-    terminal_nr = config.TERMINAL_NR
+    terminal_nr = _eff_terminal_nr()
     try:
         ta = kl.tagesabschluss_erstellen(terminal_nr, session['ma_id'])
     except Exception as e:
@@ -984,9 +1024,9 @@ def api_tagesabschluss():
         return jsonify({'ok': False, 'fehler': str(e)}), 500
 
     mwst_saetze = kl.mwst_saetze_laden()
-    ts = _terminal_settings(terminal_nr)
+    ts = _terminal_settings(config.TERMINAL_NR)
     try:
-        druck.drucke_zbon(terminal_nr, ta, mwst_saetze,
+        druck.drucke_zbon(config.TERMINAL_NR, ta, mwst_saetze,
                           trainings_modus=ts['trainings_modus'],
                           nicht_produktiv=ts['tse_nicht_produktiv'])
     except Exception as e:
@@ -994,7 +1034,23 @@ def api_tagesabschluss():
         return jsonify({'ok': True, 'warnung': f'Druck fehlgeschlagen: {e}',
                         'z_nr': ta['Z_NR'], 'ta_id': ta['ID']})
 
-    return jsonify({'ok': True, 'z_nr': ta['Z_NR'], 'ta_id': ta['ID']})
+    return jsonify({
+        'ok':    True,
+        'z_nr':  ta['Z_NR'],
+        'ta_id': ta['ID'],
+        # Tatsächlich gespeicherte Werte – für Aktualisierung der Bildschirm-Vorschau,
+        # die beim Seitenaufruf statisch gerendert wurde und veraltet sein kann.
+        'einlagen':            int(ta['EINLAGEN']            or 0),
+        'entnahmen':           int(ta['ENTNAHMEN']           or 0),
+        'kassenbestand_anfang':int(ta['KASSENBESTAND_ANFANG']or 0),
+        'kassenbestand_ende':  int(ta['KASSENBESTAND_ENDE']  or 0),
+        'umsatz_bar':          int(ta['UMSATZ_BAR']          or 0),
+        'umsatz_ec':           int(ta['UMSATZ_EC']           or 0),
+        'umsatz_brutto':       int(ta['UMSATZ_BRUTTO']       or 0),
+        'anzahl_belege':       int(ta['ANZAHL_BELEGE']       or 0),
+        'anzahl_stornos':      int(ta['ANZAHL_STORNOS']      or 0),
+        'betrag_stornos':      int(ta['BETRAG_STORNOS']      or 0),
+    })
 
 
 # ── Bon → Lieferschein ────────────────────────────────────────
@@ -1002,16 +1058,36 @@ def api_tagesabschluss():
 @app.post('/api/vorgang/<int:vid>/lieferschein')
 @_login_required
 def api_zu_lieferschein(vid):
-    d = request.get_json()
+    d = request.get_json() or {}
     adressen_id = d.get('adressen_id')
+    if adressen_id is not None:
+        adressen_id = int(adressen_id)
+    mit_kopie   = bool(d.get('mit_kopie', False))
     if not adressen_id:
         return jsonify({'ok': False, 'fehler': 'Keine Kundenadresse angegeben'}), 400
-    ma  = _mitarbeiter()
-    name = f"{ma.get('VNAME','')} {ma.get('NAME','')}".strip()
+    ma    = _mitarbeiter()
+    name  = f"{ma.get('VNAME', '')} {ma.get('NAME', '')}".strip()
+    ma_id = int(ma.get('MA_ID') or -1)
     try:
-        result = kl.vorgang_zu_lieferschein(vid, adressen_id, name)
-    except Exception as e:
+        result = kl.vorgang_zu_lieferschein(
+            vid, adressen_id, name,
+            terminal_nr=config.TERMINAL_NR,
+            ma_id=ma_id
+        )
+    except ValueError as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
+    except Exception as e:
+        log.exception("Fehler bei Lieferschein-Erstellung: %s", e)
+        return jsonify({'ok': False, 'fehler': f'Interner Fehler: {e}'}), 500
+
+    try:
+        druck.drucke_lieferschein(
+            config.TERMINAL_NR, result['lieferschein_id'],
+            mit_kopie=mit_kopie
+        )
+    except Exception as e:
+        log.warning("Lieferschein Druck fehlgeschlagen: %s", e)
+        return jsonify({'ok': True, 'warnung': f'Druck fehlgeschlagen: {e}', **result})
     return jsonify({'ok': True, **result})
 
 
@@ -1036,7 +1112,7 @@ def admin_index():
         cur.execute(
             """SELECT * FROM XT_KASSE_TAGESABSCHLUSS WHERE TERMINAL_NR = %s
                ORDER BY ZEITPUNKT DESC LIMIT 5""",
-            (terminal_nr,)
+            (_eff_terminal_nr(),)
         )
         letzte_abschluesse = cur.fetchall()
         cur.execute("SELECT * FROM FIRMA LIMIT 1")
@@ -1099,6 +1175,18 @@ def admin_terminal_speichern():
     schublade_auto_oeffnen = 1 if f.get('schublade_auto_oeffnen') else 0
     qr_code                = 1 if f.get('qr_code') else 0
     trainings_modus        = 1 if f.get('trainings_modus') else 0
+    ec_modus               = f.get('ec_modus', 'manuell')
+    if ec_modus not in ('manuell', 'zvt'):
+        ec_modus = 'manuell'
+    ec_terminal_ip         = f.get('ec_terminal_ip', '').strip() or None
+    ec_terminal_port       = int(f.get('ec_terminal_port') or 20007)
+    ec_tagesabschluss      = f.get('ec_tagesabschluss', 'manuell')
+    if ec_tagesabschluss not in ('manuell', 'auto', 'auto_vergleich'):
+        ec_tagesabschluss = 'manuell'
+    # Passwort: exakt 6 Dezimalstellen, Default 010203
+    import re
+    ec_zvt_passwort = re.sub(r'[^0-9]', '', f.get('ec_zvt_passwort', '010203'))
+    ec_zvt_passwort = ec_zvt_passwort.zfill(6)[:6] or '010203'
     with get_db() as cur:
         cur.execute(
             """INSERT INTO XT_KASSE_TERMINALS
@@ -1106,15 +1194,19 @@ def admin_terminal_speichern():
                 DRUCKER_IP, DRUCKER_PORT, KASSENLADE,
                 SOFORT_DRUCKEN, SCHUBLADE_AUTO_OEFFNEN, QR_CODE, TRAININGS_MODUS,
                 FIRMA_NAME, FIRMA_ZUSATZ,
-                KONTO_BANK, KONTO_NEBENKASSE)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                KONTO_BANK, KONTO_NEBENKASSE, KONTO_KASSENDIFF_AUFWAND, KONTO_KASSENDIFF_ERTRAG,
+                EC_MODUS, EC_TERMINAL_IP, EC_TERMINAL_PORT, EC_TAGESABSCHLUSS, EC_ZVT_PASSWORT)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE
                BEZEICHNUNG=%s,
                DRUCKER_IP=%s, DRUCKER_PORT=%s, KASSENLADE=%s,
                SOFORT_DRUCKEN=%s, SCHUBLADE_AUTO_OEFFNEN=%s, QR_CODE=%s,
                TRAININGS_MODUS=%s,
                FIRMA_NAME=%s, FIRMA_ZUSATZ=%s,
-               KONTO_BANK=%s, KONTO_NEBENKASSE=%s""",
+               KONTO_BANK=%s, KONTO_NEBENKASSE=%s,
+               KONTO_KASSENDIFF_AUFWAND=%s, KONTO_KASSENDIFF_ERTRAG=%s,
+               EC_MODUS=%s, EC_TERMINAL_IP=%s, EC_TERMINAL_PORT=%s,
+               EC_TAGESABSCHLUSS=%s, EC_ZVT_PASSWORT=%s""",
             (tnr,
              f.get('bezeichnung', ''),
              f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
@@ -1122,13 +1214,19 @@ def admin_terminal_speichern():
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
              f.get('firma_name', ''), f.get('firma_zusatz', ''),
              f.get('konto_bank', '') or None, f.get('konto_nebenkasse', '') or None,
+             f.get('konto_kassendiff_aufwand', '') or None,
+             f.get('konto_kassendiff_ertrag', '') or None,
+             ec_modus, ec_terminal_ip, ec_terminal_port, ec_tagesabschluss, ec_zvt_passwort,
              # ON DUPLICATE KEY
              f.get('bezeichnung', ''),
              f.get('drucker_ip', ''), int(f.get('drucker_port', 9100)),
              int(f.get('kassenlade', 0)),
              sofort_drucken, schublade_auto_oeffnen, qr_code, trainings_modus,
              f.get('firma_name', ''), f.get('firma_zusatz', ''),
-             f.get('konto_bank', '') or None, f.get('konto_nebenkasse', '') or None)
+             f.get('konto_bank', '') or None, f.get('konto_nebenkasse', '') or None,
+             f.get('konto_kassendiff_aufwand', '') or None,
+             f.get('konto_kassendiff_ertrag', '') or None,
+             ec_modus, ec_terminal_ip, ec_terminal_port, ec_tagesabschluss, ec_zvt_passwort)
         )
     tse_modul._token_cache.pop(tnr, None)
     return redirect(url_for('admin_index'))
@@ -1336,7 +1434,7 @@ def abschluesse_seite():
             """SELECT * FROM XT_KASSE_TAGESABSCHLUSS
                WHERE TERMINAL_NR = %s
                ORDER BY DATUM DESC LIMIT 30""",
-            (config.TERMINAL_NR,)
+            (_eff_terminal_nr(),)
         )
         rows = cur.fetchall()
     return render_template('abschluesse.html',
@@ -1361,6 +1459,144 @@ def api_zbon_nochmal(ta_id):
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)})
     return jsonify({'ok': True})
+
+
+# ── EC-Terminal (ZVT) ─────────────────────────────────────────
+
+@app.get('/api/ec/status')
+@_login_required
+def api_ec_status():
+    """Prüft ob das konfigurierte ZVT-Terminal TCP-seitig erreichbar ist."""
+    ts = _terminal_settings(config.TERMINAL_NR)
+    if ts['trainings_modus']:
+        return jsonify({'ok': False, 'erreichbar': False,
+                        'fehler': 'Im Trainings-Modus nicht verfügbar'})
+    if ts['ec_modus'] != 'zvt' or not ts['ec_terminal_ip']:
+        return jsonify({'ok': False, 'erreichbar': False,
+                        'fehler': 'Kein ZVT-Terminal konfiguriert'})
+    import ec_zvt
+    erreichbar = ec_zvt.ping(ts['ec_terminal_ip'], ts['ec_terminal_port'])
+    return jsonify({'ok': True, 'erreichbar': erreichbar,
+                    'ip': ts['ec_terminal_ip'], 'port': ts['ec_terminal_port']})
+
+
+@app.post('/api/ec/zahlung')
+@_login_required
+def api_ec_zahlung():
+    """
+    Initiiert eine Kartenzahlung über ZVT am Desk 3500 (blockiert bis ~90 s).
+    Im Trainings-Modus nicht verfügbar – das Frontend erzwingt dort manuellen Modus.
+    Rückgabe: {ok, referenz, terminal_id} oder {ok: false, fehler, offline}
+    """
+    ts = _terminal_settings(config.TERMINAL_NR)
+    if ts['trainings_modus']:
+        return jsonify({'ok': False, 'offline': True,
+                        'fehler': 'Im Trainings-Modus nicht verfügbar'}), 400
+    if ts['ec_modus'] != 'zvt' or not ts['ec_terminal_ip']:
+        return jsonify({'ok': False, 'fehler': 'ZVT nicht konfiguriert', 'offline': True}), 400
+    d = request.get_json(force=True) or {}
+    betrag_cent = int(d.get('betrag_cent', 0))
+    if not betrag_cent:
+        return jsonify({'ok': False, 'fehler': 'Kein Betrag angegeben'}), 400
+    import ec_zvt
+    passwort = ec_zvt.passwort_von_hex(ts['ec_zvt_passwort'])
+    return jsonify(ec_zvt.authorisieren(
+        ts['ec_terminal_ip'], ts['ec_terminal_port'], betrag_cent, passwort=passwort
+    ))
+
+
+@app.post('/api/ec/tagesabschluss')
+@_login_required
+def api_ec_tagesabschluss():
+    """
+    Führt den EC-Terminal-Tagesabschluss durch und liest die Totals aus.
+    Rückgabe: {ok, totals: {gesamt_cent, anzahl, details} | null, fehler, offline}
+    """
+    ts = _terminal_settings(config.TERMINAL_NR)
+    if ts['trainings_modus']:
+        return jsonify({'ok': False, 'totals': None,
+                        'fehler': 'Im Trainings-Modus nicht verfügbar', 'offline': True}), 400
+    if ts['ec_modus'] != 'zvt' or not ts['ec_terminal_ip']:
+        return jsonify({'ok': False, 'totals': None,
+                        'fehler': 'ZVT nicht konfiguriert', 'offline': True}), 400
+    import ec_zvt
+    passwort = ec_zvt.passwort_von_hex(ts['ec_zvt_passwort'])
+    return jsonify(ec_zvt.tagesabschluss_ausfuehren(
+        ts['ec_terminal_ip'], ts['ec_terminal_port'], passwort=passwort
+    ))
+
+
+# ── Handbuch ──────────────────────────────────────────────────
+
+_DOKU_DIR = os.path.join(os.path.dirname(__file__), 'doku')
+
+
+@app.get('/kasse/doku/<path:dateiname>')
+@_login_required
+def kasse_doku_datei(dateiname):
+    """Statische Dateien aus dem doku/-Verzeichnis (Bilder für Handbuch)."""
+    return send_from_directory(os.path.abspath(_DOKU_DIR), dateiname)
+
+
+@app.get('/kasse/handbuch')
+@_login_required
+def kasse_handbuch():
+    """Mitarbeiter-Handbuch – alle eingeloggten User dürfen lesen,
+    Administratoren (admin=True in Session) dürfen bearbeiten."""
+    pfad = os.path.join(_DOKU_DIR, 'handbuch.html')
+    try:
+        with open(pfad, encoding='utf-8') as f:
+            html = f.read()
+    except FileNotFoundError:
+        return 'Handbuch nicht gefunden.', 404
+    ist_admin = bool(session.get('admin') or session.get('ma_id'))
+    inject = (f'<script id="hb-inject">'
+              f'window.HANDBUCH_ADMIN = {"true" if ist_admin else "false"};'
+              f'</script>\n')
+    html = html.replace('</head>', inject + '</head>', 1)
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@app.post('/kasse/handbuch/speichern')
+@_login_required
+def kasse_handbuch_speichern():
+    """Speichert das bearbeitete Handbuch. Backup der alten Version wird angelegt."""
+    data = request.get_json(force=True) or {}
+    html = data.get('html', '').strip()
+    if not html:
+        return jsonify({'ok': False, 'fehler': 'Kein Inhalt'}), 400
+    pfad   = os.path.join(_DOKU_DIR, 'handbuch.html')
+    backup = pfad + '.bak'
+    try:
+        if os.path.exists(pfad):
+            with open(pfad, 'rb') as f_in, open(backup, 'wb') as f_bak:
+                f_bak.write(f_in.read())
+        with open(pfad, 'w', encoding='utf-8') as f:
+            f.write(html)
+    except OSError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True})
+
+
+@app.post('/kasse/handbuch/upload')
+@_login_required
+def kasse_handbuch_upload():
+    """Speichert ein hochgeladenes Bild im doku/-Verzeichnis."""
+    data      = request.get_json(force=True) or {}
+    dateiname = os.path.basename(data.get('filename', ''))
+    b64data   = data.get('data', '')
+    if not dateiname or not b64data:
+        return jsonify({'ok': False, 'fehler': 'filename oder data fehlt'}), 400
+    if ',' in b64data:
+        b64data = b64data.split(',', 1)[1]
+    try:
+        bild_bytes = base64.b64decode(b64data)
+        ziel = os.path.join(_DOKU_DIR, dateiname)
+        with open(ziel, 'wb') as f:
+            f.write(bild_bytes)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True, 'filename': f'/kasse/doku/{dateiname}'})
 
 
 # ── Start ─────────────────────────────────────────────────────

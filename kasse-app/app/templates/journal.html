@@ -98,6 +98,7 @@
 .j-badge-ok        { background: #e8f5e0; color: var(--gm); }
 .j-badge-storniert { background: #fde8e8; color: var(--rot); }
 .j-badge-storno-bon { background: #f0e8f8; color: #7030a0; }
+.j-badge-training { background: #fff3cd; color: #856404; border: 1px solid #ffd666; }
 
 /* Aktions-Buttons */
 .j-aktionen { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
@@ -273,6 +274,14 @@ async function suchen() {
         zeilenKlasse = '';
       }
 
+      // Trainings-Badge
+      const istTrainingBon = !!v.IST_TRAINING;
+      let trainingBadge = '';
+      if (istTrainingBon) {
+        const label = {{ 'true' if trainings_modus else 'false' }} ? 'Trainingsbon' : 'Test-Bon';
+        trainingBadge = `<span class="j-badge j-badge-training">\u{1F3CB} ${label}</span>`;
+      }
+
       // Z-Bon-Zuordnung
       const zBonZelle = v.Z_BON_NR != null
         ? `<span style="font-family:'Lobster',Georgia,serif; font-size:15px;
@@ -291,7 +300,7 @@ async function suchen() {
           <td style="color:var(--th);">${datFmt(v.BON_DATUM)}</td>
           <td class="j-betrag">${euro(v.BETRAG_BRUTTO)}</td>
           <td class="j-zahlart">${fmtZahlart(v.ZAHLARTEN)}</td>
-          <td>${badge}</td>
+          <td>${badge}${trainingBadge ? ' ' + trainingBadge : ''}</td>
           <td>${zBonZelle}</td>
           <td class="j-aktionen" onclick="event.stopPropagation()">
             <button class="j-btn j-btn-neu" onclick="nachdrucken(${v.ID})">🖨️ Nochmal</button>

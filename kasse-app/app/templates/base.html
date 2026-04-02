@@ -331,15 +331,41 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
   {% endif %}
   {% block nav_extra %}{% endblock %}
+  <a href="/kasse/handbuch"   class="nav-btn">📖</a>
+  <a href="/admin/"           class="nav-btn">⚙️</a>
   <span class="ma-info">
     Terminal {{ terminal_nr }} · {{ db_name }}
   </span>
-  <a href="/kasse/manager"    class="nav-btn">📊 Manager</a>
-  <a href="/admin/"           class="nav-btn">⚙️</a>
   <a href="/logout"           class="nav-btn danger">Abmelden</a>
 </div>
 
 {% block content %}{% endblock %}
+
+<!-- ── Ziffernblock-Overlay (global, wiederverwendbar) ──────── -->
+<div id="numpadOverlay" class="overlay hidden" onclick="if(event.target===this)numpadClose()">
+  <div class="modal" style="width:min(340px,95vw);padding:20px;">
+    <div id="numpadLabel" style="font-size:13px;font-weight:700;color:var(--text-dim);
+         text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;"></div>
+    <div id="numpadDisplay" style="font-family:'Lobster',Georgia,serif;font-size:48px;
+         text-align:right;background:var(--grau-hell);border:1px solid var(--creme-dunkel);
+         border-radius:var(--radius-klein);padding:10px 16px;margin-bottom:14px;
+         min-height:72px;letter-spacing:.04em;">0</div>
+    <div class="numpad">
+      <button class="btn" onclick="numpadKey('7')">7</button>
+      <button class="btn" onclick="numpadKey('8')">8</button>
+      <button class="btn" onclick="numpadKey('9')">9</button>
+      <button class="btn" onclick="numpadKey('4')">4</button>
+      <button class="btn" onclick="numpadKey('5')">5</button>
+      <button class="btn" onclick="numpadKey('6')">6</button>
+      <button class="btn" onclick="numpadKey('1')">1</button>
+      <button class="btn" onclick="numpadKey('2')">2</button>
+      <button class="btn" onclick="numpadKey('3')">3</button>
+      <button class="btn btn-danger" onclick="numpadKey('C')">C</button>
+      <button class="btn" onclick="numpadKey('0')">0</button>
+      <button class="btn btn-success" onclick="numpadConfirm()">✓</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -361,6 +387,35 @@ async function api(method, url, body) {
 
 function euro(cent) {
   return (cent / 100).toFixed(2).replace('.', ',') + ' €';
+}
+
+// ── Ziffernblock ───────────────────────────────────────────────
+let _npVal = '';
+let _npCb  = null;
+
+function numpadOpen(label, currentVal, callback) {
+  _npCb  = callback;
+  _npVal = currentVal > 0 ? String(currentVal) : '';
+  document.getElementById('numpadLabel').textContent   = label;
+  document.getElementById('numpadDisplay').textContent = _npVal || '0';
+  document.getElementById('numpadOverlay').classList.remove('hidden');
+}
+
+function numpadKey(k) {
+  if      (k === 'C') { _npVal = ''; }
+  else if (_npVal.length < 5) { _npVal += k; }
+  document.getElementById('numpadDisplay').textContent = _npVal || '0';
+}
+
+function numpadConfirm() {
+  const n = Math.max(0, parseInt(_npVal) || 0);
+  if (_npCb) _npCb(n);
+  numpadClose();
+}
+
+function numpadClose() {
+  document.getElementById('numpadOverlay').classList.add('hidden');
+  _npVal = ''; _npCb = null;
 }
 </script>
 {% block extra_script %}{% endblock %}

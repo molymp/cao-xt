@@ -16,11 +16,11 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
       <div>
         <div style="color:var(--text-dim); font-size:13px;">Belege</div>
-        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gruen-dunkel);">{{ daten.anzahl_belege }}</div>
+        <div id="val-anzahl-belege" style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gruen-dunkel);">{{ daten.anzahl_belege }}</div>
       </div>
       <div>
         <div style="color:var(--text-dim); font-size:13px;">Umsatz brutto</div>
-        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gold);">
+        <div id="val-umsatz-brutto" style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gold);">
           {{ "%.2f"|format(daten.umsatz_brutto/100) }} €
         </div>
       </div>
@@ -44,27 +44,67 @@
   <div class="card" style="margin-bottom:16px;">
     <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Zahlarten</h3>
     <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);">
-      <span>Bar</span><span>{{ "%.2f"|format(daten.umsatz_bar/100) }} €</span>
-    </div>
-    <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border);">
-      <span>Unbar / Karte</span><span>{{ "%.2f"|format(daten.umsatz_ec/100) }} €</span>
+      <span>Bar</span><span id="val-bar">{{ "%.2f"|format(daten.umsatz_bar/100) }} €</span>
     </div>
     <div style="display:flex; justify-content:space-between; padding:7px 0;">
-      <span>Kundenkonto</span><span>{{ "%.2f"|format(daten.umsatz_kundenkonto/100) }} €</span>
+      <span>Unbar / Karte</span><span id="val-ec">{{ "%.2f"|format(daten.umsatz_ec/100) }} €</span>
     </div>
   </div>
+
+  {% if daten.umsatz_kundenkonto %}
+  <div class="card" style="margin-bottom:16px; border-color:var(--text-dim); background:#fafafa;">
+    <h3 style="margin-bottom:8px; font-size:14px; color:var(--text-dim);">ℹ️ Kundenkonto (kein Kassenumsatz)</h3>
+    <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-mitte);">
+      <span>{{ daten.anzahl_belege_kundenkonto }} Beleg(e) · wird als Lieferschein in CAO gebucht</span>
+      <span>{{ "%.2f"|format(daten.umsatz_kundenkonto/100) }} €</span>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="card" style="margin-bottom:24px;">
     <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Kassenbuch</h3>
     <div style="display:flex; justify-content:space-between; padding:6px 0;">
-      <span>Anfangsbestand</span><span>{{ "%.2f"|format(daten.kassenbestand_anfang/100) }} €</span>
+      <span>Anfangsbestand</span><span id="val-kb-anfang">{{ "%.2f"|format(daten.kassenbestand_anfang/100) }} €</span>
     </div>
-    <div style="display:flex; justify-content:space-between; padding:6px 0;">
-      <span>+ Einlagen</span><span>{{ "%.2f"|format(daten.einlagen/100) }} €</span>
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--gruen-dunkel);">
+      <span>+ Tagesumsatz Bar</span><span id="val-kb-bar">{{ "%.2f"|format(daten.umsatz_bar/100) }} €</span>
     </div>
-    <div style="display:flex; justify-content:space-between; padding:6px 0;">
-      <span>− Entnahmen</span><span>{{ "%.2f"|format(daten.entnahmen/100) }} €</span>
+    <div id="row-einlagen" style="display:{% if daten.einlagen %}flex{% else %}none{% endif %}; justify-content:space-between; padding:6px 0;">
+      <span>+ Einlagen</span><span id="val-einlagen">{{ "%.2f"|format(daten.einlagen/100) }} €</span>
     </div>
+    <div id="row-entnahmen" style="display:{% if daten.entnahmen %}flex{% else %}none{% endif %}; justify-content:space-between; padding:6px 0;">
+      <span>− Entnahmen</span><span id="val-entnahmen">{{ "%.2f"|format(daten.entnahmen/100) }} €</span>
+    </div>
+    {% if daten.tr_bank_ein %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--text-dim);">
+      <span>+ Transfer Bank → Kasse</span><span>{{ "%.2f"|format(daten.tr_bank_ein/100) }} €</span>
+    </div>
+    {% endif %}
+    {% if daten.tr_bank_aus %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--text-dim);">
+      <span>− Transfer Kasse → Bank</span><span>{{ "%.2f"|format(daten.tr_bank_aus/100) }} €</span>
+    </div>
+    {% endif %}
+    {% if daten.tr_neben_ein %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--text-dim);">
+      <span>+ Transfer Neben → Kasse</span><span>{{ "%.2f"|format(daten.tr_neben_ein/100) }} €</span>
+    </div>
+    {% endif %}
+    {% if daten.tr_neben_aus %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--text-dim);">
+      <span>− Transfer Kasse → Neben</span><span>{{ "%.2f"|format(daten.tr_neben_aus/100) }} €</span>
+    </div>
+    {% endif %}
+    {% if daten.kassendiff_fehler %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--rot);">
+      <span>− Kassenfehlbetrag</span><span>{{ "%.2f"|format(daten.kassendiff_fehler/100) }} €</span>
+    </div>
+    {% endif %}
+    {% if daten.kassendiff_ueberschuss %}
+    <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--gruen-dunkel);">
+      <span>+ Kassenüberschuss</span><span>{{ "%.2f"|format(daten.kassendiff_ueberschuss/100) }} €</span>
+    </div>
+    {% endif %}
     {% if daten.anzahl_stornos %}
     <div style="display:flex; justify-content:space-between; padding:6px 0; color:var(--rot);">
       <span>Stornos ({{ daten.anzahl_stornos }}×)</span>
@@ -73,15 +113,34 @@
     {% endif %}
     <div style="display:flex; justify-content:space-between; padding:10px 0; font-family:'Lobster',Georgia,serif; font-size:24px; font-weight:400; color:var(--gold); border-top:2px solid var(--border); margin-top:4px;">
       <span>Kassenstand Ende</span>
-      <span>{{ "%.2f"|format(daten.kassenbestand_ende/100) }} €</span>
+      <span id="val-kb-ende">{{ "%.2f"|format(daten.kassenbestand_ende/100) }} €</span>
     </div>
   </div>
 
-  <div style="display:flex; gap:12px; flex-wrap:wrap;">
+  {% if ec_modus == 'zvt' and ec_tagesabschluss != 'manuell' %}
+  <!-- EC-Terminal Tagesabschluss -->
+  <div class="card" style="margin-bottom:20px;" id="ecTaCard">
+    <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">
+      💳 EC-Terminal Tagesabschluss
+    </h3>
+    <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+      Führt den Kassenschnitt am Desk 3500 durch und druckt den Terminal-Abschlussbon.
+      {% if ec_tagesabschluss == 'auto_vergleich' %}
+      Anschließend wird die EC-Summe des Terminals mit dem App-Wert verglichen.
+      {% endif %}
+    </div>
+    <div id="ecTaStatus" style="margin-bottom:12px;"></div>
+    <button class="btn btn-neutral" id="btnEcTa" onclick="ecTagesabschlussStarten()">
+      🖨️ EC-Terminal Abschluss starten
+    </button>
+  </div>
+  {% endif %}
+
+  <div id="aktionszeile" style="display:flex; gap:12px; flex-wrap:wrap;">
     <button class="btn btn-danger" id="btnZBon" onclick="tagesabschluss()">
       ✓ Tagesabschluss durchführen
     </button>
-    <a href="/kasse" class="btn btn-neutral">← Abbrechen</a>
+    <a href="/kasse" class="btn btn-neutral" id="btnAbbrechen">← Abbrechen</a>
   </div>
 
   <div id="ergebnis" style="margin-top:20px; display:none;"></div>
@@ -97,18 +156,107 @@ async function tagesabschluss() {
   const el = document.getElementById('ergebnis');
   el.style.display = 'block';
   if (r.ok) {
-    el.innerHTML = `<div class="alert alert-success">
-      ✓ Z-Bon Nr. ${r.z_nr} erstellt und gedruckt.
-      ${r.warnung ? '<br>⚠️ ' + r.warnung : ''}
-    </div>
-    <a href="/kasse" class="btn btn-success">← Zurück zur Kasse</a>
-    <a href="/kasse/abschluesse" class="btn btn-neutral" style="margin-left:10px;">Übersicht</a>`;
-    btn.style.display = 'none';
+    // Bildschirm-Vorschau mit den tatsächlich gespeicherten Werten aktualisieren
+    // (die Seite wurde beim Laden statisch gerendert und kann veraltet sein).
+    const fmt = v => (v / 100).toFixed(2) + ' €';
+    document.getElementById('val-anzahl-belege').textContent = r.anzahl_belege;
+    document.getElementById('val-umsatz-brutto').textContent = fmt(r.umsatz_brutto);
+    document.getElementById('val-bar').textContent  = fmt(r.umsatz_bar);
+    document.getElementById('val-ec').textContent   = fmt(r.umsatz_ec);
+    document.getElementById('val-kb-anfang').textContent = fmt(r.kassenbestand_anfang);
+    document.getElementById('val-kb-bar').textContent    = fmt(r.umsatz_bar);
+    document.getElementById('val-kb-ende').textContent   = fmt(r.kassenbestand_ende);
+    const rowEin = document.getElementById('row-einlagen');
+    rowEin.style.display = r.einlagen ? 'flex' : 'none';
+    document.getElementById('val-einlagen').textContent  = fmt(r.einlagen);
+    const rowEnt = document.getElementById('row-entnahmen');
+    rowEnt.style.display = r.entnahmen ? 'flex' : 'none';
+    document.getElementById('val-entnahmen').textContent = fmt(r.entnahmen);
+
+    // Abbrechen und Durchführen-Button ausblenden
+    document.getElementById('btnZBon').style.display = 'none';
+    document.getElementById('btnAbbrechen').style.display = 'none';
+    el.innerHTML = `
+      <div class="alert alert-success">
+        ✓ Z-Bon Nr. ${r.z_nr} erstellt und gedruckt.
+        ${r.warnung ? '<br>⚠️ ' + r.warnung : ''}
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <a href="/kasse/manager?nach_zbon=1" class="btn btn-success">Weiter zur Abendroutine →</a>
+        <button class="btn btn-neutral" onclick="nochmalDrucken(${r.ta_id})">🖨️ Z-Bon nochmal drucken</button>
+        <a href="/kasse/abschluesse" class="btn btn-neutral">📋 Übersicht</a>
+      </div>`;
   } else {
     el.innerHTML = `<div class="alert alert-error">Fehler: ${r.fehler}</div>`;
     btn.disabled = false;
     btn.textContent = '✓ Tagesabschluss durchführen';
   }
 }
+
+async function nochmalDrucken(taId) {
+  const r = await api('POST', `/api/tagesabschluss/${taId}/drucken`);
+  toast(r.ok ? 'Z-Bon wird gedruckt' : ('Druckfehler: ' + r.fehler), r.ok ? 'ok' : 'err');
+}
+
+{% if ec_modus == 'zvt' and ec_tagesabschluss != 'manuell' %}
+const EC_APP_SUMME_CENT = {{ daten.umsatz_ec }};   // App-seitige EC-Summe für Vergleich
+
+async function ecTagesabschlussStarten() {
+  const btn = document.getElementById('btnEcTa');
+  const el  = document.getElementById('ecTaStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Terminal …';
+  el.innerHTML = '<span style="color:var(--text-dim); font-size:13px;">Warte auf Terminal …</span>';
+
+  const r = await api('POST', '/api/ec/tagesabschluss');
+  btn.disabled = false;
+  btn.textContent = '🖨️ EC-Terminal Abschluss starten';
+
+  if (!r.ok) {
+    el.innerHTML = `<div class="alert alert-error" style="margin:0;">
+      ✗ ${r.fehler || 'Fehler'}${r.offline ? ' – Terminal nicht erreichbar' : ''}
+    </div>`;
+    return;
+  }
+
+  let html = `<div class="alert alert-success" style="margin:0; margin-bottom:8px;">
+    ✓ EC-Terminal Tagesabschluss durchgeführt.
+  </div>`;
+
+  {% if ec_tagesabschluss == 'auto_vergleich' %}
+  if (r.totals) {
+    const terminalCent = r.totals.gesamt_cent;
+    const diff         = terminalCent - EC_APP_SUMME_CENT;
+    const fmt          = v => (v / 100).toFixed(2).replace('.', ',') + ' €';
+    const ok           = diff === 0;
+    html += `
+      <div style="background:${ok ? 'rgba(52,211,153,0.08)' : 'rgba(255,80,80,0.1)'};
+                  border:1px solid ${ok ? 'var(--gruen-hell)' : '#f08080'};
+                  border-radius:var(--radius-klein); padding:10px 14px; font-size:14px;">
+        <div style="font-weight:700; margin-bottom:6px;">EC-Abgleich</div>
+        <div style="display:flex; justify-content:space-between;">
+          <span>Terminal meldet</span><span>${fmt(terminalCent)} (${r.totals.anzahl} Transakt.)</span>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span>App-Buchungen</span><span>${fmt(EC_APP_SUMME_CENT)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-weight:700;
+                    margin-top:6px; padding-top:6px; border-top:1px solid var(--border);
+                    color:${ok ? 'var(--gruen-dunkel)' : 'var(--rot)'}">
+          <span>Differenz</span>
+          <span>${ok ? '✓ Keine Differenz' : fmt(Math.abs(diff)) + (diff > 0 ? ' mehr am Terminal' : ' weniger am Terminal')}</span>
+        </div>
+      </div>`;
+  } else {
+    html += `<div style="font-size:13px; color:var(--text-dim);">
+      Terminal hat keine Summendaten gemeldet – manueller Abgleich erforderlich.
+    </div>`;
+  }
+  {% endif %}
+
+  el.innerHTML = html;
+  btn.style.display = 'none';
+}
+{% endif %}
 </script>
 {% endblock %}

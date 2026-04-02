@@ -586,8 +586,8 @@
 {% endblock %}
 
 {% block nav_extra %}
-<a href="/kasse/journal" class="nav-btn">📋 Journal</a>
-<a href="/kasse/tagesabschluss" class="nav-btn">📋 Z-Bon</a>
+<a href="/kasse/journal"  class="nav-btn">📋 Journal</a>
+<a href="/kasse/manager"  class="nav-btn">📊 Manager</a>
 {% endblock %}
 
 {% block content %}
@@ -811,10 +811,12 @@
     <h2 id="sonderEanTitel">Zeitschrift</h2>
     <div class="menge-modal-content">
       <input type="text" id="sonderEanBezeichnung"
+             inputmode="none" readonly
              style="width:100%; padding:6px 10px; border:1px solid var(--creme-dunkel);
                     border-radius:var(--radius-klein); font-size:14px; text-align:center;
-                    color:var(--text-dunkel); background:white;"
-             placeholder="Bezeichnung (editierbar)">
+                    color:var(--text-dunkel); background:white; cursor:pointer;"
+             placeholder="Bezeichnung (antippen zum Bearbeiten)"
+             onclick="zeigeTastatur(this)">
       <div style="color:var(--text-dim); font-size:13px; margin-top:4px;">Preis eingeben</div>
       <div class="menge-display" id="sonderEanDisplay">0,00</div>
       <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
@@ -862,12 +864,13 @@
         <button class="zahlart-btn" id="zBtnEC" onclick="zZahlartWaehlen('EC')">
           <span class="icon">💳</span>Unbar / Karte
         </button>
-        <button class="zahlart-btn" disabled>
+        <button class="zahlart-btn" id="zBtnLIEFERSCHEIN" disabled
+                onclick="zLieferscheinStarten()">
           <span class="icon">📄</span>Lieferschein
         </button>
       </div>
 
-      <!-- EC-Hinweis -->
+      <!-- EC-Hinweis (manueller Modus) -->
       <div id="zEcHinweis" style="display:none; background:rgba(0,0,0,0.25); border-radius:var(--radius-klein); padding:14px 16px; color:var(--gruen-blass); font-size:14px; line-height:1.7;">
         <div style="font-weight:800; font-size:15px; margin-bottom:8px; color:var(--gold);">💳 EC-Zahlung – Ablauf</div>
         <ol style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px;">
@@ -879,6 +882,16 @@
         <div style="margin-top:10px; padding:8px 10px; background:rgba(255,80,80,0.15); border-radius:var(--radius-klein); border-left:3px solid #f08080; font-size:13px; color:#f9c0c0;">
           ⚠️ Nicht buchen, wenn das Terminal die Zahlung abgelehnt hat.
         </div>
+      </div>
+
+      <!-- EC-Zahlung ZVT (Vollintegration) -->
+      <div id="zEcZvtPanel" style="display:none; background:rgba(0,0,0,0.25); border-radius:var(--radius-klein); padding:14px 16px; text-align:center;">
+        <!-- Inhalt wird durch ecZVTStarten() gesetzt -->
+      </div>
+
+      <!-- Lieferschein -->
+      <div id="zLieferscheinPanel" style="display:none; background:rgba(0,0,0,0.25); border-radius:var(--radius-klein); padding:14px 16px;">
+        <!-- Inhalt wird durch zLieferscheinStarten() gesetzt -->
       </div>
 
       <!-- Bar-Eingabe -->
@@ -1334,6 +1347,10 @@ function geparkteOverlaySchliessen() {
 // ── Zahlung / X-Bon ──────────────────────────────────────────
 function xBon() { window.location.href = '/kasse/xbon'; }
 
+// EC-Modus aus Server-Konfiguration.
+// Im Trainings-Modus immer manuell – keine echte Terminalanbindung.
+const EC_MODUS = '{{ "manuell" if trainings_modus else ec_modus }}';
+
 // ── Zahlungs-Overlay ─────────────────────────────────────────
 let _zGesamtCent   = 0;
 let _zZahlart      = 'BAR';
@@ -1361,9 +1378,10 @@ function zahlungStarten() {
     const k = gewaehlterKunde;
     const ort = k.ort ? ` · ${esc(k.ort)}` : '';
     const nr  = k.kunnum ? `<div style="font-size:11px;color:var(--text-hell);margin-top:2px;">Kunden-Nr. ${esc(k.kunnum)}</div>` : '';
+    const zahlartDiv = k.zahlart_name ? `<div style="font-size:11px;color:var(--text-hell);margin-top:2px;">Zahlart: ${esc(k.zahlart_name)}</div>` : '';
     ki.innerHTML = `<div style="background:white;border:1px solid var(--creme-dunkel);
       border-radius:var(--radius-klein);padding:7px 10px;margin-bottom:10px;">
-      <div style="font-weight:700;font-size:13px;color:var(--gruen-dunkel);">👤 ${esc(k.name)}${ort}</div>${nr}
+      <div style="font-weight:700;font-size:13px;color:var(--gruen-dunkel);">👤 ${esc(k.name)}${ort}</div>${nr}${zahlartDiv}
     </div>`;
   } else {
     ki.innerHTML = '';
@@ -1423,6 +1441,10 @@ function zahlungStarten() {
   document.querySelectorAll('.zahlart-btn').forEach(b => b.classList.remove('aktiv'));
   document.getElementById('zBtnBAR').classList.add('aktiv');
   document.getElementById('zBarBlock').style.display = '';
+  document.getElementById('zLieferscheinPanel').style.display = 'none';
+  // Lieferschein-Button: nur aktiv wenn Kunde vorhanden
+  const lsBtn = document.getElementById('zBtnLIEFERSCHEIN');
+  if (lsBtn) lsBtn.disabled = !gewaehlterKunde;
 
   _zBarAktualisieren();
 
@@ -1432,17 +1454,187 @@ function zahlungStarten() {
 }
 
 function zahlungSchliessen() {
+  _zvtAbortCtrl = null;   // laufende ZVT-Anfrage als "vergessen" markieren
   document.getElementById('zahlungOverlay').classList.add('hidden');
   document.getElementById('artikelSuche').focus();
+}
+
+// ── EC-Zahlung ZVT (Vollintegration) ─────────────────────────
+let _zvtAbortCtrl = null;
+
+async function ecZVTStarten() {
+  const panel = document.getElementById('zEcZvtPanel');
+  panel.style.display = '';
+  document.getElementById('zBtnZahlen').style.display = 'none';
+
+  const betragStr = (_zGesamtCent / 100).toFixed(2).replace('.', ',');
+  panel.innerHTML = `
+    <div style="color:var(--gold); font-weight:800; font-size:15px; margin-bottom:10px;">
+      💳 Bitte Karte ans Terminal halten
+    </div>
+    <div style="font-size:28px; font-family:'Lobster',Georgia,serif; color:white;
+                margin-bottom:12px;">${betragStr} €</div>
+    <div style="color:var(--text-dim); font-size:13px; margin-bottom:16px;">
+      Warte auf Terminal-Bestätigung …
+    </div>
+    <div style="display:inline-block; width:32px; height:32px; border:3px solid var(--gruen-hell);
+                border-top-color:transparent; border-radius:50%;
+                animation:spin 0.8s linear infinite; margin-bottom:14px;"></div>
+    <br>
+    <button onclick="ecZVTAbbrechen()"
+            style="background:none; border:1px solid var(--border); border-radius:var(--radius-klein);
+                   color:var(--text-dim); padding:6px 16px; font-size:13px; cursor:pointer;">
+      Abbrechen
+    </button>`;
+
+  _zvtAbortCtrl = new AbortController();
+  let r;
+  try {
+    const resp = await fetch('/api/ec/zahlung', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ betrag_cent: _zGesamtCent }),
+      signal: _zvtAbortCtrl.signal,
+    });
+    r = await resp.json();
+  } catch (e) {
+    if (e.name === 'AbortError') return;          // Nutzer hat abgebrochen
+    r = { ok: false, fehler: 'Netzwerkfehler: ' + e.message, offline: true };
+  }
+
+  if (!_zvtAbortCtrl) return;   // Overlay wurde inzwischen geschlossen
+  _zvtAbortCtrl = null;
+
+  if (r.ok) {
+    panel.innerHTML = `
+      <div style="font-size:40px; margin-bottom:6px;">✅</div>
+      <div style="color:var(--gruen-blass); font-weight:700; font-size:16px;">
+        Zahlung genehmigt
+      </div>
+      ${r.referenz ? `<div style="color:var(--text-dim); font-size:12px; margin-top:4px;">
+        ${r.referenz}</div>` : ''}`;
+    await new Promise(res => setTimeout(res, 900));
+    await zZahlungAbschliessen(r.referenz || null);
+  } else {
+    panel.innerHTML = `
+      <div style="font-size:36px; margin-bottom:6px;">❌</div>
+      <div style="color:#f9c0c0; font-weight:700; margin-bottom:12px;">
+        ${r.fehler || 'Zahlung abgelehnt'}
+      </div>
+      <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+        <button onclick="ecZVTStarten()"
+                style="background:var(--gruen-dunkel); color:white; border:none;
+                       border-radius:var(--radius-klein); padding:8px 18px; font-size:14px;
+                       cursor:pointer;">
+          🔄 Erneut versuchen
+        </button>
+        ${r.offline ? `
+        <button onclick="ecManuellFortfahren()"
+                style="background:none; border:1px solid var(--border); color:var(--text-dim);
+                       border-radius:var(--radius-klein); padding:8px 18px; font-size:14px;
+                       cursor:pointer;">
+          Manuell bestätigen
+        </button>` : ''}
+        <button onclick="zahlungSchliessen()"
+                style="background:none; border:1px solid var(--border); color:var(--text-dim);
+                       border-radius:var(--radius-klein); padding:8px 18px; font-size:14px;
+                       cursor:pointer;">
+          Abbrechen
+        </button>
+      </div>`;
+  }
+}
+
+function ecZVTAbbrechen() {
+  if (_zvtAbortCtrl) { _zvtAbortCtrl.abort(); _zvtAbortCtrl = null; }
+  zahlungSchliessen();
+}
+
+function ecManuellFortfahren() {
+  // Fallback auf manuellen Modus wenn Terminal offline
+  document.getElementById('zEcZvtPanel').style.display      = 'none';
+  document.getElementById('zLieferscheinPanel').style.display = 'none';
+  document.getElementById('zEcHinweis').style.display        = '';
+  document.getElementById('zBtnZahlen').style.display        = '';
+  toast('Terminal nicht erreichbar – manuelle Bestätigung', 'warn');
+}
+
+// ── Lieferschein ──────────────────────────────────────────────
+function zLieferscheinStarten() {
+  document.querySelectorAll('.zahlart-btn').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('zBtnLIEFERSCHEIN').classList.add('aktiv');
+  document.getElementById('zBarBlock').style.display       = 'none';
+  document.getElementById('zEcHinweis').style.display      = 'none';
+  document.getElementById('zEcZvtPanel').style.display     = 'none';
+  document.getElementById('zBtnZahlen').style.display      = 'none';
+
+  const panel = document.getElementById('zLieferscheinPanel');
+  panel.style.display = '';
+  const zahlartZeile = gewaehlterKunde.zahlart_name
+    ? `<div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">Zahlart: ${esc(gewaehlterKunde.zahlart_name)}</div>`
+    : '<div style="margin-bottom:12px;"></div>';
+  panel.innerHTML = `
+    <div style="font-weight:800;font-size:15px;margin-bottom:8px;color:var(--gold);">
+      📄 Lieferschein erstellen
+    </div>
+    <div style="font-size:14px;color:var(--gruen-blass);margin-bottom:4px;">
+      Kunde: <b>${esc(gewaehlterKunde.name)}</b>
+    </div>
+    ${zahlartZeile}
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;
+                  color:var(--gruen-blass);margin-bottom:14px;cursor:pointer;">
+      <input type="checkbox" id="lsKundenkopie"
+             style="width:18px;height:18px;cursor:pointer;">
+      Kundenkopie drucken (2× Bon)
+    </label>
+    <button onclick="zLieferscheinErstellen()"
+            class="btn-zahlen-final" style="width:100%;">
+      ✓ Lieferschein erstellen &amp; drucken
+    </button>`;
+}
+
+async function zLieferscheinErstellen() {
+  const btn = document.querySelector('#zLieferscheinPanel .btn-zahlen-final');
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird erstellt…';
+  const mitKopie = document.getElementById('lsKundenkopie')?.checked || false;
+  const r = await api('POST', `/api/vorgang/${vorgangId}/lieferschein`, {
+    adressen_id: gewaehlterKunde.id,
+    mit_kopie:   mitKopie,
+  });
+  if (r.ok) {
+    zahlungSchliessen();
+    await neuerVorgang();
+    // Warnung NACH neuerVorgang() setzen, damit sie nicht überschrieben wird
+    if (r.warnung) {
+      toast(`⚠️ Druck fehlgeschlagen: ${r.warnung}`, 'warn', 10000);
+    } else {
+      toast(`Lieferschein ${r.vlsnum} erstellt und gedruckt`, 'ok');
+    }
+  } else {
+    toast(r.fehler || 'Fehler beim Erstellen', 'err', 6000);
+    btn.disabled = false;
+    btn.textContent = '✓ Lieferschein erstellen & drucken';
+  }
 }
 
 function zZahlartWaehlen(art) {
   _zZahlart = art;
   document.querySelectorAll('.zahlart-btn').forEach(b => b.classList.remove('aktiv'));
   document.getElementById('zBtn' + art).classList.add('aktiv');
-  document.getElementById('zBarBlock').style.display   = (art === 'BAR')  ? '' : 'none';
-  document.getElementById('zEcHinweis').style.display  = (art === 'EC')   ? '' : 'none';
-  document.getElementById('zWechselgeld').textContent  = '';
+  document.getElementById('zBarBlock').style.display        = (art === 'BAR')  ? '' : 'none';
+  document.getElementById('zEcHinweis').style.display       = 'none';
+  document.getElementById('zEcZvtPanel').style.display      = 'none';
+  document.getElementById('zLieferscheinPanel').style.display = 'none';
+  document.getElementById('zBtnZahlen').style.display       = '';
+  document.getElementById('zWechselgeld').textContent   = '';
+  if (art === 'EC') {
+    if (EC_MODUS === 'zvt') {
+      ecZVTStarten();
+    } else {
+      document.getElementById('zEcHinweis').style.display = '';
+    }
+  }
   if (art === 'BAR_PASSEND') {
     document.getElementById('zBtnZahlen').textContent = `✓ Bar passend ${euro(_zGesamtCent)}`;
   } else {
@@ -1493,7 +1685,7 @@ function _zBarAktualisieren() {
   }
 }
 
-async function zZahlungAbschliessen() {
+async function zZahlungAbschliessen(referenz = null) {
   const zahlungen = [];
   if (_zZahlart === 'BAR') {
     const gegeben = _zBarCent || _zGesamtCent;
@@ -1504,7 +1696,9 @@ async function zZahlungAbschliessen() {
     zahlungen.push({ zahlart: 'BAR', betrag: _zGesamtCent,
                      betrag_gegeben: _zGesamtCent, wechselgeld: 0 });
   } else {
-    zahlungen.push({ zahlart: _zZahlart, betrag: _zGesamtCent });
+    const z = { zahlart: _zZahlart, betrag: _zGesamtCent };
+    if (referenz) z.referenz = referenz;
+    zahlungen.push(z);
   }
 
   const btn = document.getElementById('zBtnZahlen');
@@ -1535,6 +1729,9 @@ let _aktiveGruppeId = null;
 function kundeAnzeigenAktualisieren() {
   const el = document.getElementById('wkKunde');
   const btn = `<button class="btn btn-sm btn-neutral" onclick="kundenkonto()" style="flex-shrink:0; padding:3px 9px; font-size:12px;">👤 Kunde</button>`;
+  // Lieferschein-Button: nur enabled wenn Kunde ausgewählt
+  const lsBtn = document.getElementById('zBtnLIEFERSCHEIN');
+  if (lsBtn) lsBtn.disabled = !gewaehlterKunde;
   if (!gewaehlterKunde) {
     el.innerHTML = `${btn}<span class="kunde-wert barverkauf">Barverkauf</span>`;
     return;
@@ -1542,8 +1739,9 @@ function kundeAnzeigenAktualisieren() {
   const k = gewaehlterKunde;
   const nr  = k.kunnum ? `<small>${esc(k.kunnum)}</small> ` : '';
   const ort = k.ort    ? `, ${esc(k.ort)}`                  : '';
+  const zahlart = k.zahlart_name ? ` <small style="color:var(--text-hell);">· ${esc(k.zahlart_name)}</small>` : '';
   el.innerHTML = `${btn}
-    <span class="kunde-wert">${nr}${esc(k.name)}${ort}</span>
+    <span class="kunde-wert">${nr}${esc(k.name)}${ort}${zahlart}</span>
     <button class="kunde-clear-btn" onclick="kundeEntfernen()">✕ Barverkauf</button>`;
 }
 
@@ -1626,21 +1824,25 @@ function kundenErgebnisseRender(rows, istSuche = false) {
     return;
   }
   el.innerHTML = rows.map(k => {
-    const prEbene = k.PR_EBENE || 5;
-    const kunnum  = esc(k.KUNNUM1 || '');
-    const ort     = esc(k.ORT || '');
+    const prEbene   = k.PR_EBENE || 5;
+    const kunnum    = esc(k.KUNNUM1 || '');
+    const ort       = esc(k.ORT || '');
+    const zahlartNm = esc(k.ZAHLART_NAME || '');
+    const kunZahlart = k.KUN_ZAHLART || '';
+    const zahlartZeige = zahlartNm ? ` · <span style="color:var(--gold);">${zahlartNm}</span>` : '';
     return `
     <div style="padding:8px 10px; background:var(--grau-hell); border-radius:var(--radius-klein);
                 border:1px solid var(--creme-dunkel); cursor:pointer;"
-         onclick="kundeWaehlen(${k.REC_ID}, '${esc(k.NAME1)}', ${prEbene}, '${kunnum}', '${ort}')">
+         onclick="kundeWaehlen(${k.REC_ID}, '${esc(k.NAME1)}', ${prEbene}, '${kunnum}', '${ort}', '${zahlartNm}', '${kunZahlart}')">
       <div style="font-weight:700; font-size:13px;">${esc(k.NAME1)}${k.NAME2 ? ' <span style="font-weight:400;color:var(--text-hell);">· ' + esc(k.NAME2) + '</span>' : ''}</div>
-      <div style="font-size:11px; color:var(--text-hell); margin-top:2px;">${kunnum ? kunnum + ' · ' : ''}${ort}${prEbene !== 5 ? ' · <b>VK' + prEbene + '</b>' : ''}</div>
+      <div style="font-size:11px; color:var(--text-hell); margin-top:2px;">${kunnum ? kunnum + ' · ' : ''}${ort}${prEbene !== 5 ? ' · <b>VK' + prEbene + '</b>' : ''}${zahlartZeige}</div>
     </div>`;
   }).join('');
 }
 
-async function kundeWaehlen(id, name, prEbene, kunnum, ort) {
-  gewaehlterKunde = { id, name, pr_ebene: prEbene || 5, kunnum: kunnum || '', ort: ort || '' };
+async function kundeWaehlen(id, name, prEbene, kunnum, ort, zahlartName = '', kunZahlart = '') {
+  gewaehlterKunde = { id, name, pr_ebene: prEbene || 5, kunnum: kunnum || '', ort: ort || '',
+                      zahlart_name: zahlartName || '', kun_zahlart: kunZahlart || '' };
   kundeAnzeigenAktualisieren();
   kundenSchliessen();
   await _kundeSpeichern(gewaehlterKunde);
@@ -1722,20 +1924,6 @@ async function scanEingabeVerarbeiten(code) {
       return;
     }
   }
-  // Artikel nicht im Stamm und kein bekannter Sonder-EAN-Präfix →
-  // Preisdialog öffnen (typisch für Zeitschriften mit unbekanntem EAN-Prefix)
-  if (r.status === 404) {
-    await _sonderEanVerarbeiten({
-      sonder_ean:   true,
-      ean_typ:      'zeitschrift',
-      preis_dialog: true,
-      bezeichnung:  'Zeitschrift',
-      steuer_code:  2,    // 7%
-      wg_id:        7,    // WG Zeitschriften
-      artikel_id:   null,
-    }, menge);
-    return;
-  }
   tonFehler();
   const inp = document.getElementById('artikelSuche');
   inp.classList.remove('scan-fehler');
@@ -1768,6 +1956,7 @@ async function _sonderEanVerarbeiten(ean, menge) {
 
 async function sonderEanBestaetigen() {
   document.getElementById('sonderEanOverlay').classList.add('hidden');
+  setTimeout(() => document.getElementById('artikelSuche').focus(), 60);
   if (!_sonderEanPending) return;
   const { ean, menge } = _sonderEanPending;
   _sonderEanPending = null;
@@ -1781,6 +1970,7 @@ async function sonderEanBestaetigen() {
 function sonderEanAbbrechen() {
   document.getElementById('sonderEanOverlay').classList.add('hidden');
   _sonderEanPending = null;
+  setTimeout(() => document.getElementById('artikelSuche').focus(), 60);
 }
 
 async function _sonderEanBuchen(ean, menge, preisCent, hinweis) {

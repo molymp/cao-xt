@@ -51,6 +51,14 @@ def _a(text: str) -> str:
     return text.translate(_UMLAUT_MAP)
 
 
+def _z(label: str, wert: str, breite: int = 48) -> str:
+    """Label linksbündig, Wert rechtsbündig – zusammen genau 'breite' Zeichen."""
+    label = _a(str(label))
+    wert  = _a(str(wert))
+    pad   = breite - len(label) - len(wert)
+    return label + (' ' * max(pad, 1)) + wert + '\n'
+
+
 class _Bon:
     """Builder-Klasse für den Byte-Buffer."""
     def __init__(self):
@@ -520,35 +528,174 @@ def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict,
 
 
 def _print_abschluss_zeilen(b: _Bon, d: dict, mwst_saetze: dict):
-    b.raw(_BOLD_ON).text(f"Belege:       {d['anzahl_belege']}\n").raw(_BOLD_OFF)
-    b.text(f"Umsatz brutto:  {_e(d['umsatz_brutto'])}\n")
-    b.text(f"Umsatz netto:   {_e(d['umsatz_netto'])}\n")
-    b.trenn('-', 30)
+    b.raw(_BOLD_ON).text(_z('Belege:', str(d['anzahl_belege']))).raw(_BOLD_OFF)
+    b.text(_z('Umsatz brutto:', _e(d['umsatz_brutto'])))
+    b.text(_z('Umsatz netto:',  _e(d['umsatz_netto'])))
+    b.trenn()
     for code, satz in sorted(mwst_saetze.items()):
         key_mwst  = f'mwst_{code}'
         key_netto = f'netto_{code}'
         mwst_b  = d.get(key_mwst, 0)
         netto_b = d.get(key_netto, 0)
         if mwst_b or netto_b:
-            b.text(f"MwSt {satz:.0f}%: Netto {_e(netto_b)}"
-                   f"  MwSt {_e(mwst_b)}\n")
-    b.trenn('-', 30)
-    b.text(f"Bar:            {_e(d['umsatz_bar'])}\n")
-    b.text(f"Unbar/Karte:    {_e(d['umsatz_ec'])}\n")
+            b.text(_z(f'  Netto {satz:.0f}%:', _e(netto_b)))
+            b.text(_z(f'  Steuer {satz:.0f}%:', _e(mwst_b)))
+    b.trenn()
+    b.text(_z('Bar:',          _e(d['umsatz_bar'])))
+    b.text(_z('Unbar/Karte:',  _e(d['umsatz_ec'])))
     if d['anzahl_stornos']:
-        b.text(f"Stornos:  {d['anzahl_stornos']}x  {_e(d['betrag_stornos'])}\n")
-    b.trenn('-', 30)
-    b.text(f"Kassenstand Anfang: {_e(d['kassenbestand_anfang'])}\n")
-    b.text(f"Einlagen:           {_e(d['einlagen'])}\n")
-    b.text(f"Entnahmen:          {_e(d['entnahmen'])}\n")
+        b.text(_z(f"Stornos ({d['anzahl_stornos']}x):", _e(d['betrag_stornos'])))
+    b.trenn()
+    b.text(_z('Kassenstand Anfang:', _e(d['kassenbestand_anfang'])))
+    b.text(_z('Einlagen:',           _e(d['einlagen'])))
+    b.text(_z('Entnahmen:',          _e(d['entnahmen'])))
     b.raw(_BOLD_ON)
-    b.text(f"Kassenstand Ende:   {_e(d['kassenbestand_ende'])}\n")
+    b.text(_z('Kassenstand Ende:', _e(d['kassenbestand_ende'])))
     b.raw(_BOLD_OFF)
     if d.get('umsatz_kundenkonto'):
-        b.trenn('-', 30)
-        b.text(f"Info Kundenkonto:  {d.get('anzahl_belege_kundenkonto', 0)}x"
-               f"  {_e(d['umsatz_kundenkonto'])}\n")
-        b.text(f"(kein Kassenumsatz - Lieferschein in CAO)\n")
+        b.trenn()
+        n = d.get('anzahl_belege_kundenkonto', 0)
+        b.text(_z(f'Kundenkonto ({n}x):', _e(d['umsatz_kundenkonto'])))
+        b.text('(kein Kassenumsatz)\n')
+
+
+def _lieferschein_bytes(ls: dict, positionen: list, firma: dict,
+                        kopie: bool = False) -> bytes:
+    """Baut den Lieferschein-Bon als ESC/POS-Byte-Buffer (ohne Preise)."""
+    b = _Bon()
+    b.raw(_ESC_INIT).raw(_CODEPAGE_1252)
+
+    _drucke_kopf(b, firma)
+    b.trenn()
+
+    if kopie:
+        b.raw(_ALIGN_CENTER).raw(_BOLD_ON)
+        b.text('* KUNDENKOPIE *\n')
+        b.raw(_BOLD_OFF).raw(_ALIGN_LEFT)
+        b.trenn()
+
+    b.raw(_ALIGN_CENTER).raw(_BOLD_ON)
+    b.text('L I E F E R S C H E I N\n')
+    b.raw(_BOLD_OFF).raw(_ALIGN_LEFT)
+    b.trenn()
+
+    # Kopfzeile: Nummer + Datum
+    ldatum = ls.get('LDATUM') or ls.get('ERSTELLT') or datetime.now()
+    if hasattr(ldatum, 'strftime'):
+        datum_str = ldatum.strftime('%d.%m.%Y')
+    else:
+        datum_str = str(ldatum)[:10]
+
+    b.text(f"Nr.:   {_a(ls.get('VLSNUM') or '')}\n")
+    b.text(f"Datum: {datum_str}\n")
+
+    # Lieferart (aus DB gelesen, JOIN in drucke_lieferschein)
+    liefart_name = _a(ls.get('LIEFART_NAME') or '')
+    if liefart_name:
+        b.text(f"Versandart: {liefart_name}\n")
+
+    # Projekttext (aus Betreff-Feld)
+    projekt = _a(ls.get('PROJEKT') or '')
+    if projekt:
+        b.text(f"Betreff: {projekt}\n")
+
+    # Kunde
+    name1 = _a(ls.get('KUN_NAME1') or '')
+    name2 = _a(ls.get('KUN_NAME2') or '')
+    strasse = _a(ls.get('KUN_STRASSE') or '')
+    plz_ort = ' '.join(filter(None, [ls.get('KUN_PLZ'), ls.get('KUN_ORT')]))
+    if name1:
+        b.trenn()
+        b.raw(_BOLD_ON)
+        b.text(f"Kunde: {name1}\n")
+        b.raw(_BOLD_OFF)
+        if name2:
+            b.text(f"       {name2}\n")
+        if strasse:
+            b.text(f"       {strasse}\n")
+        if plz_ort:
+            b.text(f"       {_a(plz_ort)}\n")
+
+    b.trenn()
+
+    # Positionen – alles in Font A (48 Zeichen), keine Preise
+    b.text(_z('Pos  Bezeichnung', 'Menge'))
+    b.trenn()
+
+    for pos in positionen:
+        nr     = int(pos.get('POSITION') or 0)
+        name   = _a(str(pos.get('BEZEICHNUNG') or ''))
+        artnum = _a(str(pos.get('ARTNUM') or '').strip())
+        menge  = float(pos.get('MENGE') or 0)
+        me     = _a(str(pos.get('ME_EINHEIT') or 'Stk'))
+
+        menge_str = f"{menge:.3f}".rstrip('0').rstrip('.') if menge % 1 else str(int(menge))
+        menge_disp = f"{menge_str} {me}"
+
+        # Zeile 1: Pos + Bezeichnung (bis 43 Zeichen)
+        b.text(f"{nr:>3}. {name[:43]}\n")
+        # Zeile 2: Artikelnummer links (wenn vorhanden), Menge rechtsbündig
+        artnr_str = f"     Art-Nr: {artnum}" if artnum else ''
+        b.text(_z(artnr_str, menge_disp))
+
+    b.trenn()
+
+    # Unterschriftszeile – Leerzeilen als Schreibfläche
+    b.nl(3)
+    b.text('Empfangen von: _________________________________\n')
+    b.nl(3)
+    b.text('Datum: _________________________________________\n')
+    b.nl(3)
+    b.text('Unterschrift: __________________________________\n')
+
+    b.nl(6)
+    b.raw(_CUT)
+    return b.bytes()
+
+
+def drucke_lieferschein(terminal_nr: int, lieferschein_id: int,
+                        mit_kopie: bool = False) -> None:
+    """Druckt einen Lieferschein-Bon mit Unterschriftszeile (ohne Preise).
+    Bei mit_kopie=True wird ein zweiter Bon als Kundenkopie gedruckt."""
+    firma = _firma_info(terminal_nr)
+    ip, port = _drucker_addr(terminal_nr)
+
+    with get_db() as cur:
+        cur.execute("SELECT * FROM LIEFERSCHEIN WHERE REC_ID = %s", (lieferschein_id,))
+        ls = cur.fetchone()
+        if not ls:
+            raise RuntimeError(f"Lieferschein {lieferschein_id} nicht gefunden.")
+
+        # Lieferart-Name separat laden – robust gegen fehlende Tabelle / abweichenden Typ
+        liefart_name = ''
+        try:
+            liefart_val = ls.get('LIEFART')
+            if liefart_val:
+                cur.execute(
+                    "SELECT NAME FROM LIEFERARTEN WHERE REC_ID = %s LIMIT 1",
+                    (liefart_val,)
+                )
+                row = cur.fetchone()
+                if row:
+                    liefart_name = row['NAME'] or ''
+        except Exception as _le:
+            log.warning("LIEFERARTEN-Lookup beim Druck fehlgeschlagen: %s", _le)
+        ls = dict(ls)
+        ls['LIEFART_NAME'] = liefart_name
+
+        cur.execute(
+            "SELECT * FROM LIEFERSCHEIN_POS "
+            "WHERE LIEFERSCHEIN_ID = %s ORDER BY POSITION",
+            (ls['REC_ID'],)
+        )
+        positionen = cur.fetchall()
+
+    daten = _lieferschein_bytes(ls, positionen, firma)
+    _sende(ip, port, daten)
+
+    if mit_kopie:
+        daten_kopie = _lieferschein_bytes(ls, positionen, firma, kopie=True)
+        _sende(ip, port, daten_kopie)
 
 
 def test_drucker(terminal_nr: int) -> bool:

@@ -90,6 +90,7 @@ def test_verbindung() -> bool:
     try:
         with get_db() as cur:
             cur.execute("SELECT 1")
+            cur.fetchone()   # Ergebnis lesen, sonst: InternalError: Unread result found
         return True
     except Exception:
         return False

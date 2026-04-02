@@ -660,13 +660,18 @@ def tse_verfuegbar(terminal_nr: int) -> bool:
         if _ist_training(tconf):
             return True   # Demo/Trainings-Modus ist immer "verfügbar"
         if tconf.get('TSE_TYP') == 'SWISSBIT':
-            return bool(tconf.get('SWISSBIT_PFAD'))
+            return bool(tconf.get('SWISSBIT_PFAD')) and swissbit_worm.verfuegbar()
         # FISKALY
         if not tconf.get('FISKALY_API_KEY'):
+            log.warning("TSE terminal %s: FISKALY_API_KEY nicht konfiguriert.", terminal_nr)
+            return False
+        if not tconf.get('FISKALY_TSS_ID'):
+            log.warning("TSE terminal %s: FISKALY_TSS_ID nicht konfiguriert.", terminal_nr)
             return False
         _get_token(terminal_nr, tconf)
         return True
-    except Exception:
+    except Exception as e:
+        log.warning("TSE terminal %s nicht verfügbar: %s", terminal_nr, e)
         return False
 
 
