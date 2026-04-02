@@ -593,6 +593,24 @@ def zahlung_abschliessen(vorgang_id: int, terminal_nr: int,
                  vorgang_id, vorgang.get('MITARBEITER_ID'))
             )
 
+        # Warenbestand abbuchen (Option A: direktes MENGE_AKT-Update, HAB-34)
+        # SELECT … FOR UPDATE verhindert Race Conditions bei parallelen Terminals.
+        # Nur Artikel mit gültiger ARTIKEL_ID (> 0); ARTIKEL_ID = -99 = Warengruppe.
+        for pos in positionen:
+            if pos.get('ARTIKEL_ID') and pos['ARTIKEL_ID'] > 0:
+                cur.execute(
+                    "SELECT MENGE_AKT FROM ARTIKEL WHERE REC_ID = %s FOR UPDATE",
+                    (pos['ARTIKEL_ID'],),
+                )
+                cur.execute(
+                    "UPDATE ARTIKEL SET MENGE_AKT = MENGE_AKT - %s WHERE REC_ID = %s",
+                    (float(pos['MENGE']), pos['ARTIKEL_ID']),
+                )
+                log.debug(
+                    "Lager abgebucht: ARTIKEL_ID=%s MENGE=-%s",
+                    pos['ARTIKEL_ID'], pos['MENGE'],
+                )
+
     return vorgang_laden(vorgang_id)
 
 
@@ -670,6 +688,22 @@ def vorgang_stornieren(original_id: int, terminal_nr: int,
                  pos['STEUER_CODE'], pos['MWST_SATZ'],
                  -pos['MWST_BETRAG'], -pos['NETTO_BETRAG'])
             )
+
+        # Warenbestand rückbuchen (Storno kehrt Abbuchung um, HAB-34)
+        for pos in orig_pos:
+            if pos.get('ARTIKEL_ID') and pos['ARTIKEL_ID'] > 0:
+                cur.execute(
+                    "SELECT MENGE_AKT FROM ARTIKEL WHERE REC_ID = %s FOR UPDATE",
+                    (pos['ARTIKEL_ID'],),
+                )
+                cur.execute(
+                    "UPDATE ARTIKEL SET MENGE_AKT = MENGE_AKT + %s WHERE REC_ID = %s",
+                    (float(pos['MENGE']), pos['ARTIKEL_ID']),
+                )
+                log.debug(
+                    "Lager rückgebucht (Storno): ARTIKEL_ID=%s MENGE=+%s",
+                    pos['ARTIKEL_ID'], pos['MENGE'],
+                )
 
         # Original als storniert markieren
         cur.execute(
