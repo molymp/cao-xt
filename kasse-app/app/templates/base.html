@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>{% block title %}Kasse{% endblock %} – {{ firma_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"
+      media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
+<style>
+/* ── Farb-Variablen (Habacher Dorfladen) ────────────────── */
+:root {
+  --gruen-dunkel:  #1a4010;
+  --gruen-mitte:   #2e6e1a;
+  --gruen-hell:    #4a9428;
+  --gruen-blass:   #d4e8c2;
+  --gold:          #c8780a;
+  --gold-hell:     #e8970e;
+  --creme:         #f7f3ea;
+  --creme-dunkel:  #ece3cc;
+  --creme-warm:    #e5d9bc;
+  --text-dunkel:   #142808;
+  --text-mitte:    #2e4a1a;
+  --text-hell:     #5a7a3a;
+  --grau-hell:     #f0ece0;
+  --grau-mitte:    #a8b890;
+  --rot:           #b83030;
+  --gruen-status:  #2e7a2e;
+  --schatten:      0 2px 12px rgba(26,64,16,0.13);
+  --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
+  --radius:        12px;
+  --radius-klein:  8px;
+
+  /* Kompatibilitäts-Aliase für bestehende Templates */
+  --bg:       var(--creme);
+  --panel:    white;
+  --card:     var(--grau-hell);
+  --accent:   var(--gold);
+  --green:    var(--gruen-status);
+  --yellow:   var(--gold-hell);
+  --blue:     var(--gruen-dunkel);
+  --red:      var(--rot);
+  --text:     var(--text-dunkel);
+  --text-dim: var(--text-hell);
+  --border:   var(--creme-dunkel);
+  --btn-h:    64px;
+  --btn-r:    var(--radius-klein);
+}
+
+/* ── Reset ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%; overflow: hidden; touch-action: manipulation;
+  font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+  font-size: 16px;
+  background: var(--creme);
+  color: var(--text-dunkel);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+h1, h2, h3 {
+  font-family: 'Lobster', Georgia, serif;
+  color: var(--gruen-dunkel);
+  font-weight: 400;
+}
+.hidden { display: none !important; }
+
+/* ── Navigationsleiste ───────────────────────────────────── */
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 60px;
+  padding: 0 16px;
+  background: var(--gruen-dunkel);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 100;
+}
+.navbar.trainings-aktiv {
+  background: #7a4800;
+  box-shadow: 0 2px 16px rgba(180,100,0,0.45);
+}
+.navbar.sandbox-aktiv {
+  background: #4a0070;
+  box-shadow: 0 2px 16px rgba(120,0,180,0.45);
+}
+.navbar .sandbox-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #cc44ff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: training-pulse 2s ease-in-out infinite;
+}
+.navbar .training-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffb300;
+  color: #3a2000;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: training-pulse 2s ease-in-out infinite;
+}
+@keyframes training-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.75; }
+}
+.navbar .logo {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 20px;
+  color: var(--gruen-blass);
+  white-space: nowrap;
+}
+.navbar .ma-info {
+  color: var(--grau-mitte);
+  font-size: 13px;
+  margin-left: auto;
+}
+.navbar .nav-btn {
+  background: rgba(255,255,255,0.08);
+  color: var(--creme-dunkel);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-klein);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  white-space: nowrap;
+  font-family: 'Nunito', sans-serif;
+  transition: background 0.15s, color 0.15s;
+}
+.navbar .nav-btn:hover, .navbar .nav-btn:active {
+  background: rgba(74,148,40,0.35);
+  color: var(--gruen-blass);
+}
+.navbar .nav-btn.danger {
+  border-color: rgba(184,48,48,0.5);
+  color: #f9c0c0;
+}
+.navbar .nav-btn.danger:hover { background: rgba(184,48,48,0.3); }
+
+/* ── Allgemeine Buttons ───────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--btn-h);
+  padding: 12px 20px;
+  border-radius: var(--btn-r);
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+  transition: opacity 0.1s, transform 0.05s, background 0.12s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn:active  { opacity: 0.8; transform: scale(0.97); }
+.btn:disabled { opacity: 0.35; pointer-events: none; }
+.btn-primary  { background: var(--gold);         color: white; }
+.btn-primary:hover  { background: var(--gold-hell); }
+.btn-success  { background: var(--gruen-hell);   color: white; }
+.btn-success:hover  { background: var(--gruen-mitte); }
+.btn-danger   { background: var(--rot);          color: white; }
+.btn-danger:hover   { background: #9a2020; }
+.btn-warning  { background: var(--gold-hell);    color: white; }
+.btn-neutral  { background: var(--creme-dunkel); color: var(--gruen-dunkel); border: 1px solid var(--creme-warm); }
+.btn-neutral:hover  { background: var(--creme-warm); }
+.btn-sm { min-height: 40px; font-size: 14px; padding: 6px 14px; }
+.btn-full { width: 100%; }
+
+/* ── Karten / Panels ──────────────────────────────────────── */
+.card {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--schatten);
+}
+
+/* ── Betrag-Anzeige ──────────────────────────────────────── */
+.betrag-gross {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 48px;
+  font-weight: 400;
+  color: var(--gold);
+  letter-spacing: -1px;
+}
+.betrag-mittel {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--text-dunkel);
+}
+
+/* ── Zahlentastatur ─────────────────────────────────────── */
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.numpad .btn {
+  font-size: 26px;
+  font-weight: 700;
+  background: var(--grau-hell);
+  color: var(--text-dunkel);
+  min-height: 80px;
+  border: 1px solid var(--creme-dunkel);
+}
+.numpad .btn:active { background: var(--gruen-dunkel); color: var(--gruen-blass); }
+
+/* ── Overlay / Modal ─────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(26,64,16,0.6);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.overlay.hidden { display: none; }
+.modal {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: min(500px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--schatten-stark);
+}
+.modal h2 { margin-bottom: 16px; font-size: 22px; }
+
+/* ── Formulare ───────────────────────────────────────────── */
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block; margin-bottom: 6px;
+  color: var(--text-hell); font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.form-control {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--grau-hell);
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  color: var(--text-dunkel);
+  font-size: 16px;
+  font-family: 'Nunito', sans-serif;
+}
+.form-control:focus { outline: none; border-color: var(--gruen-mitte); }
+
+/* ── Meldungen ───────────────────────────────────────────── */
+.alert {
+  padding: 14px 18px;
+  border-radius: var(--radius-klein);
+  margin-bottom: 16px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.alert-error   { background: #fde8e8; border: 1px solid var(--rot);       color: var(--rot); }
+.alert-success { background: #e8f5e0; border: 1px solid var(--gruen-status); color: var(--gruen-status); }
+.alert-warn    { background: #fef8e2; border: 1px solid var(--gold);      color: #7a5a00; }
+
+/* ── Toast-Notification ──────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--gruen-dunkel);
+  color: var(--gruen-blass);
+  padding: 12px 28px;
+  border-radius: 40px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+  box-shadow: var(--schatten-stark);
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  z-index: 9999;
+  pointer-events: none;
+  max-width: 90vw;
+  text-align: center;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.ok   { background: var(--gruen-dunkel); color: var(--gruen-blass); }
+#toast.err  { background: var(--rot);          color: white; }
+
+/* ── Trennlinie ──────────────────────────────────────────── */
+hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--grau-mitte); border-radius: 3px; }
+</style>
+{% block extra_style %}{% endblock %}
+</head>
+<body>
+<div class="navbar{% if trainings_modus %} trainings-aktiv{% elif tse_nicht_produktiv %} sandbox-aktiv{% endif %}">
+  <span class="logo">🌾 {{ firma_name }}</span>
+  {% if trainings_modus %}
+  <span class="training-badge">🎓 Trainingsmodus</span>
+  {% elif tse_nicht_produktiv %}
+  <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
+  {% endif %}
+  {% block nav_extra %}{% endblock %}
+  <a href="/kasse/handbuch"   class="nav-btn">📖</a>
+  <a href="/admin/"           class="nav-btn">⚙️</a>
+  <span class="ma-info">
+    Terminal {{ terminal_nr }} · {{ db_name }}
+  </span>
+  <a href="/logout"           class="nav-btn danger">Abmelden</a>
+</div>
+
+{% block content %}{% endblock %}
+
+<!-- ── Ziffernblock-Overlay (global, wiederverwendbar) ──────── -->
+<div id="numpadOverlay" class="overlay hidden" onclick="if(event.target===this)numpadClose()">
+  <div class="modal" style="width:min(340px,95vw);padding:20px;">
+    <div id="numpadLabel" style="font-size:13px;font-weight:700;color:var(--text-dim);
+         text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;"></div>
+    <div id="numpadDisplay" style="font-family:'Lobster',Georgia,serif;font-size:48px;
+         text-align:right;background:var(--grau-hell);border:1px solid var(--creme-dunkel);
+         border-radius:var(--radius-klein);padding:10px 16px;margin-bottom:14px;
+         min-height:72px;letter-spacing:.04em;">0</div>
+    <div class="numpad">
+      <button class="btn" onclick="numpadKey('7')">7</button>
+      <button class="btn" onclick="numpadKey('8')">8</button>
+      <button class="btn" onclick="numpadKey('9')">9</button>
+      <button class="btn" onclick="numpadKey('4')">4</button>
+      <button class="btn" onclick="numpadKey('5')">5</button>
+      <button class="btn" onclick="numpadKey('6')">6</button>
+      <button class="btn" onclick="numpadKey('1')">1</button>
+      <button class="btn" onclick="numpadKey('2')">2</button>
+      <button class="btn" onclick="numpadKey('3')">3</button>
+      <button class="btn btn-danger" onclick="numpadKey('C')">C</button>
+      <button class="btn" onclick="numpadKey('0')">0</button>
+      <button class="btn btn-success" onclick="numpadConfirm()">✓</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+function toast(msg, typ = 'ok', dauer = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + typ;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', dauer);
+}
+
+async function api(method, url, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+function euro(cent) {
+  return (cent / 100).toFixed(2).replace('.', ',') + ' €';
+}
+
+// ── Ziffernblock ───────────────────────────────────────────────
+let _npVal = '';
+let _npCb  = null;
+
+function numpadOpen(label, currentVal, callback) {
+  _npCb  = callback;
+  _npVal = currentVal > 0 ? String(currentVal) : '';
+  document.getElementById('numpadLabel').textContent   = label;
+  document.getElementById('numpadDisplay').textContent = _npVal || '0';
+  document.getElementById('numpadOverlay').classList.remove('hidden');
+}
+
+function numpadKey(k) {
+  if      (k === 'C') { _npVal = ''; }
+  else if (_npVal.length < 5) { _npVal += k; }
+  document.getElementById('numpadDisplay').textContent = _npVal || '0';
+}
+
+function numpadConfirm() {
+  const n = Math.max(0, parseInt(_npVal) || 0);
+  if (_npCb) _npCb(n);
+  numpadClose();
+}
+
+function numpadClose() {
+  document.getElementById('numpadOverlay').classList.add('hidden');
+  _npVal = ''; _npCb = null;
+}
+</script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>

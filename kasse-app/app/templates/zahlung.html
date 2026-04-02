@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Zahlung{% endblock %}
+
+{% block extra_style %}
+<style>
+.zahlung-layout {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+/* ── Linke Seite: Bon-Übersicht ──────────────────────────── */
+.bon-uebersicht {
+  padding: 20px; overflow-y: auto;
+  background: var(--creme);
+}
+.bon-uebersicht h2 {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 22px; font-weight: 400; margin-bottom: 16px; color: var(--gruen-dunkel);
+}
+.pos-zeile {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 10px 0; border-bottom: 1px solid var(--creme-dunkel); font-size: 16px;
+}
+.pos-zeile .name  { flex: 1; color: var(--text-dunkel); }
+.pos-zeile .menge { color: var(--text-hell); margin: 0 16px; }
+.pos-zeile .preis { font-weight: 700; text-align: right; min-width: 90px; color: var(--gold); font-family: 'Lobster', Georgia, serif; font-size: 17px; }
+.summen-block {
+  margin-top: 20px; background: white;
+  border-radius: var(--radius); padding: 16px;
+  border: 1px solid var(--creme-dunkel); box-shadow: var(--schatten);
+}
+.summen-zeile {
+  display: flex; justify-content: space-between;
+  padding: 5px 0; font-size: 14px; color: var(--text-mitte);
+}
+.summen-zeile.gesamt {
+  font-size: 22px; font-weight: 800;
+  border-top: 2px solid var(--creme-dunkel); padding-top: 12px; margin-top: 8px;
+  color: var(--gruen-dunkel);
+}
+
+/* ── Rechte Seite: Zahlungseingabe ───────────────────────── */
+.zahlung-panel {
+  background: var(--gruen-dunkel);
+  border-left: 2px solid rgba(0,0,0,0.15);
+  display: flex; flex-direction: column;
+  padding: 18px; gap: 12px; overflow-y: auto;
+}
+.gesamt-gross {
+  text-align: center;
+  background: rgba(0,0,0,0.2); border-radius: var(--radius); padding: 16px;
+}
+.gesamt-gross .label { font-size: 13px; color: var(--grau-mitte); text-transform: uppercase; letter-spacing: 0.05em; }
+.gesamt-gross .betrag {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 48px; font-weight: 400; color: var(--gold);
+}
+
+/* Zahlart-Buttons */
+.zahlart-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.zahlart-btn {
+  padding: 16px 10px; border-radius: var(--radius-klein);
+  border: 2px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08); color: var(--gruen-blass);
+  font-size: 16px; font-weight: 700; cursor: pointer; font-family: 'Nunito', sans-serif;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.zahlart-btn .icon { font-size: 26px; }
+.zahlart-btn.aktiv { border-color: var(--gold); background: rgba(200,120,10,0.25); color: var(--gold-hell); }
+.zahlart-btn:active { opacity: 0.75; }
+
+/* Bar-Eingabe */
+.bar-eingabe { display: none; }
+.bar-eingabe.sichtbar { display: block; }
+.bar-display {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 38px; font-weight: 400; text-align: center;
+  background: rgba(0,0,0,0.2); border-radius: var(--radius-klein); padding: 12px;
+  color: var(--gold-hell); min-height: 68px;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+.zahlung-panel .numpad .btn {
+  background: rgba(255,255,255,0.1); color: var(--gruen-blass);
+  border-color: rgba(255,255,255,0.15);
+}
+.zahlung-panel .numpad .btn:active { background: var(--gold); color: white; }
+.wechselgeld {
+  text-align: center; font-size: 20px; font-weight: 700;
+  color: var(--gruen-blass); padding: 8px; font-family: 'Nunito', sans-serif;
+}
+.wechselgeld.negativ { color: #f9c0c0; }
+
+.btn-zahlen-final {
+  min-height: 76px; font-size: 22px; font-weight: 800;
+  background: var(--gold); border: none; border-radius: var(--radius);
+  color: white; cursor: pointer; width: 100%;
+  margin-top: auto; font-family: 'Nunito', sans-serif;
+  box-shadow: 0 3px 12px rgba(200,120,10,0.4);
+}
+.btn-zahlen-final:disabled { opacity: 0.4; pointer-events: none; }
+.btn-zahlen-final:active   { opacity: 0.85; transform: scale(0.97); }
+.btn-abbrechen {
+  min-height: 48px; font-size: 15px; font-weight: 700;
+  background: transparent; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-klein); color: var(--grau-mitte);
+  cursor: pointer; width: 100%; font-family: 'Nunito', sans-serif;
+}
+.btn-abbrechen:hover { background: rgba(255,255,255,0.08); }
+.zahlung-panel .btn-neutral {
+  background: rgba(255,255,255,0.1); color: var(--gruen-blass);
+  border-color: rgba(255,255,255,0.15);
+}
+.zahlung-panel .btn-neutral:hover { background: rgba(255,255,255,0.18); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="zahlung-layout">
+
+  <!-- Bon-Übersicht -->
+  <div class="bon-uebersicht">
+    <h2>Bon {{ vorgang.BON_NR }} – Übersicht</h2>
+    {% for p in positionen %}
+    {% if not p.STORNIERT %}
+    <div class="pos-zeile">
+      <span class="name">{{ p.BEZEICHNUNG }}</span>
+      <span class="menge">{{ p.MENGE }}×</span>
+      <span class="preis">{{ "%.2f"|format(p.GESAMTPREIS_BRUTTO/100) }} €</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    <div class="summen-block">
+      {% set mwst1 = vorgang.MWST_BETRAG_1 or 0 %}
+      {% set mwst2 = vorgang.MWST_BETRAG_2 or 0 %}
+      {% if mwst1 %}
+      <div class="summen-zeile">
+        <span>Netto 19%</span>
+        <span>{{ "%.2f"|format((vorgang.NETTO_BETRAG_1 or 0)/100) }} €</span>
+      </div>
+      <div class="summen-zeile">
+        <span>MwSt 19%</span>
+        <span>{{ "%.2f"|format(mwst1/100) }} €</span>
+      </div>
+      {% endif %}
+      {% if mwst2 %}
+      <div class="summen-zeile">
+        <span>Netto 7%</span>
+        <span>{{ "%.2f"|format((vorgang.NETTO_BETRAG_2 or 0)/100) }} €</span>
+      </div>
+      <div class="summen-zeile">
+        <span>MwSt 7%</span>
+        <span>{{ "%.2f"|format(mwst2/100) }} €</span>
+      </div>
+      {% endif %}
+      <div class="summen-zeile gesamt">
+        <span>GESAMT</span>
+        <span id="gesamtAnzeige">{{ "%.2f"|format(vorgang.BETRAG_BRUTTO/100) }} €</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zahlung -->
+  <div class="zahlung-panel">
+    <div class="gesamt-gross">
+      <div class="label">Zu zahlen</div>
+      <div class="betrag" id="zuZahlen">{{ "%.2f"|format(vorgang.BETRAG_BRUTTO/100) }} €</div>
+    </div>
+
+    <!-- Zahlart wählen -->
+    <div class="zahlart-grid">
+      <button class="zahlart-btn aktiv" id="btnBar" onclick="zahlartWaehlen('BAR')">
+        <span class="icon">💵</span>Bar
+      </button>
+      <button class="zahlart-btn" id="btnEC" onclick="zahlartWaehlen('EC')">
+        <span class="icon">💳</span>Unbar / Karte
+      </button>
+      <button class="zahlart-btn" id="btnKunde" onclick="zahlartWaehlen('KUNDENKONTO')">
+        <span class="icon">👤</span>Kundenkonto
+      </button>
+      <button class="zahlart-btn" id="btnGutschein" onclick="zahlartWaehlen('GUTSCHEIN')">
+        <span class="icon">🎫</span>Gutschein
+      </button>
+    </div>
+
+    <!-- Bar-Eingabe -->
+    <div class="bar-eingabe sichtbar" id="barEingabe">
+      <div style="font-size:14px; color:var(--text-dim); margin-bottom:8px;">Gegeben:</div>
+      <div class="bar-display" id="barDisplay">__ , __ €</div>
+      <div class="numpad" style="margin-top:12px;">
+        {% for z in ['7','8','9','4','5','6','1','2','3','00','0','⌫'] %}
+        <button class="btn numpad-taste" style="min-height:64px;" data-z="{{ z }}">{{ z }}</button>
+        {% endfor %}
+      </div>
+      <div class="wechselgeld" id="wechselgeldAnzeige"></div>
+
+      <!-- Schnell-Betrag-Buttons -->
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-neutral btn-sm" onclick="schnellBetrag(500)">5,00</button>
+        <button class="btn btn-neutral btn-sm" onclick="schnellBetrag(1000)">10,00</button>
+        <button class="btn btn-neutral btn-sm" onclick="schnellBetrag(2000)">20,00</button>
+        <button class="btn btn-neutral btn-sm" onclick="schnellBetrag(5000)">50,00</button>
+        <button class="btn btn-neutral btn-sm" id="btnExakt" onclick="schnellBetrag(0)">Exakt</button>
+      </div>
+    </div>
+
+    <button class="btn-zahlen-final" id="btnZahlenFinal" onclick="zahlung()">
+      ✓ Zahlung abschließen
+    </button>
+    <button class="btn-abbrechen" onclick="window.location.href='/kasse'">
+      ← Zurück zur Kasse
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const GESAMT_CENT = {{ vorgang.BETRAG_BRUTTO }};
+const VORGANG_ID  = {{ vorgang.ID }};
+
+let gewaehltZahlart = 'BAR';
+let barEingabeCent   = 0;   // in Cent (0 = noch nichts eingegeben)
+let barEingabeStr    = '';  // als Zeichenkette ohne Komma: "2000" = 20,00€
+
+function zahlartWaehlen(art) {
+  gewaehltZahlart = art;
+  document.querySelectorAll('.zahlart-btn').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('btn' + art.charAt(0) + art.slice(1).toLowerCase()
+    .replace('kundenkonto','Kunde').replace('gutschein','Gutschein'))
+    ?.classList.add('aktiv');
+
+  const barBlock = document.getElementById('barEingabe');
+  if (art === 'BAR') {
+    barBlock.classList.add('sichtbar');
+  } else {
+    barBlock.classList.remove('sichtbar');
+    document.getElementById('wechselgeldAnzeige').textContent = '';
+  }
+}
+
+// Numpad für Bar-Eingabe
+document.addEventListener('click', e => {
+  const t = e.target.closest('.numpad-taste');
+  if (!t) return;
+  const z = t.dataset.z;
+  if (z === '⌫') {
+    barEingabeStr = barEingabeStr.slice(0, -1);
+  } else if (z === '00') {
+    barEingabeStr += '00';
+  } else {
+    barEingabeStr += z;
+  }
+  // Max 7 Stellen
+  if (barEingabeStr.length > 7) barEingabeStr = barEingabeStr.slice(-7);
+  aktualisiereBarAnzeige();
+});
+
+function aktualisiereBarAnzeige() {
+  barEingabeCent = parseInt(barEingabeStr || '0');
+  const euro_val = barEingabeCent / 100;
+  document.getElementById('barDisplay').textContent =
+    euro_val.toFixed(2).replace('.', ',') + ' €';
+
+  const wechsel = barEingabeCent - GESAMT_CENT;
+  const el = document.getElementById('wechselgeldAnzeige');
+  if (barEingabeCent > 0) {
+    if (wechsel >= 0) {
+      el.textContent = `Rückgeld: ${(wechsel/100).toFixed(2).replace('.',',')} €`;
+      el.className = 'wechselgeld';
+    } else {
+      el.textContent = `Noch ${((-wechsel)/100).toFixed(2).replace('.',',')} € fehlen`;
+      el.className = 'wechselgeld negativ';
+    }
+  } else {
+    el.textContent = '';
+  }
+}
+
+function schnellBetrag(cent) {
+  if (cent === 0) {
+    // Exakt: aufgerundet auf nächsten vollen Euro-Betrag
+    const gerundet = Math.ceil(GESAMT_CENT / 100) * 100;
+    barEingabeStr = String(gerundet);
+  } else {
+    barEingabeStr = String(cent);
+  }
+  aktualisiereBarAnzeige();
+}
+
+async function zahlung() {
+  const zahlungen = [];
+
+  if (gewaehltZahlart === 'BAR') {
+    const gegeben = barEingabeCent || GESAMT_CENT;
+    if (gegeben < GESAMT_CENT) {
+      toast('Betrag zu gering', 'err'); return;
+    }
+    zahlungen.push({
+      zahlart:        'BAR',
+      betrag:         GESAMT_CENT,
+      betrag_gegeben: gegeben,
+      wechselgeld:    gegeben - GESAMT_CENT,
+    });
+  } else if (gewaehltZahlart === 'KUNDENKONTO') {
+    const k = window._gewaehlterKunde;
+    if (!k) { toast('Bitte zuerst Kunden auswählen', 'err'); return; }
+    zahlungen.push({ zahlart: 'KUNDENKONTO', betrag: GESAMT_CENT, adressen_id: k.id });
+  } else {
+    zahlungen.push({ zahlart: gewaehltZahlart, betrag: GESAMT_CENT });
+  }
+
+  document.getElementById('btnZahlenFinal').disabled = true;
+  document.getElementById('btnZahlenFinal').textContent = '⏳ Wird verarbeitet…';
+
+  const r = await api('POST', `/api/vorgang/${VORGANG_ID}/zahlung`, { zahlungen });
+  if (r.ok) {
+    // Wechselgeld anzeigen (bei BAR)
+    if (gewaehltZahlart === 'BAR' && barEingabeCent > GESAMT_CENT) {
+      const wechsel = (barEingabeCent - GESAMT_CENT) / 100;
+      document.getElementById('btnZahlenFinal').textContent =
+        `✓ Rückgeld: ${wechsel.toFixed(2).replace('.',',')} €`;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    window.location.href = '/kasse';
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+    document.getElementById('btnZahlenFinal').disabled = false;
+    document.getElementById('btnZahlenFinal').textContent = '✓ Zahlung abschließen';
+    if (r.warnung) toast(r.warnung, 'err');
+  }
+}
+
+// Exakt-Betrag vorbelegen
+document.addEventListener('DOMContentLoaded', () => {
+  schnellBetrag(0);  // Exakt-Betrag
+});
+</script>
+{% endblock %}

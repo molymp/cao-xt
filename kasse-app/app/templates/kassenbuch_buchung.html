@@ -1,0 +1,645 @@
+{% extends "base.html" %}
+{% block title %}Neue Buchung{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+<a href="/kasse/manager" class="nav-btn">📊 Manager</a>
+{% endblock %}
+{% block extra_style %}
+<style>
+.buchung-wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 640px) {
+  .layout { grid-template-columns: 1fr 260px; }
+}
+.info-karte {
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius); padding: 12px 14px;
+  margin-bottom: 10px; box-shadow: var(--schatten);
+}
+.info-karte .label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 4px;
+}
+.info-karte .wert {
+  font-family: 'Lobster', Georgia, serif; font-size: 28px; color: var(--gold);
+}
+/* Tastatur-Button neben Textfeldern */
+.input-with-kbd { display: flex; gap: 6px; }
+.input-with-kbd .form-control { flex: 1; }
+.kbd-btn {
+  flex-shrink: 0; width: 48px; height: 48px;
+  background: var(--creme-dunkel); border: 1px solid var(--creme-warm);
+  border-radius: var(--radius-klein); font-size: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.kbd-btn:active { background: var(--gruen-blass); }
+/* Texteingabe-Overlay */
+.text-modal { width: min(560px, 97vw); padding: 16px 16px 12px; }
+.text-modal-hdr {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.text-modal-hdr h2 { font-size: 16px; margin: 0; }
+.tp-display {
+  width: 100%; height: 48px; background: white;
+  border: 2px solid var(--gruen-mitte); border-radius: var(--radius-klein);
+  padding: 8px 12px; font-size: 18px; font-family: 'Nunito', sans-serif;
+  color: var(--text-dunkel); margin-bottom: 10px;
+  /* cursor ohne Systemtastatur */
+  caret-color: var(--gruen-dunkel);
+}
+/* QWERTZ-Tastatur */
+.qwertz-kbd { display: flex; flex-direction: column; gap: 5px; }
+.kbd-reihe { display: flex; gap: 4px; justify-content: center; }
+.qt {
+  flex: 1; max-width: 48px; height: 50px;
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: 6px; font-size: 15px; font-weight: 700;
+  font-family: 'Nunito', sans-serif; color: var(--text-dunkel);
+  cursor: pointer; touch-action: manipulation; user-select: none;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.08s;
+}
+.qt:active { background: var(--gruen-dunkel); color: white; }
+.qt.wide   { max-width: 70px; font-size: 12px; }
+.qt.wider  { max-width: 90px; font-size: 12px; }
+.qt.space  { max-width: 220px; }
+.qt.action { background: var(--gruen-hell); color: white; }
+.qt.action:active { background: var(--gruen-dunkel); }
+.qt.del    { background: #fde8e8; color: var(--rot); max-width: 64px; }
+.qt.del:active { background: var(--rot); color: white; }
+.qt.shift-aktiv { background: var(--gold); color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="buchung-wrap">
+  <h1 style="font-size:24px; margin-bottom:20px;">➕ Neue Kassenbuch-Buchung</h1>
+
+  <div class="layout">
+    <!-- ── Formular ──────────────────────────────────────── -->
+    <div>
+      <div class="card">
+
+        <!-- Buchungsart -->
+        <div class="form-group">
+          <label>Buchungsart</label>
+          <select class="form-control" id="fTyp" style="font-size:17px;" onchange="typGewaehlt()">
+            <option value="EINLAGE">Einlage BAR</option>
+            <option value="ENTNAHME">Entnahme BAR</option>
+            <option value="PRIVATENTNAHME">Privatentnahme</option>
+            <option value="PRIVATEINLAGE">Privateinlage</option>
+            <option value="TRANSFER_KASSE_BANK">Transfer Kasse → Bank</option>
+            <option value="TRANSFER_BANK_KASSE">Transfer Bank → Kasse</option>
+            <option value="TRANSFER_KASSE_NEBEN">Transfer Kasse → Nebenkasse</option>
+            <option value="TRANSFER_NEBEN_KASSE">Transfer Nebenkasse → Kasse</option>
+            <option value="ANFANGSBESTAND">Kassenanfangsbestand</option>
+            <option value="JAHRESABSCHLUSS">Jahresabschluss</option>
+            <option value="JAHRESANFANG">Kassenanfang (Neujahr)</option>
+          </select>
+        </div>
+
+        <!-- Betrag (Touch-Numpad, keine Tastatur) -->
+        <div class="form-group">
+          <label>Betrag (€)</label>
+          <div class="input-with-kbd">
+            <input type="text" id="fBetragDisplay" class="form-control"
+                   inputmode="none" readonly placeholder="0,00"
+                   style="font-size:22px; font-family:'Lobster',Georgia,serif;
+                          cursor:pointer; background:white;"
+                   onclick="numpadOpen()">
+            <button type="button" class="kbd-btn" onclick="numpadOpen()" title="Zifferntastatur">🔢</button>
+          </div>
+          <input type="hidden" id="fBetrag">
+        </div>
+
+        <!-- Gegenkonto Bank (Transfer Kasse ↔ Bank, KONTOART=20) -->
+        <div class="form-group" id="grpGegenkontoBank" style="display:none;">
+          <label>Gegenkonto (Bankkonto)</label>
+          <select class="form-control" id="fGegenkontoBank">
+            <option value="">– kein Gegenkonto –</option>
+            {% for k in fibu_bankkonten %}
+            <option value="{{ k.KONTO }}"
+                    data-standard="{{ k.STANDARD }}">
+              {{ k.KONTO }} · {{ k.KONTONAME }}{% if k.IBAN %} · …{{ k.IBAN[-4:] }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
+            Vorbelegt aus Terminal-Einstellungen (CAO-Faktura) – bei Bedarf änderbar
+          </div>
+        </div>
+
+        <!-- Gegenkonto Kasse (Transfer Kasse ↔ Nebenkasse, KONTOART=3) -->
+        <div class="form-group" id="grpGegenkontoKasse" style="display:none;">
+          <label>Gegenkonto (Kasse/Nebenkasse)</label>
+          <select class="form-control" id="fGegenkontoKasse">
+            <option value="">– kein Gegenkonto –</option>
+            {% for k in fibu_kassenkonten %}
+            <option value="{{ k.KONTO }}"
+                    data-standard="{{ k.STANDARD }}">
+              {{ k.KONTO }} · {{ k.KONTONAME }}
+            </option>
+            {% endfor %}
+          </select>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
+            Vorbelegt aus Terminal-Einstellungen (CAO-Faktura) – bei Bedarf änderbar
+          </div>
+        </div>
+
+        <!-- MwSt (nur bei Einlage / Entnahme) -->
+        <div class="form-group" id="grpMwst" style="display:none;">
+          <label>Enthaltene MwSt</label>
+          <select class="form-control" id="fMwst">
+            <option value="">Keine MwSt</option>
+            {% for ms in mwst_saetze %}
+            <option value="{{ ms.CODE }}">
+              {{ "%.1f"|format(ms.SATZ)|replace(".",",") }} %
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Buchungstext -->
+        <div class="form-group">
+          <label>Buchungstext</label>
+          <div class="input-with-kbd">
+            <input class="form-control" id="fBuchungstext" type="text"
+                   placeholder="Beschreibung …" inputmode="text" autocomplete="off"
+                   autocorrect="off" autocapitalize="sentences" spellcheck="false"
+                   onclick="this.focus()" ontouchstart="this.focus()">
+            <button type="button" class="kbd-btn"
+                    onclick="textpadOpen('Buchungstext', 'fBuchungstext')"
+                    title="Bildschirmtastatur">⌨️</button>
+          </div>
+        </div>
+
+        <!-- Belegnummer -->
+        <div class="form-group">
+          <label>Belegnummer</label>
+          <div class="input-with-kbd">
+            <input class="form-control" id="fBelegnummer" type="text"
+                   value="{{ naechste_belegnummer }}" inputmode="text"
+                   autocomplete="off" autocorrect="off" spellcheck="false"
+                   onclick="this.focus()" ontouchstart="this.focus()">
+            <button type="button" class="kbd-btn"
+                    onclick="textpadOpen('Belegnummer', 'fBelegnummer')"
+                    title="Bildschirmtastatur">⌨️</button>
+          </div>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">
+            Fortlaufend vorbelegt – kann überschrieben werden (z. B. Rechnungsnummer)
+          </div>
+        </div>
+
+        <!-- Buchungsdatum -->
+        <div class="form-group">
+          <label>Buchungsdatum</label>
+          <input class="form-control" id="fDatum" type="date"
+                 value="{{ heute }}" max="{{ heute }}"
+                 {% if min_datum %}min="{{ min_datum }}"{% endif %}>
+        </div>
+
+        <!-- Warn / Fehler -->
+        <div id="warnSaldo" class="alert alert-warn" style="display:none;"></div>
+        <div id="warnFehler" class="alert alert-error" style="display:none;"></div>
+
+        <div style="display:flex; gap:10px; margin-top:8px;">
+          <button class="btn btn-primary" style="flex:1; font-size:18px;" onclick="buchen()">
+            ✅ Buchen
+          </button>
+          <a href="/kasse/kassenbuch" class="btn btn-neutral">Zurück</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Info-Panel ────────────────────────────────────── -->
+    <div>
+      <div class="info-karte">
+        <div class="label">Hauptkasse (Ist)</div>
+        <div class="wert">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Nebenkasse</div>
+        <div class="wert" style="color:var(--gruen-hell);">
+          {{ "%.2f"|format(info.saldo_neben/100) }} €
+        </div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Bar seit Abschluss</div>
+        <div style="font-size:18px; font-weight:700; color:var(--text-dunkel);">
+          {{ "%.2f"|format(info.einnahmen_bar/100) }} €
+        </div>
+      </div>
+      <div class="info-karte">
+        <div class="label">EC seit Abschluss</div>
+        <div style="font-size:18px; font-weight:700; color:var(--text-dunkel);">
+          {{ "%.2f"|format(info.einnahmen_ec/100) }} €
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Texteingabe-Overlay (Bildschirmtastatur) ═══════════════ -->
+<div id="textpadOverlay" class="overlay hidden">
+  <div class="modal text-modal">
+
+    <div class="text-modal-hdr">
+      <h2 id="textpadLabel">Eingabe</h2>
+      <button type="button" class="btn btn-neutral btn-sm"
+              onclick="textpadClose()" style="min-height:36px;">
+        ✕ Abbrechen
+      </button>
+    </div>
+
+    <!-- Echtes Eingabefeld – Cursor ist positionierbar per Tippen -->
+    <input type="text" id="textpadDisplay" class="tp-display"
+           inputmode="none" autocomplete="off" autocorrect="off"
+           autocapitalize="off" spellcheck="false"
+           placeholder="Hier tippen …">
+
+    <div class="qwertz-kbd">
+      <!-- Reihe 1: Ziffern und Sonderzeichen -->
+      <div class="kbd-reihe">
+        {% for c in ['1','2','3','4','5','6','7','8','9','0','-','.'] %}
+        <button class="qt" onclick="tpKey('{{ c }}')">{{ c }}</button>
+        {% endfor %}
+      </div>
+      <!-- Reihe 2: QWERTZ -->
+      <div class="kbd-reihe">
+        {% for c in ['q','w','e','r','t','z','u','i','o','p','ü'] %}
+        <button class="qt tp-buchstabe" data-lower="{{ c }}" onclick="tpKey(this.dataset.lower)">{{ c }}</button>
+        {% endfor %}
+      </div>
+      <!-- Reihe 3: ASDF -->
+      <div class="kbd-reihe">
+        {% for c in ['a','s','d','f','g','h','j','k','l','ö','ä'] %}
+        <button class="qt tp-buchstabe" data-lower="{{ c }}" onclick="tpKey(this.dataset.lower)">{{ c }}</button>
+        {% endfor %}
+      </div>
+      <!-- Reihe 4: YXCV + Shift + Backspace -->
+      <div class="kbd-reihe">
+        <button class="qt wide" id="tpShiftBtn" onclick="tpShiftToggle()">⇧ Shift</button>
+        {% for c in ['y','x','c','v','b','n','m',','] %}
+        <button class="qt tp-buchstabe" data-lower="{{ c }}" onclick="tpKey(this.dataset.lower)">{{ c }}</button>
+        {% endfor %}
+        <button class="qt del" onclick="tpBackspace()">⌫</button>
+      </div>
+      <!-- Reihe 5: Sonderzeichen + Leerzeichen + OK -->
+      <div class="kbd-reihe">
+        <button class="qt wide" onclick="tpKey('@')">@</button>
+        <button class="qt wide" onclick="tpKey('/')">/ </button>
+        <button class="qt wide" onclick="tpKey('_')"> _</button>
+        <button class="qt space" onclick="tpKey(' ')">Leerzeichen</button>
+        <button class="qt wider action" onclick="textpadConfirm()">✓ OK</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+<!-- ══ Numpad-Overlay (Betragseingabe) ════════════════════════ -->
+<div id="numpadOverlay" class="overlay hidden">
+  <div class="modal" style="width:min(290px,94vw); padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 style="font-size:16px; margin:0;">Betrag eingeben</h2>
+      <button type="button" class="btn btn-neutral btn-sm"
+              onclick="numpadClose()" style="min-height:36px;">✕ Abbrechen</button>
+    </div>
+    <!-- Anzeige -->
+    <div id="npDisplay"
+         style="background:white; border:2px solid var(--gruen-mitte);
+                border-radius:var(--radius-klein); padding:10px 14px;
+                font-size:30px; font-family:'Lobster',Georgia,serif;
+                color:var(--text-dunkel); text-align:right;
+                margin-bottom:12px; min-height:58px;">
+      0,00
+    </div>
+    <!-- Zifferntasten -->
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('7')">7</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('8')">8</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('9')">9</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('4')">4</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('5')">5</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('6')">6</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('1')">1</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('2')">2</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('3')">3</button>
+      <button class="qt" style="height:62px;font-size:20px;" onclick="npKey(',')">  ,</button>
+      <button class="qt" style="height:62px;font-size:24px;" onclick="npKey('0')">0</button>
+      <button class="qt del" style="height:62px;font-size:22px;" onclick="npBackspace()">⌫</button>
+    </div>
+    <button class="btn btn-primary" style="width:100%; margin-top:10px; font-size:18px;"
+            onclick="numpadConfirm()">✓ OK</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ── Buchungstypen-Konfiguration ────────────────────────────
+const TYPEN = {
+  EINLAGE:              { text: 'Einlage BAR',                 gegenkonto: false, mwst: true,  sign:  1 },
+  ENTNAHME:             { text: 'Entnahme BAR',                gegenkonto: false, mwst: true,  sign: -1 },
+  PRIVATENTNAHME:       { text: 'Privatentnahme',              gegenkonto: false, mwst: false, sign: -1 },
+  PRIVATEINLAGE:        { text: 'Privateinlage',               gegenkonto: false, mwst: false, sign:  1 },
+  TRANSFER_KASSE_BANK:  { text: 'Transfer Kasse → Bank',       gegenkonto: true,  kontoart: 'bank',  mwst: false, sign: -1,
+                          konto: {{ info.konto_bank|tojson }} },
+  TRANSFER_BANK_KASSE:  { text: 'Transfer Bank → Kasse',       gegenkonto: true,  kontoart: 'bank',  mwst: false, sign:  1,
+                          konto: {{ info.konto_bank|tojson }} },
+  TRANSFER_KASSE_NEBEN: { text: 'Transfer Kasse → Nebenkasse', gegenkonto: true,  kontoart: 'kasse', mwst: false, sign: -1,
+                          konto: {{ info.konto_nebenkasse|tojson }} },
+  TRANSFER_NEBEN_KASSE: { text: 'Transfer Nebenkasse → Kasse', gegenkonto: true,  kontoart: 'kasse', mwst: false, sign:  1,
+                          konto: {{ info.konto_nebenkasse|tojson }} },
+  ANFANGSBESTAND:  { text: 'Kassenanfangsbestand',  gegenkonto: false, mwst: false, sign:  1 },
+  JAHRESABSCHLUSS: { text: 'Jahresabschluss',        gegenkonto: false, mwst: false, sign: -1 },
+  JAHRESANFANG:    { text: 'Kassenanfang (Neujahr)', gegenkonto: false, mwst: false, sign:  1 },
+};
+
+const SALDO_HAUPT = {{ info.saldo_haupt }};  // Cent
+
+// ── Typ-Wechsel ────────────────────────────────────────────
+function typGewaehlt() {
+  const typ  = document.getElementById('fTyp').value;
+  const info = TYPEN[typ] || {};
+
+  // Buchungstext (nur wenn nicht manuell geändert)
+  const bt = document.getElementById('fBuchungstext');
+  if (!bt._dirty) bt.value = info.text || '';
+
+  // Gegenkonto: je nach Transfer-Art das passende Dropdown anzeigen
+  // Vorrang: Terminal-Konto → STANDARD=Y → leer
+  const grpBank  = document.getElementById('grpGegenkontoBank');
+  const grpKasse = document.getElementById('grpGegenkontoKasse');
+  if (info.gegenkonto && info.kontoart === 'bank') {
+    const sel = document.getElementById('fGegenkontoBank');
+    const kto = String(info.konto || '');
+    sel.value = kto;
+    if (!sel.value) {
+      const stdOpt = sel.querySelector('option[data-standard="Y"]');
+      if (stdOpt) sel.value = stdOpt.value;
+    }
+    grpBank.style.display  = '';
+    grpKasse.style.display = 'none';
+    document.getElementById('fGegenkontoKasse').value = '';
+  } else if (info.gegenkonto && info.kontoart === 'kasse') {
+    const sel = document.getElementById('fGegenkontoKasse');
+    const kto = String(info.konto || '');
+    sel.value = kto;
+    if (!sel.value) {
+      // Fallback-Kette: 1610 → STANDARD=Y → leer
+      const opt1610 = sel.querySelector('option[value="1610"]');
+      if (opt1610) { sel.value = '1610'; }
+      else {
+        const stdOpt = sel.querySelector('option[data-standard="Y"]');
+        if (stdOpt) sel.value = stdOpt.value;
+      }
+    }
+    grpKasse.style.display = '';
+    grpBank.style.display  = 'none';
+    document.getElementById('fGegenkontoBank').value = '';
+  } else {
+    grpBank.style.display  = 'none';
+    grpKasse.style.display = 'none';
+    document.getElementById('fGegenkontoBank').value  = '';
+    document.getElementById('fGegenkontoKasse').value = '';
+  }
+
+  // MwSt: nur bei Einlage / Entnahme
+  document.getElementById('grpMwst').style.display = info.mwst ? '' : 'none';
+
+  pruefeWarnung();
+}
+
+// ── Saldo-Warnung ──────────────────────────────────────────
+function pruefeWarnung() {
+  const typ    = document.getElementById('fTyp').value;
+  const info   = TYPEN[typ] || {};
+  const betrag = Math.round(parseFloat(
+    document.getElementById('fBetrag').value || '0') * 100);
+  const warn = document.getElementById('warnSaldo');
+  if (info.sign < 0 && betrag > SALDO_HAUPT) {
+    warn.style.display = '';
+    warn.textContent   =
+      `⚠ Betrag (${euro(betrag)}) übersteigt Kassenbestand (${euro(SALDO_HAUPT)}) – Buchung wird abgelehnt.`;
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
+document.getElementById('fBuchungstext').addEventListener('input', function() {
+  this._dirty = this.value.trim() !== '';
+});
+
+// ══ Numpad – Betragseingabe ════════════════════════════════
+let _npRaw = '';   // roher String, z.B. '12,50'
+
+function numpadOpen() {
+  const cur = document.getElementById('fBetrag').value;
+  _npRaw = (cur && parseFloat(cur) > 0)
+    ? parseFloat(cur).toFixed(2).replace('.', ',')
+    : '';
+  npUpdateDisplay();
+  document.getElementById('numpadOverlay').classList.remove('hidden');
+}
+
+function numpadClose() {
+  document.getElementById('numpadOverlay').classList.add('hidden');
+}
+
+function numpadConfirm() {
+  const val = parseFloat(_npRaw.replace(',', '.'));
+  if (!isNaN(val) && val > 0) {
+    document.getElementById('fBetrag').value        = val.toFixed(2);
+    document.getElementById('fBetragDisplay').value = val.toFixed(2).replace('.', ',') + ' €';
+    pruefeWarnung();
+  }
+  numpadClose();
+}
+
+function npKey(c) {
+  if (c === ',') {
+    if (_npRaw.includes(',')) return;   // nur einmal
+    _npRaw += (_npRaw === '') ? '0,' : ',';
+  } else {
+    // max. 2 Stellen nach Komma
+    const ki = _npRaw.indexOf(',');
+    if (ki >= 0 && _npRaw.length - ki > 2) return;
+    // führende Null vermeiden (außer "0,")
+    if (_npRaw === '0') _npRaw = c;
+    else _npRaw += c;
+  }
+  npUpdateDisplay();
+}
+
+function npBackspace() {
+  _npRaw = _npRaw.slice(0, -1);
+  npUpdateDisplay();
+}
+
+function npUpdateDisplay() {
+  document.getElementById('npDisplay').textContent =
+    _npRaw ? _npRaw + ' €' : '0,00';
+}
+
+// ── Buchen ─────────────────────────────────────────────────
+async function buchen() {
+  const typ        = document.getElementById('fTyp').value;
+  const info       = TYPEN[typ] || {};
+  const betragCent = Math.round(parseFloat(
+    document.getElementById('fBetrag').value || '0') * 100);
+
+  if (!betragCent || betragCent <= 0) {
+    toast('Bitte Betrag eingeben', 'err'); return;
+  }
+  if (info.sign < 0 && betragCent > SALDO_HAUPT) {
+    document.getElementById('warnFehler').style.display = '';
+    document.getElementById('warnFehler').textContent   =
+      `Buchung abgelehnt: Betrag (${euro(betragCent)}) übersteigt Kassenbestand (${euro(SALDO_HAUPT)}).`;
+    toast('Kassenbestand reicht nicht aus', 'err');
+    return;
+  }
+  document.getElementById('warnFehler').style.display = 'none';
+
+  // Gegenkonto aus dem sichtbaren Dropdown lesen
+  let gegenkonto = '';
+  if (document.getElementById('grpGegenkontoBank').style.display !== 'none') {
+    gegenkonto = document.getElementById('fGegenkontoBank').value.trim();
+  } else if (document.getElementById('grpGegenkontoKasse').style.display !== 'none') {
+    gegenkonto = document.getElementById('fGegenkontoKasse').value.trim();
+  }
+
+  const r = await api('POST', '/api/kassenbuch', {
+    typ,
+    betrag_cent:   betragCent,
+    buchungstext:  document.getElementById('fBuchungstext').value.trim(),
+    gegenkonto,
+    mwst_code:     document.getElementById('fMwst').value || null,
+    belegnummer:   document.getElementById('fBelegnummer').value.trim(),
+    buchungsdatum: document.getElementById('fDatum').value,
+  });
+
+  if (r.ok) {
+    toast('Buchung gespeichert ✓', 'ok');
+    setTimeout(() => location.href = '/kasse/kassenbuch', 900);
+  } else {
+    toast(r.fehler || 'Fehler beim Speichern', 'err');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Textpad – Bildschirmtastatur
+// ══════════════════════════════════════════════════════════
+let _tpTargetId = '';
+let _tpShifted  = false;
+
+function textpadOpen(label, inputId) {
+  _tpTargetId = inputId;
+  _tpShifted  = false;
+  tpShiftSync();
+  const val = document.getElementById(inputId).value;
+  const d   = document.getElementById('textpadDisplay');
+  d.value   = val;
+  document.getElementById('textpadLabel').textContent = label;
+  document.getElementById('textpadOverlay').classList.remove('hidden');
+  // Cursor ans Ende
+  setTimeout(() => { d.focus(); d.selectionStart = d.selectionEnd = d.value.length; }, 50);
+}
+
+function textpadConfirm() {
+  const val    = document.getElementById('textpadDisplay').value;
+  const target = document.getElementById(_tpTargetId);
+  if (target) {
+    target.value = val;
+    if (_tpTargetId === 'fBuchungstext') target._dirty = val.trim() !== '';
+  }
+  textpadClose();
+}
+
+function textpadClose() {
+  document.getElementById('textpadOverlay').classList.add('hidden');
+  _tpTargetId = '';
+}
+
+// ── Zeichen einfügen an Cursor-Position ───────────────────
+function tpKey(char) {
+  const d   = document.getElementById('textpadDisplay');
+  const pos = d.selectionStart ?? d.value.length;
+  const end = d.selectionEnd   ?? pos;
+  const ins = _tpShifted ? char.toUpperCase() : char;
+  d.value   = d.value.slice(0, pos) + ins + d.value.slice(end);
+  // Cursor hinter eingefügtes Zeichen setzen
+  d.selectionStart = d.selectionEnd = pos + ins.length;
+  d.focus();
+  // Nach Großbuchstabe: Shift automatisch aufheben
+  if (_tpShifted && /\p{L}/u.test(char)) {
+    _tpShifted = false;
+    tpShiftSync();
+  }
+}
+
+// ── Backspace mit Cursor-Berücksichtigung ─────────────────
+function tpBackspace() {
+  const d   = document.getElementById('textpadDisplay');
+  const pos = d.selectionStart ?? d.value.length;
+  const end = d.selectionEnd   ?? pos;
+  if (pos !== end) {
+    // Markierung löschen
+    d.value = d.value.slice(0, pos) + d.value.slice(end);
+    d.selectionStart = d.selectionEnd = pos;
+  } else if (pos > 0) {
+    d.value = d.value.slice(0, pos - 1) + d.value.slice(pos);
+    d.selectionStart = d.selectionEnd = pos - 1;
+  }
+  d.focus();
+}
+
+// ── Shift ────────────────────────────────────────────────
+function tpShiftToggle() {
+  _tpShifted = !_tpShifted;
+  tpShiftSync();
+}
+
+function tpShiftSync() {
+  const btn = document.getElementById('tpShiftBtn');
+  if (btn) btn.classList.toggle('shift-aktiv', _tpShifted);
+  // Alle Buchstaben-Tasten umschalten
+  document.querySelectorAll('.tp-buchstabe').forEach(b => {
+    const lower = b.dataset.lower;
+    b.textContent = _tpShifted ? lower.toUpperCase() : lower;
+    // onclick aktualisieren damit tpKey den richtigen Buchstaben sieht
+    // (data-lower bleibt immer lowercase – Shift wird in tpKey() angewendet)
+  });
+}
+
+// ── URL-Parameter vorausfüllen ────────────────────────────
+(function() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('typ')) {
+    const sel = document.getElementById('fTyp');
+    if ([...sel.options].some(o => o.value === p.get('typ')))
+      sel.value = p.get('typ');
+  }
+  if (p.get('betrag')) {
+    const cent = parseInt(p.get('betrag'), 10);
+    if (cent > 0) {
+      const val = (cent / 100).toFixed(2);
+      document.getElementById('fBetrag').value        = val;
+      document.getElementById('fBetragDisplay').value = val.replace('.', ',') + ' €';
+    }
+  }
+  typGewaehlt();
+})();
+</script>
+{% endblock %}

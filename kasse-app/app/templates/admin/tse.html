@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}TSE-Verwaltung{% endblock %}
+{% block content %}
+<div style="max-width:900px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:6px;">🔐 TSE-Verwaltung</h1>
+  <div style="font-size:13px; color:var(--text-dim); margin-bottom:20px;">
+    Alle genutzten TSE-Geräte werden zur Nachvollziehbarkeit dauerhaft gespeichert (Auditpflicht).
+    Dekommissionierte TSEs können als "außer Betrieb" markiert werden.
+  </div>
+
+  {% with hinweis = session.pop('tse_hinweis', None), fehler = session.pop('tse_fehler', None) %}
+  {% if hinweis %}
+  <div class="alert alert-success" style="margin-bottom:16px;">✅ {{ hinweis }}</div>
+  {% endif %}
+  {% if fehler %}
+  <div class="alert alert-error" style="margin-bottom:16px;">❌ {{ fehler }}</div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Aktuelle TSE des Terminals -->
+  {% set aktive_tse_id = terminal.TSE_ID %}
+  {% if aktive_tse_id %}
+  <div class="alert" style="margin-bottom:16px; background:rgba(52,211,153,0.1);
+       border:1px solid var(--gruen-hell); padding:12px 16px; border-radius:8px; font-size:14px;">
+    ✅ Terminal {{ terminal.TERMINAL_NR }} nutzt TSE-Gerät ID <b>{{ aktive_tse_id }}</b>
+    {% for g in geraete %}{% if g.REC_ID == aktive_tse_id %} – {{ g.BEZEICHNUNG }}{% endif %}{% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-warn" style="margin-bottom:16px;">
+    ⚠️ Terminal {{ terminal.TERMINAL_NR }} hat noch kein TSE-Gerät zugewiesen (Legacy-Modus).
+    <a href="/admin/terminal" style="color:var(--gold); text-decoration:underline;">
+      Konfiguration öffnen →
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- TSE-Geräteliste -->
+  {% if geraete %}
+  {% for g in geraete %}
+  {% set ist_aktiv = (g.REC_ID == aktive_tse_id) %}
+  {% set ist_ausser_betrieb = g.AUSSER_BETRIEB %}
+  <div class="card" style="margin-bottom:12px;
+       border-left:4px solid {{ 'var(--gruen-hell)' if ist_aktiv else ('var(--rot)' if ist_ausser_betrieb else 'var(--border)') }};
+       opacity:{{ '0.7' if ist_ausser_betrieb else '1' }};">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+      <div style="flex:1;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="font-size:18px;">
+            {{ '☁️' if g.TYP == 'FISKALY' else ('🔌' if g.TYP == 'SWISSBIT' else '🎓') }}
+          </span>
+          <b style="font-size:16px;">{{ g.BEZEICHNUNG }}</b>
+          <span style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700;
+                background:{{ 'rgba(52,211,153,0.2)' if ist_aktiv else 'var(--grau-hell)' }};
+                color:{{ 'var(--gruen-hell)' if ist_aktiv else 'var(--text-dim)' }};">
+            {{ 'AKTIV' if ist_aktiv else ('AUSSER BETRIEB' if ist_ausser_betrieb else g.TYP) }}
+          </span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 20px; font-size:13px; color:var(--text-dim);">
+          <div>ID: <span style="color:var(--text-hell);">{{ g.REC_ID }}</span></div>
+          <div>Typ: <span style="color:var(--text-hell);">{{ g.TYP }}</span></div>
+          {% if g.BSI_ZERTIFIZIERUNG %}
+          <div>BSI-Zert.: <code style="font-size:12px;">{{ g.BSI_ZERTIFIZIERUNG }}</code></div>
+          {% endif %}
+          {% if g.ZERTIFIKAT_GUELTIG_BIS %}
+          <div>Zertif. gültig bis:
+            <span style="color:var(--text-hell);">{{ g.ZERTIFIKAT_GUELTIG_BIS }}</span>
+          </div>
+          {% endif %}
+          {% if g.TYP == 'FISKALY' and g.FISKALY_TSS_ID %}
+          <div>TSS-ID: <code style="font-size:11px;">{{ g.FISKALY_TSS_ID[:18] }}…</code></div>
+          <div>Umgebung:
+            <span style="color:{{ 'var(--gruen-hell)' if g.FISKALY_ENV == 'live' else 'var(--gold)' }}; font-weight:700;">
+              {{ g.FISKALY_ENV or 'test' }}
+            </span>
+          </div>
+          {% endif %}
+          {% if g.TYP == 'SWISSBIT' and g.SWISSBIT_PFAD %}
+          <div>Pfad: <code>{{ g.SWISSBIT_PFAD }}</code></div>
+          {% endif %}
+          {% if g.IN_BETRIEB_SEIT %}
+          <div>In Betrieb seit: {{ g.IN_BETRIEB_SEIT }}</div>
+          {% endif %}
+          {% if g.AUSSER_BETRIEB %}
+          <div>Außer Betrieb: {{ g.AUSSER_BETRIEB }}</div>
+          {% endif %}
+          {% if g.TERMINAL_NRS %}
+          <div>Terminals: <span style="color:var(--text-hell);">{{ g.TERMINAL_NRS }}</span></div>
+          {% endif %}
+        </div>
+        {% if g.BEMERKUNG %}
+        <div style="margin-top:8px; font-size:12px; color:var(--text-dim); font-style:italic;">
+          {{ g.BEMERKUNG }}
+        </div>
+        {% endif %}
+      </div>
+      <!-- Aktionsbuttons -->
+      <div style="display:flex; flex-direction:column; gap:6px; min-width:140px;">
+        {% if not ist_aktiv and not ist_ausser_betrieb %}
+        <form method="POST" action="/admin/tse/{{ g.REC_ID|int }}/aktivieren">
+          <button type="submit" class="btn btn-success btn-full" style="font-size:13px; padding:7px;">
+            ✓ Aktivieren
+          </button>
+        </form>
+        {% endif %}
+        <a href="/admin/tse/neu?edit={{ g.REC_ID|int }}" class="btn btn-neutral btn-full"
+           style="font-size:13px; padding:7px; text-align:center;">
+          ✏️ Bearbeiten
+        </a>
+        {% if not ist_ausser_betrieb and not ist_aktiv %}
+        <form method="POST" action="/admin/tse/{{ g.REC_ID|int }}/ausser_betrieb"
+              onsubmit="return confirm('TSE-Gerät als außer Betrieb markieren?')">
+          <button type="submit" class="btn btn-neutral btn-full"
+                  style="font-size:13px; padding:7px; color:var(--rot);">
+            Außer Betrieb
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="card" style="text-align:center; color:var(--text-dim); padding:32px;">
+    Noch keine TSE-Geräte konfiguriert.
+  </div>
+  {% endif %}
+
+  <div style="display:flex; gap:12px; margin-top:20px;">
+    <a href="/admin/tse/neu" class="btn btn-primary">+ Neues TSE-Gerät hinzufügen</a>
+    <a href="/admin/" class="btn btn-neutral">← Zurück zur Administration</a>
+  </div>
+</div>
+{% endblock %}

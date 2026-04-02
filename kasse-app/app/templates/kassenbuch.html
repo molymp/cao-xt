@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Kassenbuch{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+<a href="/kasse/manager" class="nav-btn">📊 Manager</a>
+{% endblock %}
+{% block extra_style %}
+<style>
+.kb-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.info-karte {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  text-align: center;
+  box-shadow: var(--schatten);
+}
+.info-karte .label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.info-karte .wert {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 26px;
+  color: var(--gold);
+}
+.info-karte .wert.gross { font-size: 36px; }
+.info-karte .wert.gruen { color: var(--gruen-hell); }
+.eintrag-zeile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 14px;
+  background: var(--grau-hell);
+  border-radius: 8px;
+  border: 1px solid var(--creme-dunkel);
+  margin-bottom: 6px;
+}
+.eintrag-zeile .titel { font-size: 14px; font-weight: 700; }
+.eintrag-zeile .meta  { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.eintrag-zeile .betrag {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 20px;
+}
+.belegnr {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--creme-dunkel);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="kb-wrap">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+    <h1 style="font-size:26px;">📒 Kassenbuch</h1>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm">➕ Neue Buchung →</a>
+      <a href="/kasse/kassenbuch/monat" class="btn btn-neutral btn-sm">📆 Monatsbericht →</a>
+    </div>
+  </div>
+
+  <!-- Info-Karten -->
+  <div class="info-grid">
+    <div class="info-karte">
+      <div class="label">Hauptkasse</div>
+      <div class="wert gross">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+    </div>
+    <div class="info-karte">
+      <div class="label">Bar seit Abschluss</div>
+      <div class="wert" style="font-size:22px;">{{ "%.2f"|format(info.einnahmen_bar/100) }} €</div>
+    </div>
+    <div class="info-karte">
+      <div class="label">EC seit Abschluss</div>
+      <div class="wert" style="font-size:22px;">{{ "%.2f"|format(info.einnahmen_ec/100) }} €</div>
+    </div>
+    <div class="info-karte">
+      <div class="label">Nebenkasse</div>
+      <div class="wert gruen">{{ "%.2f"|format(info.saldo_neben/100) }} €</div>
+    </div>
+  </div>
+
+  <!-- Eintraege-Liste -->
+  <div class="card">
+    <h3 style="margin-bottom:12px; font-size:17px;">Letzte 30 Tage</h3>
+    {% if eintraege %}
+    {% for e in eintraege %}
+    {% set ist_abschluss = e.TYP == 'TAGESABSCHLUSS' %}
+    <div class="eintrag-zeile" style="{{ 'opacity:0.5; background:none; border-color:transparent;' if ist_abschluss else '' }}">
+      <div>
+        <div class="titel">
+          {% if e.TYP == 'EINLAGE' %}Einlage
+          {% elif e.TYP == 'ENTNAHME' %}Entnahme
+          {% elif e.TYP == 'PRIVATENTNAHME' %}Privatentnahme
+          {% elif e.TYP == 'PRIVATEINLAGE' %}Privateinlage
+          {% elif e.TYP == 'TRANSFER_KASSE_BANK' %}Transfer → Bank
+          {% elif e.TYP == 'TRANSFER_BANK_KASSE' %}Transfer ← Bank
+          {% elif e.TYP == 'TRANSFER_KASSE_NEBEN' %}Transfer → Nebenkasse
+          {% elif e.TYP == 'TRANSFER_NEBEN_KASSE' %}Transfer ← Nebenkasse
+          {% elif e.TYP == 'ANFANGSBESTAND' %}Anfangsbestand
+          {% elif e.TYP == 'UMSATZ_BAR' %}Bareinnahmen
+          {% elif ist_abschluss %}Z-Bon
+          {% else %}{{ e.TYP }}{% endif %}
+          {% if e.BELEGNUMMER %}<span class="belegnr">{{ e.BELEGNUMMER }}</span>{% endif %}
+        </div>
+        {% set btext = e.BUCHUNGSTEXT or e.NOTIZ %}
+        {% if btext %}<div class="meta">{{ btext }}</div>{% endif %}
+        <div class="meta">
+          {% if e.BUCHUNGSDATUM is string %}{{ e.BUCHUNGSDATUM[:16] }}
+          {% elif e.BUCHUNGSDATUM %}{{ e.BUCHUNGSDATUM.strftime('%Y-%m-%d %H:%M') }}
+          {% endif %}
+        </div>
+      </div>
+      {% if not ist_abschluss %}
+      <div class="betrag" style="color:{{ 'var(--gruen-status)' if e.BETRAG >= 0 else 'var(--rot)' }};">
+        {{ "%.2f"|format(e.BETRAG/100) }} €
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--text-dim); text-align:center; padding:24px;">
+      Keine Buchungen in den letzten 30 Tagen
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:20px; display:flex; gap:10px;">
+    <a href="/kasse/manager" class="btn btn-neutral">← Manager</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}DSFinV-K Export{% endblock %}
+{% block content %}
+<div style="max-width:760px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:8px;">📦 DSFinV-K Export</h1>
+  <div style="color:var(--text-dim); font-size:14px; margin-bottom:24px;">
+    Digitale Schnittstelle der Finanzverwaltung für Kassensysteme (§146b AO).
+    Das TAR-Archiv kann direkt an das Finanzamt übergeben werden.
+  </div>
+
+  <!-- Zeitraum + Export anfordern -->
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">
+      Export via Fiskaly API
+    </h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Von</label>
+        <input class="form-control" id="exportVon" type="date"
+               value="{{ jetzt.strftime('%Y-%m-01') }}">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label style="font-size:13px; color:var(--text-dim);">Bis</label>
+        <input class="form-control" id="exportBis" type="date"
+               value="{{ jetzt.strftime('%Y-%m-%d') }}">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" id="btnExport" onclick="exportStarten()">
+      🚀 Export anfordern
+    </button>
+  </div>
+
+  <!-- Ergebnis-Bereich -->
+  <div id="exportErgebnis" style="display:none;">
+
+    <!-- Warnungen -->
+    <div id="exportWarnungen" style="display:none; margin-bottom:12px;"></div>
+
+    <!-- Fehler -->
+    <div id="exportFehler" style="display:none; margin-bottom:12px;"></div>
+
+    <!-- Trainings-Bons -->
+    <div id="exportTrainings" style="display:none; margin-bottom:12px;"></div>
+
+    <!-- Exporte (eine Karte pro TSE) -->
+    <div id="exportListe"></div>
+
+  </div>
+
+  <!-- Lokale Übersicht -->
+  <div class="card" style="margin-bottom:16px; margin-top:16px;">
+    <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">
+      Lokale Transaktionsübersicht (JSON)
+    </h3>
+    <p style="font-size:14px; color:var(--text-dim); margin-bottom:12px;">
+      Listet alle Kassenvorgänge des Zeitraums aus der lokalen Datenbank.
+      Trainings-/Demo-Bons sind ausgeschlossen. Nützlich für interne Prüfungen
+      und als Grundlage für Swissbit-Transaktionen.
+    </p>
+    <button class="btn btn-neutral btn-full" onclick="lokalHerunterladen()">
+      ⬇ JSON herunterladen
+    </button>
+  </div>
+
+  <a href="/admin/" class="btn btn-neutral">← Zurück</a>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+// Aktive Polling-Intervalle: geraet_id → intervalId
+const _pollIntervalle = {};
+
+// ── Export anfordern ─────────────────────────────────────────────
+async function exportStarten() {
+  const von = document.getElementById('exportVon').value;
+  const bis = document.getElementById('exportBis').value;
+  if (!von || !bis) { toast('Bitte Zeitraum angeben', 'err'); return; }
+
+  // Laufende Polls stoppen
+  for (const id of Object.values(_pollIntervalle)) clearInterval(id);
+  Object.keys(_pollIntervalle).forEach(k => delete _pollIntervalle[k]);
+
+  const btn = document.getElementById('btnExport');
+  btn.disabled    = true;
+  btn.textContent = '⏳ Wird angefordert…';
+
+  document.getElementById('exportErgebnis').style.display = 'none';
+  document.getElementById('exportWarnungen').style.display = 'none';
+  document.getElementById('exportFehler').style.display   = 'none';
+  document.getElementById('exportTrainings').style.display = 'none';
+  document.getElementById('exportListe').innerHTML = '';
+
+  const r = await fetch('/admin/export/starten', {
+    method: 'POST',
+    body: new URLSearchParams({ datum_von: von, datum_bis: bis }),
+  });
+  const d = await r.json();
+
+  btn.disabled    = false;
+  btn.textContent = '🚀 Export anfordern';
+
+  document.getElementById('exportErgebnis').style.display = 'block';
+
+  // ── Warnungen ────────────────────────────────────────────────
+  if (d.warnungen && d.warnungen.length) {
+    const el = document.getElementById('exportWarnungen');
+    el.style.display = 'block';
+    el.innerHTML = d.warnungen.map(w =>
+      `<div class="alert alert-warn" style="margin-bottom:6px;">⚠️ ${_esc(w)}</div>`
+    ).join('');
+  }
+
+  // ── Fehler ───────────────────────────────────────────────────
+  if (d.fehler && d.fehler.length) {
+    const el = document.getElementById('exportFehler');
+    el.style.display = 'block';
+    el.innerHTML = d.fehler.map(f =>
+      `<div class="alert alert-error" style="margin-bottom:6px;">❌ ${_esc(f)}</div>`
+    ).join('');
+  }
+
+  // ── Trainings-Bons ───────────────────────────────────────────
+  if (d.trainings_bons > 0) {
+    const el = document.getElementById('exportTrainings');
+    el.style.display = 'block';
+    el.innerHTML = `<div class="alert" style="background:var(--bg-card); border:1px solid var(--border); margin-bottom:6px;">
+      ℹ️ ${d.trainings_bons} Trainings-/Demo-Bon(s) vom Export ausgeschlossen.
+    </div>`;
+  }
+
+  // ── Exporte (pro TSE eine Karte) ─────────────────────────────
+  const liste = document.getElementById('exportListe');
+  if (!d.exporte || !d.exporte.length) return;
+
+  for (const ex of d.exporte) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id        = `ex-card-${ex.geraet_id}`;
+    card.style.marginBottom = '12px';
+    card.innerHTML = `
+      <div style="font-size:15px; font-weight:600; margin-bottom:6px;">
+        🔐 ${_esc(ex.bezeichnung)}
+      </div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">
+        TSS-ID: ${_esc(ex.tss_id)} · Export-ID: ${_esc(ex.export_id)}
+      </div>
+      <div id="ex-msg-${ex.geraet_id}" class="alert alert-warn">
+        ⏳ Status: ${_esc(ex.state)}…
+      </div>
+      <div id="ex-aktionen-${ex.geraet_id}" style="margin-top:10px;"></div>`;
+    liste.appendChild(card);
+
+    if (ex.state === 'COMPLETED') {
+      _exportFertig(ex.geraet_id, ex.export_id);
+    } else if (ex.state === 'ERROR') {
+      _exportFehler(ex.geraet_id, 'Export-Status: ERROR');
+    } else {
+      // Polling starten
+      _pollIntervalle[ex.geraet_id] = setInterval(
+        () => exportStatusPruefen(ex.geraet_id, ex.export_id), 3000
+      );
+    }
+  }
+}
+
+// ── Status pollen ────────────────────────────────────────────────
+async function exportStatusPruefen(geraetId, exportId) {
+  const r = await fetch(`/admin/export/status/${geraetId}/${exportId}`);
+  const d = await r.json();
+
+  if (d.state === 'COMPLETED') {
+    clearInterval(_pollIntervalle[geraetId]);
+    delete _pollIntervalle[geraetId];
+    _exportFertig(geraetId, exportId);
+  } else if (d.state === 'ERROR') {
+    clearInterval(_pollIntervalle[geraetId]);
+    delete _pollIntervalle[geraetId];
+    _exportFehler(geraetId, d.fehler || 'Unbekannter Fehler');
+  } else {
+    const msg = document.getElementById(`ex-msg-${geraetId}`);
+    if (msg) msg.textContent = `⏳ Status: ${d.state}…`;
+  }
+}
+
+function _exportFertig(geraetId, exportId) {
+  const msg = document.getElementById(`ex-msg-${geraetId}`);
+  if (msg) { msg.className = 'alert alert-success'; msg.textContent = '✅ Export fertig – TAR-Archiv bereit'; }
+  const ak = document.getElementById(`ex-aktionen-${geraetId}`);
+  if (ak) ak.innerHTML = `
+    <a href="/admin/export/download/${geraetId}/${exportId}"
+       class="btn btn-success" download>⬇ TAR-Archiv herunterladen</a>`;
+}
+
+function _exportFehler(geraetId, text) {
+  const msg = document.getElementById(`ex-msg-${geraetId}`);
+  if (msg) { msg.className = 'alert alert-error'; msg.textContent = `❌ ${text}`; }
+}
+
+function _esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Lokale Übersicht herunterladen ───────────────────────────────
+async function lokalHerunterladen() {
+  const von = document.getElementById('exportVon').value;
+  const bis = document.getElementById('exportBis').value;
+  const url = `/admin/export/lokal?von=${von}&bis=${bis}`;
+  const r   = await fetch(url);
+  const d   = await r.json();
+  const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `kasse_export_${von}_${bis}.json`;
+  a.click();
+  toast('JSON heruntergeladen', 'ok');
+}
+</script>
+{% endblock %}

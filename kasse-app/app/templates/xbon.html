@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}X-Bon{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:6px;">📊 X-Bon – Zwischenabschluss</h1>
+  <div style="color:var(--text-dim); font-size:14px; margin-bottom:24px;">
+    Terminal {{ terminal_nr }} · {{ jetzt.strftime('%d.%m.%Y %H:%M') }}
+    · Kein Nullstellen der Zähler
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div>
+        <div style="color:var(--text-dim); font-size:13px;">Belege heute</div>
+        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gruen-dunkel);">{{ daten.anzahl_belege }}</div>
+      </div>
+      <div>
+        <div style="color:var(--text-dim); font-size:13px;">Umsatz brutto</div>
+        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gold);">
+          {{ "%.2f"|format(daten.umsatz_brutto/100) }} €
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">MwSt-Aufschlüsselung</h3>
+    {% for code, satz in mwst_saetze.items()|sort %}
+    {% set netto = daten['netto_' ~ code] %}
+    {% set mwst  = daten['mwst_'  ~ code] %}
+    {% if netto or mwst %}
+    <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:15px;">
+      <span>MwSt {{ satz|int }}%</span>
+      <span>Netto {{ "%.2f"|format(netto/100) }} € &nbsp; MwSt {{ "%.2f"|format(mwst/100) }} €</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div style="display:flex; justify-content:space-between; padding:10px 0; font-size:18px; font-weight:700; color:var(--gruen-dunkel);">
+      <span>Netto gesamt</span><span>{{ "%.2f"|format(daten.umsatz_netto/100) }} €</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Zahlarten</h3>
+    <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);">
+      <span>Bar</span><span>{{ "%.2f"|format(daten.umsatz_bar/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:8px 0;">
+      <span>Unbar / Karte</span><span>{{ "%.2f"|format(daten.umsatz_ec/100) }} €</span>
+    </div>
+  </div>
+
+  {% if daten.umsatz_kundenkonto %}
+  <div class="card" style="margin-bottom:16px; border-color:var(--text-dim); background:#fafafa;">
+    <h3 style="margin-bottom:8px; font-size:14px; color:var(--text-dim);">ℹ️ Kundenkonto (kein Kassenumsatz)</h3>
+    <div style="display:flex; justify-content:space-between; font-size:14px; color:var(--text-mitte);">
+      <span>{{ daten.anzahl_belege_kundenkonto }} Beleg(e) · wird als Lieferschein in CAO gebucht</span>
+      <span>{{ "%.2f"|format(daten.umsatz_kundenkonto/100) }} €</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card" style="margin-bottom:24px;">
+    <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-dim);">Kassenbuch</h3>
+    <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:15px;">
+      <span>Kassenstand Anfang</span><span>{{ "%.2f"|format(daten.kassenbestand_anfang/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:15px;">
+      <span>Einlagen</span><span>+ {{ "%.2f"|format(daten.einlagen/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:15px;">
+      <span>Entnahmen</span><span>− {{ "%.2f"|format(daten.entnahmen/100) }} €</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; padding:10px 0; font-family:'Lobster',Georgia,serif; font-size:24px; font-weight:400; color:var(--gold); border-top:2px solid var(--border); margin-top:4px;">
+      <span>Kassenstand Ende</span><span>{{ "%.2f"|format(daten.kassenbestand_ende/100) }} €</span>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:12px;">
+    <button class="btn btn-primary" onclick="xBonDrucken()">🖨 X-Bon drucken</button>
+    <a href="/kasse" class="btn btn-neutral">← Zurück</a>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+async function xBonDrucken() {
+  const r = await api('POST', '/api/xbon/drucken');
+  toast(r.ok ? 'X-Bon gedruckt' : ('Fehler: ' + r.fehler), r.ok ? 'ok' : 'err');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,973 @@
+{% extends "base.html" %}
+{% block title %}Manager{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+{% endblock %}
+{% block extra_style %}
+<style>
+.mgr-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--creme-dunkel);
+  flex-wrap: wrap;
+}
+.tab-btn {
+  padding: 9px 18px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.tab-btn:hover { color: var(--gruen-dunkel); }
+.tab-btn.aktiv { color: var(--gruen-dunkel); border-bottom-color: var(--gold); }
+.tab-panel { display: none; }
+.tab-panel.aktiv { display: block; }
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.info-karte {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: center;
+  box-shadow: var(--schatten);
+}
+.info-karte .label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.info-karte .wert {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 28px;
+  color: var(--gold);
+}
+.info-karte .wert.gross { font-size: 40px; }
+.info-karte .wert.gruen { color: var(--gruen-hell); }
+.workflow-karte {
+  padding: 16px 20px;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  border: 1px solid;
+}
+.workflow-orange { background: #fff8e8; border-color: var(--gold); }
+.workflow-gruen  { background: #f0f8ea; border-color: var(--gruen-hell); }
+.workflow-karte h3 { font-size: 16px; margin-bottom: 6px; }
+.workflow-karte p  { font-size: 14px; color: var(--text-mitte); margin-bottom: 10px; }
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.eintrag-zeile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--grau-hell);
+  border-radius: 8px;
+  border: 1px solid var(--creme-dunkel);
+  margin-bottom: 6px;
+}
+.eintrag-zeile .meta { font-size: 12px; color: var(--text-dim); }
+.pos { color: var(--gruen-status); }
+.neg { color: var(--rot); }
+.xbon-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--creme-dunkel);
+  font-size: 15px;
+}
+.xbon-row:last-child { border-bottom: none; }
+.xbon-row .bez { color: var(--text-mitte); }
+.xbon-row .val { font-weight: 700; }
+/* Abend-Routine */
+.ar-schritte {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap; margin-bottom: 14px;
+}
+.ar-schritt {
+  padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
+  background: rgba(0,0,0,0.08); color: var(--text-mitte);
+}
+.ar-schritt.aktiv { background: var(--gruen-hell); color: white; }
+.ar-sep { color: var(--text-dim); font-size: 12px; }
+.denom-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.denom-table td { padding: 3px 4px; vertical-align: middle; }
+.denom-grp-hdr {
+  font-size: 11px; font-weight: 800; color: var(--text-dim);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.denom-table .val-col { text-align: right; font-size: 13px; min-width: 68px; }
+.denom-btn {
+  width: 42px; height: 42px; border-radius: 8px;
+  border: 1px solid var(--creme-dunkel);
+  background: white; font-size: 22px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 700; color: var(--gruen-dunkel);
+  touch-action: manipulation;
+}
+.denom-btn:active { background: var(--creme-dunkel); }
+.denom-anzeige {
+  display: inline-block; min-width: 36px; text-align: center;
+  font-size: 18px; font-weight: 700; font-family: 'Nunito', sans-serif;
+}
+.transfer-box {
+  background: rgba(50,120,50,0.08); border: 1px solid var(--gruen-hell);
+  border-radius: 10px; padding: 14px 16px; margin-top: 14px;
+}
+.transfer-zeile {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 14px; margin-bottom: 8px;
+}
+.transfer-zeile:last-child { margin-bottom: 0; }
+.transfer-zeile .lbl { color: var(--text-mitte); }
+.transfer-zeile .val { font-weight: 700; font-size: 16px; }
+.transfer-adj { display: flex; align-items: center; gap: 12px; }
+.hint-ok   { color: var(--gruen-hell);  font-size: 12px; }
+.hint-warn { color: var(--gold);        font-size: 12px; }
+.hint-err  { color: var(--rot);         font-size: 12px; }
+.ar-sep-line { border-top:1px solid rgba(0,120,0,0.18); margin:14px 0 10px; }
+.ar-step-hdr { font-size:15px; font-weight:800; color:var(--gruen-dunkel); margin-bottom:10px; }
+.ar-zbon-zeile {
+  display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;
+}
+.ar-zbon-zeile .lbl { color:var(--text-mitte); }
+.ar-zbon-zeile .val { font-weight:700; }
+.tippbar {
+  cursor: pointer;
+  border-bottom: 2px dashed var(--gruen-hell);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.tippbar:active { background: var(--creme-dunkel); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="mgr-wrap">
+  <h1 style="font-size:26px; margin-bottom:16px;">📊 Manager</h1>
+
+  <div class="tab-bar">
+    <button class="tab-btn aktiv" onclick="tab('uebersicht',this)">Übersicht</button>
+    <button class="tab-btn"       onclick="tab('kassenbuch',this)">📒 Kassenbuch</button>
+    <button class="tab-btn"       onclick="tab('xbon',this)">X-Bon</button>
+    <button class="tab-btn"       onclick="tab('zbon',this)">Z-Bon</button>
+    <button class="tab-btn"       onclick="tab('kassensturz',this)">Kassensturz</button>
+  </div>
+
+  <!-- ── Tab: Übersicht ──────────────────────────────────── -->
+  <div id="panel-uebersicht" class="tab-panel aktiv">
+
+    <div class="info-grid">
+      <div class="info-karte">
+        <div class="label">Hauptkasse</div>
+        <div class="wert gross" id="saldoHaupt">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Nebenkasse</div>
+        <div class="wert gruen">{{ "%.2f"|format(info.saldo_neben/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">Bar seit Abschluss</div>
+        <div class="wert" style="font-size:22px;">{{ "%.2f"|format(info.einnahmen_bar/100) }} €</div>
+      </div>
+      <div class="info-karte">
+        <div class="label">EC seit Abschluss</div>
+        <div class="wert" style="font-size:22px;">{{ "%.2f"|format(info.einnahmen_ec/100) }} €</div>
+      </div>
+    </div>
+
+    {% if info.letzter_abschluss %}
+    <div style="font-size:13px; color:var(--text-dim); margin-bottom:16px;">
+      Letzter Tagesabschluss: {{ info.letzter_abschluss }}
+    </div>
+    {% endif %}
+
+    <!-- Morning Workflow -->
+    {% if info.morgenroutine_anzeigen %}
+    <div class="workflow-karte workflow-orange">
+      <h3>☀️ Tagesstart: Tresor → Kasse</h3>
+      <p style="font-size:14px; color:var(--text-mitte); margin-bottom:10px;">
+        Gestern in den Tresor: <strong>{{ "%.2f"|format(info.letzter_transfer_neben/100) }} €</strong>.
+        Stückelung bei Bedarf anpassen.
+      </p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; margin-bottom:10px;">
+        <div>
+          <div class="denom-grp-hdr">Scheine</div>
+          <table class="denom-table"><tbody id="tsScheineBody">
+            <tr><td colspan="5" style="color:var(--text-dim);font-size:13px;padding:6px 0;">Wird geladen…</td></tr>
+          </tbody></table>
+        </div>
+        <div>
+          <div class="denom-grp-hdr">Münzen</div>
+          <table class="denom-table"><tbody id="tsMuenzenBody"></tbody></table>
+        </div>
+      </div>
+      <div style="text-align:right; font-weight:700; font-size:15px; margin-bottom:12px;">
+        Transfer: <span id="tsGesamt" style="font-family:'Lobster',Georgia,serif; font-size:22px; color:var(--gold);">
+          {{ "%.2f"|format(info.letzter_transfer_neben/100) }} €
+        </span>
+      </div>
+      <button type="button" id="tsBtnTransfer" class="btn btn-warning btn-sm" onclick="tsNavigiere()">
+        ✅ Transfer → Kasse buchen
+      </button>
+    </div>
+    {% endif %}
+
+    <!-- Abend-Routine -->
+    <div class="workflow-karte workflow-gruen">
+      <h3>🌙 Abend-Routine</h3>
+      <div class="ar-schritte">
+        <span class="ar-schritt" id="arSt1">① Kassensturz</span>
+        <span class="ar-sep">→</span>
+        <span class="ar-schritt aktiv" id="arSt2">② Z-Bon</span>
+        <span class="ar-sep">→</span>
+        <span class="ar-schritt aktiv" id="arSt3">③ Bank</span>
+        <span class="ar-sep">→</span>
+        <span class="ar-schritt aktiv" id="arSt4">④ Tresor</span>
+      </div>
+
+      <!-- ① Kassensturz -->
+      <div class="ar-step-hdr">① Kassensturz</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;">
+        <div>
+          <div class="denom-grp-hdr">Scheine</div>
+          <table class="denom-table"><tbody id="arScheineBody"></tbody></table>
+        </div>
+        <div>
+          <div class="denom-grp-hdr">Münzen</div>
+          <table class="denom-table"><tbody id="arMuenzenBody"></tbody></table>
+        </div>
+      </div>
+      <div style="text-align:right; font-size:14px; font-weight:700; margin-top:8px;">
+        Ist-Bestand: <span id="arGesamt">0,00 €</span>
+      </div>
+
+      <!-- ② Z-Bon -->
+      <div class="ar-sep-line"></div>
+      <div class="ar-step-hdr">② Z-Bon / Tagesabschluss</div>
+      <div style="margin-bottom:12px;">
+        <div class="ar-zbon-zeile">
+          <span class="lbl">Soll laut System</span>
+          <span class="val">{{ "%.2f"|format(info.saldo_haupt/100) }} €</span>
+        </div>
+        <div class="ar-zbon-zeile">
+          <span class="lbl">Ist (gezählt)</span>
+          <span class="val" id="arZIst">–</span>
+        </div>
+        <div class="ar-zbon-zeile">
+          <span class="lbl">Differenz</span>
+          <span class="val" id="arZDiff">–</span>
+        </div>
+      </div>
+
+      <!-- Differenz-Hinweis (nur bei Abweichung) -->
+      <div id="arDiffBox" style="display:none; background:rgba(180,40,40,0.06);
+           border:1px solid var(--rot); border-radius:8px; padding:12px; margin-bottom:12px;">
+        <div id="arDiffHint" style="font-size:13px; font-weight:700; color:var(--rot); margin-bottom:8px;"></div>
+        <details style="margin-bottom:10px;">
+          <summary style="font-size:13px; cursor:pointer; color:var(--gruen-dunkel);
+                          font-weight:700; list-style:none;">ℹ️ Was tun bei einer Differenz?</summary>
+          <div style="font-size:13px; color:var(--text-mitte); margin-top:8px; line-height:1.7; padding-left:4px;">
+            <strong>1. Fehler suchen:</strong><br>
+            &bull; Beleg vergessen? &bull; Falsch herausgegeben?<br>
+            &bull; Zählfehler? &bull; Wechselgeld falsch?<br><br>
+            <strong>2. Differenz dokumentieren</strong> – immer schriftlich, auch kleine Beträge.
+          </div>
+        </details>
+        <label style="font-size:12px; font-weight:700; color:var(--text-dim);
+                      text-transform:uppercase; display:block; margin-bottom:4px;">
+          ⌨️ Grund der Differenz
+        </label>
+        <textarea id="arDiffNotiz" class="form-control" rows="3"
+                  placeholder="Hier tippen …"
+                  inputmode="text"
+                  autocomplete="off"
+                  style="resize:none; margin-bottom:8px; font-size:16px;
+                         border:2px solid var(--gruen-hell); border-radius:8px;
+                         padding:10px; touch-action:manipulation;"
+                  ontouchstart="this.focus()"
+                  onclick="this.focus()"></textarea>
+        <button type="button" class="btn btn-warning btn-sm" onclick="arDiffBuchen()">
+          ⚖ Differenz buchen
+        </button>
+      </div>
+
+      <a href="/kasse/tagesabschluss" class="btn btn-primary" style="width:100%;">
+        📋 Z-Bon erstellen →
+      </a>
+      <div style="font-size:12px; color:var(--text-dim); margin-top:5px; margin-bottom:4px;">
+        Nach dem Z-Bon startet der neue Kassentag sofort.
+        Transfers → Bank und → Tresor danach buchen.
+      </div>
+
+      <!-- ③ Transfer → Bank -->
+      <div class="ar-sep-line"></div>
+      <div class="ar-step-hdr">③ Transfer → Bank</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;">
+        <div>
+          <div class="denom-grp-hdr">Scheine an Bank</div>
+          <table class="denom-table"><tbody id="arBankSchBody"></tbody></table>
+        </div>
+        <div>
+          <div class="denom-grp-hdr">Münzen an Bank</div>
+          <table class="denom-table"><tbody id="arBankMnzBody"></tbody></table>
+        </div>
+      </div>
+      <div style="text-align:right; font-weight:700; font-size:14px; margin:8px 0 8px;">
+        Transfer: <span id="arTransfer">0,00 €</span>
+        &nbsp;<span id="arTransferVerbleib" class="hint-ok" style="font-size:12px;"></span>
+      </div>
+      <button type="button" id="arBtnBank" class="btn btn-neutral btn-sm"
+              style="opacity:0.35; pointer-events:none;"
+              onclick="arNavigiereBank()">🏦 Transfer → Bank buchen</button>
+
+      <!-- ④ Transfer → Tresor -->
+      <div class="ar-sep-line"></div>
+      <div class="ar-step-hdr">④ Transfer → Tresor (Nebenkasse)</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px; align-items:start;">
+        <div>
+          <div class="denom-grp-hdr">Scheine → Tresor</div>
+          <table class="denom-table"><tbody id="arTresorSchBody"></tbody></table>
+        </div>
+        <div>
+          <div class="denom-grp-hdr">Münzen → Tresor</div>
+          <table class="denom-table"><tbody id="arTresorMnzBody"></tbody></table>
+        </div>
+      </div>
+      <div style="text-align:right; font-weight:700; font-size:14px; margin-bottom:8px;">
+        Tresor-Betrag: <strong id="arTresor">0,00 €</strong>
+      </div>
+      <button type="button" id="arBtnTresor" class="btn btn-neutral btn-sm"
+              style="opacity:0.35; pointer-events:none;"
+              onclick="arNavigiereTresor()">🔒 Transfer → Tresor buchen</button>
+    </div>
+
+    <div class="action-grid">
+      <a href="/kasse/kassenbuch"         class="btn btn-neutral">📒 Kassenbuch</a>
+      <a href="/kasse/nebenkasse"         class="btn btn-neutral">🪙 Nebenkasse</a>
+      <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm" style="min-height:48px;">➕ Neue Buchung</a>
+    </div>
+  </div>
+
+  <!-- ── Tab: Kassenbuch ─────────────────────────────────── -->
+  <div id="panel-kassenbuch" class="tab-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="font-size:20px;">Kassenbuch (letzte 10 Einträge)</h2>
+      <a href="/kasse/kassenbuch/buchung" class="btn btn-primary btn-sm">➕ Neue Buchung</a>
+    </div>
+    <div id="kb-eintraege">
+      <div style="color:var(--text-dim); text-align:center; padding:20px;">Wird geladen…</div>
+    </div>
+    <a href="/kasse/kassenbuch" class="btn btn-neutral btn-sm" style="margin-top:12px;">📒 Vollständiges Kassenbuch →</a>
+  </div>
+
+  <!-- ── Tab: X-Bon ──────────────────────────────────────── -->
+  <div id="panel-xbon" class="tab-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="font-size:20px;">X-Bon (aktueller Tag)</h2>
+      <button class="btn btn-primary btn-sm" onclick="xbonDrucken()">🖨️ Drucken</button>
+    </div>
+    <div class="card">
+      <div class="xbon-row"><span class="bez">Anzahl Belege</span><span class="val">{{ xbon.anzahl_belege }}</span></div>
+      <div class="xbon-row"><span class="bez">Umsatz Brutto</span><span class="val">{{ "%.2f"|format(xbon.umsatz_brutto/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Davon Bar</span><span class="val">{{ "%.2f"|format(xbon.umsatz_bar/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Davon EC</span><span class="val">{{ "%.2f"|format(xbon.umsatz_ec/100) }} €</span></div>
+      {% for ms in mwst_saetze %}
+      {% set mwst_key = 'mwst_' ~ loop.index %}
+      {% set netto_key = 'netto_' ~ loop.index %}
+      <div class="xbon-row">
+        <span class="bez">MwSt {{ "%.0f"|format(ms.SATZ) }}%</span>
+        <span class="val">{{ "%.2f"|format((xbon[mwst_key]|default(0))/100) }} €</span>
+      </div>
+      {% endfor %}
+      <div class="xbon-row" style="font-size:12px; color:var(--text-dim);">
+        <span>Stand</span><span>{{ xbon.zeitpunkt_von[:16] if xbon.zeitpunkt_von else '–' }} bis jetzt</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: Z-Bon ──────────────────────────────────────── -->
+  <div id="panel-zbon" class="tab-panel">
+    <h2 style="font-size:20px; margin-bottom:16px;">Z-Bon / Tagesabschluss</h2>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="xbon-row"><span class="bez">Anzahl Belege heute</span><span class="val">{{ xbon.anzahl_belege }}</span></div>
+      <div class="xbon-row"><span class="bez">Umsatz Brutto heute</span><span class="val">{{ "%.2f"|format(xbon.umsatz_brutto/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Bar-Umsatz</span><span class="val">{{ "%.2f"|format(xbon.umsatz_bar/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">EC-Umsatz</span><span class="val">{{ "%.2f"|format(xbon.umsatz_ec/100) }} €</span></div>
+      <div class="xbon-row"><span class="bez">Kassenbestand</span><span class="val">{{ "%.2f"|format(info.saldo_haupt/100) }} €</span></div>
+    </div>
+    <p style="font-size:14px; color:var(--text-mitte); margin-bottom:16px;">
+      Der Tagesabschluss (Z-Bon) erstellt eine unwiderrufliche Abschlussbuchung und signiert den Abschluss per TSE.
+    </p>
+    <a href="/kasse/tagesabschluss" class="btn btn-primary">📋 Tagesabschluss durchführen →</a>
+  </div>
+
+  <!-- ── Tab: Kassensturz ────────────────────────────────── -->
+  <div id="panel-kassensturz" class="tab-panel">
+    <h2 style="font-size:20px; margin-bottom:16px;">Kassensturz</h2>
+    <p style="font-size:14px; color:var(--text-mitte); margin-bottom:16px;">
+      Bargeld zählen und mit dem Soll-Bestand abgleichen.
+    </p>
+    <div class="info-karte" style="margin-bottom:16px; text-align:center;">
+      <div class="label">Soll-Bestand laut System</div>
+      <div class="wert gross">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+    </div>
+    <a href="/kasse/kassensturz" class="btn btn-primary">🔍 Kassensturz durchführen →</a>
+  </div>
+
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+function tab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('aktiv'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('panel-' + id).classList.add('aktiv');
+  btn.classList.add('aktiv');
+  if (id === 'kassenbuch') ladeKassenbuch();
+}
+
+const EINTRAEGE_KB = {{ eintraege_kb|tojson }};
+
+function ladeKassenbuch() {
+  renderKassenbuch(EINTRAEGE_KB);
+}
+
+function renderKassenbuch(eintraege) {
+  const cont = document.getElementById('kb-eintraege');
+  if (!eintraege || eintraege.length === 0) {
+    cont.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Keine Einträge</div>';
+    return;
+  }
+  const typLabels = {
+    EINLAGE: 'Einlage', ENTNAHME: 'Entnahme', PRIVATENTNAHME: 'Privatentnahme',
+    PRIVATEINLAGE: 'Privateinlage', TRANSFER_KASSE_BANK: 'Transfer → Bank',
+    TRANSFER_BANK_KASSE: 'Transfer ← Bank', TRANSFER_KASSE_NEBEN: 'Transfer → Nebenkasse',
+    TRANSFER_NEBEN_KASSE: 'Transfer ← Nebenkasse', ANFANGSBESTAND: 'Anfangsbestand',
+    UMSATZ_BAR: 'Bareinnahmen', TAGESABSCHLUSS: 'Z-Bon',
+    KASSENDIFF_FEHLER: 'Kassenfehlbetrag', KASSENDIFF_UEBERSCHUSS: 'Kassenüberschuss'
+  };
+  let html = '';
+  eintraege.slice(0, 10).forEach(e => {
+    const istAbschluss = e.TYP === 'TAGESABSCHLUSS';
+    if (istAbschluss) {
+      const dat = (e.BUCHUNGSDATUM || '').substring(0, 16);
+      html += `<div class="eintrag-zeile" style="opacity:0.45;background:none;border-color:transparent;">
+        <div style="font-size:12px;color:var(--text-dim);width:100%;text-align:center;">
+          ── Z-Bon · ${dat} ──
+        </div>
+      </div>`;
+      return;
+    }
+    const pos   = e.BETRAG >= 0;
+    const farbe = pos ? 'var(--gruen-status)' : 'var(--rot)';
+    const titel = typLabels[e.TYP] || e.TYP;
+    const dat   = (e.BUCHUNGSDATUM || '').substring(0, 16);
+    const bez   = e.BUCHUNGSTEXT || e.NOTIZ || '';
+    const meta  = (bez ? bez + ' · ' : '') + dat;
+    html += `<div class="eintrag-zeile">
+      <div>
+        <div style="font-weight:700;font-size:14px;">${titel}</div>
+        <div class="meta">${meta}</div>
+      </div>
+      <div style="font-family:'Lobster',serif;font-size:18px;color:${farbe};">
+        ${euro(e.BETRAG)}
+      </div>
+    </div>`;
+  });
+  cont.innerHTML = html;
+}
+
+async function xbonDrucken() {
+  const r = await api('POST', '/api/xbon/drucken', {});
+  toast(r.ok ? 'X-Bon gedruckt' : (r.fehler || 'Fehler'), r.ok ? 'ok' : 'err');
+}
+
+// ── Abend-Routine ─────────────────────────────────────────────
+const AR_SOLL = {{ info.saldo_haupt }};  // Cent, aus System
+const AR_SCHEINE = [
+  {val: 50000, lbl: '500 €', bank: true,  keep: 0},
+  {val: 20000, lbl: '200 €', bank: true,  keep: 0},
+  {val: 10000, lbl: '100 €', bank: true,  keep: 0},
+  {val:  5000, lbl:  '50 €', bank: true,  keep: 0},
+  {val:  2000, lbl:  '20 €', bank: false, keep: 5},
+  {val:  1000, lbl:  '10 €', bank: false, keep: 5},
+  {val:   500, lbl:   '5 €', bank: false, keep: 5},
+];
+const AR_MUENZEN = [
+  {val: 200, lbl: '2 €'  }, {val: 100, lbl: '1 €'   },
+  {val:  50, lbl: '50 ct'}, {val:  20, lbl: '20 ct' },
+  {val:  10, lbl: '10 ct'}, {val:   5, lbl:  '5 ct' },
+  {val:   2, lbl:  '2 ct'}, {val:   1, lbl:  '1 ct' },
+];
+const AR_ALLE = [...AR_SCHEINE, ...AR_MUENZEN];
+let arTransferCent = 0;
+let arGesamtCent   = 0;
+let arDiffCent     = 0;
+let _arSaveTmr     = null;
+
+const NACH_ZBON = new URLSearchParams(window.location.search).get('nach_zbon') === '1';
+// Bei ?nach_zbon=1 wird arGesamtCent nach dem Laden der Kassensturz-DB gesetzt.
+// Bis dahin mit AR_SOLL vorbelegen damit Bank/Tresor-Buttons sofort aktiv sind.
+if (NACH_ZBON) arGesamtCent = AR_SOLL;
+
+function arEuro(ct) {
+  return (ct / 100).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}) + '\u00a0€';
+}
+
+// ── Kassensturz-Zählbrett ──────────────────────────────────────
+function arGetCount(val) {
+  const el = document.getElementById('ard_' + val);
+  return el ? (parseInt(el.textContent) || 0) : 0;
+}
+function arNumpad(val, lbl) {
+  numpadOpen(lbl, arGetCount(val), n => {
+    document.getElementById('ard_' + val).textContent = n;
+    arRecalc();
+  });
+}
+function arAdjCount(val, delta) {
+  const el = document.getElementById('ard_' + val);
+  if (!el) return;
+  el.textContent = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  arRecalc();
+}
+
+// ── Bank-Zählbrett ─────────────────────────────────────────────
+function arBankGetCount(val) {
+  const el = document.getElementById('arb_' + val);
+  return el ? (parseInt(el.textContent) || 0) : 0;
+}
+function arBankNumpad(val, lbl) {
+  const avail = arGetCount(val);
+  numpadOpen(lbl, arBankGetCount(val), n => {
+    document.getElementById('arb_' + val).textContent = Math.min(n, avail);
+    const te = document.getElementById('arbT_' + val);
+    if (te) te.textContent = arEuro(arBankGetCount(val) * val);
+    arBankRecalc();
+  });
+}
+function arBankAdjCount(val, delta) {
+  const el = document.getElementById('arb_' + val);
+  if (!el) return;
+  const avail = arGetCount(val);
+  el.textContent = Math.max(0, Math.min(avail, (parseInt(el.textContent) || 0) + delta));
+  const te = document.getElementById('arbT_' + val);
+  if (te) te.textContent = arEuro(arBankGetCount(val) * val);
+  arBankRecalc();
+}
+function arBankRecalc() {
+  arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val) * d.val, 0);
+  arUpdateUI();
+}
+
+// ── Bank-Empfehlung: Regeln + Rundung auf 50 € ────────────────
+function arBerechneBankEmpfehlung() {
+  // Schritt 1: Grundzuteilung nach Regeln
+  const bankCounts = {};
+  AR_SCHEINE.forEach(d => {
+    const n = arGetCount(d.val);
+    bankCounts[d.val] = d.bank ? n : Math.max(0, n - d.keep);
+  });
+  // Münzen: nicht vorgeschlagen (alle auf 0)
+  AR_MUENZEN.forEach(d => { bankCounts[d.val] = 0; });
+
+  // Schritt 2: Auf 50 € (5000 ct) abrunden
+  let bankTotal = AR_SCHEINE.reduce((s,d) => s + bankCounts[d.val] * d.val, 0);
+  const rest = bankTotal % 5000;
+  if (rest > 0) {
+    // 'rest' Cent aus Bank zurücknehmen – kleinste Scheine zuerst (5€, 10€, 20€)
+    let noch = rest;
+    for (const nennwert of [500, 1000, 2000]) {
+      if (noch <= 0) break;
+      const imBank = bankCounts[nennwert] || 0;
+      const zurueck = Math.min(imBank, Math.floor(noch / nennwert));
+      if (zurueck > 0) {
+        bankCounts[nennwert] -= zurueck;
+        noch -= zurueck * nennwert;
+      }
+    }
+  }
+
+  // Schritt 3: In UI eintragen
+  AR_SCHEINE.forEach(d => {
+    const el = document.getElementById('arb_' + d.val);
+    if (el) el.textContent = bankCounts[d.val] || 0;
+    const te = document.getElementById('arbT_' + d.val);
+    if (te) te.textContent = arEuro((bankCounts[d.val] || 0) * d.val);
+  });
+  AR_MUENZEN.forEach(d => {
+    const el = document.getElementById('arb_' + d.val);
+    if (el) el.textContent = 0;
+    const te = document.getElementById('arbT_' + d.val);
+    if (te) te.textContent = arEuro(0);
+  });
+}
+
+// ── Neuberechnung Kassensturz → füllt Bank-Empfehlung ──────────
+function arRecalc() {
+  arGesamtCent = AR_ALLE.reduce((s,d) => s + arGetCount(d.val)*d.val, 0);
+  AR_ALLE.forEach(d => {
+    const el = document.getElementById('arT_' + d.val);
+    if (el) el.textContent = arEuro(arGetCount(d.val) * d.val);
+  });
+
+  // Bank-Empfehlung berechnen (Regeln + Rundung auf 50 €)
+  arBerechneBankEmpfehlung();
+  arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val) * d.val, 0);
+  arUpdateUI();
+
+  // Kassensturz debounced in DB speichern
+  clearTimeout(_arSaveTmr);
+  _arSaveTmr = setTimeout(arSpeichereKassensturz, 1200);
+}
+
+// ── Update UI ──────────────────────────────────────────────────
+function arUpdateUI() {
+  // ① Kassensturz
+  document.getElementById('arGesamt').textContent = arEuro(arGesamtCent);
+  document.getElementById('arSt1').classList.toggle('aktiv', arGesamtCent > 0);
+
+  // ② Z-Bon Soll/Ist/Diff
+  arDiffCent = arGesamtCent - AR_SOLL;
+  document.getElementById('arZIst').textContent = arGesamtCent > 0 ? arEuro(arGesamtCent) : '–';
+  const diffEl = document.getElementById('arZDiff');
+  if (arGesamtCent > 0) {
+    diffEl.textContent = (arDiffCent >= 0 ? '+' : '') + arEuro(arDiffCent);
+    diffEl.style.color = arDiffCent === 0 ? 'var(--gruen-status)'
+                       : arDiffCent  > 0  ? 'var(--gold)' : 'var(--rot)';
+  } else {
+    diffEl.textContent = '–'; diffEl.style.color = '';
+  }
+  const diffBox = document.getElementById('arDiffBox');
+  if (arGesamtCent > 0 && arDiffCent !== 0) {
+    diffBox.style.display = '';
+    document.getElementById('arDiffHint').textContent = arDiffCent > 0
+      ? `Überschuss ${arEuro(arDiffCent)} → Kassenfehlbeträge an Kasse`
+      : `Fehlbetrag ${arEuro(-arDiffCent)} → Kasse an Kassenfehlbeträge`;
+  } else {
+    diffBox.style.display = 'none';
+  }
+
+  // ③ Bank-Transfer Summe + Verbleib-Hint
+  document.getElementById('arTransfer').textContent = arEuro(arTransferCent);
+  const verbleib = arGesamtCent - arTransferCent;
+  const vEl = document.getElementById('arTransferVerbleib');
+  if (vEl && arGesamtCent > 0) {
+    if      (verbleib < 35000) vEl.textContent = `(Verbleib ${arEuro(verbleib)} – unter 350 €)`;
+    else if (verbleib > 45000) vEl.textContent = `(Verbleib ${arEuro(verbleib)} – über 450 €)`;
+    else                       vEl.textContent = `(Verbleib ${arEuro(verbleib)} ✓)`;
+    vEl.className = verbleib >= 35000 && verbleib <= 45000 ? 'hint-ok' : 'hint-warn';
+  } else if (vEl) {
+    vEl.textContent = '';
+  }
+  const bankBtn = document.getElementById('arBtnBank');
+  if (bankBtn) {
+    const aktiv = arTransferCent > 0 && arGesamtCent > 0;
+    bankBtn.style.opacity      = aktiv ? '1' : '0.35';
+    bankBtn.style.pointerEvents = aktiv ? '' : 'none';
+  }
+
+  // ④ Tresor-Stückelung (Kassensturz − Bank)
+  const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
+  document.getElementById('arTresor').textContent = arEuro(tresorCent);
+  // Scheine-Spalte
+  AR_SCHEINE.forEach(d => {
+    const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
+    const el = document.getElementById('arTr_' + d.val);
+    if (el) el.textContent = cnt;
+    const te = document.getElementById('arTrT_' + d.val);
+    if (te) te.textContent = arEuro(cnt * d.val);
+  });
+  // Münzen-Spalte (Kassensturz − Bank)
+  AR_MUENZEN.forEach(d => {
+    const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
+    const el = document.getElementById('arTr_' + d.val);
+    if (el) el.textContent = cnt;
+    const te = document.getElementById('arTrT_' + d.val);
+    if (te) te.textContent = arEuro(cnt * d.val);
+  });
+  const tresorBtn = document.getElementById('arBtnTresor');
+  if (tresorBtn) {
+    const aktiv = tresorCent > 0;
+    tresorBtn.style.opacity      = aktiv ? '1' : '0.35';
+    tresorBtn.style.pointerEvents = aktiv ? '' : 'none';
+  }
+}
+
+function arSetBtn(id, aktiv, href) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  if (href !== undefined) btn.href = href;
+  btn.style.opacity = aktiv ? '1' : '0.35';
+  btn.style.pointerEvents = aktiv ? '' : 'none';
+}
+
+// ── Differenz-Buchung ──────────────────────────────────────────
+async function arDiffBuchen() {
+  if (arDiffCent === 0) return;
+  // Fehlbetrag: Kasse an Kassenfehlbeträge (Aufwand, sign −1)
+  // Überschuss: Kassenfehlbeträge an Kasse (Ertrag, sign +1)
+  const typ   = arDiffCent > 0 ? 'KASSENDIFF_UEBERSCHUSS' : 'KASSENDIFF_FEHLER';
+  const notiz = document.getElementById('arDiffNotiz').value.trim() ||
+                (arDiffCent > 0 ? 'Kassenüberschuss (Kassensturz)' : 'Kassenfehlbetrag (Kassensturz)');
+  const r = await api('POST', '/api/kassenbuch', {
+    typ, betrag_cent: Math.abs(arDiffCent), buchungstext: notiz
+  });
+  if (r.ok) {
+    toast('Differenz gebucht', 'ok');
+    document.getElementById('arDiffBox').style.display = 'none';
+    arDiffCent = 0;
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+  }
+}
+
+// ── DB-Speicherung Kassensturz ─────────────────────────────────
+async function arSpeichereKassensturz() {
+  if (arGesamtCent <= 0) return;
+  const bestand = {};
+  AR_ALLE.forEach(d => { const n = arGetCount(d.val); if (n > 0) bestand[d.val] = n; });
+  await api('POST', '/api/zaehlung', {
+    typ: 'KASSENSTURZ', bestand, betrag_cent: arGesamtCent
+  });
+}
+
+// ── Navigation Bank: Stückelung speichern, dann navigieren ─────
+async function arNavigiereBank() {
+  if (arTransferCent <= 0 || arGesamtCent <= 0) return;
+
+  // Stückelung Bank speichern
+  const bankBestand = {};
+  AR_ALLE.forEach(d => { const n = arBankGetCount(d.val); if (n > 0) bankBestand[d.val] = n; });
+  await api('POST', '/api/zaehlung', {
+    typ: 'TRANSFER_BANK', bestand: bankBestand, betrag_cent: arTransferCent
+  });
+
+  // Stückelung Tresor = Kassensturz − Bank speichern
+  const tresorBestand = {};
+  const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
+  AR_SCHEINE.forEach(d => {
+    const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
+    if (cnt > 0) tresorBestand[d.val] = cnt;
+  });
+  AR_MUENZEN.forEach(d => {
+    const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
+    if (cnt > 0) tresorBestand[d.val] = cnt;
+  });
+  await api('POST', '/api/zaehlung', {
+    typ: 'TRESOR', bestand: tresorBestand, betrag_cent: tresorCent
+  });
+
+  location.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK&betrag=' + arTransferCent;
+}
+
+// ── Navigation Tresor ──────────────────────────────────────────
+async function arNavigiereTresor() {
+  const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
+  if (tresorCent <= 0) return;
+  location.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_NEBEN&betrag=' + tresorCent;
+}
+
+// ── Tagesstart: Tresor → Kasse ────────────────────────────────
+let tsGesamtCent = {{ info.letzter_transfer_neben or 0 }};
+
+function tsGetCount(val) {
+  const el = document.getElementById('ts_' + val);
+  return el ? (parseInt(el.textContent) || 0) : 0;
+}
+function tsAdjCount(val, delta) {
+  const el = document.getElementById('ts_' + val);
+  if (!el) return;
+  el.textContent = Math.max(0, (parseInt(el.textContent) || 0) + delta);
+  tsRecalc();
+}
+function tsNumpad(val, lbl) {
+  numpadOpen(lbl, tsGetCount(val), n => {
+    document.getElementById('ts_' + val).textContent = n;
+    tsRecalc();
+  });
+}
+function tsRecalc() {
+  tsGesamtCent = AR_ALLE.reduce((s, d) => s + tsGetCount(d.val) * d.val, 0);
+  AR_ALLE.forEach(d => {
+    const te = document.getElementById('tsT_' + d.val);
+    if (te) te.textContent = arEuro(tsGetCount(d.val) * d.val);
+  });
+  const gesamtEl = document.getElementById('tsGesamt');
+  if (gesamtEl) gesamtEl.textContent = arEuro(tsGesamtCent);
+  const btn = document.getElementById('tsBtnTransfer');
+  if (btn) {
+    btn.style.opacity      = tsGesamtCent > 0 ? '1' : '0.35';
+    btn.style.pointerEvents = tsGesamtCent > 0 ? '' : 'none';
+  }
+}
+function tsNavigiere() {
+  if (tsGesamtCent <= 0) return;
+  location.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_NEBEN_KASSE&betrag=' + tsGesamtCent;
+}
+
+function tsFillTable(tbodyId, items, bestand) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  items.forEach(d => {
+    const cnt = (bestand && bestand[d.val]) || 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td style="font-size:14px;min-width:44px;">${d.lbl}</td>` +
+      `<td><button type="button" class="denom-btn" onclick="tsAdjCount(${d.val},-1)">−</button></td>` +
+      `<td style="text-align:center;"><span id="ts_${d.val}" class="denom-anzeige tippbar" ` +
+      `onclick="tsNumpad(${d.val},'${d.lbl}')">${cnt}</span></td>` +
+      `<td><button type="button" class="denom-btn" onclick="tsAdjCount(${d.val},1)">+</button></td>` +
+      `<td class="val-col" id="tsT_${d.val}">${arEuro(cnt * d.val)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Morgen: Tresor-Stückelung aus DB laden → interaktive Tabellen ─
+async function ladeTresorBestand() {
+  if (!document.getElementById('tsScheineBody')) return;
+  let bestand = {};
+  try {
+    // 1. Versuch: explizit gespeicherte TRESOR-Stückelung
+    const rTresor = await api('GET', '/api/zaehlung/TRESOR');
+    if (rTresor.ok && rTresor.bestand && Object.keys(rTresor.bestand).length > 0) {
+      bestand = rTresor.bestand;
+    } else {
+      // 2. Fallback: Kassensturz − TRANSFER_BANK rekonstruieren
+      const [rKs, rBk] = await Promise.all([
+        api('GET', '/api/zaehlung/KASSENSTURZ'),
+        api('GET', '/api/zaehlung/TRANSFER_BANK'),
+      ]);
+      if (rKs.ok && rKs.bestand) {
+        const ksB = rKs.bestand;
+        const bkB = (rBk.ok && rBk.bestand) ? rBk.bestand : {};
+        AR_ALLE.forEach(d => {
+          const cnt = Math.max(0, (ksB[d.val] || 0) - (bkB[d.val] || 0));
+          if (cnt > 0) bestand[d.val] = cnt;
+        });
+      }
+    }
+  } catch(e) {}
+  tsFillTable('tsScheineBody', AR_SCHEINE, bestand);
+  tsFillTable('tsMuenzenBody', AR_MUENZEN, bestand);
+  tsRecalc();
+}
+
+// ── Tabellenaufbau ─────────────────────────────────────────────
+function arFillTable(tbodyId, items) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  items.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td style="font-size:14px;min-width:44px;">${d.lbl}</td>` +
+      `<td><button type="button" class="denom-btn" onclick="arAdjCount(${d.val},-1)">−</button></td>` +
+      `<td style="text-align:center;"><span id="ard_${d.val}" class="denom-anzeige tippbar" onclick="arNumpad(${d.val},'${d.lbl}')">0</span></td>` +
+      `<td><button type="button" class="denom-btn" onclick="arAdjCount(${d.val},1)">+</button></td>` +
+      `<td class="val-col" id="arT_${d.val}">0,00\u00a0€</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function arFillBankTable() {
+  ['arBankSchBody', 'arBankMnzBody'].forEach((tbodyId, idx) => {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const items = idx === 0 ? AR_SCHEINE : AR_MUENZEN;
+    items.forEach(d => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td style="font-size:14px;min-width:44px;">${d.lbl}</td>` +
+        `<td><button type="button" class="denom-btn" onclick="arBankAdjCount(${d.val},-1)">−</button></td>` +
+        `<td style="text-align:center;"><span id="arb_${d.val}" class="denom-anzeige tippbar" onclick="arBankNumpad(${d.val},'${d.lbl}')">0</span></td>` +
+        `<td><button type="button" class="denom-btn" onclick="arBankAdjCount(${d.val},1)">+</button></td>` +
+        `<td class="val-col" id="arbT_${d.val}">0,00\u00a0€</td>`;
+      tbody.appendChild(tr);
+    });
+  });
+}
+
+function arFillTresorTable(tbodyId, items) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  items.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td style="font-size:14px;min-width:44px;">${d.lbl}</td>` +
+      `<td style="text-align:center;min-width:36px;"><span id="arTr_${d.val}" ` +
+      `style="font-size:18px;font-weight:700;font-family:'Nunito',sans-serif;">0</span></td>` +
+      `<td class="val-col" id="arTrT_${d.val}">0,00\u00a0€</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function arInitTable() {
+  arFillTable('arScheineBody', AR_SCHEINE);
+  arFillTable('arMuenzenBody', AR_MUENZEN);
+  arFillBankTable();
+  arFillTresorTable('arTresorSchBody', AR_SCHEINE);
+  arFillTresorTable('arTresorMnzBody', AR_MUENZEN);
+
+  // Bei ?nach_zbon=1: gespeicherte Kassensturz-Stückelung aus DB laden und
+  // in die Zählfelder eintragen, dann Bank-Empfehlung berechnen.
+  if (NACH_ZBON) {
+    try {
+      const r = await api('GET', '/api/zaehlung/KASSENSTURZ');
+      if (r.ok && r.bestand) {
+        AR_ALLE.forEach(d => {
+          const el = document.getElementById('ard_' + d.val);
+          if (el) el.textContent = r.bestand[d.val] || 0;
+        });
+        arGesamtCent = AR_ALLE.reduce((s,d) => s + arGetCount(d.val)*d.val, 0);
+        // Summenspalten befüllen
+        AR_ALLE.forEach(d => {
+          const el = document.getElementById('arT_' + d.val);
+          if (el) el.textContent = arEuro(arGetCount(d.val) * d.val);
+        });
+      }
+    } catch(e) {}
+  }
+
+  arBerechneBankEmpfehlung();
+  arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val)*d.val, 0);
+  arUpdateUI();
+  ladeTresorBestand();
+}
+arInitTable();
+
+// ── URL-Hash für direkten Tab-Aufruf
+const hash = location.hash.replace('#','');
+if (hash) {
+  const btn = document.querySelector(`.tab-btn[onclick*="${hash}"]`);
+  if (btn) tab(hash, btn);
+}
+</script>
+{% endblock %}

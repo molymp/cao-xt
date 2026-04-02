@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Terminal konfigurieren{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">⚙️ Terminal {{ terminal_nr }} konfigurieren</h1>
+
+  <form method="POST" action="/admin/terminal">
+    <!-- Allgemein -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Allgemein</h3>
+      <div class="form-group">
+        <label>Bezeichnung</label>
+        <input class="form-control" name="bezeichnung" type="text"
+               value="{{ terminal.BEZEICHNUNG or '' }}" placeholder="z.B. Hauptkasse">
+      </div>
+    </div>
+
+    <!-- Firma -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:4px; font-size:16px; color:var(--text-dim);">Bon-Kopf</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Name, Adresse und Steuerdaten kommen aus der CAO-Datenbank (Tabelle FIRMA).
+      </div>
+      <div class="form-group">
+        <label>Firmenname <span style="font-weight:400; color:var(--text-dim);">(leer = aus Datenbank)</span></label>
+        <input class="form-control" name="firma_name" type="text"
+               value="{{ terminal.FIRMA_NAME or '' }}"
+               placeholder="Leer lassen um FIRMA.NAME1 zu verwenden">
+      </div>
+      <div class="form-group">
+        <label>Zusatz <span style="font-weight:400; color:var(--text-dim);">(Zeile unter dem Namen, optional)</span></label>
+        <input class="form-control" name="firma_zusatz" type="text"
+               value="{{ terminal.FIRMA_ZUSATZ or '' }}"
+               placeholder="z.B. Der Laden von Bürgern für Bürger">
+      </div>
+    </div>
+
+    <!-- TSE-Gerät (Info + Link zur Verwaltung) -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:10px; font-size:16px; color:var(--text-dim);">🔐 TSE-Gerät</h3>
+      {% if aktive_tse %}
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px;
+                  background:rgba(52,211,153,0.08); border:1px solid var(--gruen-hell);
+                  border-radius:8px; margin-bottom:12px;">
+        <span style="font-size:20px;">
+          {{ '☁️' if aktive_tse.TYP == 'FISKALY' else ('🔌' if aktive_tse.TYP == 'SWISSBIT' else '🎓') }}
+        </span>
+        <div>
+          <div style="font-weight:700;">{{ aktive_tse.BEZEICHNUNG }}</div>
+          <div style="font-size:12px; color:var(--text-dim);">
+            {{ aktive_tse.TYP }}
+            {% if aktive_tse.TYP == 'FISKALY' and aktive_tse.FISKALY_ENV %}
+              · {{ aktive_tse.FISKALY_ENV }}
+            {% endif %}
+            {% if aktive_tse.BSI_ZERTIFIZIERUNG %}
+              · {{ aktive_tse.BSI_ZERTIFIZIERUNG }}
+            {% endif %}
+            {% if terminal.FISKALY_CLIENT_ID %}
+              <br>Client-ID: <code style="font-size:11px;">{{ terminal.FISKALY_CLIENT_ID }}</code>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div style="padding:10px 14px; background:var(--grau-hell); border-radius:8px;
+                  font-size:13px; color:var(--text-dim); margin-bottom:12px;">
+        ⚠️ Kein TSE-Gerät zugewiesen.
+      </div>
+      {% endif %}
+      <a href="/admin/tse" class="btn btn-neutral btn-sm">
+        🔐 TSE-Verwaltung öffnen →
+      </a>
+    </div>
+
+    <!-- Drucker -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Bondrucker (ESC/POS Netzwerk)</h3>
+      <div style="display:grid; grid-template-columns:1fr 120px; gap:12px;">
+        <div class="form-group">
+          <label>IP-Adresse</label>
+          <input class="form-control" name="drucker_ip" type="text"
+                 value="{{ terminal.DRUCKER_IP or '' }}" placeholder="192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label>Port</label>
+          <input class="form-control" name="drucker_port" type="number"
+                 value="{{ terminal.DRUCKER_PORT or 9100 }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Kassenlade</label>
+        <select class="form-control" name="kassenlade" style="font-size:16px;">
+          <option value="0" {{ 'selected' if (terminal.KASSENLADE or 0) == 0 }}>Keine</option>
+          <option value="1" {{ 'selected' if terminal.KASSENLADE == 1 }}>Pin 2 (Standard)</option>
+          <option value="2" {{ 'selected' if terminal.KASSENLADE == 2 }}>Pin 5</option>
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:4px;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="sofort_drucken" value="1"
+                 style="width:20px; height:20px; cursor:pointer;"
+                 {{ 'checked' if (terminal.SOFORT_DRUCKEN is not defined or terminal.SOFORT_DRUCKEN != 0) }}>
+          <span><b>Sofort drucken</b> – Bon wird direkt nach dem Buchen gedruckt</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="schublade_auto_oeffnen" value="1"
+                 style="width:20px; height:20px; cursor:pointer;"
+                 {{ 'checked' if (terminal.SCHUBLADE_AUTO_OEFFNEN is not defined or terminal.SCHUBLADE_AUTO_OEFFNEN != 0) }}>
+          <span><b>Schublade nach Fertigstellen öffnen</b> – nur bei Barzahlung</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+          <input type="checkbox" name="qr_code" value="1"
+                 style="width:20px; height:20px; cursor:pointer;"
+                 {{ 'checked' if terminal.QR_CODE }}>
+          <span><b>QR-Code auf Bon drucken</b> – TSE-Daten maschinenlesbar (BSI TR-03153)</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- EC-Terminal -->
+    <div class="card" style="margin-bottom:16px;" id="ecCard">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">💳 EC-Terminal (Kartenzahlung)</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Ingenico Desk 3500 oder kompatibles ZVT-TCP-Terminal.
+        Im Modus <b>Vollintegration</b> wird die Zahlung direkt vom System ausgelöst;
+        der Kassierer muss nur noch Karte und PIN bestätigen.
+      </div>
+
+      <div class="form-group">
+        <label>Modus</label>
+        <select class="form-control" name="ec_modus" id="ecModus"
+                style="font-size:16px;" onchange="ecModusGeaendert()">
+          <option value="manuell" {{ 'selected' if (terminal.EC_MODUS or 'manuell') == 'manuell' }}>
+            Manuell – Kassierer bestätigt nach Terminalanzeige
+          </option>
+          <option value="zvt" {{ 'selected' if terminal.EC_MODUS == 'zvt' }}>
+            Vollintegration – ZVT-Protokoll (TCP/IP)
+          </option>
+        </select>
+      </div>
+
+      <div id="ecZvtFelder" style="display:{{ 'block' if terminal.EC_MODUS == 'zvt' else 'none' }}">
+        <div style="display:grid; grid-template-columns:1fr 120px; gap:12px;">
+          <div class="form-group">
+            <label>IP-Adresse des Terminals</label>
+            <input class="form-control" name="ec_terminal_ip" id="ecIp" type="text"
+                   value="{{ terminal.EC_TERMINAL_IP or '' }}" placeholder="192.168.1.50">
+          </div>
+          <div class="form-group">
+            <label>Port</label>
+            <input class="form-control" name="ec_terminal_port" type="number"
+                   value="{{ terminal.EC_TERMINAL_PORT or 20007 }}">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 160px; gap:12px; align-items:end;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>ZVT-Passwort
+              <span style="font-weight:400; color:var(--text-dim);">(6 Stellen, Standard: 010203)</span>
+            </label>
+            <input class="form-control" name="ec_zvt_passwort" type="text"
+                   inputmode="numeric" maxlength="6" pattern="[0-9]{6}"
+                   value="{{ terminal.EC_ZVT_PASSWORT or '010203' }}"
+                   placeholder="010203"
+                   style="font-family:monospace; letter-spacing:0.1em;">
+          </div>
+          <div style="padding-bottom:1px;">
+            <div style="font-size:12px; color:var(--text-dim); margin-bottom:4px;">
+              Im Terminal-Admin-Menü prüfen.
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tagesabschluss am Terminal</label>
+          <select class="form-control" name="ec_tagesabschluss" style="font-size:16px;">
+            <option value="manuell"
+              {{ 'selected' if (terminal.EC_TAGESABSCHLUSS or 'manuell') == 'manuell' }}>
+              Manuell – nur auf Anforderung am Gerät durchführen
+            </option>
+            <option value="auto"
+              {{ 'selected' if terminal.EC_TAGESABSCHLUSS == 'auto' }}>
+              Empfohlen beim Z-Bon – Button im Tagesabschluss-Screen
+            </option>
+            <option value="auto_vergleich"
+              {{ 'selected' if terminal.EC_TAGESABSCHLUSS == 'auto_vergleich' }}>
+              Empfohlen + Vergleich – EC-Summe Terminal vs. App
+            </option>
+          </select>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button type="button" class="btn btn-neutral btn-sm" onclick="ecVerbindungTesten()">
+            🔌 Verbindung testen
+          </button>
+          <span id="ecTestStatus" style="margin-left:10px; font-size:13px; color:var(--text-dim);"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kontenverwaltung -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">Konten (für Kassenbuch)</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        SKR03/SKR04-Kontonummern für automatische DATEV-Zuordnung (optional).
+      </div>
+      <div class="form-group">
+        <label>Bankkonto <span style="font-weight:400; color:var(--text-dim);">(z.B. 1200)</span></label>
+        <input class="form-control" name="konto_bank" type="text"
+               value="{{ terminal.KONTO_BANK or '' }}" placeholder="1200">
+      </div>
+      <div class="form-group">
+        <label>Nebenkasse <span style="font-weight:400; color:var(--text-dim);">(z.B. 1610)</span></label>
+        <input class="form-control" name="konto_nebenkasse" type="text"
+               value="{{ terminal.KONTO_NEBENKASSE or '' }}" placeholder="1610">
+      </div>
+      <div class="form-group">
+        <label>Kassendifferenz Manko <span style="font-weight:400; color:var(--text-dim);">Sonstiger Aufwand, unregelmäßig (SKR03)</span></label>
+        <input class="form-control" name="konto_kassendiff_aufwand" type="text"
+               value="{{ terminal.KONTO_KASSENDIFF_AUFWAND or '' }}" placeholder="z.B. 2309">
+      </div>
+      <div class="form-group">
+        <label>Kassendifferenz Mehrbetrag <span style="font-weight:400; color:var(--text-dim);">Sonstiger Ertrag, unregelmäßig (SKR03)</span></label>
+        <input class="form-control" name="konto_kassendiff_ertrag" type="text"
+               value="{{ terminal.KONTO_KASSENDIFF_ERTRAG or '' }}" placeholder="z.B. 2309">
+      </div>
+    </div>
+
+    <!-- Trainings-/Demo-Modus -->
+    <div class="card" style="margin-bottom:16px; border:2px solid {{ 'var(--gold)' if terminal.TRAININGS_MODUS else 'var(--border)' }};">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--text-dim);">Trainings-/Demo-Modus</h3>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:12px;">
+        Im Trainings-Modus werden keine echten TSE-Signaturen erstellt. Bons erhalten
+        den Aufdruck <b>TRAININGSBON</b> und sind steuerlich nicht relevant.
+        Ideal für Schulungen, Demonstrationen und die Einrichtung mit abgelaufener USB-TSE.
+      </div>
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+        <input type="checkbox" name="trainings_modus" value="1"
+               style="width:20px; height:20px; cursor:pointer;"
+               {{ 'checked' if terminal.TRAININGS_MODUS }}>
+        <span><b>Trainings-Modus aktiv</b> – TSE-Signierung deaktiviert</span>
+      </label>
+    </div>
+
+    <div style="display:flex; gap:12px;">
+      <button class="btn btn-success btn-full" type="submit">💾 Speichern</button>
+      <a href="/admin/" class="btn btn-neutral">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+function ecModusGeaendert() {
+  const modus = document.getElementById('ecModus').value;
+  document.getElementById('ecZvtFelder').style.display = (modus === 'zvt') ? 'block' : 'none';
+}
+
+async function ecVerbindungTesten() {
+  const ip = document.getElementById('ecIp').value.trim();
+  const el = document.getElementById('ecTestStatus');
+  if (!ip) { el.textContent = '⚠️ Bitte zuerst IP-Adresse eingeben und speichern.'; return; }
+  el.textContent = '⏳ Verbindung wird geprüft…';
+  el.style.color = 'var(--text-dim)';
+  try {
+    const r = await fetch('/api/ec/status');
+    const d = await r.json();
+    if (d.erreichbar) {
+      el.textContent = `✓ Erreichbar (${d.ip}:${d.port})`;
+      el.style.color = 'var(--gruen-dunkel)';
+    } else {
+      el.textContent = d.fehler || '✗ Nicht erreichbar – IP/Kabel prüfen';
+      el.style.color = 'var(--rot)';
+    }
+  } catch(e) {
+    el.textContent = 'Fehler: ' + e;
+    el.style.color = 'var(--rot)';
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Nebenkasse{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+<a href="/kasse/manager" class="nav-btn">📊 Manager</a>
+{% endblock %}
+{% block extra_style %}
+<style>
+.nk-wrap {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.saldo-karte {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  margin-bottom: 20px;
+  box-shadow: var(--schatten);
+}
+.saldo-karte .label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.eintrag-zeile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 14px;
+  background: var(--grau-hell);
+  border-radius: 8px;
+  border: 1px solid var(--creme-dunkel);
+  margin-bottom: 6px;
+}
+.eintrag-zeile .titel { font-size: 14px; font-weight: 700; }
+.eintrag-zeile .meta  { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="nk-wrap">
+  <h1 style="font-size:26px; margin-bottom:20px;">🪙 Nebenkasse (Tresor)</h1>
+
+  <!-- Saldo -->
+  <div class="saldo-karte">
+    <div class="label">Aktueller Saldo Nebenkasse</div>
+    <div style="font-family:'Lobster',Georgia,serif; font-size:52px; color:var(--gruen-hell);">
+      {{ "%.2f"|format(info.saldo_neben/100) }} €
+    </div>
+    <div style="font-size:13px; color:var(--text-dim); margin-top:4px;">
+      Hauptkasse: {{ "%.2f"|format(info.saldo_haupt/100) }} €
+    </div>
+  </div>
+
+  <!-- Aktionen -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+    <a href="/kasse/kassenbuch/buchung?typ=TRANSFER_NEBEN_KASSE"
+       class="btn btn-success" style="min-height:52px;">
+      ⬆️ Transfer → Hauptkasse
+    </a>
+    <a href="/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_NEBEN"
+       class="btn btn-neutral" style="min-height:52px;">
+      ⬇️ Transfer ← Hauptkasse
+    </a>
+  </div>
+
+  <div style="margin-bottom:20px;">
+    <a href="/kasse/kassensturz" class="btn btn-neutral btn-sm">🔍 Kassensturz</a>
+  </div>
+
+  <!-- Buchungen letzte 90 Tage -->
+  <div class="card">
+    <h3 style="margin-bottom:12px; font-size:17px;">Buchungen (letzte 90 Tage)</h3>
+    {% if eintraege %}
+    {% for e in eintraege %}
+    <div class="eintrag-zeile">
+      <div>
+        <div class="titel">
+          {% if e.TYP == 'TRANSFER_KASSE_NEBEN' %}Transfer ← Hauptkasse
+          {% elif e.TYP == 'TRANSFER_NEBEN_KASSE' %}Transfer → Hauptkasse
+          {% else %}{{ e.TYP }}{% endif %}
+        </div>
+        {% set btext = e.BUCHUNGSTEXT or e.NOTIZ %}
+        {% if btext %}<div class="meta">{{ btext }}</div>{% endif %}
+        <div class="meta">{{ e.BUCHUNGSDATUM[:16] if e.BUCHUNGSDATUM is string else '' }}</div>
+      </div>
+      <div style="font-family:'Lobster',serif; font-size:20px;
+                  color:{{ 'var(--gruen-status)' if e.BETRAG >= 0 else 'var(--rot)' }};">
+        {{ "%.2f"|format(e.BETRAG/100) }} €
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--text-dim); text-align:center; padding:24px;">
+      Keine Buchungen in den letzten 90 Tagen
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:20px;">
+    <a href="/kasse/manager" class="btn btn-neutral">← Manager</a>
+  </div>
+</div>
+{% endblock %}

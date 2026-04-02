@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}Kassensturz{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+<a href="/kasse/manager" class="nav-btn">📊 Manager</a>
+{% endblock %}
+{% block extra_style %}
+<style>
+.ks-wrap {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+}
+.zaehltabelle {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+}
+.zaehltabelle th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--creme-dunkel);
+}
+.zaehltabelle td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  vertical-align: middle;
+}
+.zaehltabelle tr:last-child td { border-bottom: none; }
+.zaehltabelle .nenn {
+  font-weight: 700;
+  font-size: 15px;
+  width: 90px;
+}
+.zaehl-btn {
+  width: 42px; height: 42px; border-radius: 8px;
+  border: 1px solid var(--creme-dunkel);
+  background: white; font-size: 22px; line-height: 1;
+  cursor: pointer; font-weight: 700; color: var(--gruen-dunkel);
+  display: inline-flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.zaehl-btn:active { background: var(--creme-dunkel); }
+.zaehl-anzeige {
+  display: inline-block; min-width: 36px; text-align: center;
+  font-size: 18px; font-weight: 700; font-family: 'Nunito', sans-serif;
+}
+.zaehltabelle .zwischensumme {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 16px;
+  text-align: right;
+  color: var(--text-mitte);
+  min-width: 90px;
+}
+.ergebnis-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin: 20px 0;
+}
+.ergebnis-karte {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: center;
+  box-shadow: var(--schatten);
+}
+.ergebnis-karte .label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.ergebnis-karte .wert {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 28px;
+  color: var(--gold);
+}
+.diff-pos { color: var(--gruen-status) !important; }
+.diff-neg { color: var(--rot) !important; }
+.diff-null { color: var(--gruen-status) !important; }
+.abend-box {
+  background: #f0f8ea;
+  border: 1px solid var(--gruen-hell);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.abend-box h3 { font-size: 16px; margin-bottom: 8px; }
+.abend-box p  { font-size: 14px; color: var(--text-mitte); margin-bottom: 10px; }
+.tippbar {
+  cursor: pointer;
+  border-bottom: 2px dashed var(--gruen-hell);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.tippbar:active { background: var(--creme-dunkel); }
+.sektion-titel {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin: 16px 0 6px;
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="ks-wrap">
+  <h1 style="font-size:26px; margin-bottom:20px;">🔍 Kassensturz</h1>
+
+  <!-- Soll-Bestand -->
+  <div style="background:white;border:1px solid var(--creme-dunkel);border-radius:var(--radius);
+              padding:16px;text-align:center;margin-bottom:20px;box-shadow:var(--schatten);">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);margin-bottom:6px;">
+      Soll-Bestand laut System
+    </div>
+    <div style="font-family:'Lobster',serif;font-size:44px;color:var(--gold);" id="anzeiSoll">
+      {{ "%.2f"|format(info.saldo_haupt/100) }} €
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h3 style="font-size:17px; margin-bottom:12px;">Bargeld zählen</h3>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start;">
+
+      <!-- Scheine (links) -->
+      <div>
+        <div class="sektion-titel" style="margin-top:0;">Scheine</div>
+        <table class="zaehltabelle">
+          <thead>
+            <tr><th>Wert</th><th style="text-align:center;">Anzahl</th><th style="text-align:right;">Summe</th></tr>
+          </thead>
+          <tbody>
+            {% for nenn in [50000, 20000, 10000, 5000, 2000, 1000, 500] %}
+            {% set lbl = "%.0f"|format(nenn/100) ~ " €" %}
+            <tr>
+              <td class="nenn">{{ lbl }}</td>
+              <td style="text-align:center;">
+                <div style="display:inline-flex;align-items:center;gap:6px;">
+                  <button type="button" class="zaehl-btn" onclick="adj({{ nenn }},-1)">−</button>
+                  <span class="zaehl-anzeige tippbar" id="cnt_{{ nenn }}"
+                        onclick="ksNumpad({{ nenn }},'{{ lbl }}')">0</span>
+                  <button type="button" class="zaehl-btn" onclick="adj({{ nenn }},1)">+</button>
+                </div>
+              </td>
+              <td class="zwischensumme" id="zs_{{ nenn }}">0,00 €</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Münzen (rechts) -->
+      <div>
+        <div class="sektion-titel" style="margin-top:0;">Münzen</div>
+        <table class="zaehltabelle">
+          <thead>
+            <tr><th>Wert</th><th style="text-align:center;">Anzahl</th><th style="text-align:right;">Summe</th></tr>
+          </thead>
+          <tbody>
+            {% for nenn in [200, 100, 50, 20, 10, 5, 2, 1] %}
+            {% if nenn >= 100 %}{% set lbl = "%.2f"|format(nenn/100) ~ " €" %}{% else %}{% set lbl = nenn|string ~ " Ct" %}{% endif %}
+            <tr>
+              <td class="nenn">{{ lbl }}</td>
+              <td style="text-align:center;">
+                <div style="display:inline-flex;align-items:center;gap:6px;">
+                  <button type="button" class="zaehl-btn" onclick="adj({{ nenn }},-1)">−</button>
+                  <span class="zaehl-anzeige tippbar" id="cnt_{{ nenn }}"
+                        onclick="ksNumpad({{ nenn }},'{{ lbl }}')">0</span>
+                  <button type="button" class="zaehl-btn" onclick="adj({{ nenn }},1)">+</button>
+                </div>
+              </td>
+              <td class="zwischensumme" id="zs_{{ nenn }}">0,00 €</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Ergebnis -->
+  <div class="ergebnis-box">
+    <div class="ergebnis-karte">
+      <div class="label">Soll</div>
+      <div class="wert" id="erSoll">{{ "%.2f"|format(info.saldo_haupt/100) }} €</div>
+    </div>
+    <div class="ergebnis-karte">
+      <div class="label">Ist (gezählt)</div>
+      <div class="wert" id="erIst">0,00 €</div>
+    </div>
+    <div class="ergebnis-karte">
+      <div class="label">Differenz</div>
+      <div class="wert" id="erDiff">–</div>
+    </div>
+  </div>
+
+  <!-- Differenz-Buchung -->
+  <div id="diffBuchung" style="display:none;" class="card" style="margin-bottom:20px;">
+    <div class="alert alert-warn" id="diffHinweis"></div>
+    <button class="btn btn-primary btn-sm" onclick="differenzBuchen()">Differenz buchen</button>
+  </div>
+
+  <!-- Abend-Workflow -->
+  <div class="abend-box" id="abendBox" style="display:none;">
+    <h3>🌙 Abendempfehlung: Transfer an Bank</h3>
+    <p>Alle 200/100/50 €-Scheine + Überschuss bei 20/10/5 €-Scheinen (mind. 5 je Sorte bleiben). Münzen verbleiben.</p>
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:4px;">Empfohlener Transfer</div>
+      <div style="font-family:'Lobster',serif;font-size:28px;color:var(--gold);" id="transferBetrag">–</div>
+      <div style="font-size:13px;color:var(--text-mitte);" id="transferHint"></div>
+    </div>
+    <a id="btnTransfer" href="/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK"
+       class="btn btn-neutral btn-sm">🏦 Transfer buchen →</a>
+  </div>
+
+  <div style="display:flex; gap:10px; margin-top:4px;">
+    <button class="btn btn-primary" onclick="abschliessen()">✅ Kassensturz abschließen</button>
+    <a href="/kasse/manager" class="btn btn-neutral">← Manager</a>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+const sollCent = {{ info.saldo_haupt }};
+const zaehlung = {};  // nenn (int) → anzahl
+
+// Denomination-Konfiguration für Transfer-Empfehlung
+const KS_SCHEINE = [
+  {val: 50000, bank: true,  keep: 0},
+  {val: 20000, bank: true,  keep: 0},
+  {val: 10000, bank: true,  keep: 0},
+  {val:  5000, bank: true,  keep: 0},
+  {val:  2000, bank: false, keep: 5},
+  {val:  1000, bank: false, keep: 5},
+  {val:   500, bank: false, keep: 5},
+];
+
+function ksNumpad(nenn, lbl) {
+  numpadOpen(lbl, zaehlung[nenn] || 0, n => {
+    zaehlung[nenn] = n;
+    document.getElementById('cnt_' + nenn).textContent = n;
+    berechne();
+  });
+}
+
+function adj(nenn, delta) {
+  zaehlung[nenn] = Math.max(0, (zaehlung[nenn] || 0) + delta);
+  document.getElementById('cnt_' + nenn).textContent = zaehlung[nenn];
+  berechne();
+}
+
+function berechne() {
+  let istCent = 0;
+  for (const [nenn, anz] of Object.entries(zaehlung)) {
+    const summe = parseInt(nenn) * anz;
+    istCent += summe;
+    const el = document.getElementById('zs_' + nenn);
+    if (el) el.textContent = euro(summe);
+  }
+
+  document.getElementById('erIst').textContent = euro(istCent);
+  const diff = istCent - sollCent;
+  const elDiff = document.getElementById('erDiff');
+  elDiff.textContent = (diff >= 0 ? '+' : '') + euro(diff);
+  elDiff.className = 'wert ' + (diff > 0 ? 'diff-pos' : diff < 0 ? 'diff-neg' : 'diff-null');
+
+  // Differenz-Buchungs-Hinweis
+  const db = document.getElementById('diffBuchung');
+  const dh = document.getElementById('diffHinweis');
+  if (diff !== 0) {
+    db.style.display = '';
+    dh.textContent = diff > 0
+      ? `Kassendifferenz: +${euro(diff)} – Überschuss als Einlage buchen?`
+      : `Kassendifferenz: ${euro(diff)} – Fehlbetrag als Entnahme buchen?`;
+    window._diffCent = diff;
+  } else {
+    db.style.display = 'none';
+  }
+
+  // Transfer-Empfehlung (Abend-Box)
+  if (istCent > 0) {
+    document.getElementById('abendBox').style.display = '';
+    berechneTransfer(istCent);
+  }
+}
+
+function berechneTransfer(istCent) {
+  let emp = 0;
+  KS_SCHEINE.forEach(d => {
+    const n = zaehlung[d.val] || 0;
+    const senden = d.bank ? n : Math.max(0, n - d.keep);
+    emp += senden * d.val;
+  });
+  const transfer = Math.floor(emp / 5000) * 5000;  // auf 50 € abrunden
+  const verbleib = istCent - transfer;
+
+  document.getElementById('transferBetrag').textContent = euro(transfer);
+  const hint = document.getElementById('transferHint');
+  if      (verbleib < 35000) hint.textContent = `Verbleib ${euro(verbleib)} – unter 350 €`;
+  else if (verbleib > 45000) hint.textContent = `Verbleib ${euro(verbleib)} – über 450 €`;
+  else                       hint.textContent = `Verbleib ${euro(verbleib)} – OK`;
+
+  const btn = document.getElementById('btnTransfer');
+  btn.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK&betrag=' + transfer;
+}
+
+async function differenzBuchen() {
+  const diff = window._diffCent || 0;
+  if (diff === 0) return;
+  // Fehlbetrag: Kasse an Kassenfehlbeträge (Aufwand)
+  // Überschuss: Kassenfehlbeträge an Kasse (Ertrag)
+  const typ = diff > 0 ? 'KASSENDIFF_UEBERSCHUSS' : 'KASSENDIFF_FEHLER';
+  const betrag = Math.abs(diff);
+  const r = await api('POST', '/api/kassenbuch', {
+    typ,
+    betrag_cent: betrag,
+    buchungstext: diff > 0 ? 'Kassenüberschuss (Kassensturz)' : 'Kassenfehlbetrag (Kassensturz)',
+  });
+  if (r.ok) {
+    toast('Differenz gebucht', 'ok');
+    document.getElementById('erSoll').textContent = euro(r.saldo);
+    document.getElementById('diffBuchung').style.display = 'none';
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+  }
+}
+
+function abschliessen() {
+  toast('Kassensturz abgeschlossen · Ist: ' + euro(Object.entries(zaehlung).reduce((s,[n,a])=>s+parseInt(n)*a,0)), 'ok');
+  setTimeout(() => location.href = '/kasse/manager', 1500);
+}
+</script>
+{% endblock %}

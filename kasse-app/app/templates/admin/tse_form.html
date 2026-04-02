@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}{{ 'TSE-Gerät bearbeiten' if geraet.REC_ID else 'Neues TSE-Gerät' }}{% endblock %}
+{% block content %}
+<div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
+  <h1 style="font-size:26px; margin-bottom:20px;">
+    🔐 {{ 'TSE-Gerät bearbeiten' if geraet.REC_ID else 'Neues TSE-Gerät hinzufügen' }}
+  </h1>
+
+  <form method="POST" action="/admin/tse/neu">
+    {% if geraet.REC_ID %}
+    <input type="hidden" name="rec_id" value="{{ geraet.REC_ID }}">
+    {% endif %}
+
+    <!-- Allgemein -->
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:14px; font-size:16px; color:var(--text-dim);">Allgemein</h3>
+      <div class="form-group">
+        <label>Typ</label>
+        <select class="form-control" name="typ" id="tseTyp"
+                style="font-size:16px;" onchange="toggleTseFelder()">
+          <option value="FISKALY" {{ 'selected' if (geraet.TYP or 'FISKALY') == 'FISKALY' }}>
+            ☁️ Fiskaly Cloud TSE
+          </option>
+          <option value="SWISSBIT" {{ 'selected' if geraet.TYP == 'SWISSBIT' }}>
+            🔌 Swissbit USB TSE
+          </option>
+          <option value="DEMO" {{ 'selected' if geraet.TYP == 'DEMO' }}>
+            🎓 Demo / Trainings-Modus (keine echte TSE)
+          </option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Bezeichnung</label>
+        <input class="form-control" name="bezeichnung" type="text"
+               value="{{ geraet.BEZEICHNUNG or '' }}"
+               placeholder="z.B. Fiskaly Cloud TSE 2024 oder Swissbit #1" required>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label>BSI-Zertifizierungs-ID
+            <span style="font-size:11px; color:var(--text-dim);">— z.B. 0717-2025</span>
+          </label>
+          <input class="form-control" name="bsi_zertifizierung" type="text"
+                 value="{{ geraet.BSI_ZERTIFIZIERUNG or '' }}"
+                 placeholder="BSI-K-TR-…">
+        </div>
+        <div class="form-group">
+          <label>Zertifikat gültig bis
+            <span style="font-size:11px; color:var(--text-dim);">— bei USB-TSEs</span>
+          </label>
+          <input class="form-control" name="zertifikat_gueltig_bis" type="date"
+                 value="{{ geraet.ZERTIFIKAT_GUELTIG_BIS or '' }}">
+        </div>
+        <div class="form-group">
+          <label>In Betrieb seit</label>
+          <input class="form-control" name="in_betrieb_seit" type="date"
+                 value="{{ geraet.IN_BETRIEB_SEIT or '' }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Bemerkung</label>
+        <textarea class="form-control" name="bemerkung" rows="2"
+                  placeholder="z.B. Vorgänger abgelaufen am 01.01.2025, abgelöst durch diese TSE"
+                  style="font-size:14px;">{{ geraet.BEMERKUNG or '' }}</textarea>
+      </div>
+    </div>
+
+    <!-- Fiskaly-Felder -->
+    <div id="fiskalyFelder" class="card" style="margin-bottom:16px;">
+      <h3 style="margin-bottom:6px; font-size:16px; color:var(--text-dim);">Fiskaly Cloud TSE</h3>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:14px;">
+        Registrierung unter
+        <span style="color:var(--blue);">dashboard.fiskaly.com</span>
+      </div>
+      <div class="form-group">
+        <label>Umgebung</label>
+        <select class="form-control" name="fiskaly_env" style="font-size:16px;">
+          <option value="test"  {{ 'selected' if (geraet.FISKALY_ENV or 'test') == 'test' }}>
+            Test (Sandbox)
+          </option>
+          <option value="live"  {{ 'selected' if geraet.FISKALY_ENV == 'live' }}>
+            Live (Produktion)
+          </option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input class="form-control" name="fiskaly_api_key" type="text"
+               value="{{ geraet.FISKALY_API_KEY or '' }}"
+               autocomplete="off" placeholder="fiskaly_…">
+      </div>
+      <div class="form-group">
+        <label>API Secret</label>
+        <input class="form-control" name="fiskaly_api_secret" type="password"
+               value="{{ geraet.FISKALY_API_SECRET or '' }}"
+               autocomplete="off" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>TSS-ID (UUID)</label>
+        <input class="form-control" name="fiskaly_tss_id" type="text"
+               value="{{ geraet.FISKALY_TSS_ID or '' }}"
+               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label>Admin-PUK
+            <span style="font-size:11px; color:var(--text-dim);">— aus Fiskaly-Dashboard</span>
+          </label>
+          <input class="form-control" name="fiskaly_admin_puk" type="password"
+                 value="{{ geraet.FISKALY_ADMIN_PUK or '' }}"
+                 autocomplete="new-password" placeholder="aus Dashboard">
+        </div>
+        <div class="form-group">
+          <label>Admin-PIN
+            <span style="font-size:11px; color:var(--text-dim);">— mind. 6 Zeichen</span>
+          </label>
+          <input class="form-control" name="fiskaly_admin_pin" type="password"
+                 value="{{ geraet.FISKALY_ADMIN_PIN or '' }}"
+                 autocomplete="new-password" placeholder="mind. 6 Zeichen">
+        </div>
+      </div>
+    </div>
+
+    <!-- Swissbit-Felder -->
+    <div id="swissbitFelder" class="card" style="margin-bottom:16px; display:none;">
+      <h3 style="margin-bottom:6px; font-size:16px; color:var(--text-dim);">Swissbit USB TSE</h3>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:14px;">
+        Swissbit USB TSE via libWorm (C-Bibliothek).
+        Das Gerät muss als Block-Device eingebunden sein (z.B. <code>/dev/sda</code>).
+        <br>libWorm muss auf dem Zielsystem installiert sein – siehe
+        <code>kasse-app/SWISSBIT_SETUP.md</code>.
+      </div>
+      <div class="form-group">
+        <label>Gerätepfad</label>
+        <input class="form-control" name="swissbit_pfad" type="text"
+               value="{{ geraet.SWISSBIT_PFAD or '' }}"
+               placeholder="/dev/sda1 oder /media/swissbit">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label>Admin-PUK</label>
+          <input class="form-control" name="swissbit_admin_puk" type="password"
+                 value="{{ geraet.SWISSBIT_ADMIN_PUK or '' }}"
+                 autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label>Admin-PIN</label>
+          <input class="form-control" name="swissbit_admin_pin" type="password"
+                 value="{{ geraet.SWISSBIT_ADMIN_PIN or '' }}"
+                 autocomplete="new-password">
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo-Hinweis -->
+    <div id="demoHinweis" class="card" style="margin-bottom:16px; display:none;
+         border:2px solid var(--gold); background:rgba(212,175,55,0.08);">
+      <h3 style="margin-bottom:8px; font-size:16px; color:var(--gold);">🎓 Demo / Trainings-Modus</h3>
+      <p style="font-size:14px; color:var(--text-dim); margin:0;">
+        Kein echtes TSE-Gerät — alle Signaturen sind Platzhalter.
+        Bons erhalten den Aufdruck <b>TRAININGSBON</b> und sind steuerlich nicht relevant.
+        <br><br>
+        <b>Anwendungsfälle:</b> Schulungen, Vorführungen, Einrichtung mit abgelaufener Swissbit USB TSE.
+        <br>Die alte Swissbit USB TSE (abgelaufenes Zertifikat) kann für Entwicklung und Tests
+        der Swissbit-Integration verwendet werden, ohne produktive TSE-Vorgänge zu beeinflussen.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:12px;">
+      <button class="btn btn-success btn-full" type="submit">💾 Speichern</button>
+      <a href="/admin/tse" class="btn btn-neutral">Abbrechen</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+function toggleTseFelder() {
+  const typ = document.getElementById('tseTyp').value;
+  document.getElementById('fiskalyFelder').style.display  = typ === 'FISKALY'   ? '' : 'none';
+  document.getElementById('swissbitFelder').style.display = typ === 'SWISSBIT'  ? '' : 'none';
+  document.getElementById('demoHinweis').style.display    = typ === 'DEMO'      ? '' : 'none';
+}
+toggleTseFelder();
+</script>
+{% endblock %}
