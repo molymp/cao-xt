@@ -178,7 +178,7 @@
   <div class="j-filter">
     <div>
       <label>Bon-Nr.</label>
-      <input id="suchBonNr" type="number" placeholder="alle">
+      <input id="suchBonNr" type="number" placeholder="alle" readonly style="cursor:pointer">
     </div>
     <div>
       <label>Von</label>
@@ -395,6 +395,15 @@ async function stornoBestaetigen() {
   btn.disabled = false; btn.textContent = '↩️ Storno durchführen';
 }
 
-document.addEventListener('DOMContentLoaded', suchen);
+document.addEventListener('DOMContentLoaded', function() {
+  const bonNrInput = document.getElementById('suchBonNr');
+  bonNrInput.addEventListener('click', function() {
+    numpadOpen('Bon-Nr.', parseInt(this.value) || 0, v => {
+      this.value = v || '';
+      suchen();
+    });
+  });
+  suchen();
+});
 </script>
 {% endblock %}
