@@ -178,6 +178,17 @@ h1, h2, h3 {
 .navbar .nav-btn.danger:hover { background: rgba(184,48,48,0.3); }
 .nav-btn-switch { border-color: rgba(200,120,10,0.4); color: var(--gold-hell); }
 .nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
+/* Update-Badge in der Navbar */
+.nav-btn-update {
+  background: var(--gold) !important; color: white !important;
+  border-color: var(--gold) !important;
+  animation: update-pulse 2.5s ease-in-out infinite;
+}
+.nav-btn-update:hover { background: var(--gold-hell) !important; }
+@keyframes update-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
 
 /* ── Touch-Targets (44px minimum) ─────────────────────────── */
 .tab-btn   { min-height: 44px; padding: 10px 18px; }
@@ -358,6 +369,9 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
+  {% if terminal_nr == 8 and update_verfuegbar %}
+  <a href="/update" class="nav-btn nav-btn-update">🔄 Update</a>
+  {% endif %}
   <a href="/logout"           class="nav-btn danger">Abmelden</a>
 </div>
 
