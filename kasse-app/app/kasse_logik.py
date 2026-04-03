@@ -70,11 +70,12 @@ def _format_vlsnum(pattern: str, nummer: int) -> str:
       - Nullen = variabler Nummernbereich (Anzahl = Stellenbreite)
       Beispiel: '"EDI-"000000' mit Nr. 18165 → 'EDI-018165'
 
-    Fallback bei unbekanntem / leerem Pattern: 'LS018165'
+    Fallback bei unbekanntem / leerem Pattern: '018165' (reines Zahlenformat,
+    kein Präfix – kompatibel mit dem CAO-VRENUM-Feld).
     """
     import re as _re
     if not pattern:
-        return f"LS{nummer:06d}"
+        return str(nummer).zfill(6)
 
     # Quoted Prefix extrahieren: alles zwischen den ersten "..."
     prefix = ''
@@ -93,7 +94,7 @@ def _format_vlsnum(pattern: str, nummer: int) -> str:
     if prefix:
         return f"{prefix}{nummer:06d}"
 
-    return f"LS{nummer:06d}"
+    return str(nummer).zfill(6)
 
 
 def mwst_saetze_laden() -> dict:
