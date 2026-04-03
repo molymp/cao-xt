@@ -178,6 +178,16 @@ h1, h2, h3 {
 .navbar .nav-btn.danger:hover { background: rgba(184,48,48,0.3); }
 .nav-btn-switch { border-color: rgba(200,120,10,0.4); color: var(--gold-hell); }
 .nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
+/* Update-Badge in der Navbar */
+.nav-btn-update {
+  border-color: rgba(200,120,10,0.6); color: var(--gold-hell);
+  animation: update-pulse 2.5s ease-in-out infinite;
+}
+.nav-btn-update:hover { background: rgba(200,120,10,0.25); }
+@keyframes update-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
 
 /* ── Touch-Targets (44px minimum) ─────────────────────────── */
 .tab-btn   { min-height: 44px; padding: 10px 18px; }
@@ -355,6 +365,9 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% block nav_extra %}{% endblock %}
   {% if kiosk_url %}
   <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
+  {% endif %}
+  {% if update_verfuegbar %}
+  <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
   {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>

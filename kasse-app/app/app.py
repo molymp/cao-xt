@@ -11,6 +11,10 @@ import io
 import json
 import os
 import base64
+import subprocess
+import sys
+import threading
+import time
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
@@ -30,6 +34,80 @@ app.config['JSON_ENSURE_ASCII'] = False
 
 # Schema-Migrationen beim Start ausführen (inkl. virtuelle Terminal-Nummer falls Sandbox-Modus)
 kl.migrationen_ausfuehren()
+
+
+# ── GitHub-Update-Prüfung ─────────────────────────────────────
+
+def _find_git_root() -> str | None:
+    """Sucht das .git-Verzeichnis/-Datei ab app/ aufwärts (max. 6 Ebenen).
+    Unterstützt normale Repos und Git-Worktrees (.git als Datei)."""
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        git_path = os.path.join(d, ".git")
+        if os.path.isdir(git_path) or os.path.isfile(git_path):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return None
+
+GIT_ROOT = _find_git_root()
+
+# Ältester Commit, der die Update-/Rollback-Funktion bereits enthält.
+# Rollback auf ältere Versionen wird nicht angeboten.
+ROLLBACK_MIN_COMMIT = "1d3cb33"
+
+_update_status: dict = {
+    "verfuegbar":    False,
+    "local_hash":    None,
+    "local_short":   None,
+    "local_msg":     None,
+    "remote_hash":   None,
+    "letzter_check": None,
+    "fehler":        None,
+}
+
+
+def _git(args: list[str], timeout: int = 25) -> str:
+    """Führt einen git-Befehl in GIT_ROOT aus und gibt stdout zurück."""
+    if not GIT_ROOT:
+        raise RuntimeError("Kein Git-Repository gefunden")
+    r = subprocess.run(
+        ["git"] + args,
+        cwd=GIT_ROOT, capture_output=True, text=True, timeout=timeout,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip() or r.stdout.strip() or f"exit {r.returncode}")
+    return r.stdout.strip()
+
+
+def _pruefe_update_loop():
+    """Hintergrund-Daemon: prüft alle 10 Minuten auf neue Commits in origin/master."""
+    while True:
+        try:
+            _git(["fetch", "origin", "master"])
+            local  = _git(["rev-parse", "HEAD"])
+            remote = _git(["rev-parse", "origin/master"])
+            info   = _git(["log", "-1", "--format=%h|%s", "HEAD"]).split("|", 1)
+            # Nur "verfügbar" wenn origin/master Commits hat, die lokal fehlen.
+            incoming = int(_git(["rev-list", "--count", "HEAD..origin/master"]))
+            _update_status.update({
+                "verfuegbar":    incoming > 0,
+                "local_hash":    local,
+                "local_short":   info[0] if info else local[:7],
+                "local_msg":     info[1] if len(info) > 1 else "",
+                "remote_hash":   remote,
+                "letzter_check": datetime.now().strftime("%H:%M"),
+                "fehler":        None,
+            })
+        except Exception as exc:
+            _update_status["fehler"] = str(exc)
+            _update_status["letzter_check"] = datetime.now().strftime("%H:%M")
+        time.sleep(600)   # 10 Minuten
+
+
+threading.Thread(target=_pruefe_update_loop, daemon=True, name="update-checker").start()
 
 # ── Context-Processor ─────────────────────────────────────────
 @app.context_processor
@@ -59,6 +137,7 @@ def _globals():
                                    f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
                                    if config.KIOSK_PORT else ''),
         'ma_login_name':       session.get('login_name', ''),
+        'update_verfuegbar':   _update_status["verfuegbar"],
     }
 
 
@@ -1604,6 +1683,80 @@ def kasse_handbuch_upload():
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 500
     return jsonify({'ok': True, 'filename': f'/kasse/doku/{dateiname}'})
+
+
+# ── App-Update ────────────────────────────────────────────────
+
+def _parse_git_log(raw: str) -> list[dict]:
+    ergebnis = []
+    for zeile in raw.splitlines():
+        teile = zeile.split("|", 3)
+        if len(teile) == 4:
+            ergebnis.append({
+                "hash":  teile[0],
+                "short": teile[1],
+                "msg":   teile[2],
+                "datum": teile[3][:16].replace("T", " ") if "T" in teile[3] else teile[3][:16],
+            })
+    return ergebnis
+
+
+@app.get("/update")
+@_login_required
+def update_seite():
+    commits_neu   = []
+    commits_lokal = []
+    fehler = _update_status.get("fehler")
+    try:
+        if _update_status["verfuegbar"]:
+            raw = _git(["log", "HEAD..origin/master", "--format=%H|%h|%s|%ai"])
+            commits_neu = _parse_git_log(raw)
+        raw2 = _git(["log", f"{ROLLBACK_MIN_COMMIT}^..HEAD", "--format=%H|%h|%s|%ai"])
+        commits_lokal = _parse_git_log(raw2)
+    except Exception as exc:
+        fehler = str(exc)
+    return render_template(
+        "update.html",
+        status=_update_status,
+        commits_neu=commits_neu,
+        commits_lokal=commits_lokal,
+        git_verfuegbar=bool(GIT_ROOT),
+        fehler=fehler,
+    )
+
+
+@app.post("/api/update/ausfuehren")
+@_login_required
+def api_update_ausfuehren():
+    try:
+        ausgabe = _git(["pull", "origin", "master"], timeout=60)
+    except Exception as exc:
+        return jsonify({"ok": False, "fehler": str(exc)})
+
+    def _neustart():
+        time.sleep(2)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    threading.Thread(target=_neustart, daemon=False).start()
+    return jsonify({"ok": True, "ausgabe": ausgabe, "neustart": True})
+
+
+@app.post("/api/update/rollback/<commit_hash>")
+@_login_required
+def api_update_rollback(commit_hash):
+    if not all(c in "0123456789abcdefABCDEF" for c in commit_hash) or not (7 <= len(commit_hash) <= 40):
+        return jsonify({"ok": False, "fehler": "Ungültiger Commit-Hash"}), 400
+    try:
+        ausgabe = _git(["reset", "--hard", commit_hash], timeout=30)
+    except Exception as exc:
+        return jsonify({"ok": False, "fehler": str(exc)})
+
+    def _neustart():
+        time.sleep(2)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    threading.Thread(target=_neustart, daemon=False).start()
+    return jsonify({"ok": True, "ausgabe": ausgabe, "neustart": True})
 
 
 # ── Start ─────────────────────────────────────────────────────
