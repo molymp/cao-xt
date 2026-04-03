@@ -204,6 +204,100 @@ class TestBonZuJournalFehlerbehandlung(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestBonZuJournalBuchungsdatum(unittest.TestCase):
+    """RDATUM/KBDATUM im JOURNAL müssen dem ABSCHLUSS_DATUM entsprechen (HAB-101).
+
+    Wenn ein Bon gestern erstellt (BON_DATUM = gestern) aber heute bezahlt
+    wurde (ABSCHLUSS_DATUM = heute), muss das JOURNAL das heutige Datum
+    als RDATUM und KBDATUM erhalten.
+    """
+
+    @patch('kasse_logik.vorgang_laden')
+    @patch('kasse_logik.vorgang_positionen')
+    @patch('kasse_logik.vorgang_zahlungen')
+    @patch('kasse_logik.mwst_saetze_laden')
+    @patch('kasse_logik.get_db')
+    @patch('kasse_logik.get_db_transaction')
+    def test_rdatum_kbdatum_aus_abschluss_datum(
+        self, mock_txn, mock_db,
+        mock_mwst, mock_zahl, mock_pos, mock_laden
+    ):
+        """RDATUM und KBDATUM müssen ABSCHLUSS_DATUM des Vorgangs sein."""
+        from datetime import timedelta
+        gestern   = datetime(2026, 4, 2, 8, 0, 0)
+        heute     = datetime(2026, 4, 3, 14, 30, 0)
+        vorgang   = _vorgang()
+        vorgang['BON_DATUM']       = gestern
+        vorgang['ABSCHLUSS_DATUM'] = heute
+        mock_laden.return_value  = vorgang
+        mock_pos.return_value    = [_position()]
+        mock_zahl.return_value   = [_zahlung()]
+        mock_mwst.return_value   = {1: 19.0, 2: 7.0, 3: 0.0}
+
+        cur = _make_cursor()
+        db_ctx = MagicMock()
+        db_ctx.__enter__ = MagicMock(return_value=cur)
+        db_ctx.__exit__  = MagicMock(return_value=False)
+        mock_db.return_value  = db_ctx
+        mock_txn.return_value = db_ctx
+
+        kasse_logik.bon_zu_journal(42, terminal_nr=1)
+
+        # JOURNAL INSERT ermitteln (nach XT_KASSE_TAGESABSCHLUSS, FIRMA, ZAHLUNGSARTEN)
+        all_calls = cur.execute.call_args_list
+        insert_call = next(
+            c for c in all_calls
+            if 'INSERT INTO JOURNAL' in c[0][0]
+        )
+        sql, params = insert_call[0]
+
+        # Parameterreihenfolge: KASSEN_ID(0), POS_TA_ID(1), MA_ID(2), VRENUM(3),
+        #                       RDATUM(4), KBDATUM(5), ...
+        self.assertEqual(params[4], heute,
+                         "RDATUM muss ABSCHLUSS_DATUM (heute) sein, nicht BON_DATUM (gestern)")
+        self.assertEqual(params[5], heute,
+                         "KBDATUM muss ABSCHLUSS_DATUM (heute) sein, nicht BON_DATUM (gestern)")
+
+    @patch('kasse_logik.vorgang_laden')
+    @patch('kasse_logik.vorgang_positionen')
+    @patch('kasse_logik.vorgang_zahlungen')
+    @patch('kasse_logik.mwst_saetze_laden')
+    @patch('kasse_logik.get_db')
+    @patch('kasse_logik.get_db_transaction')
+    def test_fallback_ohne_abschluss_datum(
+        self, mock_txn, mock_db,
+        mock_mwst, mock_zahl, mock_pos, mock_laden
+    ):
+        """Ohne ABSCHLUSS_DATUM (Altdaten) wird datetime.now() als Fallback genutzt."""
+        vorgang = _vorgang()
+        vorgang['BON_DATUM']       = datetime(2026, 1, 1, 10, 0, 0)
+        vorgang['ABSCHLUSS_DATUM'] = None
+        mock_laden.return_value  = vorgang
+        mock_pos.return_value    = [_position()]
+        mock_zahl.return_value   = [_zahlung()]
+        mock_mwst.return_value   = {1: 19.0, 2: 7.0, 3: 0.0}
+
+        cur = _make_cursor()
+        db_ctx = MagicMock()
+        db_ctx.__enter__ = MagicMock(return_value=cur)
+        db_ctx.__exit__  = MagicMock(return_value=False)
+        mock_db.return_value  = db_ctx
+        mock_txn.return_value = db_ctx
+
+        kasse_logik.bon_zu_journal(42, terminal_nr=1)
+
+        all_calls = cur.execute.call_args_list
+        insert_call = next(
+            c for c in all_calls
+            if 'INSERT INTO JOURNAL' in c[0][0]
+        )
+        sql, params = insert_call[0]
+
+        # Fallback: RDATUM (params[4]) darf NICHT das alte BON_DATUM sein
+        self.assertNotEqual(params[4], datetime(2026, 1, 1, 10, 0, 0),
+                            "Ohne ABSCHLUSS_DATUM darf nicht das alte BON_DATUM verwendet werden")
+
+
 class TestJournalHashsalz(unittest.TestCase):
     """Modul-Konstante HASHSALZ muss exakt dem CAO-Wert entsprechen."""
 

@@ -1554,7 +1554,10 @@ def _bon_zu_journal_intern(vorgang_id: int, terminal_nr: int) -> int | None:
 
     ma_id  = int(vorgang.get('MITARBEITER_ID') or -1)
     vrenum = vorgang.get('VORGANGSNUMMER') or str(vorgang.get('BON_NR', ''))
-    jetzt  = datetime.now()
+    # Buchungszeitpunkt = ABSCHLUSS_DATUM (gesetzt beim Klick auf "Zahlung abschließen").
+    # Fallback auf datetime.now() nur für Altdaten ohne ABSCHLUSS_DATUM.
+    buchungszeitpunkt = vorgang.get('ABSCHLUSS_DATUM') or datetime.now()
+    jetzt = datetime.now()  # Erstellzeitpunkt des Journal-Eintrags
 
     with get_db_transaction() as cur:
         cur.execute(
@@ -1593,7 +1596,7 @@ def _bon_zu_journal_intern(vorgang_id: int, terminal_nr: int) -> int | None:
             )""",
             (
                 terminal_nr, pos_ta_id,
-                ma_id, vrenum, jetzt, jetzt,
+                ma_id, vrenum, buchungszeitpunkt, buchungszeitpunkt,
                 zahlart_id, zahlart_name,
                 c(bsumme[0]), c(bsumme[1]), c(bsumme[2]), c(bsumme[3]), c(bsumme_total),
                 c(nsumme[0]), c(nsumme[1]), c(nsumme[2]), c(nsumme[3]), c(nsumme_total),
