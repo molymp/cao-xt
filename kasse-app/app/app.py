@@ -55,6 +55,7 @@ def _globals():
         'tse_nicht_produktiv': tse_nicht_produktiv,
         'ec_modus':            ec_modus,
         'ec_tagesabschluss':   ec_tagesabschluss,
+        'kiosk_url':           config.KIOSK_URL,
     }
 
 

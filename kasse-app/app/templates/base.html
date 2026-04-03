@@ -75,7 +75,7 @@ h1, h2, h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 60px;
+  height: 64px;
   padding: 0 16px;
   background: var(--gruen-dunkel);
   box-shadow: 0 2px 16px rgba(0,0,0,0.25);
@@ -126,10 +126,23 @@ h1, h2, h3 {
   50%       { opacity: 0.75; }
 }
 .navbar .logo {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  white-space: nowrap;
+}
+.navbar .logo-name {
   font-family: 'Lobster', Georgia, serif;
   font-size: 20px;
   color: var(--gruen-blass);
-  white-space: nowrap;
+}
+.navbar .logo-sub {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grau-mitte);
+  margin-top: 1px;
 }
 .navbar .ma-info {
   color: var(--grau-mitte);
@@ -149,7 +162,7 @@ h1, h2, h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   white-space: nowrap;
   font-family: 'Nunito', sans-serif;
   transition: background 0.15s, color 0.15s;
@@ -163,6 +176,12 @@ h1, h2, h3 {
   color: #f9c0c0;
 }
 .navbar .nav-btn.danger:hover { background: rgba(184,48,48,0.3); }
+.nav-btn-switch { border-color: rgba(200,120,10,0.4); color: var(--gold-hell); }
+.nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
+
+/* ── Touch-Targets (44px minimum) ─────────────────────────── */
+.tab-btn   { min-height: 44px; padding: 10px 18px; }
+.denom-btn { min-height: 48px; min-width: 48px; }
 
 /* ── Allgemeine Buttons ───────────────────────────────────── */
 .btn {
@@ -324,15 +343,21 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 </head>
 <body>
 <div class="navbar{% if trainings_modus %} trainings-aktiv{% elif tse_nicht_produktiv %} sandbox-aktiv{% endif %}">
-  <span class="logo">🌾 {{ firma_name }}</span>
+  <span class="logo">
+    <span class="logo-name">🌾 {{ firma_name }}</span>
+    <span class="logo-sub">KASSE · T{{ terminal_nr }}</span>
+  </span>
   {% if trainings_modus %}
   <span class="training-badge">🎓 Trainingsmodus</span>
   {% elif tse_nicht_produktiv %}
   <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
   {% endif %}
   {% block nav_extra %}{% endblock %}
-  <a href="/kasse/handbuch"   class="nav-btn">📖</a>
-  <a href="/admin/"           class="nav-btn">⚙️</a>
+  {% if kiosk_url %}
+  <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch" target="_blank">🖥️ Kiosk</a>
+  {% endif %}
+  <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
+  <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
   <span class="ma-info">
     Terminal {{ terminal_nr }} · {{ db_name }}
   </span>
