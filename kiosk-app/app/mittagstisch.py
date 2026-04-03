@@ -17,10 +17,10 @@ from google.oauth2.service_account import Credentials
 
 # ── Konfiguration ─────────────────────────────────────────────
 
-SPREADSHEET_ID   = "<SPREADSHEET_ID>"   # Google Sheets ID aus der URL
+SPREADSHEET_ID   = "1Fr2INvHllH61SjIkuTOCrMATrC78xxYW0W-2Rre2ALQ"
 CREDENTIALS_FILE = os.path.join(
     os.path.dirname(__file__),
-    "<credentials>.json"                # Service-Account-Key (NICHT in Git!)
+    "synthetic-cargo-399409-97147aac27d2.json"  # Service-Account-Key (NICHT in Git!)
 )
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
