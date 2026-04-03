@@ -1,5 +1,7 @@
 # ============================================================
 # Bäckerei Kiosk – Konfiguration
+# Priorität: config_local.py > diese Defaults
+# Lokale Overrides in config_local.py (nicht in git) eintragen.
 # ============================================================
 
 # ── Datenbank ─────────────────────────────────────────────────
@@ -24,3 +26,13 @@ EAN_SAMMELARTIKEL = "7408"   # CAO-Sammelartikel Backwaren
 
 # ── Verknüpfte Apps ───────────────────────────────────────────
 KASSE_URL = ""  # z.B. http://localhost:5002 – zeigt Wechsel-Button in der Navbar
+
+# ── Lokale Overrides (config_local.py, nicht in git) ──────────
+# Datei anlegen um die obigen Werte zu überschreiben, z.B.:
+#   DB_HOST     = '192.168.1.10'
+#   DB_USER     = 'kiosk'
+#   DB_PASSWORD = 'geheim'
+try:
+    from config_local import *  # noqa: F401,F403
+except ImportError:
+    pass
