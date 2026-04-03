@@ -1688,6 +1688,250 @@ def _bon_zu_journal_intern(vorgang_id: int, terminal_nr: int) -> int | None:
     return journal_id
 
 
+def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
+                             erstellt_von: str,
+                             terminal_nr: int = 1,
+                             ma_id: int = -1) -> dict:
+    """Schreibt einen Lieferschein-Vorgang direkt als JOURNAL-Buchung.
+
+    Ersetzt `vorgang_zu_lieferschein()` für Kundenvorgänge: statt eines
+    offenen LIEFERSCHEIN-Eintrags (EDI_FLAG='Y') entsteht direkt eine
+    fertige JOURNAL-Buchung mit Kundenbezug. Das spart manuelle
+    Nachbearbeitungsschritte in CAO-Faktura.
+
+    Unterschiede zu `bon_zu_journal()` (Barverkauf):
+      - ADDR_ID, KUN_NAME1/2, KUN_NUM aus ADRESSEN (nicht -2/'Barverkauf')
+      - ZAHLART_NAME = 'Rechnung'
+      - XT_KASSE_VORGAENGE wird abschließend auf ABGESCHLOSSEN gesetzt
+
+    Gibt {'journal_id': int, 'vrenum': str} zurück.
+    """
+    vorgang    = vorgang_laden(vorgang_id)
+    positionen = [p for p in vorgang_positionen(vorgang_id)
+                  if not p.get('STORNIERT')]
+    mwst_saetze = mwst_saetze_laden()
+
+    if not vorgang:
+        raise ValueError("Vorgang nicht gefunden.")
+    if vorgang['STATUS'] not in ('OFFEN', 'GEPARKT'):
+        raise ValueError("Vorgang ist nicht offen.")
+
+    # Kundendaten
+    with get_db() as cur:
+        cur.execute(
+            """SELECT KUNNUM1, NAME1, NAME2, DEB_NUM, PR_EBENE
+               FROM ADRESSEN WHERE REC_ID = %s""",
+            (adressen_id,)
+        )
+        adresse = cur.fetchone()
+    if not adresse:
+        raise ValueError("Adresse nicht gefunden.")
+
+    kun_num  = adresse.get('KUNNUM1') or ''
+    kun_name1 = adresse.get('NAME1') or 'Kundenverkauf'
+    kun_name2 = adresse.get('NAME2') or ''
+    gegenkonto_kunde = int(adresse.get('DEB_NUM') or 0)
+
+    # POS_TA_ID
+    with get_db() as cur:
+        cur.execute(
+            "SELECT ID FROM XT_KASSE_TAGESABSCHLUSS "
+            "WHERE TERMINAL_NR = %s ORDER BY ZEITPUNKT DESC LIMIT 1",
+            (terminal_nr,)
+        )
+        ta_row = cur.fetchone()
+    pos_ta_id = int(ta_row['ID']) if ta_row else -1
+
+    # FIRMA_ID
+    firma_id = -1
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT REC_ID FROM FIRMA ORDER BY REC_ID DESC LIMIT 1")
+            row = cur.fetchone()
+            if row:
+                firma_id = int(row['REC_ID'])
+    except Exception as _e:
+        log.warning("lieferschein_zu_journal: FIRMA_ID-Abfrage fehlgeschlagen: %s", _e)
+
+    # ZAHLART 'Rechnung' aus ZAHLUNGSARTEN
+    zahlart_id   = -1
+    zahlart_name = 'Rechnung'
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT REC_ID FROM ZAHLUNGSARTEN WHERE NAME LIKE 'Rechnung%' LIMIT 1"
+            )
+            za_row = cur.fetchone()
+            if za_row:
+                zahlart_id = int(za_row['REC_ID'])
+    except Exception:
+        pass
+
+    # Summen je Steuersatz (Cent)
+    bsumme = {0: 0, 1: 0, 2: 0, 3: 0}
+    nsumme = {0: 0, 1: 0, 2: 0, 3: 0}
+    msumme = {0: 0, 1: 0, 2: 0, 3: 0}
+    for pos in positionen:
+        code = int(pos.get('STEUER_CODE') or 0)
+        if code in bsumme:
+            bsumme[code] += int(pos.get('GESAMTPREIS_BRUTTO') or 0)
+            nsumme[code] += int(pos.get('NETTO_BETRAG') or 0)
+            msumme[code] += int(pos.get('MWST_BETRAG') or 0)
+
+    def c(cent: int) -> float:
+        return round(cent / 100, 4)
+
+    bsumme_total = int(vorgang.get('BETRAG_BRUTTO') or 0)
+    nsumme_total = int(vorgang.get('BETRAG_NETTO') or 0)
+
+    vrenum = vorgang.get('VORGANGSNUMMER') or str(vorgang.get('BON_NR', ''))
+    jetzt  = datetime.now()
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            """INSERT INTO JOURNAL (
+               QUELLE, QUELLE_SUB, KASSEN_ID, POS_TA_ID, TERM_ID,
+               MA_ID, VRENUM, RDATUM, KBDATUM, STADIUM,
+               ADDR_ID, SPRACH_ID,
+               ZAHLART, ZAHLART_NAME, BRUTTO_FLAG, PR_EBENE,
+               KUN_NAME1, KUN_NAME2, KUN_NUM,
+               WAEHRUNG, KURS,
+               BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
+               NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
+               MSUMME_0, MSUMME_1, MSUMME_2, MSUMME_3, MSUMME,
+               MWST_1, MWST_2,
+               GEGEBEN,
+               KOST_NETTO, WARE, WERT_NETTO, LOHN, TKOST, ROHGEWINN,
+               ATSUMME, ATMSUMME,
+               ERSTELLT, ERST_NAME, GEAEND, GEAEND_NAME,
+               FIRMA_ID, HASHSUM
+            ) VALUES (
+               3, 2, %s, %s, 1,
+               %s, %s, %s, %s, 9,
+               %s, 2,
+               %s, %s, 'Y', %s,
+               %s, %s, %s,
+               '€', 1.0000,
+               %s, %s, %s, %s, %s,
+               %s, %s, %s, %s, %s,
+               %s, %s, %s, %s, %s,
+               %s, %s,
+               0,
+               0, %s, %s, 0, 0, %s,
+               0, 0,
+               %s, %s, %s, %s,
+               %s, '$$'
+            )""",
+            (
+                terminal_nr, pos_ta_id,
+                ma_id, vrenum, jetzt, jetzt,
+                adressen_id,
+                zahlart_id, zahlart_name,
+                int(adresse.get('PR_EBENE') or 5),
+                kun_name1, kun_name2, kun_num,
+                c(bsumme[0]), c(bsumme[1]), c(bsumme[2]), c(bsumme[3]), c(bsumme_total),
+                c(nsumme[0]), c(nsumme[1]), c(nsumme[2]), c(nsumme[3]), c(nsumme_total),
+                c(msumme[0]), c(msumme[1]), c(msumme[2]), c(msumme[3]),
+                c(bsumme_total - nsumme_total),
+                float(mwst_saetze.get(1, 19.0)), float(mwst_saetze.get(2, 7.0)),
+                c(nsumme_total), c(nsumme_total), c(nsumme_total),
+                jetzt, erstellt_von, jetzt, erstellt_von,
+                firma_id,
+            )
+        )
+        journal_id = cur.lastrowid
+
+        # JOURNALPOS
+        for pos in positionen:
+            art_id     = int(pos.get('ARTIKEL_ID') or -99)
+            ist_wg     = art_id <= 0
+            artikeltyp = 'F' if ist_wg else 'S'
+            matchcode  = ''
+            kurzbezeichnung = (pos.get('BEZEICHNUNG') or '')[:30]
+
+            if not ist_wg:
+                cur.execute(
+                    "SELECT MATCHCODE, KURZNAME FROM ARTIKEL WHERE REC_ID = %s LIMIT 1",
+                    (art_id,)
+                )
+                art_row = cur.fetchone()
+                if art_row:
+                    matchcode       = art_row.get('MATCHCODE') or ''
+                    kurzbezeichnung = (art_row.get('KURZNAME') or kurzbezeichnung)[:30]
+
+            menge = float(pos.get('MENGE') or 1)
+            gp    = c(int(pos.get('GESAMTPREIS_BRUTTO') or 0))
+            ep    = c(int(pos.get('EINZELPREIS_BRUTTO') or 0))
+            gp_n  = c(int(pos.get('NETTO_BETRAG') or 0))
+            ep_n  = round(gp_n / menge, 4) if menge else gp_n
+
+            cur.execute(
+                """INSERT INTO JOURNALPOS (
+                   QUELLE, QUELLE_SUB, JOURNAL_ID, POSITION,
+                   ARTIKELTYP, ARTIKEL_ID, WARENGRUPPE,
+                   ADDR_ID, VRENUM,
+                   ARTNUM, BARCODE, MATCHCODE, BEZEICHNUNG, KURZBEZEICHNUNG,
+                   MENGE, EPREIS, GPREIS, EK_PREIS, CALC_FAKTOR,
+                   E_RGEWINN, G_RGEWINN,
+                   RABATT, RABATT2, RABATT3,
+                   E_RABATT_BETRAG, G_RABATT_BETRAG,
+                   STEUER_CODE, GEGENKONTO,
+                   BRUTTO_FLAG, GEBUCHT,
+                   ME_EINHEIT, ME_CODE, PR_EINHEIT, VPE,
+                   ALTTEIL_PROZ, LAGER_ID
+                ) VALUES (
+                   3, 2, %s, %s,
+                   %s, %s, 0,
+                   %s, %s,
+                   %s, %s, %s, %s, %s,
+                   %s, %s, %s, 0, 1,
+                   %s, %s,
+                   0, 0, 0,
+                   0, 0,
+                   %s, %s,
+                   'Y', 'Y',
+                   'Stk', 'H87', 1, 1,
+                   0.10, -2
+                )""",
+                (
+                    journal_id, int(pos.get('POSITION') or 0),
+                    artikeltyp, art_id,
+                    adressen_id, vrenum,
+                    pos.get('ARTNUM') or '', pos.get('BARCODE') or '',
+                    matchcode, pos.get('BEZEICHNUNG') or '', kurzbezeichnung,
+                    menge, ep, gp,
+                    ep_n, gp_n,
+                    int(pos.get('STEUER_CODE') or 0), gegenkonto_kunde,
+                )
+            )
+
+        # HASHSUM berechnen
+        cur.execute(_SQL_JOURNAL_HASHSTRING, (journal_id,))
+        hash_rows = cur.fetchall()
+        concat_hs = ''.join(r['HASHSTRING'] for r in hash_rows if r.get('HASHSTRING'))
+        hashsum   = hashlib.md5(
+            (_JOURNAL_HASHSALZ + concat_hs).encode('ascii', errors='replace')
+        ).hexdigest().upper()
+        cur.execute(
+            "UPDATE JOURNAL SET HASHSUM = %s WHERE REC_ID = %s",
+            (hashsum, journal_id)
+        )
+
+        # Vorgang abschließen
+        cur.execute(
+            """UPDATE XT_KASSE_VORGAENGE
+               SET STATUS = 'ABGESCHLOSSEN',
+                   VORGANG_TYP = 'Lieferschein',
+                   ABSCHLUSS_DATUM = %s
+               WHERE ID = %s AND STATUS IN ('OFFEN', 'GEPARKT')""",
+            (jetzt, vorgang_id)
+        )
+        log.info("JOURNAL-Lieferschein erstellt: REC_ID=%d, Vorgang=%d, Kunde=%d, HASHSUM=%s",
+                 journal_id, vorgang_id, adressen_id, hashsum)
+
+    return {'journal_id': journal_id, 'vrenum': vrenum}
+
+
 # ─────────────────────────────────────────────────────────────
 # Storno
 # ─────────────────────────────────────────────────────────────

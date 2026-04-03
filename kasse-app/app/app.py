@@ -1059,18 +1059,22 @@ def api_tagesabschluss():
 @app.post('/api/vorgang/<int:vid>/lieferschein')
 @_login_required
 def api_zu_lieferschein(vid):
+    """Schließt Kundenvorgang als JOURNAL-Direktbuchung ab.
+
+    Schreibt direkt in JOURNAL/JOURNALPOS (statt offener LIEFERSCHEIN-Eintrag).
+    Spart manuelle Nachbearbeitung in CAO-Faktura.
+    """
     d = request.get_json() or {}
     adressen_id = d.get('adressen_id')
     if adressen_id is not None:
         adressen_id = int(adressen_id)
-    mit_kopie   = bool(d.get('mit_kopie', False))
     if not adressen_id:
         return jsonify({'ok': False, 'fehler': 'Keine Kundenadresse angegeben'}), 400
     ma    = _mitarbeiter()
     name  = f"{ma.get('VNAME', '')} {ma.get('NAME', '')}".strip()
     ma_id = int(ma.get('MA_ID') or -1)
     try:
-        result = kl.vorgang_zu_lieferschein(
+        result = kl.lieferschein_zu_journal(
             vid, adressen_id, name,
             terminal_nr=config.TERMINAL_NR,
             ma_id=ma_id
@@ -1078,17 +1082,9 @@ def api_zu_lieferschein(vid):
     except ValueError as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     except Exception as e:
-        log.exception("Fehler bei Lieferschein-Erstellung: %s", e)
+        log.exception("Fehler bei Lieferschein-Journal-Erstellung: %s", e)
         return jsonify({'ok': False, 'fehler': f'Interner Fehler: {e}'}), 500
 
-    try:
-        druck.drucke_lieferschein(
-            config.TERMINAL_NR, result['lieferschein_id'],
-            mit_kopie=mit_kopie
-        )
-    except Exception as e:
-        log.warning("Lieferschein Druck fehlgeschlagen: %s", e)
-        return jsonify({'ok': True, 'warnung': f'Druck fehlgeschlagen: {e}', **result})
     return jsonify({'ok': True, **result})
 
 
