@@ -25,9 +25,10 @@ app = Flask(__name__)
 def _inject_globals():
     """Stellt terminal_nr und update_verfuegbar in allen Templates bereit."""
     return {
-        "terminal_nr":      get_terminal_nr(),
+        "terminal_nr":       get_terminal_nr(),
         "update_verfuegbar": _update_status["verfuegbar"],
         "kasse_url":         config.KASSE_URL,
+        "app_version":       _app_version,
     }
 
 
@@ -72,6 +73,11 @@ def _git(args: list[str], timeout: int = 25) -> str:
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip() or r.stdout.strip() or f"exit {r.returncode}")
     return r.stdout.strip()
+
+try:
+    _app_version = _git(["rev-parse", "--short", "HEAD"])
+except Exception:
+    _app_version = "unknown"
 
 def _pruefe_update_loop():
     """Hintergrund-Daemon: prüft alle 10 Minuten auf neue Commits in origin/master."""

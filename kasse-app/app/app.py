@@ -11,6 +11,7 @@ import io
 import json
 import os
 import base64
+import subprocess
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
@@ -27,6 +28,15 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
+
+try:
+    _git_hash = subprocess.check_output(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        stderr=subprocess.DEVNULL,
+    ).decode().strip()
+except Exception:
+    _git_hash = "unknown"
 
 # Schema-Migrationen beim Start ausführen (inkl. virtuelle Terminal-Nummer falls Sandbox-Modus)
 kl.migrationen_ausfuehren()
@@ -57,6 +67,7 @@ def _globals():
         'ec_tagesabschluss':   ec_tagesabschluss,
         'kiosk_url':           config.KIOSK_URL,
         'ma_login_name':       session.get('login_name', ''),
+        'app_version':         _git_hash,
     }
 
 
