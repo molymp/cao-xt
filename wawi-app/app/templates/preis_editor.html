@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% block title %}Preis bearbeiten – {{ artikel.BEZEICHNUNG }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.preis-card { max-width: 700px; }
+.pg-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.pg-tab {
+  padding: 7px 16px; border-radius: var(--radius-klein);
+  border: 1px solid var(--creme-dunkel); cursor: pointer;
+  background: var(--grau-hell); font-weight: 700; font-size: 14px;
+  font-family: 'Nunito', sans-serif;
+}
+.pg-tab.aktiv { background: var(--gruen-dunkel); color: white; border-color: var(--gruen-dunkel); }
+.rechner-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.feld-vk { grid-column: 1 / -1; }
+@media (max-width: 500px) { .rechner-grid { grid-template-columns: 1fr; } .feld-vk { grid-column: 1; } }
+.preis-gross { font-size: 32px; font-family: 'Lobster', serif; color: var(--gold); }
+.mwst-hinweis { font-size: 12px; color: var(--text-hell); margin-top: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:12px">
+  <a href="{{ url_for('artikel_liste') }}" class="text-dim">← Artikelliste</a>
+</div>
+
+<h1>Preis bearbeiten</h1>
+<p class="text-dim" style="margin-bottom:16px">
+  <code>{{ artikel.ART_NR }}</code> – {{ artikel.BEZEICHNUNG }}
+  &nbsp;|&nbsp; MwSt: {{ artikel.MWST_SATZ }} %
+</p>
+
+<div class="card preis-card">
+  <h2 class="card-titel">Preisgruppe wählen</h2>
+  <div class="pg-tabs" id="pgTabs">
+    {% for pg in preisgruppen %}
+      <button class="pg-tab {% if loop.first %}aktiv{% endif %}"
+              data-pg-id="{{ pg.id }}" onclick="pgWaehlen({{ pg.id }})">
+        {{ pg.name }}
+      </button>
+    {% endfor %}
+  </div>
+
+  <div id="preisRechner">
+    <div class="rechner-grid">
+      <div class="form-group">
+        <label>EK netto (€)</label>
+        <input type="number" id="ek" step="0.0001" min="0" class="form-control"
+               placeholder="z.B. 1,50" oninput="berechneVK()">
+      </div>
+      <div class="form-group">
+        <label>Marge (%)</label>
+        <input type="number" id="marge" step="0.01" class="form-control"
+               placeholder="z.B. 30" oninput="berechneVK()">
+      </div>
+      <div class="form-group feld-vk">
+        <label>VK brutto (€) <span style="color:var(--gold)">← direkt editierbar</span></label>
+        <input type="number" id="vk" step="0.01" min="0.01" class="form-control"
+               placeholder="z.B. 2,19" oninput="berechneMarge()" style="font-size:20px;font-weight:700">
+        <div class="mwst-hinweis">MwSt {{ artikel.MWST_SATZ }} % bereits enthalten</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Änderungsgrund (optional)</label>
+      <input type="text" id="grund" class="form-control" placeholder="z.B. Lieferantenpreiserhöhung April 2026">
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+      <button class="btn btn-success" onclick="preisSpeiechern()">💾 Preis speichern</button>
+      <a href="{{ url_for('preishistorie', artikel_id=artikel.artikel_id) }}" class="btn btn-neutral">📋 Preishistorie</a>
+    </div>
+  </div>
+</div>
+
+<!-- Aktuelle Preise (alle Gruppen) -->
+<div class="card" style="max-width:700px">
+  <h2 class="card-titel">Aktuelle Preise</h2>
+  {% if aktuelle_preise %}
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Preisgruppe</th>
+        <th class="rechts">EK netto</th>
+        <th class="rechts">VK brutto</th>
+        <th class="rechts">Marge</th>
+        <th class="rechts">Stand</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in aktuelle_preise %}
+      <tr>
+        <td>{{ p.preisgruppe_name }}</td>
+        <td class="rechts">{% if p.ek_preis %}{{ '%.4f'|format(p.ek_preis|float) | replace('.', ',') }} €{% else %}–{% endif %}</td>
+        <td class="rechts"><strong>{{ '%.2f'|format(p.vk_preis|float) | replace('.', ',') }} €</strong></td>
+        <td class="rechts">{% if p.marge_prozent %}{{ '%.2f'|format(p.marge_prozent|float) | replace('.', ',') }} %{% else %}–{% endif %}</td>
+        <td class="rechts text-dim">{{ p.erstellt_am[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-dim">Noch keine Preise hinterlegt.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const MWST = {{ artikel.MWST_SATZ | float }};
+const ARTIKEL_ID = {{ artikel.artikel_id }};
+
+// Aktuelle Preise aus Server laden
+const aktuellePreise = {{ aktuelle_preise | tojson }};
+
+let aktivePg = {{ preisgruppen[0].id if preisgruppen else 1 }};
+
+function pgWaehlen(pgId) {
+  aktivePg = pgId;
+  document.querySelectorAll('.pg-tab').forEach(t => {
+    t.classList.toggle('aktiv', parseInt(t.dataset.pgId) === pgId);
+  });
+  // Aktuellen Preis für diese Gruppe eintragen
+  const p = aktuellePreise.find(x => x.preisgruppe_id === pgId);
+  if (p) {
+    document.getElementById('ek').value    = p.ek_preis    ? parseFloat(p.ek_preis).toFixed(4)    : '';
+    document.getElementById('marge').value = p.marge_prozent ? parseFloat(p.marge_prozent).toFixed(2) : '';
+    document.getElementById('vk').value    = parseFloat(p.vk_preis).toFixed(2);
+  } else {
+    document.getElementById('ek').value    = '';
+    document.getElementById('marge').value = '';
+    document.getElementById('vk').value    = '';
+  }
+}
+
+function berechneVK() {
+  const ek = parseFloat(document.getElementById('ek').value) || 0;
+  const mg = parseFloat(document.getElementById('marge').value) || 0;
+  if (ek > 0 && mg !== 0) {
+    const vk = ek * (1 + mg / 100) * (1 + MWST / 100);
+    document.getElementById('vk').value = vk.toFixed(2);
+  }
+}
+
+function berechneMarge() {
+  const ek = parseFloat(document.getElementById('ek').value) || 0;
+  const vk = parseFloat(document.getElementById('vk').value) || 0;
+  if (ek > 0 && vk > 0) {
+    const mg = (vk / (1 + MWST / 100) / ek - 1) * 100;
+    document.getElementById('marge').value = mg.toFixed(2);
+  }
+}
+
+async function preisSpeiechern() {
+  const vk = parseFloat(document.getElementById('vk').value);
+  if (!vk || vk <= 0) { toast('VK-Preis eingeben!', 'err'); return; }
+
+  const ek    = parseFloat(document.getElementById('ek').value) || null;
+  const grund = document.getElementById('grund').value.trim();
+
+  const btn = document.querySelector('button[onclick="preisSpeiechern()"]');
+  btn.disabled = true;
+
+  const r = await api('POST', `/wawi/artikel/${ARTIKEL_ID}/preis`, {
+    preisgruppe_id: aktivePg,
+    ek_preis: ek,
+    vk_preis: vk,
+    aenderungsgrund: grund,
+  });
+
+  btn.disabled = false;
+
+  if (r.ok) {
+    toast('✓ Preis gespeichert');
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    toast(r.fehler || 'Fehler beim Speichern', 'err');
+  }
+}
+
+// Initialer Preis der ersten Gruppe laden
+pgWaehlen(aktivePg);
+</script>
+{% endblock %}

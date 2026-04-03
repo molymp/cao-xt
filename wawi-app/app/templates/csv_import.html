@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% block title %}CSV-Import{% endblock %}
+
+{% block extra_style %}
+<style>
+.drop-zone {
+  border: 2px dashed var(--grau-mitte); border-radius: var(--radius);
+  padding: 40px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--gruen-mitte); background: var(--grau-hell); }
+.drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
+.vorschau-ok  { color: var(--gruen-status); }
+.vorschau-err { color: var(--rot); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>CSV-Import Lieferantenpreise</h1>
+<p class="text-dim" style="margin-bottom:20px">
+  Importiert EK-Preise aus einer CSV-Datei. VK wird aus bestehender Marge (oder Standardmarge 30 %) berechnet.
+</p>
+
+<div class="card" style="max-width:700px">
+  <h2 class="card-titel">Format</h2>
+  <p class="text-dim" style="margin-bottom:8px">
+    Semikolon-getrennt, DE-Zahlenformat (Komma als Dezimaltrennzeichen):
+  </p>
+  <pre style="background:var(--grau-hell);padding:12px;border-radius:var(--radius-klein);font-size:13px">art_nr;ek_preis_netto;[bezeichnung_optional]
+4711;1,50;Brot Weizen 500g
+8899;0,75</pre>
+</div>
+
+<div class="card" style="max-width:700px">
+  <h2 class="card-titel">Datei hochladen</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Preisgruppe</label>
+      <select id="pgId" class="form-control">
+        {% for pg in preisgruppen %}
+          <option value="{{ pg.id }}">{{ pg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('dateiInput').click()">
+    <div class="icon">📤</div>
+    <div><strong>CSV-Datei hierher ziehen</strong> oder klicken</div>
+    <div class="text-dim" style="margin-top:6px">UTF-8 oder Latin-1, max. 2 MB</div>
+  </div>
+  <input type="file" id="dateiInput" accept=".csv,.txt" class="hidden" onchange="dateiGewaehlt(this)">
+
+  <div id="dateiName" class="text-dim" style="margin-top:8px"></div>
+  <div style="margin-top:12px">
+    <button class="btn btn-neutral" id="btnVorschau" onclick="vorschauLaden()" disabled>🔍 Vorschau</button>
+  </div>
+</div>
+
+<!-- Vorschau -->
+<div id="vorschauBereich" class="hidden">
+  <div class="card" style="max-width:900px;padding:0;overflow:hidden">
+    <div style="padding:14px 20px;background:var(--grau-hell);display:flex;align-items:center;gap:16px">
+      <strong>Vorschau</strong>
+      <span class="vorschau-ok" id="okCount"></span>
+      <span class="vorschau-err" id="errCount"></span>
+    </div>
+
+    <div style="max-height:360px;overflow-y:auto">
+      <table class="tabelle" id="vorschauTabelle">
+        <thead>
+          <tr>
+            <th>#</th><th>Art.-Nr.</th><th>Bezeichnung</th>
+            <th class="rechts">EK netto neu</th>
+            <th class="rechts">MwSt</th>
+          </tr>
+        </thead>
+        <tbody id="vorschauBody"></tbody>
+      </table>
+    </div>
+
+    <div id="fehlerBereich" class="hidden" style="padding:14px 20px;border-top:1px solid var(--creme-dunkel)">
+      <strong class="vorschau-err">Fehler in folgenden Zeilen:</strong>
+      <div id="fehlerListe" style="margin-top:8px;font-size:13px"></div>
+    </div>
+
+    <div style="padding:14px 20px;border-top:1px solid var(--creme-dunkel)">
+      <button class="btn btn-success" id="btnImport" onclick="importAusfuehren()">
+        ✅ Import durchführen
+      </button>
+      <span class="text-dim" style="margin-left:12px" id="importStatus"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _datei = null;
+let _vorschauZeilen = [];
+let _dateiname = '';
+
+// Drag & Drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) dateiLaden(e.dataTransfer.files[0]);
+});
+
+function dateiGewaehlt(input) {
+  if (input.files[0]) dateiLaden(input.files[0]);
+}
+
+function dateiLaden(datei) {
+  _datei = datei;
+  _dateiname = datei.name;
+  document.getElementById('dateiName').textContent = `📎 ${datei.name} (${(datei.size / 1024).toFixed(1)} KB)`;
+  document.getElementById('btnVorschau').disabled = false;
+  document.getElementById('vorschauBereich').classList.add('hidden');
+}
+
+async function vorschauLaden() {
+  if (!_datei) return;
+  const pgId = document.getElementById('pgId').value;
+  const fd   = new FormData();
+  fd.append('datei', _datei);
+  fd.append('preisgruppe_id', pgId);
+
+  const r = await fetch('/wawi/import/vorschau', { method: 'POST', body: fd });
+  const data = await r.json();
+
+  if (!data.ok) { toast(data.fehler || 'Fehler beim Parsen', 'err'); return; }
+
+  _vorschauZeilen = data.zeilen;
+  _dateiname = data.dateiname || _dateiname;
+
+  document.getElementById('okCount').textContent  = `✓ ${data.ok_count} OK`;
+  document.getElementById('errCount').textContent = data.err_count > 0 ? `✗ ${data.err_count} Fehler` : '';
+
+  const tb = document.getElementById('vorschauBody');
+  tb.innerHTML = data.zeilen.map(z => `
+    <tr>
+      <td class="text-dim">${z.zeile}</td>
+      <td><code>${z.art_nr}</code></td>
+      <td>${z.bezeichnung}</td>
+      <td class="rechts"><strong>${eur(z.ek_neu)}</strong></td>
+      <td class="rechts">${z.mwst_satz} %</td>
+    </tr>`).join('');
+
+  if (data.fehler && data.fehler.length > 0) {
+    document.getElementById('fehlerBereich').classList.remove('hidden');
+    document.getElementById('fehlerListe').innerHTML = data.fehler.map(f =>
+      `<div>Zeile ${f.zeile}: ${f.grund} <code style="font-size:11px">${f.raw || ''}</code></div>`
+    ).join('');
+  } else {
+    document.getElementById('fehlerBereich').classList.add('hidden');
+  }
+
+  document.getElementById('btnImport').disabled = data.ok_count === 0;
+  document.getElementById('vorschauBereich').classList.remove('hidden');
+}
+
+async function importAusfuehren() {
+  if (_vorschauZeilen.length === 0) return;
+  if (!confirm(`${_vorschauZeilen.length} Preise importieren?`)) return;
+
+  document.getElementById('btnImport').disabled = true;
+  document.getElementById('importStatus').textContent = 'Importiere…';
+
+  const r = await api('POST', '/wawi/import/ausfuehren', {
+    zeilen:        _vorschauZeilen,
+    preisgruppe_id: parseInt(document.getElementById('pgId').value),
+    dateiname:     _dateiname,
+  });
+
+  if (r.ok) {
+    document.getElementById('importStatus').textContent =
+      `✓ ${r.zeilen_ok} importiert${r.zeilen_fehler > 0 ? ', ' + r.zeilen_fehler + ' Fehler' : ''}`;
+    toast(`✓ Import abgeschlossen: ${r.zeilen_ok} Preise`);
+    _vorschauZeilen = [];
+  } else {
+    document.getElementById('importStatus').textContent = '';
+    document.getElementById('btnImport').disabled = false;
+    toast(r.fehler || 'Import fehlgeschlagen', 'err');
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}WaWi{% endblock %} – {{ firma_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"
+      media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
+<style>
+/* ── Farb-Variablen (Habacher Dorfladen) ────────────────── */
+:root {
+  --gruen-dunkel:  #1a4010;
+  --gruen-mitte:   #2e6e1a;
+  --gruen-hell:    #4a9428;
+  --gruen-blass:   #d4e8c2;
+  --gold:          #c8780a;
+  --gold-hell:     #e8970e;
+  --creme:         #f7f3ea;
+  --creme-dunkel:  #ece3cc;
+  --creme-warm:    #e5d9bc;
+  --text-dunkel:   #142808;
+  --text-mitte:    #2e4a1a;
+  --text-hell:     #5a7a3a;
+  --grau-hell:     #f0ece0;
+  --grau-mitte:    #a8b890;
+  --rot:           #b83030;
+  --gruen-status:  #2e7a2e;
+  --schatten:      0 2px 12px rgba(26,64,16,0.13);
+  --radius:        10px;
+  --radius-klein:  6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+  background: var(--creme);
+  color: var(--text-dunkel);
+  min-height: 100vh;
+}
+h1, h2, h3 {
+  font-family: 'Lobster', Georgia, serif;
+  color: var(--gruen-dunkel);
+  font-weight: 400;
+}
+a { color: var(--gruen-mitte); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.hidden { display: none !important; }
+
+/* ── Navigation ──────────────────────────────────────────── */
+.navbar {
+  display: flex; align-items: center; gap: 8px;
+  height: 52px; padding: 0 20px;
+  background: var(--gruen-dunkel);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+  position: sticky; top: 0; z-index: 100;
+}
+.navbar .logo {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 18px; color: var(--gruen-blass); white-space: nowrap;
+  margin-right: 8px;
+}
+.navbar .nav-btn {
+  background: rgba(255,255,255,0.08);
+  color: var(--creme-dunkel);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-klein);
+  padding: 5px 12px; font-size: 13px; font-weight: 700;
+  cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'Nunito', sans-serif;
+  transition: background 0.15s, color 0.15s;
+}
+.navbar .nav-btn:hover { background: rgba(74,148,40,0.35); color: var(--gruen-blass); }
+.navbar .nav-btn.aktiv { background: rgba(74,148,40,0.4); color: white; }
+.navbar .spacer { flex: 1; }
+
+/* ── Haupt-Layout ─────────────────────────────────────────── */
+.container { max-width: 1280px; margin: 0 auto; padding: 24px 20px; }
+
+/* ── Karten ──────────────────────────────────────────────── */
+.card {
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius); padding: 20px;
+  box-shadow: var(--schatten); margin-bottom: 16px;
+}
+.card-titel { font-size: 18px; margin-bottom: 14px; }
+
+/* ── Tabellen ────────────────────────────────────────────── */
+.tabelle { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabelle th {
+  background: var(--gruen-dunkel); color: var(--gruen-blass);
+  padding: 9px 12px; text-align: left; font-weight: 700;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.tabelle td { padding: 9px 12px; border-bottom: 1px solid var(--creme-dunkel); }
+.tabelle tr:last-child td { border-bottom: none; }
+.tabelle tr:hover td { background: var(--grau-hell); }
+.tabelle .rechts { text-align: right; }
+.tabelle .zentriert { text-align: center; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-klein); border: none;
+  font-size: 14px; font-weight: 700; font-family: 'Nunito', sans-serif;
+  cursor: pointer; text-decoration: none; transition: opacity 0.1s, background 0.12s;
+  white-space: nowrap;
+}
+.btn:hover { opacity: 0.88; }
+.btn:active { opacity: 0.75; }
+.btn:disabled { opacity: 0.4; pointer-events: none; }
+.btn-primary  { background: var(--gold);         color: white; }
+.btn-success  { background: var(--gruen-hell);   color: white; }
+.btn-danger   { background: var(--rot);           color: white; }
+.btn-neutral  { background: var(--grau-hell); color: var(--gruen-dunkel); border: 1px solid var(--creme-dunkel); }
+.btn-sm { padding: 5px 10px; font-size: 13px; }
+
+/* ── Formulare ───────────────────────────────────────────── */
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; margin-bottom: 5px;
+  color: var(--text-hell); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.form-control {
+  width: 100%; padding: 9px 12px;
+  background: var(--grau-hell); border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein); color: var(--text-dunkel);
+  font-size: 14px; font-family: 'Nunito', sans-serif;
+}
+.form-control:focus { outline: none; border-color: var(--gruen-mitte); }
+select.form-control { cursor: pointer; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-row .form-group { flex: 1; min-width: 140px; }
+
+/* ── Filter-Leiste ───────────────────────────────────────── */
+.filter-leiste {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+/* ── Flash-Meldungen ─────────────────────────────────────── */
+.flash-container { margin-bottom: 16px; }
+.alert {
+  padding: 12px 16px; border-radius: var(--radius-klein); margin-bottom: 8px;
+  font-size: 14px; font-weight: 700;
+}
+.alert-error   { background: #fde8e8; border: 1px solid var(--rot); color: var(--rot); }
+.alert-success { background: #e8f5e0; border: 1px solid var(--gruen-status); color: var(--gruen-status); }
+.alert-warn    { background: #fef8e2; border: 1px solid var(--gold); color: #7a5a00; }
+
+/* ── Pagination ──────────────────────────────────────────── */
+.pagination { display: flex; gap: 6px; align-items: center; margin-top: 16px; }
+.pagination a, .pagination span {
+  padding: 5px 10px; border-radius: var(--radius-klein);
+  border: 1px solid var(--creme-dunkel); font-size: 13px; font-weight: 700;
+  background: white; color: var(--text-dunkel); text-decoration: none;
+}
+.pagination .aktiv { background: var(--gruen-dunkel); color: white; border-color: var(--gruen-dunkel); }
+.pagination a:hover { background: var(--grau-hell); }
+
+/* ── Toast ───────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--gruen-dunkel); color: var(--gruen-blass);
+  padding: 10px 24px; border-radius: 40px;
+  font-size: 14px; font-weight: 700; font-family: 'Nunito', sans-serif;
+  box-shadow: var(--schatten); transition: transform 0.3s ease;
+  z-index: 9999; pointer-events: none; max-width: 90vw; text-align: center;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.err  { background: var(--rot); color: white; }
+
+hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
+.text-dim { color: var(--text-hell); font-size: 13px; }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; background: var(--grau-hell);
+  color: var(--text-mitte);
+}
+</style>
+{% block extra_style %}{% endblock %}
+</head>
+<body>
+<nav class="navbar">
+  <span class="logo">🌾 {{ firma_name }} WaWi</span>
+  <a href="{{ url_for('artikel_liste') }}" class="nav-btn {% if request.endpoint == 'artikel_liste' %}aktiv{% endif %}">📦 Artikel</a>
+  <a href="{{ url_for('massenupdate_seite') }}" class="nav-btn {% if request.endpoint == 'massenupdate_seite' %}aktiv{% endif %}">📈 Massenupdate</a>
+  <a href="{{ url_for('csv_import_seite') }}" class="nav-btn {% if request.endpoint == 'csv_import_seite' %}aktiv{% endif %}">📤 CSV-Import</a>
+  <a href="{{ url_for('preisgruppen_seite') }}" class="nav-btn {% if request.endpoint == 'preisgruppen_seite' %}aktiv{% endif %}">🏷️ Preisgruppen</a>
+  <span class="spacer"></span>
+  <a href="{{ url_for('admin_seite') }}" class="nav-btn">⚙️</a>
+</nav>
+
+<div class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container">
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+
+<div id="toast"></div>
+
+<script>
+function toast(msg, typ = 'ok', dauer = 2800) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (typ === 'err' ? ' err' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', dauer);
+}
+
+async function api(method, url, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+function eur(val) {
+  if (val == null) return '–';
+  return parseFloat(val).toFixed(2).replace('.', ',') + ' €';
+}
+function pct(val) {
+  if (val == null) return '–';
+  return parseFloat(val).toFixed(2).replace('.', ',') + ' %';
+}
+</script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>

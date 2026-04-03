@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block title %}Artikelliste{% endblock %}
+
+{% block content %}
+<h1>Artikel &amp; Preise</h1>
+<p class="text-dim" style="margin-bottom:16px">{{ gesamt }} Artikel gesamt</p>
+
+<!-- Filter -->
+<form method="get" action="{{ url_for('artikel_liste') }}" class="card">
+  <div class="filter-leiste">
+    <div class="form-group" style="flex:2;min-width:200px">
+      <label>Suche (Art.-Nr. / Bezeichnung)</label>
+      <input type="text" name="q" value="{{ filter_q }}" class="form-control" placeholder="z.B. Brot, 4711…">
+    </div>
+    <div class="form-group">
+      <label>Warengruppe</label>
+      <select name="wg" class="form-control">
+        <option value="">Alle</option>
+        {% for wg in warengruppen %}
+          <option value="{{ wg.id }}" {% if filter_wg == wg.id %}selected{% endif %}>{{ wg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Lieferant</label>
+      <select name="lf" class="form-control">
+        <option value="">Alle</option>
+        {% for lf in lieferanten %}
+          <option value="{{ lf.id }}" {% if filter_lf == lf.id %}selected{% endif %}>{{ lf.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Preisgruppe</label>
+      <select name="pg" class="form-control">
+        {% for pg in preisgruppen %}
+          <option value="{{ pg.id }}" {% if filter_pg == pg.id %}selected{% endif %}>{{ pg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <button type="submit" class="btn btn-primary">🔍 Filtern</button>
+      <a href="{{ url_for('artikel_liste') }}" class="btn btn-neutral">✕ Reset</a>
+    </div>
+  </div>
+</form>
+
+<!-- Tabelle -->
+<div class="card" style="padding:0;overflow:auto">
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Art.-Nr.</th>
+        <th>Bezeichnung</th>
+        <th>WG</th>
+        <th class="rechts">MwSt</th>
+        <th class="rechts">EK (CAO)</th>
+        <th class="rechts">VK brutto</th>
+        <th class="rechts">Marge</th>
+        <th class="zentriert">Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in artikel %}
+      <tr>
+        <td><code>{{ a.ART_NR }}</code></td>
+        <td>{{ a.BEZEICHNUNG }}</td>
+        <td><span class="badge">{{ a.WARENGRUPPE or '–' }}</span></td>
+        <td class="rechts">{{ a.MWST_SATZ | default('–') }} %</td>
+        <td class="rechts">{% if a.EK_PREIS %}{{ '%.2f'|format(a.EK_PREIS|float) | replace('.', ',') }} €{% else %}–{% endif %}</td>
+        <td class="rechts">
+          {% if a.vk_preis %}
+            <strong>{{ '%.2f'|format(a.vk_preis) | replace('.', ',') }} €</strong>
+          {% else %}
+            <span class="text-dim">kein Preis</span>
+          {% endif %}
+        </td>
+        <td class="rechts">
+          {% if a.marge_prozent %}{{ '%.1f'|format(a.marge_prozent) | replace('.', ',') }} %{% else %}–{% endif %}
+        </td>
+        <td class="zentriert" style="white-space:nowrap">
+          <a href="{{ url_for('preis_editor', artikel_id=a.artikel_id) }}" class="btn btn-primary btn-sm">✏️ Preis</a>
+          <a href="{{ url_for('preishistorie', artikel_id=a.artikel_id) }}" class="btn btn-neutral btn-sm">📋 Hist.</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-hell)">Keine Artikel gefunden.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if seiten > 1 %}
+<div class="pagination">
+  {% if seite > 1 %}
+    <a href="?seite={{ seite - 1 }}&q={{ filter_q }}&wg={{ filter_wg or '' }}&lf={{ filter_lf or '' }}&pg={{ filter_pg }}">‹</a>
+  {% endif %}
+  {% for p in range(1, seiten + 1) %}
+    {% if p == seite %}
+      <span class="aktiv">{{ p }}</span>
+    {% elif p == 1 or p == seiten or (p >= seite - 2 and p <= seite + 2) %}
+      <a href="?seite={{ p }}&q={{ filter_q }}&wg={{ filter_wg or '' }}&lf={{ filter_lf or '' }}&pg={{ filter_pg }}">{{ p }}</a>
+    {% elif p == seite - 3 or p == seite + 3 %}
+      <span>…</span>
+    {% endif %}
+  {% endfor %}
+  {% if seite < seiten %}
+    <a href="?seite={{ seite + 1 }}&q={{ filter_q }}&wg={{ filter_wg or '' }}&lf={{ filter_lf or '' }}&pg={{ filter_pg }}">›</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

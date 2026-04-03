@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Admin{% endblock %}
+
+{% block content %}
+<h1>WaWi-App Admin</h1>
+
+<div class="card" style="max-width:500px">
+  <h2 class="card-titel">Datenbankverbindungen</h2>
+  <table class="tabelle">
+    <thead><tr><th>Datenbank</th><th>Rolle</th><th class="zentriert">Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>CAO-Faktura (cao_2018_001)</td>
+        <td class="text-dim">read-only (Artikelstamm)</td>
+        <td class="zentriert">
+          {% if verbindungen.cao %}<span style="color:var(--gruen-status)">✅ OK</span>
+          {% else %}<span style="color:var(--rot)">✗ Fehler</span>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>WaWi (cao_wawi)</td>
+        <td class="text-dim">read-write (Preise)</td>
+        <td class="zentriert">
+          {% if verbindungen.wawi %}<span style="color:var(--gruen-status)">✅ OK</span>
+          {% else %}<span style="color:var(--rot)">✗ Fehler</span>{% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="max-width:500px">
+  <h2 class="card-titel">Info</h2>
+  <table class="tabelle">
+    <tr><td>Port</td><td>{{ config.PORT }}</td></tr>
+  </table>
+</div>
+{% endblock %}

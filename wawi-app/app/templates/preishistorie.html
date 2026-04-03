@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Preishistorie – {{ artikel.BEZEICHNUNG }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:12px">
+  <a href="{{ url_for('preis_editor', artikel_id=artikel.artikel_id) }}" class="text-dim">← Preis-Editor</a>
+  &nbsp;|&nbsp;
+  <a href="{{ url_for('artikel_liste') }}" class="text-dim">Artikelliste</a>
+</div>
+
+<h1>Preishistorie</h1>
+<p class="text-dim" style="margin-bottom:16px">
+  <code>{{ artikel.ART_NR }}</code> – {{ artikel.BEZEICHNUNG }}
+</p>
+
+<!-- Filter -->
+<form method="get" class="card" style="padding:14px">
+  <div class="filter-leiste">
+    <div class="form-group">
+      <label>Zeitraum</label>
+      <select name="tage" class="form-control" onchange="this.form.submit()">
+        {% for t, l in [(30, 'Letzte 30 Tage'), (90, 'Letzte 90 Tage'), (365, 'Letztes Jahr'), (3650, 'Alles')] %}
+          <option value="{{ t }}" {% if filter_tage == t %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Preisgruppe</label>
+      <select name="pg" class="form-control" onchange="this.form.submit()">
+        <option value="">Alle</option>
+        {% for pg in preisgruppen %}
+          <option value="{{ pg.id }}" {% if filter_pg == pg.id %}selected{% endif %}>{{ pg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="align-self:flex-end">
+      <a href="{{ url_for('preishistorie_export', artikel_id=artikel.artikel_id, tage=filter_tage) }}"
+         class="btn btn-neutral">⬇️ CSV Export</a>
+    </div>
+  </div>
+</form>
+
+<div class="card" style="padding:0;overflow:auto">
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Preisgruppe</th>
+        <th class="rechts">EK netto</th>
+        <th class="rechts">VK brutto</th>
+        <th class="rechts">Marge</th>
+        <th class="rechts">MwSt</th>
+        <th>Geändert von</th>
+        <th>Grund</th>
+        <th class="text-dim">Import</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in historie %}
+      <tr>
+        <td style="white-space:nowrap">{{ h.erstellt_am[:16] | replace('T', ' ') }}</td>
+        <td><span class="badge">{{ h.preisgruppe_name }}</span></td>
+        <td class="rechts">{% if h.ek_preis %}{{ '%.4f'|format(h.ek_preis|float) | replace('.', ',') }} €{% else %}–{% endif %}</td>
+        <td class="rechts"><strong>{{ '%.2f'|format(h.vk_preis|float) | replace('.', ',') }} €</strong></td>
+        <td class="rechts">{% if h.marge_prozent %}{{ '%.2f'|format(h.marge_prozent|float) | replace('.', ',') }} %{% else %}–{% endif %}</td>
+        <td class="rechts">{{ h.mwst_satz }} %</td>
+        <td>{{ h.erstellt_von }}</td>
+        <td>{{ h.aenderungsgrund or '' }}</td>
+        <td class="text-dim" style="font-size:11px">{{ (h.import_ref or '')[:8] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-hell)">Keine Einträge im gewählten Zeitraum.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-dim" style="margin-top:8px">
+  {{ historie | length }} Einträge — GoBD: Diese Liste ist unveränderlich (append-only).
+</p>
+{% endblock %}

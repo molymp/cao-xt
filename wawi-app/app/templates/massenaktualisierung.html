@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+{% block title %}Massenaktualisierung{% endblock %}
+
+{% block extra_style %}
+<style>
+.vorschau-tabelle-wrap { max-height: 420px; overflow-y: auto; }
+.vk-hoch { color: var(--rot); font-weight: 700; }
+.vk-runter { color: var(--gruen-status); font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Massenaktualisierung</h1>
+<p class="text-dim" style="margin-bottom:20px">
+  Preise einer ganzen Warengruppe oder eines Lieferanten prozentual anpassen.
+</p>
+
+<div class="card" style="max-width:620px">
+  <h2 class="card-titel">Parameter</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Preisgruppe</label>
+      <select id="pgId" class="form-control">
+        {% for pg in preisgruppen %}
+          <option value="{{ pg.id }}">{{ pg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Anpassung (%)</label>
+      <input type="number" id="prozent" step="0.1" class="form-control"
+             placeholder="z.B. 5 oder -3" style="font-size:18px;font-weight:700">
+    </div>
+  </div>
+
+  <p style="font-size:13px;color:var(--text-hell);margin-bottom:10px">
+    Entweder Warengruppe <em>oder</em> Lieferant wählen:
+  </p>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Warengruppe</label>
+      <select id="wgId" class="form-control" onchange="document.getElementById('lfId').value=''">
+        <option value="">– keine –</option>
+        {% for wg in warengruppen %}
+          <option value="{{ wg.id }}">{{ wg.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Lieferant</label>
+      <select id="lfId" class="form-control" onchange="document.getElementById('wgId').value=''">
+        <option value="">– keine –</option>
+        {% for lf in lieferanten %}
+          <option value="{{ lf.id }}">{{ lf.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:6px">
+    <button class="btn btn-neutral" onclick="vorschauLaden()">🔍 Vorschau</button>
+    <button class="btn btn-danger" id="btnAusfuehren" onclick="ausfuehren()" disabled>
+      ✅ Jetzt anwenden
+    </button>
+  </div>
+</div>
+
+<!-- Vorschau -->
+<div id="vorschauBereich" class="hidden">
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:14px 20px;background:var(--grau-hell);display:flex;align-items:center;justify-content:space-between">
+      <strong id="vorschauTitel">Vorschau</strong>
+      <span class="text-dim" id="vorschauAnzahl"></span>
+    </div>
+    <div class="vorschau-tabelle-wrap">
+      <table class="tabelle">
+        <thead>
+          <tr>
+            <th>Art.-Nr.</th>
+            <th>Bezeichnung</th>
+            <th class="rechts">EK</th>
+            <th class="rechts">VK bisher</th>
+            <th class="rechts">VK neu</th>
+            <th class="rechts">Differenz</th>
+          </tr>
+        </thead>
+        <tbody id="vorschauBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _vorschauDaten = [];
+
+async function vorschauLaden() {
+  const prozent = parseFloat(document.getElementById('prozent').value);
+  if (isNaN(prozent) || prozent === 0) { toast('Prozentwert eingeben (≠ 0)', 'err'); return; }
+
+  const wg = document.getElementById('wgId').value;
+  const lf = document.getElementById('lfId').value;
+  if (!wg && !lf) { toast('Warengruppe oder Lieferant wählen', 'err'); return; }
+
+  const r = await api('POST', '/wawi/massenupdate/vorschau', {
+    prozent,
+    preisgruppe_id: parseInt(document.getElementById('pgId').value),
+    warengruppe_id: wg || null,
+    lieferant_id:   lf || null,
+  });
+
+  if (!r.ok) { toast(r.fehler || 'Fehler', 'err'); return; }
+  if (r.zeilen.length === 0) { toast('Keine Artikel gefunden', 'err'); return; }
+
+  _vorschauDaten = r.zeilen;
+  renderVorschau(r.zeilen, prozent);
+  document.getElementById('vorschauBereich').classList.remove('hidden');
+  document.getElementById('btnAusfuehren').disabled = false;
+}
+
+function renderVorschau(zeilen, prozent) {
+  document.getElementById('vorschauTitel').textContent =
+    `Vorschau: ${prozent > 0 ? '+' : ''}${prozent.toFixed(2).replace('.', ',')} %`;
+  document.getElementById('vorschauAnzahl').textContent = `${zeilen.length} Artikel`;
+
+  const tb = document.getElementById('vorschauBody');
+  tb.innerHTML = zeilen.map(z => {
+    const diff = z.vk_neu - z.vk_alt;
+    const cls  = diff > 0 ? 'vk-hoch' : (diff < 0 ? 'vk-runter' : '');
+    return `<tr>
+      <td><code>${z.art_nr}</code></td>
+      <td>${z.bezeichnung}</td>
+      <td class="rechts">${z.ek_preis != null ? eur(z.ek_preis) : '–'}</td>
+      <td class="rechts">${eur(z.vk_alt)}</td>
+      <td class="rechts ${cls}">${eur(z.vk_neu)}</td>
+      <td class="rechts ${cls}">${diff >= 0 ? '+' : ''}${eur(diff)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function ausfuehren() {
+  if (!confirm(`${_vorschauDaten.length} Artikel-Preise jetzt aktualisieren?`)) return;
+
+  const prozent = parseFloat(document.getElementById('prozent').value);
+  const wg      = document.getElementById('wgId').value;
+  const lf      = document.getElementById('lfId').value;
+
+  const r = await api('POST', '/wawi/massenupdate/ausfuehren', {
+    prozent,
+    preisgruppe_id: parseInt(document.getElementById('pgId').value),
+    warengruppe_id: wg || null,
+    lieferant_id:   lf || null,
+  });
+
+  if (r.ok) {
+    toast(`✓ ${r.aktualisiert} Preise aktualisiert`);
+    document.getElementById('btnAusfuehren').disabled = true;
+    document.getElementById('vorschauBereich').classList.add('hidden');
+    _vorschauDaten = [];
+  } else {
+    toast(r.fehler || 'Fehler', 'err');
+  }
+}
+</script>
+{% endblock %}
