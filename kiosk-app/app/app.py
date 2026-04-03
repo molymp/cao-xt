@@ -82,11 +82,12 @@ def _pruefe_update_loop():
     while True:
         try:
             _git(["fetch", "origin", "master"])
+            ahead  = int(_git(["rev-list", "--count", "HEAD..origin/master"]))
             local  = _git(["rev-parse", "HEAD"])
             remote = _git(["rev-parse", "origin/master"])
             info   = _git(["log", "-1", "--format=%h|%s", "HEAD"]).split("|", 1)
             _update_status.update({
-                "verfuegbar":    local != remote,
+                "verfuegbar":    ahead > 0,
                 "local_hash":    local,
                 "local_short":   info[0] if info else local[:7],
                 "local_msg":     info[1] if len(info) > 1 else "",
