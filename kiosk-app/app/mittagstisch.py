@@ -22,6 +22,13 @@ CREDENTIALS_FILE = os.path.join(
     os.path.dirname(__file__),
     "<credentials>.json"                # Service-Account-Key (NICHT in Git!)
 )
+
+# Lokale Overrides aus config_local.py (nicht in git)
+try:
+    from config_local import MITTAGSTISCH_SPREADSHEET_ID as SPREADSHEET_ID        # noqa: F811
+    from config_local import MITTAGSTISCH_CREDENTIALS_FILE as CREDENTIALS_FILE    # noqa: F811
+except ImportError:
+    pass
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
