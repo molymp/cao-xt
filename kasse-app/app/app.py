@@ -55,7 +55,9 @@ def _globals():
         'tse_nicht_produktiv': tse_nicht_produktiv,
         'ec_modus':            ec_modus,
         'ec_tagesabschluss':   ec_tagesabschluss,
-        'kiosk_url':           config.KIOSK_URL,
+        'kiosk_url':           config.KIOSK_URL or (
+                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
+                                   if config.KIOSK_PORT else ''),
         'ma_login_name':       session.get('login_name', ''),
     }
 
