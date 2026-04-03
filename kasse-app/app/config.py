@@ -26,6 +26,8 @@ PORT       = int(os.environ.get('KASSE_PORT', '5002'))
 HOST       = os.environ.get('KASSE_HOST', '0.0.0.0')
 SECRET_KEY = os.environ.get('KASSE_SECRET_KEY', 'bitte-in-produktion-aendern')
 
+KIOSK_URL          = os.environ.get('KIOSK_URL',          '')
+
 FIRMA_NAME         = os.environ.get('FIRMA_NAME',         'Habacher Dorfladen')
 FIRMA_STRASSE      = os.environ.get('FIRMA_STRASSE',      '')
 FIRMA_ORT          = os.environ.get('FIRMA_ORT',          '')

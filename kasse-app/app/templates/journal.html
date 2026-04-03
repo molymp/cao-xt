@@ -18,7 +18,7 @@
 .j-seite {
   background: var(--cr);
   color: var(--td);
-  min-height: calc(100vh - 60px);
+  min-height: calc(100vh - 64px);
   padding: 24px;
   font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
 }
@@ -103,7 +103,8 @@
 /* Aktions-Buttons */
 .j-aktionen { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
 .j-btn {
-  padding: 6px 11px; font-size: 12px; border-radius: 6px;
+  min-height: 44px; min-width: 44px;
+  padding: 8px 14px; font-size: 12px; border-radius: 6px;
   border: none; cursor: pointer; font-family: inherit; font-weight: 700;
   transition: background 0.12s; white-space: nowrap;
 }
@@ -158,14 +159,16 @@
 </style>
 {% endblock %}
 
+{% block nav_extra %}
+<a href="/kasse"         class="nav-btn">🖥️ Kasse</a>
+<a href="/kasse/manager" class="nav-btn">📊 Manager</a>
+{% endblock %}
+
 {% block content %}
 <div class="j-seite">
-  <div style="display:flex; align-items:baseline; gap:16px; margin-bottom:20px;">
+  <div style="margin-bottom:20px;">
     <h1 style="font-family:'Lobster',Georgia,serif; font-size:28px; color:var(--gd);
                font-weight:400;">Journal</h1>
-    <a href="/kasse" style="margin-left:auto; padding:8px 16px; background:var(--crd);
-       color:var(--gd); border-radius:var(--rk); font-size:14px; font-weight:700;
-       text-decoration:none;">← Kasse</a>
   </div>
 
   <!-- Filter -->
