@@ -71,7 +71,8 @@ def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0,
       - Nullen = variabler Nummernbereich (Anzahl = Stellenbreite)
       Beispiel: '"EDI-"000000' mit Nr. 18165 → 'EDI-018165'
 
-    Fallback bei unbekanntem / leerem Pattern: 'LS018165'
+    Fallback bei unbekanntem / leerem Pattern: '018165' (reines Zahlenformat,
+    kein Präfix – kompatibel mit dem CAO-VRENUM-Feld).
 
     max_len: wenn > 0 und das Ergebnis zu lang wäre, wird die Nullen-Auffüllung
              reduziert. Reicht das nicht, wird von rechts abgeschnitten (Warnung).
@@ -80,7 +81,7 @@ def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0,
     import re as _re
     num_str = str(nummer)
     if not pattern:
-        result = f"LS{nummer:06d}" if not no_pad else f"LS{num_str}"
+        result = str(nummer).zfill(6) if not no_pad else num_str
     else:
         # Quoted Prefix extrahieren: alles zwischen den ersten "..."
         prefix = ''
@@ -97,7 +98,7 @@ def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0,
         elif prefix:
             result = f"{prefix}{nummer:06d}" if not no_pad else f"{prefix}{num_str}"
         else:
-            result = f"LS{nummer:06d}" if not no_pad else f"LS{num_str}"
+            result = str(nummer).zfill(6) if not no_pad else num_str
 
     if max_len and len(result) > max_len:
         # Padding reduzieren: Präfix + Nummer ohne führende Nullen
