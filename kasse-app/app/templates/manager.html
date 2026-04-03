@@ -114,7 +114,8 @@
   padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
   background: rgba(0,0,0,0.08); color: var(--text-mitte);
 }
-.ar-schritt.aktiv { background: var(--gruen-hell); color: white; }
+.ar-schritt.aktiv    { background: var(--gruen-hell); color: white; }
+.ar-schritt.erledigt { background: rgba(52,211,153,0.22); color: var(--gruen-dunkel); }
 .ar-sep { color: var(--text-dim); font-size: 12px; }
 .denom-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .denom-table td { padding: 3px 4px; vertical-align: middle; }
@@ -533,9 +534,10 @@ let arDiffCent     = 0;
 let _arSaveTmr     = null;
 
 const NACH_ZBON = new URLSearchParams(window.location.search).get('nach_zbon') === '1';
-// Bei ?nach_zbon=1 wird arGesamtCent nach dem Laden der Kassensturz-DB gesetzt.
+const NACH_BANK = new URLSearchParams(window.location.search).get('nach_bank') === '1';
+// Bei ?nach_zbon=1 / ?nach_bank=1 wird arGesamtCent nach dem Laden der Kassensturz-DB gesetzt.
 // Bis dahin mit AR_SOLL vorbelegen damit Bank/Tresor-Buttons sofort aktiv sind.
-if (NACH_ZBON) arGesamtCent = AR_SOLL;
+if (NACH_ZBON || NACH_BANK) arGesamtCent = AR_SOLL;
 
 function arEuro(ct) {
   return (ct / 100).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}) + '\u00a0€';
@@ -729,6 +731,52 @@ function arSetBtn(id, aktiv, href) {
   btn.style.pointerEvents = aktiv ? '' : 'none';
 }
 
+// ── Kassensturz-Zählbrett sperren (nach Z-Bon / nach Bank-Transfer) ──
+function arLockKassensturz() {
+  ['arScheineBody', 'arMuenzenBody'].forEach(id => {
+    const tbody = document.getElementById(id);
+    if (!tbody) return;
+    tbody.querySelectorAll('.denom-btn').forEach(b => {
+      b.disabled = true;
+      b.style.opacity = '0.35';
+      b.style.cursor = 'default';
+    });
+    tbody.querySelectorAll('.tippbar').forEach(el => {
+      el.onclick = null;
+      el.style.cursor = 'default';
+    });
+  });
+  const st1 = document.getElementById('arSt1');
+  if (st1) { st1.classList.remove('aktiv'); st1.classList.add('erledigt'); }
+}
+
+// ── Bank-Zählbrett sperren (nach Bank-Transfer) ──────────────────
+function arLockBank() {
+  ['arBankSchBody', 'arBankMnzBody'].forEach(id => {
+    const tbody = document.getElementById(id);
+    if (!tbody) return;
+    tbody.querySelectorAll('.denom-btn').forEach(b => {
+      b.disabled = true;
+      b.style.opacity = '0.35';
+      b.style.cursor = 'default';
+    });
+    tbody.querySelectorAll('.tippbar').forEach(el => {
+      el.onclick = null;
+      el.style.cursor = 'default';
+    });
+  });
+  const btnBank = document.getElementById('arBtnBank');
+  if (btnBank) {
+    btnBank.disabled = true;
+    btnBank.style.opacity = '0.35';
+    btnBank.style.pointerEvents = 'none';
+  }
+  ['arSt2', 'arSt3'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('aktiv'); el.classList.add('erledigt'); }
+  });
+}
+
 // ── Differenz-Buchung ──────────────────────────────────────────
 async function arDiffBuchen() {
   if (arDiffCent === 0) return;
@@ -785,7 +833,8 @@ async function arNavigiereBank() {
     typ: 'TRESOR', bestand: tresorBestand, betrag_cent: tresorCent
   });
 
-  location.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK&betrag=' + arTransferCent;
+  location.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK&betrag=' + arTransferCent
+                + '&weiter=' + encodeURIComponent('/kasse/manager?nach_bank=1');
 }
 
 // ── Navigation Tresor ──────────────────────────────────────────
@@ -936,9 +985,8 @@ async function arInitTable() {
   arFillTresorTable('arTresorSchBody', AR_SCHEINE);
   arFillTresorTable('arTresorMnzBody', AR_MUENZEN);
 
-  // Bei ?nach_zbon=1: gespeicherte Kassensturz-Stückelung aus DB laden und
-  // in die Zählfelder eintragen, dann Bank-Empfehlung berechnen.
-  if (NACH_ZBON) {
+  // Bei ?nach_zbon=1 oder ?nach_bank=1: gespeicherte Kassensturz-Stückelung aus DB laden.
+  if (NACH_ZBON || NACH_BANK) {
     try {
       const r = await api('GET', '/api/zaehlung/KASSENSTURZ');
       if (r.ok && r.bestand) {
@@ -947,17 +995,36 @@ async function arInitTable() {
           if (el) el.textContent = r.bestand[d.val] || 0;
         });
         arGesamtCent = AR_ALLE.reduce((s,d) => s + arGetCount(d.val)*d.val, 0);
-        // Summenspalten befüllen
         AR_ALLE.forEach(d => {
           const el = document.getElementById('arT_' + d.val);
           if (el) el.textContent = arEuro(arGetCount(d.val) * d.val);
         });
       }
     } catch(e) {}
+    // Kassensturz-Zählbrett sperren (Z-Bon wurde bereits erstellt)
+    arLockKassensturz();
   }
 
-  arBerechneBankEmpfehlung();
-  arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val)*d.val, 0);
+  // Bei ?nach_bank=1: gespeicherte Bank-Stückelung laden, Bank-Sektion sperren.
+  if (NACH_BANK) {
+    try {
+      const rBk = await api('GET', '/api/zaehlung/TRANSFER_BANK');
+      if (rBk.ok && rBk.bestand) {
+        AR_ALLE.forEach(d => {
+          const el = document.getElementById('arb_' + d.val);
+          if (el) el.textContent = rBk.bestand[d.val] || 0;
+          const te = document.getElementById('arbT_' + d.val);
+          if (te) te.textContent = arEuro((rBk.bestand[d.val] || 0) * d.val);
+        });
+        arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val)*d.val, 0);
+      }
+    } catch(e) {}
+    arLockBank();
+  } else {
+    arBerechneBankEmpfehlung();
+    arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val)*d.val, 0);
+  }
+
   arUpdateUI();
   ladeTresorBestand();
 }
