@@ -1,0 +1,10 @@
+# Kopiere diese Datei nach config_local.py und trage deine Werte ein.
+# config_local.py ist in .gitignore und wird NICHT eingecheckt.
+
+DB_HOST     = '192.168.x.x'   # IP des MariaDB-Servers im lokalen Netz
+DB_PORT     = 3306
+DB_NAME     = 'Backwaren'
+DB_USER     = 'kiosk'
+DB_PASSWORD = 'geheim'
+
+DEBUG = True
