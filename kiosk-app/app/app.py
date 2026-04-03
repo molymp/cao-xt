@@ -83,8 +83,12 @@ def _pruefe_update_loop():
             local  = _git(["rev-parse", "HEAD"])
             remote = _git(["rev-parse", "origin/master"])
             info   = _git(["log", "-1", "--format=%h|%s", "HEAD"]).split("|", 1)
+            # Nur "verfügbar" wenn origin/master Commits hat, die lokal fehlen.
+            # Ist HEAD bereits vor origin/master (lokale Commits nicht gepusht),
+            # gibt es nichts zu holen → kein Update anzeigen.
+            incoming = _git(["rev-list", "--count", "HEAD..origin/master"])
             _update_status.update({
-                "verfuegbar":    local != remote,
+                "verfuegbar":    int(incoming) > 0,
                 "local_hash":    local,
                 "local_short":   info[0] if info else local[:7],
                 "local_msg":     info[1] if len(info) > 1 else "",
