@@ -38,10 +38,12 @@ PRODUKTBILDER_DIR = os.path.join(os.path.dirname(__file__), "produktbilder")
 # ── GitHub-Update-Prüfung ─────────────────────────────────────
 
 def _find_git_root() -> str | None:
-    """Sucht das .git-Verzeichnis ab app/ aufwärts (max. 6 Ebenen)."""
+    """Sucht das .git-Verzeichnis/-Datei ab app/ aufwärts (max. 6 Ebenen).
+    Unterstützt normale Repos und Git-Worktrees (.git als Datei)."""
     d = os.path.dirname(os.path.abspath(__file__))
     for _ in range(6):
-        if os.path.isdir(os.path.join(d, ".git")):
+        git_path = os.path.join(d, ".git")
+        if os.path.isdir(git_path) or os.path.isfile(git_path):
             return d
         parent = os.path.dirname(d)
         if parent == d:
