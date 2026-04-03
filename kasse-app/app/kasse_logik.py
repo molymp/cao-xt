@@ -6,9 +6,10 @@ Enthält alle Datenbankoperationen für:
  • MwSt-Sätze aus REGISTRY
  • Artikel-Suche (ARTIKEL) und Schnelltasten (ARTIKEL_SCHNELLZUGRIFF)
  • Vorgänge: erstellen, Position hinzufügen/entfernen, parken, stornieren
- • Zahlung abschließen (TSE-Signatur speichern)
+ • Zahlung abschließen (TSE-Signatur speichern, JOURNAL-Eintrag)
  • Kassenbuch: Einlagen, Entnahmen, Anfangsbestand
  • Tagesabschluss (Z-Bon)
+ • Bon → CAO-JOURNAL/JOURNALPOS (inkl. HASHSUM)
  • Bon → CAO-Lieferschein wandeln
  • Kunden-Suche (ADRESSEN)
 """
@@ -1428,7 +1429,263 @@ def zahlung_abschliessen(vorgang_id: int, terminal_nr: int,
                  vorgang_id, vorgang.get('MITARBEITER_ID'), ist_training)
             )
 
+    # JOURNAL-Eintrag nach dem Commit (nicht-blockierend, analog TSE-Fehlerbehandlung)
+    bon_zu_journal(vorgang_id, terminal_nr)
+
     return vorgang_laden(vorgang_id)
+
+
+# ─────────────────────────────────────────────────────────────
+# Bon → CAO JOURNAL/JOURNALPOS
+# ─────────────────────────────────────────────────────────────
+
+# HASHSUM-Formel: reverse-engineered aus cao_kasse_pro.exe v1.5.5.66
+_SQL_JOURNAL_HASHSTRING = """
+    SELECT MD5(CONCAT(
+        J.REC_ID, J.KASSEN_ID, J.VRENUM, J.RDATUM, J.KBDATUM,
+        J.BSUMME_0,J.BSUMME_1,J.BSUMME_2,J.BSUMME_3,J.BSUMME,
+        J.NSUMME_0,J.NSUMME_1,J.NSUMME_2,J.NSUMME_3,J.NSUMME,
+        J.MSUMME_0,J.MSUMME_1,J.MSUMME_2,J.MSUMME_3,J.MSUMME,
+        J.KOST_NETTO, J.WERT_NETTO, J.LOHN, J.WARE, J.TKOST, J.ROHGEWINN,
+        J.ATSUMME, J.ATMSUMME, J.GEGEBEN, J.ERSTELLT, J.ERST_NAME, J.KUN_NUM,
+        JP.REC_ID, JP.ARTIKEL_ID, JP.MENGE, JP.EK_PREIS, JP.EPREIS, JP.GPREIS,
+        JP.E_RGEWINN, JP.G_RGEWINN, JP.RABATT, JP.RABATT2, JP.RABATT3,
+        JP.E_RABATT_BETRAG, JP.G_RABATT_BETRAG, JP.STEUER_CODE
+    )) AS HASHSTRING
+    FROM JOURNAL J
+    LEFT JOIN JOURNALPOS JP ON J.REC_ID = JP.JOURNAL_ID
+    WHERE J.REC_ID = %s
+    ORDER BY JP.POSITION, JP.REC_ID
+"""
+
+_JOURNAL_HASHSALZ = 'cZodx62PyrgwlJKuj'
+
+
+def bon_zu_journal(vorgang_id: int, terminal_nr: int) -> int | None:
+    """Schreibt einen abgeschlossenen Kassenbon in JOURNAL + JOURNALPOS.
+
+    Berechnet die HASHSUM nach CAO-Algorithmus (reverse-engineered aus
+    cao_kasse_pro.exe v1.5.5.66). Gibt die JOURNAL.REC_ID zurück oder
+    None bei Fehler.
+
+    Nicht-blockierend: Fehler werden geloggt, der Kassiervorgang bleibt
+    abgeschlossen (gleiche Behandlung wie TSE-Fehler).
+    Trainings-Vorgänge werden nicht in JOURNAL geschrieben.
+    """
+    try:
+        return _bon_zu_journal_intern(vorgang_id, terminal_nr)
+    except Exception as exc:
+        log.error("bon_zu_journal fehlgeschlagen (Vorgang %d): %s", vorgang_id, exc)
+        return None
+
+
+def _bon_zu_journal_intern(vorgang_id: int, terminal_nr: int) -> int | None:
+    vorgang = vorgang_laden(vorgang_id)
+    if not vorgang:
+        raise ValueError(f"Vorgang {vorgang_id} nicht gefunden.")
+    if vorgang.get('IST_TRAINING'):
+        log.debug("Trainings-Vorgang %d: kein JOURNAL-Eintrag.", vorgang_id)
+        return None
+
+    positionen  = [p for p in vorgang_positionen(vorgang_id) if not p.get('STORNIERT')]
+    zahlungen   = vorgang_zahlungen(vorgang_id)
+    mwst_saetze = mwst_saetze_laden()
+
+    # POS_TA_ID: aktueller Tagesabschluss-Datensatz dieses Terminals
+    with get_db() as cur:
+        cur.execute(
+            "SELECT ID FROM XT_KASSE_TAGESABSCHLUSS "
+            "WHERE TERMINAL_NR = %s ORDER BY ZEITPUNKT DESC LIMIT 1",
+            (terminal_nr,)
+        )
+        ta_row = cur.fetchone()
+    pos_ta_id = int(ta_row['ID']) if ta_row else -1
+
+    # FIRMA_ID
+    firma_id = -1
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT REC_ID FROM FIRMA ORDER BY REC_ID DESC LIMIT 1")
+            row = cur.fetchone()
+            if row:
+                firma_id = int(row['REC_ID'])
+    except Exception as _e:
+        log.warning("bon_zu_journal: FIRMA_ID-Abfrage fehlgeschlagen: %s", _e)
+
+    # Brutto/Netto/MwSt-Summen je Steuersatz (Cent)
+    bsumme = {0: 0, 1: 0, 2: 0, 3: 0}
+    nsumme = {0: 0, 1: 0, 2: 0, 3: 0}
+    msumme = {0: 0, 1: 0, 2: 0, 3: 0}
+    for pos in positionen:
+        code = int(pos.get('STEUER_CODE') or 0)
+        if code in bsumme:
+            bsumme[code] += int(pos.get('GESAMTPREIS_BRUTTO') or 0)
+            nsumme[code] += int(pos.get('NETTO_BETRAG') or 0)
+            msumme[code] += int(pos.get('MWST_BETRAG') or 0)
+
+    def c(cent: int) -> float:
+        return round(cent / 100, 4)
+
+    bsumme_total = int(vorgang.get('BETRAG_BRUTTO') or 0)
+    nsumme_total = int(vorgang.get('BETRAG_NETTO') or 0)
+    msumme_total = bsumme_total - nsumme_total
+
+    # Primäre Zahlart (höchster Betrag)
+    zahlart_id   = -1
+    zahlart_name = ''
+    gegeben      = 0
+    if zahlungen:
+        prim         = max(zahlungen, key=lambda z: int(z.get('BETRAG') or 0))
+        zahlart_raw  = (prim.get('ZAHLART') or '').upper()
+        gegeben      = int(prim.get('BETRAG_GEGEBEN') or prim.get('BETRAG') or 0)
+        name_map     = {'BAR': 'Bar', 'EC': 'EC', 'KUNDENKONTO': 'Kundenkonto'}
+        zahlart_name = name_map.get(zahlart_raw, zahlart_raw)
+        try:
+            with get_db() as cur:
+                cur.execute(
+                    "SELECT REC_ID FROM ZAHLUNGSARTEN WHERE NAME LIKE %s LIMIT 1",
+                    (f"{zahlart_name}%",)
+                )
+                za_row = cur.fetchone()
+                if za_row:
+                    zahlart_id = int(za_row['REC_ID'])
+        except Exception:
+            pass
+
+    ma_id  = int(vorgang.get('MITARBEITER_ID') or -1)
+    vrenum = vorgang.get('VORGANGSNUMMER') or str(vorgang.get('BON_NR', ''))
+    jetzt  = datetime.now()
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            """INSERT INTO JOURNAL (
+               QUELLE, QUELLE_SUB, KASSEN_ID, POS_TA_ID, TERM_ID,
+               MA_ID, VRENUM, RDATUM, KBDATUM, STADIUM,
+               ADDR_ID, SPRACH_ID,
+               ZAHLART, ZAHLART_NAME, BRUTTO_FLAG, PR_EBENE,
+               KUN_NAME1, KUN_NUM,
+               WAEHRUNG, KURS,
+               BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
+               NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
+               MSUMME_0, MSUMME_1, MSUMME_2, MSUMME_3, MSUMME,
+               MWST_1, MWST_2,
+               GEGEBEN,
+               KOST_NETTO, WARE, WERT_NETTO, LOHN, TKOST, ROHGEWINN,
+               ATSUMME, ATMSUMME,
+               ERSTELLT, ERST_NAME, GEAEND, GEAEND_NAME,
+               FIRMA_ID, HASHSUM
+            ) VALUES (
+               3, 2, %s, %s, 1,
+               %s, %s, %s, %s, 9,
+               -2, 2,
+               %s, %s, 'Y', 5,
+               'Barverkauf', 0,
+               '€', 1.0000,
+               %s, %s, %s, %s, %s,
+               %s, %s, %s, %s, %s,
+               %s, %s, %s, %s, %s,
+               %s, %s,
+               %s,
+               0, %s, %s, 0, 0, %s,
+               0, 0,
+               %s, 'Kasse', %s, 'Kasse',
+               %s, '$$'
+            )""",
+            (
+                terminal_nr, pos_ta_id,
+                ma_id, vrenum, jetzt, jetzt,
+                zahlart_id, zahlart_name,
+                c(bsumme[0]), c(bsumme[1]), c(bsumme[2]), c(bsumme[3]), c(bsumme_total),
+                c(nsumme[0]), c(nsumme[1]), c(nsumme[2]), c(nsumme[3]), c(nsumme_total),
+                c(msumme[0]), c(msumme[1]), c(msumme[2]), c(msumme[3]), c(msumme_total),
+                float(mwst_saetze.get(1, 19.0)), float(mwst_saetze.get(2, 7.0)),
+                c(gegeben),
+                c(nsumme_total), c(nsumme_total), c(nsumme_total),
+                jetzt, jetzt,
+                firma_id,
+            )
+        )
+        journal_id = cur.lastrowid
+
+        # JOURNALPOS – eine Zeile pro nicht-stornierter Position
+        for pos in positionen:
+            art_id     = int(pos.get('ARTIKEL_ID') or -99)
+            ist_wg     = art_id <= 0
+            artikeltyp = 'F' if ist_wg else 'S'
+            matchcode  = ''
+            kurzbezeichnung = (pos.get('BEZEICHNUNG') or '')[:30]
+
+            if not ist_wg:
+                cur.execute(
+                    "SELECT MATCHCODE, KURZNAME FROM ARTIKEL WHERE REC_ID = %s LIMIT 1",
+                    (art_id,)
+                )
+                art_row = cur.fetchone()
+                if art_row:
+                    matchcode       = art_row.get('MATCHCODE') or ''
+                    kurzbezeichnung = (art_row.get('KURZNAME') or kurzbezeichnung)[:30]
+
+            menge = float(pos.get('MENGE') or 1)
+            gp    = c(int(pos.get('GESAMTPREIS_BRUTTO') or 0))
+            ep    = c(int(pos.get('EINZELPREIS_BRUTTO') or 0))
+            gp_n  = c(int(pos.get('NETTO_BETRAG') or 0))
+            ep_n  = round(gp_n / menge, 4) if menge else gp_n
+
+            cur.execute(
+                """INSERT INTO JOURNALPOS (
+                   QUELLE, QUELLE_SUB, JOURNAL_ID, POSITION,
+                   ARTIKELTYP, ARTIKEL_ID, WARENGRUPPE,
+                   ADDR_ID, VRENUM,
+                   ARTNUM, BARCODE, MATCHCODE, BEZEICHNUNG, KURZBEZEICHNUNG,
+                   MENGE, EPREIS, GPREIS, EK_PREIS, CALC_FAKTOR,
+                   E_RGEWINN, G_RGEWINN,
+                   RABATT, RABATT2, RABATT3,
+                   E_RABATT_BETRAG, G_RABATT_BETRAG,
+                   STEUER_CODE, GEGENKONTO,
+                   BRUTTO_FLAG, GEBUCHT,
+                   ME_EINHEIT, ME_CODE, PR_EINHEIT, VPE,
+                   ALTTEIL_PROZ, LAGER_ID
+                ) VALUES (
+                   3, 2, %s, %s,
+                   %s, %s, 0,
+                   -2, %s,
+                   %s, %s, %s, %s, %s,
+                   %s, %s, %s, 0, 1,
+                   %s, %s,
+                   0, 0, 0,
+                   0, 0,
+                   %s, 0,
+                   'Y', 'Y',
+                   'Stk', 'H87', 1, 1,
+                   0.10, -2
+                )""",
+                (
+                    journal_id, int(pos.get('POSITION') or 0),
+                    artikeltyp, art_id,
+                    vrenum,
+                    pos.get('ARTNUM') or '', pos.get('BARCODE') or '',
+                    matchcode, pos.get('BEZEICHNUNG') or '', kurzbezeichnung,
+                    menge, ep, gp,
+                    ep_n, gp_n,
+                    int(pos.get('STEUER_CODE') or 0),
+                )
+            )
+
+        # HASHSUM berechnen und einsetzen
+        cur.execute(_SQL_JOURNAL_HASHSTRING, (journal_id,))
+        hash_rows = cur.fetchall()
+        concat_hs = ''.join(r['HASHSTRING'] for r in hash_rows if r.get('HASHSTRING'))
+        hashsum   = hashlib.md5(
+            (_JOURNAL_HASHSALZ + concat_hs).encode('ascii', errors='replace')
+        ).hexdigest().upper()
+        cur.execute(
+            "UPDATE JOURNAL SET HASHSUM = %s WHERE REC_ID = %s",
+            (hashsum, journal_id)
+        )
+        log.info("JOURNAL-Eintrag erstellt: REC_ID=%d, Vorgang=%d, HASHSUM=%s",
+                 journal_id, vorgang_id, hashsum)
+
+    return journal_id
 
 
 # ─────────────────────────────────────────────────────────────
