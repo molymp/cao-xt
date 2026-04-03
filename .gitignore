@@ -12,3 +12,6 @@ export/
 
 # Lokale Konfiguration mit Zugangsdaten
 config_local.py
+
+# Google Service Account Keys
+*-[0-9a-f]*[0-9a-f].json
