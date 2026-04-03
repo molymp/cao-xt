@@ -258,7 +258,7 @@
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
         {% if kasse_url %}
-        <a href="{{ kasse_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);" target="_blank">🖥️ Kasse</a>
+        <a href="{{ kasse_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">🖥️ Kasse</a>
         {% endif %}
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
