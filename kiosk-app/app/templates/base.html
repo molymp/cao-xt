@@ -108,6 +108,19 @@
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
         }
+        header .terminal-info .terminal-uhr-zeit {
+            display: block;
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--gruen-blass);
+            letter-spacing: 0.04em;
+        }
+        header .terminal-info .terminal-uhr-datum {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--grau-mitte);
+        }
 
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -270,7 +283,11 @@
         {% endif %}
     </nav>
 
-    <div class="terminal-info">Terminal {{ terminal_nr }}</div>
+    <div class="terminal-info" id="terminal-info">
+        Terminal {{ terminal_nr }}
+        <span class="terminal-uhr-zeit" id="terminal-uhr-zeit">--:--</span>
+        <span class="terminal-uhr-datum" id="terminal-uhr-datum">--</span>
+    </div>
 </header>
 
 {% block inhalt %}{% endblock %}
@@ -481,6 +498,20 @@ async function aktualisiereBestellBadge() {
 }
 aktualisiereBestellBadge();
 setInterval(aktualisiereBestellBadge, 30000);
+
+// ── Uhrzeit/Datum in Header ───────────────────────────────────
+(function() {
+    var MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    function _uhrTick() {
+        var jetzt = new Date();
+        var zeitEl  = document.getElementById('terminal-uhr-zeit');
+        var datumEl = document.getElementById('terminal-uhr-datum');
+        if (zeitEl)  zeitEl.textContent  = String(jetzt.getHours()).padStart(2,'0') + ':' + String(jetzt.getMinutes()).padStart(2,'0');
+        if (datumEl) datumEl.textContent = String(jetzt.getDate()).padStart(2,'0') + '-' + MONATE[jetzt.getMonth()];
+    }
+    _uhrTick();
+    setInterval(_uhrTick, 10000);
+})();
 </script>
 
 {% block extra_js %}{% endblock %}

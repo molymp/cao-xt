@@ -189,6 +189,29 @@ h1, h2, h3 {
   50%       { opacity: 0.7; }
 }
 
+/* ── Uhrzeit-Anzeige in Navbar ──────────────────────────── */
+.navbar-uhrzeit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.navbar-uhrzeit .uhr-zeit {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gruen-blass);
+  letter-spacing: 0.04em;
+}
+.navbar-uhrzeit .uhr-datum {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--grau-mitte);
+}
+
 /* ── Touch-Targets (44px minimum) ─────────────────────────── */
 .tab-btn   { min-height: 44px; padding: 10px 18px; }
 .denom-btn { min-height: 48px; min-width: 48px; }
@@ -372,6 +395,10 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
   <a href="/logout"           class="nav-btn danger">Abmelden</a>
+  <div class="navbar-uhrzeit" id="navbar-uhrzeit">
+    <span class="uhr-zeit">--:--</span>
+    <span class="uhr-datum">--</span>
+  </div>
 </div>
 
 {% block content %}{% endblock %}
@@ -452,6 +479,20 @@ function numpadClose() {
   document.getElementById('numpadOverlay').classList.add('hidden');
   _npVal = ''; _npCb = null;
 }
+
+// ── Uhrzeit/Datum in Navbar ───────────────────────────────────
+(function() {
+  var MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  function _uhrTick() {
+    var jetzt = new Date();
+    var zeitEl  = document.querySelector('#navbar-uhrzeit .uhr-zeit');
+    var datumEl = document.querySelector('#navbar-uhrzeit .uhr-datum');
+    if (zeitEl)  zeitEl.textContent  = String(jetzt.getHours()).padStart(2,'0') + ':' + String(jetzt.getMinutes()).padStart(2,'0');
+    if (datumEl) datumEl.textContent = String(jetzt.getDate()).padStart(2,'0') + '-' + MONATE[jetzt.getMonth()];
+  }
+  _uhrTick();
+  setInterval(_uhrTick, 10000);
+})();
 </script>
 {% block extra_script %}{% endblock %}
 </body>
