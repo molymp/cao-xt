@@ -1683,7 +1683,7 @@ def kasse_handbuch_upload():
 
 # Ältester Commit, der die Update-/Rollback-Funktion bereits enthält.
 # Rollback auf ältere Versionen wird nicht angeboten.
-ROLLBACK_MIN_COMMIT = "5589cc3"
+ROLLBACK_MIN_COMMIT = "13a88eb"
 
 def _parse_git_log(raw: str) -> list[dict]:
     ergebnis = []
