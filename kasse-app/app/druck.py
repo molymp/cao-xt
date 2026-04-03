@@ -698,6 +698,69 @@ def drucke_lieferschein(terminal_nr: int, lieferschein_id: int,
         _sende(ip, port, daten_kopie)
 
 
+def drucke_lieferschein_bon(terminal_nr: int, vorgang_id: int,
+                             adressen_id: int,
+                             mit_kopie: bool = False) -> None:
+    """Druckt einen Lieferschein-Bon aus Vorgangsdaten (ohne LIEFERSCHEIN-Tabelle).
+
+    Wird nach `lieferschein_zu_journal()` aufgerufen: die LIEFERSCHEIN-Tabelle
+    existiert für diesen Vorgang nicht mehr, aber Vorgang + Positionen stehen
+    noch in XT_KASSE_VORGAENGE / XT_KASSE_VORGAENGE_POS.
+    """
+    firma = _firma_info(terminal_nr)
+    ip, port = _drucker_addr(terminal_nr)
+
+    with get_db() as cur:
+        cur.execute(
+            "SELECT * FROM XT_KASSE_VORGAENGE WHERE ID = %s",
+            (vorgang_id,)
+        )
+        vorgang = cur.fetchone()
+        if not vorgang:
+            raise RuntimeError(f"Vorgang {vorgang_id} nicht gefunden.")
+
+        cur.execute(
+            """SELECT * FROM XT_KASSE_VORGAENGE_POS
+               WHERE VORGANG_ID = %s AND COALESCE(STORNIERT, 0) = 0
+               ORDER BY POSITION""",
+            (vorgang_id,)
+        )
+        positionen = cur.fetchall()
+
+        # Kundendaten aus ADRESSEN
+        kun_name1 = ''
+        kun_name2 = ''
+        if adressen_id and adressen_id > 0:
+            cur.execute(
+                "SELECT NAME1, NAME2 FROM ADRESSEN WHERE REC_ID = %s",
+                (adressen_id,)
+            )
+            adr = cur.fetchone()
+            if adr:
+                kun_name1 = adr.get('NAME1') or ''
+                kun_name2 = adr.get('NAME2') or ''
+
+    # Kompatibles Dict für _lieferschein_bytes()
+    ls = {
+        'VLSNUM':    vorgang.get('VORGANGSNUMMER') or str(vorgang.get('BON_NR', '')),
+        'LDATUM':    vorgang.get('BON_DATUM') or vorgang.get('ERSTELLT') or datetime.now(),
+        'KUN_NAME1': kun_name1,
+        'KUN_NAME2': kun_name2,
+        'KUN_STRASSE': '',
+        'KUN_PLZ':   '',
+        'KUN_ORT':   '',
+        'LIEFART_NAME': '',
+        'PROJEKT':   '',
+    }
+
+    daten = _lieferschein_bytes(ls, positionen, firma)
+    _sende(ip, port, daten)
+
+    if mit_kopie:
+        daten_kopie = _lieferschein_bytes(ls, positionen, firma, kopie=True)
+        _sende(ip, port, daten_kopie)
+
+
 def test_drucker(terminal_nr: int) -> bool:
     try:
         ip, port = _drucker_addr(terminal_nr)

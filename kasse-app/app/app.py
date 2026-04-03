@@ -1086,6 +1086,13 @@ def api_zu_lieferschein(vid):
         log.exception("Fehler bei Lieferschein-Journal-Erstellung: %s", e)
         return jsonify({'ok': False, 'fehler': f'Interner Fehler: {e}'}), 500
 
+    # Lieferschein-Bon drucken (mit Unterschriftszeile, ohne Preise).
+    # Druckfehler dürfen den erfolgreichen Abschluss nicht zurückrollen.
+    try:
+        druck.drucke_lieferschein_bon(config.TERMINAL_NR, vid, adressen_id)
+    except Exception as _pe:
+        log.warning("Lieferschein-Bondruck fehlgeschlagen (Vorgang trotzdem gebucht): %s", _pe)
+
     return jsonify({'ok': True, **result})
 
 
