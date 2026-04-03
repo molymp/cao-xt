@@ -32,9 +32,12 @@
   margin-bottom: 20px;
   box-shadow: var(--sk);
   display: grid;
-  grid-template-columns: 120px 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   align-items: end;
+}
+@media (min-width: 600px) {
+  .j-filter { grid-template-columns: 120px 1fr 1fr auto; }
 }
 .j-filter label { display: block; font-size: 12px; font-weight: 700;
   color: var(--th); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
