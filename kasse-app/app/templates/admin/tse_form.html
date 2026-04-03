@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ 'TSE-Gerät bearbeiten' if geraet.REC_ID else 'Neues TSE-Gerät' }}{% endblock %}
+{% block nav_extra %}
+<a href="/admin/tse" class="nav-btn">🔐 TSE-Verwaltung</a>
+{% endblock %}
 {% block content %}
 <div style="max-width:700px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
   <h1 style="font-size:26px; margin-bottom:20px;">

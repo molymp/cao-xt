@@ -56,6 +56,7 @@ def _globals():
         'ec_modus':            ec_modus,
         'ec_tagesabschluss':   ec_tagesabschluss,
         'kiosk_url':           config.KIOSK_URL,
+        'ma_login_name':       session.get('login_name', ''),
     }
 
 

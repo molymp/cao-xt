@@ -27,6 +27,7 @@ def _inject_globals():
     return {
         "terminal_nr":      get_terminal_nr(),
         "update_verfuegbar": _update_status["verfuegbar"],
+        "kasse_url":         config.KASSE_URL,
     }
 
 

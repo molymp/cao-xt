@@ -21,3 +21,6 @@ HOST  = "0.0.0.0"      # ganzes LAN erreichbar
 # ── Barcode ───────────────────────────────────────────────────
 EAN_BEREICH       = "21"
 EAN_SAMMELARTIKEL = "7408"   # CAO-Sammelartikel Backwaren
+
+# ── Verknüpfte Apps ───────────────────────────────────────────
+KASSE_URL = ""  # z.B. http://localhost:5002 – zeigt Wechsel-Button in der Navbar

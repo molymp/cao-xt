@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Admin{% endblock %}
+{% block nav_extra %}
+<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+{% endblock %}
 {% block content %}
 <div style="max-width:900px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
   <h1 style="font-size:26px; margin-bottom:20px;">⚙️ Administration – Terminal {{ terminal_nr }}</h1>

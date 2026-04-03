@@ -257,6 +257,9 @@
             <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+        {% if kasse_url %}
+        <a href="{{ kasse_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);" target="_blank">🖥️ Kasse</a>
+        {% endif %}
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}
