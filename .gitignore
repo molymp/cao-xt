@@ -9,3 +9,6 @@ config.ini
 
 # Export-Ausgabe
 export/
+
+# Lokale Konfiguration mit Zugangsdaten
+config_local.py
