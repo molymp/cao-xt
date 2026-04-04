@@ -17,13 +17,16 @@ DB_NAME     = "Backwaren"
 TERMINAL_NR = 1
 
 # ── Flask ─────────────────────────────────────────────────────
-DEBUG = True
-PORT  = 5001            # 5000 ist belegt
-HOST  = "0.0.0.0"      # ganzes LAN erreichbar
+DEBUG      = True
+PORT       = 5001            # 5000 ist belegt
+HOST       = "0.0.0.0"      # ganzes LAN erreichbar
+SECRET_KEY = os.environ.get('KIOSK_SECRET_KEY', 'bitte-in-produktion-aendern')
 
 # ── Barcode ───────────────────────────────────────────────────
 EAN_BEREICH       = "21"
 EAN_SAMMELARTIKEL = "7408"   # CAO-Sammelartikel Backwaren
+
+FIRMA_NAME = os.environ.get('FIRMA_NAME', 'Habacher Dorfladen')
 
 # ── Verknüpfte Apps ───────────────────────────────────────────
 KASSE_URL  = os.environ.get('KASSE_URL',  '')   # oder z.B. http://192.168.1.x:5002

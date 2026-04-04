@@ -86,8 +86,10 @@
         }
         header nav { display: flex; gap: 4px; flex-wrap: nowrap; }
         header nav a {
+            display: inline-flex; align-items: center;
             color: var(--creme-dunkel); text-decoration: none;
             padding: 9px 15px; border-radius: var(--radius-klein);
+            border: 1px solid rgba(255,255,255,0.15);
             font-size: 0.88rem; font-weight: 700;
             transition: background 0.15s, color 0.15s; white-space: nowrap;
         }
@@ -104,9 +106,37 @@
             0%, 100% { opacity: 1; }
             50%       { opacity: 0.65; }
         }
+        /* App-Switcher */
+        header .nav-app-aktiv {
+            border: 2px solid var(--gold); color: var(--gold-hell);
+            background: rgba(200,120,10,0.15); border-radius: var(--radius-klein);
+            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
+            text-decoration: none; white-space: nowrap;
+        }
+        header .nav-app-switch {
+            border: 1px solid rgba(200,120,10,0.4); color: var(--gold-hell);
+            border-radius: var(--radius-klein);
+            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
+            text-decoration: none; white-space: nowrap;
+            transition: background 0.15s;
+        }
+        header .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
+        header .nav-app-inaktiv {
+            border: 1px solid rgba(255,255,255,0.08); color: var(--grau-mitte);
+            border-radius: var(--radius-klein);
+            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
+            white-space: nowrap; opacity: 0.5; cursor: default;
+        }
+        .app-switcher { display: flex; align-items: center; gap: 4px; }
         header .terminal-info {
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
+        }
+        header .terminal-info .terminal-uhr-user {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--gruen-blass);
         }
         header .terminal-info .terminal-uhr-zeit {
             display: block;
@@ -121,6 +151,13 @@
             font-weight: 600;
             color: var(--grau-mitte);
         }
+        header .nav-logout {
+            font-size: 0.78rem; color: var(--grau-mitte);
+            text-decoration: none; padding: 4px 8px;
+            border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+            transition: background 0.12s;
+        }
+        header .nav-logout:hover { background: rgba(255,255,255,0.1); color: var(--creme); }
 
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -255,10 +292,25 @@
              alt="Habacher Dorfladen Logo"
              onerror="this.style.display='none'">
         <div class="logo-text">
-            Habacher Dorfladen
-            <span>Kiosk</span>
+            🌾 {{ firma_name }}
+            <span>Kiosk · {{ db_name }}</span>
         </div>
     </a>
+
+    <!-- App-Switcher: Kiosk → Kasse → WaWi (feste Reihenfolge) -->
+    <div class="app-switcher">
+        <a href="/" class="nav-app-aktiv">🖥️ Kiosk</a>
+        {% if kasse_url %}
+        <a href="{{ kasse_url }}" class="nav-app-switch">🛒 Kasse</a>
+        {% else %}
+        <span class="nav-app-inaktiv">🛒 Kasse</span>
+        {% endif %}
+        {% if wawi_url %}
+        <a href="{{ wawi_url }}" class="nav-app-switch">📦 WaWi</a>
+        {% else %}
+        <span class="nav-app-inaktiv">📦 WaWi</span>
+        {% endif %}
+    </div>
 
     <nav>
         <a href="/" class="{% if request.path == '/' %}aktiv{% endif %}">🧺 Artikelauswahl</a>
@@ -270,12 +322,6 @@
             <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
-        {% if kasse_url %}
-        <a href="{{ kasse_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">🖥️ Kasse</a>
-        {% endif %}
-        {% if wawi_url %}
-        <a href="{{ wawi_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">📦 WaWi</a>
-        {% endif %}
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}
@@ -287,10 +333,11 @@
     </nav>
 
     <div class="terminal-info" id="terminal-info">
-        Terminal {{ terminal_nr }}
+        {% if ma_login_name %}<span class="terminal-uhr-user">👤 {{ ma_login_name }}</span>{% endif %}
         <span class="terminal-uhr-zeit" id="terminal-uhr-zeit">--:--</span>
         <span class="terminal-uhr-datum" id="terminal-uhr-datum">--</span>
     </div>
+    <a href="/logout" class="nav-logout">Abmelden</a>
 </header>
 
 {% block inhalt %}{% endblock %}
