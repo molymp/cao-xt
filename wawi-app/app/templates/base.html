@@ -86,7 +86,7 @@ a { text-decoration: none; color: inherit; }
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--grau-mitte);
-  margin-left: 4px;
+  margin-top: 1px;
 }
 .navbar .spacer { flex: 1; }
 .navbar .nav-btn {
@@ -112,6 +112,24 @@ a { text-decoration: none; color: inherit; }
 .nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
 .nav-btn-logout { border-color: rgba(184,48,48,0.4); color: #f0a0a0; }
 .nav-btn-logout:hover { background: rgba(184,48,48,0.2); color: #fdd; }
+.nav-btn-app-aktiv {
+  border: 2px solid var(--gold) !important;
+  color: var(--gold-hell);
+  background: rgba(200,120,10,0.15);
+}
+.nav-btn-app-inaktiv {
+  border-color: rgba(255,255,255,0.08);
+  color: var(--grau-mitte);
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: default;
+}
+.navbar .logo {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  white-space: nowrap;
+}
 .nav-user {
   font-size: 13px; font-weight: 700;
   color: var(--grau-mitte);
@@ -289,15 +307,23 @@ a { text-decoration: none; color: inherit; }
 
   <!-- Navbar -->
   <div class="navbar">
-    <span class="logo-name">🌾 {{ firma_name }}</span>
-    <span class="logo-sub">· WaWi</span>
-    <div class="spacer"></div>
+    <span class="logo">
+      <span class="logo-name">🌾 {{ firma_name }}</span>
+      <span class="logo-sub">WaWi</span>
+    </span>
+    <!-- App-Switcher: Kiosk → Kasse → WaWi (feste Reihenfolge) -->
     {% if kiosk_url %}
     <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
+    {% else %}
+    <span class="nav-btn nav-btn-app-inaktiv">🖥️ Kiosk</span>
     {% endif %}
     {% if kasse_url %}
     <a href="{{ kasse_url }}" class="nav-btn nav-btn-switch">🛒 Kasse</a>
+    {% else %}
+    <span class="nav-btn nav-btn-app-inaktiv">🛒 Kasse</span>
     {% endif %}
+    <span class="nav-btn nav-btn-app-aktiv">📦 WaWi</span>
+    <div class="spacer"></div>
     {% if db_ok %}
     <span class="db-badge ok">DB ✓</span>
     {% else %}
