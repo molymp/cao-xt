@@ -72,10 +72,13 @@
   user-select: none;
 }
 .ep-btn {
-  padding: 4px 7px; border-radius: var(--radius-klein);
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px;
+  padding: 0; border-radius: var(--radius-klein);
   border: 1px solid var(--creme-dunkel);
   background: var(--grau-hell); color: var(--text-hell);
-  font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+  font-size: 16px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+  margin-left: 12px;
+  display: flex; align-items: center; justify-content: center;
 }
 .ep-btn.geaendert { background: #fff3cd; border-color: #f0c040; color: #9a6000; }
 .ep-btn:active { background: var(--gruen-blass); color: var(--gruen-dunkel); }
@@ -85,7 +88,8 @@
   min-width: 64px; flex-shrink: 0;
 }
 .pos-del {
-  width: 32px; height: 32px; background: transparent;
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px;
+  background: transparent;
   border: 1px solid #f0c0c0; border-radius: var(--radius-klein);
   color: var(--rot); font-size: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -389,6 +393,15 @@
 
 /* Modal */
 .menge-modal-content { display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.numpad {
+  display: grid; grid-template-columns: repeat(3, 72px); gap: 8px;
+}
+.numpad .btn {
+  width: 72px; height: 72px; min-width: 72px; min-height: 72px;
+  padding: 0; border-radius: 12px;
+  font-size: 20px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
 .menge-display {
   font-family: 'Lobster', Georgia, serif;
   font-size: 52px; font-weight: 400; color: var(--gold);
@@ -480,12 +493,13 @@
   text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
 }
 .z-panel .numpad {
-  gap: 5px;
+  grid-template-columns: repeat(3, 1fr); gap: 5px;
 }
 .z-panel .numpad .btn {
   background: rgba(255,255,255,0.1); color: var(--gruen-blass);
-  border-color: rgba(255,255,255,0.15); min-height: 44px; font-size: 18px;
-  padding: 4px 2px;
+  border-color: rgba(255,255,255,0.15);
+  width: auto; min-width: 0; height: 44px; min-height: 44px;
+  font-size: 18px; padding: 4px 2px;
 }
 .z-panel .numpad .btn:active { background: var(--gold); color: white; }
 .z-wechselgeld {
@@ -586,8 +600,8 @@
 {% endblock %}
 
 {% block nav_extra %}
-<a href="/kasse/journal"  class="nav-btn">📋 Journal</a>
 <a href="/kasse/manager"  class="nav-btn">📊 Manager</a>
+<a href="/kasse/journal"  class="nav-btn">📋 Journal</a>
 {% endblock %}
 
 {% block content %}
@@ -789,13 +803,22 @@
   <div class="modal">
     <h2>Einzelpreis ändern</h2>
     <div class="menge-modal-content">
-      <div style="color:var(--text-dim); font-size:13px;" id="epAktuell"></div>
+      <div style="display:flex; gap:16px; width:100%; justify-content:center;">
+        <div style="color:var(--text-dim); font-size:13px;" id="epAktuell"></div>
+        <div style="color:var(--text-dim); font-size:13px;" id="epOriginal"></div>
+      </div>
       <div class="menge-display" id="epDisplay">0,00</div>
       <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
-      <div class="numpad">
-        {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
-        <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
-        {% endfor %}
+      <div style="display:flex; gap:8px; width:100%; align-items:flex-start;">
+        <div class="numpad" style="flex:1;">
+          {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
+          <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
+          {% endfor %}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; padding-top:4px;">
+          <button class="btn btn-warning" onclick="epSetProzent(30)">-30%</button>
+          <button class="btn btn-warning" onclick="epSetProzent(50)">-50%</button>
+        </div>
       </div>
       <div style="display:flex; gap:12px; width:100%;">
         <button class="btn btn-danger btn-full" onclick="epAbbrechen()">Abbrechen</button>
@@ -1254,6 +1277,14 @@ function epPos(posId) {
   document.getElementById('epDisplay').textContent = '0,00';
   document.getElementById('epAktuell').textContent =
     'Aktuell: ' + euro(pos.EINZELPREIS_BRUTTO);
+  const origEl = document.getElementById('epOriginal');
+  if (typeof pos.EP_ORIGINAL === 'number') {
+    origEl.textContent = 'EP: ' + euro(pos.EP_ORIGINAL);
+    origEl.style.display = '';
+  } else {
+    origEl.textContent = '';
+    origEl.style.display = 'none';
+  }
   document.getElementById('epOverlay').classList.remove('hidden');
 }
 
@@ -1282,6 +1313,15 @@ async function epPosBestaetigen() {
 function epAbbrechen() {
   document.getElementById('epOverlay').classList.add('hidden');
   selPosId = null;
+}
+
+function epSetProzent(prozent) {
+  const pos = positionen.find(p => p.ID === selPosId);
+  if (!pos) return;
+  const origEPCents = (typeof pos.EP_ORIGINAL === 'number') ? pos.EP_ORIGINAL : pos.EINZELPREIS_BRUTTO;
+  const neuerEPCents = Math.round(origEPCents * (1 - prozent / 100));
+  epEingabe = (neuerEPCents / 100).toFixed(2).replace('.', ',');
+  document.getElementById('epDisplay').textContent = epEingabe;
 }
 
 // ── Parken ────────────────────────────────────────────────────
