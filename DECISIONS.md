@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-04 deploy-review.sh: git reset --hard statt git checkout für Review-Deployment
+
+- **Problem:** Änderungen aus Feature-Branches landeten nicht zuverlässig im Review-Worktree (`cao-xt-review`). Dateien wurden manuell kopiert, Server nicht neu gestartet → inkonsistenter Testzustand.
+- **Entscheidung:** `deploy-review.sh` nutzt `git reset --hard <commit>` auf dem Review-Worktree statt `git checkout <branch>`.
+- **Begründung:** Git-Worktrees erlauben keinen gleichzeitigen Checkout desselben Branches in zwei Worktrees. `reset --hard` umgeht diese Einschränkung, indem der `review`-Branch-Zeiger direkt auf den gewünschten Commit gesetzt wird. Das Script startet außerdem den WaWi-Server (Port 5003) automatisch neu.
+- **Alternativen:** (a) flask-debug-reload (setzt `WAWI_DEBUG=true` voraus, ungeeignet für Produktionsähnlichkeit), (b) Änderungen direkt im `review`-Worktree committen (verhindert saubere Branch-Trennung).
+- **Konsequenzen:** Review-Worktree `review`-Branch zeigt immer auf den zuletzt deployten Feature-Branch-Commit. Kein manuelles Dateikopieren oder Server-Neustart mehr nötig.
+- **Referenz:** HAB-194
+
 ## 2026-04-04 wawi-app als eigenständige Flask-App auf Port 5003
 
 - **Problem:** Das bestehende WaWi-Modul (`modules/wawi`) hatte keinen eigenen Einstiegspunkt für den Browser; CFO-Kennzahlen waren nicht zugänglich.
