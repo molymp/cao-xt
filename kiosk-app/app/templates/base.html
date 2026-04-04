@@ -105,26 +105,27 @@
             50%       { opacity: 0.65; }
         }
         /* App-Switcher */
-        header nav .nav-app-aktiv {
+        header .nav-app-aktiv {
             border: 2px solid var(--gold); color: var(--gold-hell);
             background: rgba(200,120,10,0.15); border-radius: var(--radius-klein);
             padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
             text-decoration: none; white-space: nowrap;
         }
-        header nav .nav-app-switch {
+        header .nav-app-switch {
             border: 1px solid rgba(200,120,10,0.4); color: var(--gold-hell);
             border-radius: var(--radius-klein);
             padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
             text-decoration: none; white-space: nowrap;
             transition: background 0.15s;
         }
-        header nav .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
-        header nav .nav-app-inaktiv {
+        header .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
+        header .nav-app-inaktiv {
             border: 1px solid rgba(255,255,255,0.08); color: var(--grau-mitte);
             border-radius: var(--radius-klein);
             padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
             white-space: nowrap; opacity: 0.5; cursor: default;
         }
+        .app-switcher { display: flex; align-items: center; gap: 4px; }
         header .terminal-info {
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
@@ -281,16 +282,8 @@
         </div>
     </a>
 
-    <nav>
-        <a href="/" class="{% if request.path == '/' %}aktiv{% endif %}">🧺 Artikelauswahl</a>
-        <a href="/offen" class="{% if request.path == '/offen' %}aktiv{% endif %}">⏸ Geparkt</a>
-        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
-        <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
-        <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
-            📦 Bestellungen
-            <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
-        </a>
-        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+    <!-- App-Switcher: Kiosk → Kasse → WaWi (feste Reihenfolge) -->
+    <div class="app-switcher">
         <span class="nav-app-aktiv">🖥️ Kiosk</span>
         {% if kasse_url %}
         <a href="{{ kasse_url }}" class="nav-app-switch">🛒 Kasse</a>
@@ -302,6 +295,18 @@
         {% else %}
         <span class="nav-app-inaktiv">📦 WaWi</span>
         {% endif %}
+    </div>
+
+    <nav>
+        <a href="/" class="{% if request.path == '/' %}aktiv{% endif %}">🧺 Artikelauswahl</a>
+        <a href="/offen" class="{% if request.path == '/offen' %}aktiv{% endif %}">⏸ Geparkt</a>
+        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
+        <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
+        <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
+            📦 Bestellungen
+            <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
+        </a>
+        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}
