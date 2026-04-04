@@ -327,6 +327,11 @@ a { text-decoration: none; color: inherit; }
   font-weight: 600;
   color: var(--grau-mitte);
 }
+.navbar-uhrzeit .uhr-user {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gruen-blass);
+}
 </style>
 {% block extra_style %}{% endblock %}
 </head>
@@ -350,7 +355,7 @@ a { text-decoration: none; color: inherit; }
     {% else %}
     <span class="nav-btn nav-btn-app-inaktiv">🛒 Kasse</span>
     {% endif %}
-    <span class="nav-btn nav-btn-app-aktiv">📦 WaWi</span>
+    <a href="/" class="nav-btn nav-btn-app-aktiv">📦 WaWi</a>
     <div class="spacer"></div>
     {% if db_ok %}
     <span class="db-badge ok">DB ✓</span>
@@ -358,10 +363,10 @@ a { text-decoration: none; color: inherit; }
     <span class="db-badge err">DB ✗</span>
     {% endif %}
     {% if current_user %}
-    <span class="nav-user">👤 {{ current_user.login_name }}</span>
     <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
     {% endif %}
     <div class="navbar-uhrzeit" id="navbar-uhrzeit">
+      {% if current_user %}<span class="uhr-user">👤 {{ current_user.login_name }}</span>{% endif %}
       <span class="uhr-zeit">--:--</span>
       <span class="uhr-datum">--</span>
     </div>

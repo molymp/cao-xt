@@ -152,12 +152,15 @@
             color: var(--grau-mitte);
         }
         header .nav-logout {
-            font-size: 0.78rem; color: var(--grau-mitte);
-            text-decoration: none; padding: 4px 8px;
-            border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+            display: inline-flex; align-items: center;
+            font-size: 0.88rem; font-weight: 700;
+            color: #f0a0a0; text-decoration: none;
+            padding: 9px 15px; border-radius: var(--radius-klein);
+            border: 1px solid rgba(184,48,48,0.4);
             transition: background 0.12s;
+            white-space: nowrap;
         }
-        header .nav-logout:hover { background: rgba(255,255,255,0.1); color: var(--creme); }
+        header .nav-logout:hover { background: rgba(184,48,48,0.2); color: #fdd; }
 
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -332,12 +335,12 @@
         {% endif %}
     </nav>
 
+    <a href="/logout" class="nav-logout">Abmelden</a>
     <div class="terminal-info" id="terminal-info">
         {% if ma_login_name %}<span class="terminal-uhr-user">👤 {{ ma_login_name }}</span>{% endif %}
         <span class="terminal-uhr-zeit" id="terminal-uhr-zeit">--:--</span>
         <span class="terminal-uhr-datum" id="terminal-uhr-datum">--</span>
     </div>
-    <a href="/logout" class="nav-logout">Abmelden</a>
 </header>
 
 {% block inhalt %}{% endblock %}
