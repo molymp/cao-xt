@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Reporting{% endblock %}
+
+{% block extra_style %}
+<style>
+.rep-tabs { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+.rep-tab {
+  padding:9px 20px; border-radius:var(--radius-klein);
+  font-weight:700; font-size:14px; cursor:pointer;
+  background:white; border:2px solid var(--creme-dunkel);
+  color:var(--text-mitte); transition:all .15s; font-family:'Nunito',sans-serif;
+}
+.rep-tab:hover { border-color:var(--gruen-hell); color:var(--gruen-dunkel); }
+.rep-tab.aktiv { background:var(--gruen-dunkel); color:white; border-color:var(--gruen-dunkel); }
+.rep-panel { display:none; }
+.rep-panel.aktiv { display:block; }
+
+.tbl { width:100%; border-collapse:collapse; font-size:14px; }
+.tbl thead tr { border-bottom:2px solid var(--creme-dunkel); }
+.tbl th {
+  text-align:left; padding:8px 12px;
+  color:var(--text-hell); font-size:11px;
+  text-transform:uppercase; letter-spacing:.08em;
+  white-space:nowrap;
+}
+.tbl th.r, .tbl td.r { text-align:right; }
+.tbl tbody tr { border-bottom:1px solid var(--grau-hell); }
+.tbl tbody tr:hover { background:var(--grau-hell); }
+.tbl td { padding:9px 12px; }
+.tbl td.zahl {
+  font-family:'Lobster',Georgia,serif; font-size:17px;
+  color:var(--gold); text-align:right;
+}
+.tbl td.zahl-gruen { color:var(--gruen-mitte); }
+
+.bar-wrap { background:var(--grau-hell); border-radius:4px; height:10px; overflow:hidden; min-width:60px; }
+.bar-fill  { background:var(--gruen-mitte); height:100%; border-radius:4px; }
+.bar-fill.gold { background:var(--gold); }
+
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:28px; }
+
+.abw-pos { color:var(--gruen-mitte); font-weight:700; }
+.abw-neg { color:var(--rot); font-weight:700; }
+
+.monat-select {
+  padding:7px 12px; border-radius:var(--radius-klein);
+  border:1px solid var(--creme-dunkel); background:white;
+  font-family:'Nunito',sans-serif; font-size:14px; font-weight:600;
+  color:var(--text-dunkel); cursor:pointer; margin-bottom:20px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">📈 Reporting</h1>
+<p style="color:var(--text-hell);font-size:13px;margin-bottom:20px;">CFO-Reports · Stand: {{ heute }}</p>
+
+<!-- ── 1. Finance KPIs ─────────────────────────────────────── -->
+{% if kpis %}
+<div class="kpi-row">
+
+  <div class="kpi-card gruen">
+    <div class="kpi-label">Umsatz lfd. Monat</div>
+    <div class="kpi-wert">{{ "%.0f"|format(kpis.brutto_akt) }} €</div>
+    <div class="kpi-sub">
+      Brutto
+      {% if kpis.abw_pct is not none %}
+        · <span class="{{ 'abw-pos' if kpis.abw_pct >= 0 else 'abw-neg' }}">
+            {{ '%+.1f'|format(kpis.abw_pct)|replace('.', ',') }} %
+          </span> ggü. Vormonat
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Tages-Ø lfd. Monat</div>
+    <div class="kpi-wert">{{ "%.0f"|format(kpis.tages_avg) }} €</div>
+    <div class="kpi-sub">Brutto pro Öffnungstag</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Monats-Ø (6 Monate)</div>
+    <div class="kpi-wert">{{ "%.0f"|format(kpis.avg_6) }} €</div>
+    <div class="kpi-sub">Brutto-Durchschnitt</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Belege lfd. Monat</div>
+    <div class="kpi-wert">{{ kpis.belege_akt }}</div>
+    <div class="kpi-sub">Kassenvorgänge</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">MwSt-Split (lfd. Monat)</div>
+    <div class="kpi-wert" style="font-size:24px;">
+      <span style="color:var(--gruen-mitte);">{{ kpis.mwst7_anteil }}%</span>
+      <span style="font-size:16px;color:var(--grau-mitte);font-family:'Nunito',sans-serif;"> 7%</span>
+      <span style="font-size:16px;color:var(--grau-mitte);font-family:'Nunito',sans-serif;"> · </span>
+      <span style="color:var(--gold);">{{ kpis.mwst19_anteil }}%</span>
+      <span style="font-size:16px;color:var(--grau-mitte);font-family:'Nunito',sans-serif;"> 19%</span>
+    </div>
+    <div class="kpi-sub">Anteil am Brutto-Umsatz</div>
+  </div>
+
+</div>
+{% else %}
+<div class="alert alert-warn">⚠️ KPI-Daten nicht verfügbar. Datenbankverbindung prüfen.</div>
+{% endif %}
+
+<!-- ── Tabs ───────────────────────────────────────────────── -->
+<div class="rep-tabs">
+  <button class="rep-tab aktiv" onclick="zeigTab('mwst', this)">📊 MwSt-Aufschlüsselung</button>
+  <button class="rep-tab"       onclick="zeigTab('wgr',  this)">🛒 Umsatz nach Warengruppen</button>
+</div>
+
+<!-- ── Tab: MwSt-Aufschlüsselung ─────────────────────────── -->
+<div id="tab-mwst" class="rep-panel aktiv">
+  <div class="card">
+    <h2 style="font-size:19px;margin-bottom:16px;">MwSt-Aufschlüsselung – letzte 12 Monate</h2>
+    {% if mwst_daten %}
+    {% set max_brutto = mwst_daten|map(attribute='brutto')|list|max %}
+    <div style="overflow-x:auto;">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Monat</th>
+          <th class="r">Belege</th>
+          <th class="r">Netto 7 %</th>
+          <th class="r">MwSt 7 %</th>
+          <th class="r">Netto 19 %</th>
+          <th class="r">MwSt 19 %</th>
+          <th class="r">Brutto gesamt</th>
+          <th style="width:120px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in mwst_daten %}
+        <tr>
+          <td style="font-weight:700;">{{ r.label }}</td>
+          <td class="r" style="color:var(--text-hell);">{{ r.belege }}</td>
+          <td class="r">{{ "%.2f"|format(r.netto_7)|replace(".", ",") }} €</td>
+          <td class="r" style="color:var(--text-hell);">{{ "%.2f"|format(r.mwst_7)|replace(".", ",") }} €</td>
+          <td class="r">{{ "%.2f"|format(r.netto_19)|replace(".", ",") }} €</td>
+          <td class="r" style="color:var(--text-hell);">{{ "%.2f"|format(r.mwst_19)|replace(".", ",") }} €</td>
+          <td class="zahl">{{ "%.2f"|format(r.brutto)|replace(".", ",") }} €</td>
+          <td style="padding:9px 12px;">
+            {% if max_brutto > 0 %}
+            <div class="bar-wrap"><div class="bar-fill" style="width:{{ (r.brutto / max_brutto * 100)|int }}%;"></div></div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="alert alert-warn">⚠️ Keine MwSt-Daten verfügbar.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Tab: Warengruppen ──────────────────────────────────── -->
+<div id="tab-wgr" class="rep-panel">
+  <div class="card">
+    <h2 style="font-size:19px;margin-bottom:12px;">Umsatz nach Warengruppen / COGS-Kategorien</h2>
+
+    <!-- Monat-Selektor -->
+    <form method="get" action="/reporting" style="margin-bottom:16px;">
+      <label style="font-weight:700;font-size:13px;margin-right:8px;">Monat:</label>
+      <select name="monat" class="monat-select" onchange="this.form.submit()">
+        {% for m in monate_liste %}
+        <option value="{{ m }}" {% if m == monat_param %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    {% if warengruppen %}
+    {% set max_wgr = warengruppen|map(attribute='umsatz_brutto')|list|max %}
+    {% set total_wgr = warengruppen|map(attribute='umsatz_brutto')|list|sum %}
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>COGS-Kategorie</th>
+          <th class="r">Umsatz Brutto</th>
+          <th class="r">Anteil</th>
+          <th style="width:160px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in warengruppen %}
+        <tr>
+          <td style="font-weight:600;">{{ r.kategorie }}</td>
+          <td class="zahl">{{ "%.2f"|format(r.umsatz_brutto)|replace(".", ",") }} €</td>
+          <td class="r" style="color:var(--text-hell);white-space:nowrap;">
+            {% if total_wgr > 0 %}{{ "%.1f"|format(r.umsatz_brutto / total_wgr * 100)|replace(".", ",") }} %{% endif %}
+          </td>
+          <td style="padding:9px 12px;">
+            {% if max_wgr > 0 %}
+            <div class="bar-wrap"><div class="bar-fill gold" style="width:{{ (r.umsatz_brutto / max_wgr * 100)|int }}%;"></div></div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="border-top:2px solid var(--creme-dunkel);">
+          <td style="font-weight:800;padding:10px 12px;">Gesamt</td>
+          <td class="zahl zahl-gruen">{{ "%.2f"|format(total_wgr)|replace(".", ",") }} €</td>
+          <td class="r" style="font-weight:700;">100 %</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    {% elif warengruppen is defined %}
+    <div class="alert alert-warn">
+      ⚠️ Keine Warengruppen-Daten für {{ monat_param }}.
+      Möglicherweise fehlen Einträge in JOURNALPOS oder die Tabelle hat eine abweichende Struktur.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function zeigTab(name, btn) {
+  document.querySelectorAll('.rep-panel').forEach(p => p.classList.remove('aktiv'));
+  document.querySelectorAll('.rep-tab').forEach(b => b.classList.remove('aktiv'));
+  document.getElementById('tab-' + name).classList.add('aktiv');
+  btn.classList.add('aktiv');
+  // Monat-Selektor-Tab merken
+  if (name === 'wgr') history.replaceState(null,'', location.href.split('#')[0] + '#wgr');
+}
+// Beim Laden richtigen Tab aktivieren
+if (location.hash === '#wgr') {
+  const btn = document.querySelectorAll('.rep-tab')[1];
+  if (btn) zeigTab('wgr', btn);
+}
+</script>
+{% endblock %}

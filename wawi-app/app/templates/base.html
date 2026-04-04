@@ -304,6 +304,10 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">Weitere</div>
       <div class="sidebar-section">
+        <a href="/reporting" class="sidebar-item {% if request.path == '/reporting' %}aktiv{% endif %}">
+          <span class="icon">📈</span> Reporting
+          <span class="sub">CFO-Reports</span>
+        </a>
         <a href="/coming-soon?modul=Weitere Tools" class="sidebar-item">
           <span class="icon">🔧</span> Weitere Tools
         </a>
