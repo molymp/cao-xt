@@ -22,6 +22,19 @@ app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
 
 
+def _fmt_eur(value, dp=2):
+    """Zahl als deutsche Währungsangabe formatieren: 1.234,56"""
+    try:
+        v = float(value)
+        formatted = f'{v:,.{dp}f}'   # US: "1,234,567.89"
+        # Komma→Tausenderpunkt, Punkt→Dezimalkomma
+        return formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
+    except (TypeError, ValueError):
+        return str(value)
+
+app.jinja_env.filters['eur'] = _fmt_eur
+
+
 # ── Authentifizierung ─────────────────────────────────────────
 
 def _mitarbeiter_login(login_name: str, passwort: str) -> dict | None:
@@ -219,19 +232,19 @@ def _mwst_monatlich(monate: int = 12) -> list[dict]:
     """MwSt-Aufschlüsselung pro Monat (letzte N Monate) aus JOURNAL."""
     sql = """
         SELECT
-            DATE_FORMAT(j.RDATUM, '%%Y-%%m')  AS monat,
-            DATE_FORMAT(j.RDATUM, '%%b %%Y')  AS label,
-            COUNT(DISTINCT j.REC_ID)           AS belege,
-            ROUND(SUM(j.NSUMME_1), 2)          AS netto_19,
-            ROUND(SUM(j.NSUMME_2), 2)          AS netto_7,
-            ROUND(SUM(j.MSUMME_1), 2)          AS mwst_19,
-            ROUND(SUM(j.MSUMME_2), 2)          AS mwst_7,
-            ROUND(SUM(j.BSUMME),   2)          AS brutto
+            DATE_FORMAT(j.RDATUM, '%Y-%m')  AS monat,
+            DATE_FORMAT(j.RDATUM, '%b %Y')  AS label,
+            COUNT(DISTINCT j.REC_ID)        AS belege,
+            ROUND(SUM(j.NSUMME_1), 2)       AS netto_19,
+            ROUND(SUM(j.NSUMME_2), 2)       AS netto_7,
+            ROUND(SUM(j.MSUMME_1), 2)       AS mwst_19,
+            ROUND(SUM(j.MSUMME_2), 2)       AS mwst_7,
+            ROUND(SUM(j.BSUMME),   2)       AS brutto
         FROM JOURNAL j
         WHERE j.QUELLE = 3
           AND j.QUELLE_SUB = 2
           AND j.RDATUM >= DATE_SUB(CURDATE(), INTERVAL %s MONTH)
-        GROUP BY DATE_FORMAT(j.RDATUM, '%%Y-%%m')
+        GROUP BY DATE_FORMAT(j.RDATUM, '%Y-%m')
         ORDER BY monat DESC
     """
     try:
@@ -247,15 +260,14 @@ def _umsatz_warengruppen(monat: str) -> list[dict]:
     """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS + ARTIKEL."""
     sql = """
         SELECT
-            COALESCE(a.WGR, 0)                  AS wgr_id,
-            ROUND(SUM(jp.BPREIS * jp.MENGE), 2) AS umsatz_brutto
+            COALESCE(jp.WARENGRUPPE, 0)          AS wgr_id,
+            ROUND(SUM(jp.GPREIS), 2)             AS umsatz_brutto
         FROM JOURNALPOS jp
-        JOIN JOURNAL j  ON jp.REC_ID  = j.REC_ID
-        JOIN ARTIKEL  a ON jp.ART_NR  = a.ART_NR
+        JOIN JOURNAL j ON jp.JOURNAL_ID = j.REC_ID
         WHERE j.QUELLE     = 3
           AND j.QUELLE_SUB = 2
-          AND DATE_FORMAT(j.RDATUM, '%%Y-%%m') = %s
-        GROUP BY a.WGR
+          AND DATE_FORMAT(j.RDATUM, '%Y-%m') = %s
+        GROUP BY jp.WARENGRUPPE
         ORDER BY umsatz_brutto DESC
     """
     try:
@@ -303,7 +315,7 @@ def _finance_kpis() -> dict:
             COUNT(DISTINCT DATE(j.RDATUM)) AS tage
         FROM JOURNAL j
         WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2
-          AND DATE_FORMAT(j.RDATUM, '%%Y-%%m') = DATE_FORMAT(CURDATE(), '%%Y-%%m')
+          AND DATE_FORMAT(j.RDATUM, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')
     """
     sql_monat_vor = """
         SELECT
@@ -314,17 +326,17 @@ def _finance_kpis() -> dict:
             COUNT(DISTINCT DATE(j.RDATUM)) AS tage
         FROM JOURNAL j
         WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2
-          AND DATE_FORMAT(j.RDATUM, '%%Y-%%m') = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%%Y-%%m')
+          AND DATE_FORMAT(j.RDATUM, '%Y-%m') = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m')
     """
     sql_avg6 = """
         SELECT ROUND(AVG(monat_brutto), 2) AS avg_6
         FROM (
-            SELECT DATE_FORMAT(j.RDATUM, '%%Y-%%m') AS m,
+            SELECT DATE_FORMAT(j.RDATUM, '%Y-%m') AS m,
                    SUM(j.BSUMME) AS monat_brutto
             FROM JOURNAL j
             WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2
               AND j.RDATUM >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-            GROUP BY DATE_FORMAT(j.RDATUM, '%%Y-%%m')
+            GROUP BY DATE_FORMAT(j.RDATUM, '%Y-%m')
         ) t
     """
     try:
