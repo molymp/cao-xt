@@ -35,6 +35,21 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-04 Verbindlicher Merge-Workflow: review → master (HAB-196)
+
+- **Problem:** Implementierte und board-getestete Änderungen (z. B. Navbar-Fixes aus HAB-139) landeten im `review`-Branch, wurden aber nie in `master` gemergt. Beim nächsten Deploy aus `master` verschwanden diese Änderungen.
+- **Entscheidung:** Der Merge-Workflow wird verbindlich wie folgt festgelegt:
+  1. Feature-Branch (`cto/<name>`) wird aus `master` erstellt.
+  2. `deploy-review.sh cto/<name>` deployt auf den Review-Worktree (Testumgebung).
+  3. Board testet und gibt **schriftlich im Ticket** frei.
+  4. Nach Freigabe: `git merge --no-ff cto/<name>` in `master`, dann `git push origin master`.
+  5. Der `review`-Branch wird nach jedem Master-Merge automatisch via `deploy-review.sh` aktualisiert.
+  **Sonderfall Sofort-Merge:** Wenn board-genehmigte Commits bereits im `review`-Branch stehen (ohne zugehörigen CTO-Branch), wird ein `cto/hab-XXX-release-fix`-Branch erstellt, der `review` merged, und der gleiche Freigabeprozess durchlaufen.
+- **Begründung:** Cherry-picks sind fehleranfällig und lassen sich schlecht auditieren. Ein vollständiger Branch-Merge (`--no-ff`) hält die History klar.
+- **Alternativen:** (a) Direkt auf `review` deployen ohne Feature-Branch (verliert Traceability), (b) Automatisiertes CI (zu aufwändig für aktuellen Projektstand).
+- **Konsequenzen:** Kein Commit kommt mehr ohne Board-Freigabe in `master`. Der `review`-Branch wird stets als Staging-Umgebung betrieben und entspricht dem letzten board-geprüften Stand.
+- **Referenz:** [HAB-196](/HAB/issues/HAB-196)
+
 ## 2026-04-04 DECISIONS.md und Benutzerhandbücher als Merge-Pflicht eingeführt
 
 - **Problem:** Board-Mitglieder konnten nicht nachvollziehen, was sich bei einem Release geändert hat und warum Entscheidungen so getroffen wurden.

@@ -8,13 +8,19 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
-- `deploy-review.sh`: Script zum atomaren Deployment von Feature-Branches in den Review-Worktree inkl. automatischem WaWi-Server-Neustart (HAB-194)
-- Neue Flask-App `wawi-app` auf Port 5003 mit Dashboard (CFO-Kennzahlen), Sidebar-Navigation und WaWi-Blueprint-Integration (HAB-131)
-- WaWi-Button in Navbar von kasse-app und kiosk-app (HAB-131)
+- `deploy-review.sh`: Script zum atomaren Deployment von Feature-Branches in den Review-Worktree inkl. automatischem WaWi-Server-Neustart ([HAB-194](/HAB/issues/HAB-194))
+- `deploy-review.sh`: Robusteres Port-Handling (SIGTERM + PID-Datei) ([HAB-194](/HAB/issues/HAB-194))
+- Neue Flask-App `wawi-app` auf Port 5003 mit Dashboard (CFO-Kennzahlen), Sidebar-Navigation und WaWi-Blueprint-Integration ([HAB-131](/HAB/issues/HAB-131))
+- WaWi-Button in Navbar von kasse-app und kiosk-app ([HAB-131](/HAB/issues/HAB-131))
+- WaWi-Navbar: App-Switcher (Kiosk → Kasse → WaWi), Logo-Wrapper, Uhrzeit/Datum, Login-Name ([HAB-139](/HAB/issues/HAB-139))
+- Kasse-Navbar: App-Switcher mit aktiv/inaktiv-Zuständen, Login-Name ([HAB-139](/HAB/issues/HAB-139))
+- Kiosk-App: Session-Login (Login-Required, Login/Logout-Routen), App-Switcher, Context-Processor ([HAB-139](/HAB/issues/HAB-139))
+- Verbindlicher Merge-Workflow `review → master` dokumentiert ([HAB-196](/HAB/issues/HAB-196))
 
 ### Geändert
-- `kasse-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt (HAB-131)
-- `kiosk-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt (HAB-131)
+- `kasse-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt ([HAB-131](/HAB/issues/HAB-131))
+- `kiosk-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt ([HAB-131](/HAB/issues/HAB-131))
+- WaWi-Reporting: SQL Datumsformat-Escaping und Warengruppen-SQL korrigiert ([HAB-139](/HAB/issues/HAB-139))
 
 ## [0.2.0] – 2026-04-04
 
