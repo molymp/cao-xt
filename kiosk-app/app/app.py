@@ -30,6 +30,9 @@ def _inject_globals():
         "kasse_url":         config.KASSE_URL or (
                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
                                  if config.KASSE_PORT else ''),
+        "wawi_url":          config.WAWI_URL or (
+                                 f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
+                                 if config.WAWI_PORT else ''),
     }
 
 

@@ -273,6 +273,9 @@
         {% if kasse_url %}
         <a href="{{ kasse_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">🖥️ Kasse</a>
         {% endif %}
+        {% if wawi_url %}
+        <a href="{{ wawi_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">📦 WaWi</a>
+        {% endif %}
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}

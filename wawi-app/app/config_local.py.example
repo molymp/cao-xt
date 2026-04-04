@@ -1,0 +1,10 @@
+# Kopiere diese Datei nach config_local.py und trage deine Werte ein.
+# config_local.py ist in .gitignore und wird nicht eingecheckt.
+
+DB_HOST     = '192.168.x.x'    # IP des MariaDB-Servers
+DB_PORT     = 3306
+DB_NAME     = 'caofaktura'     # Name der CAO-Faktura-Datenbank
+DB_USER     = 'wawi'
+DB_PASSWORD = 'geheim'
+
+DEBUG = True

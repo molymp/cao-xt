@@ -7,6 +7,14 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Neue Flask-App `wawi-app` auf Port 5003 mit Dashboard (CFO-Kennzahlen), Sidebar-Navigation und WaWi-Blueprint-Integration (HAB-131)
+- WaWi-Button in Navbar von kasse-app und kiosk-app (HAB-131)
+
+### Geändert
+- `kasse-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt (HAB-131)
+- `kiosk-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt (HAB-131)
+
 ## [0.2.0] – 2026-04-04
 
 ### Behoben

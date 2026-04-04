@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}WaWi{% endblock %} – {{ firma_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"
+      media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
+<style>
+/* ── Farb-Variablen (Habacher Dorfladen) ──────────────────── */
+:root {
+  --gruen-dunkel:  #1a4010;
+  --gruen-mitte:   #2e6e1a;
+  --gruen-hell:    #4a9428;
+  --gruen-blass:   #d4e8c2;
+  --gold:          #c8780a;
+  --gold-hell:     #e8970e;
+  --creme:         #f7f3ea;
+  --creme-dunkel:  #ece3cc;
+  --creme-warm:    #e5d9bc;
+  --text-dunkel:   #142808;
+  --text-mitte:    #2e4a1a;
+  --text-hell:     #5a7a3a;
+  --grau-hell:     #f0ece0;
+  --grau-mitte:    #a8b890;
+  --rot:           #b83030;
+  --schatten:      0 2px 12px rgba(26,64,16,0.13);
+  --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
+  --radius:        12px;
+  --radius-klein:  8px;
+  --sidebar-w:     220px;
+  --navbar-h:      60px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+  font-size: 15px;
+  background: var(--creme);
+  color: var(--text-dunkel);
+}
+
+h1, h2, h3 {
+  font-family: 'Lobster', Georgia, serif;
+  color: var(--gruen-dunkel);
+  font-weight: 400;
+}
+
+a { text-decoration: none; color: inherit; }
+
+/* ── Layout ───────────────────────────────────────────────── */
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Navbar ───────────────────────────────────────────────── */
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--navbar-h);
+  padding: 0 20px;
+  background: var(--gruen-dunkel);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+  flex-shrink: 0;
+  z-index: 200;
+}
+.navbar .logo-name {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 20px;
+  color: var(--gruen-blass);
+  white-space: nowrap;
+}
+.navbar .logo-sub {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grau-mitte);
+  margin-left: 4px;
+}
+.navbar .spacer { flex: 1; }
+.navbar .nav-btn {
+  background: rgba(255,255,255,0.08);
+  color: var(--creme-dunkel);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-klein);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  white-space: nowrap;
+  font-family: 'Nunito', sans-serif;
+  transition: background 0.15s;
+}
+.navbar .nav-btn:hover { background: rgba(74,148,40,0.35); color: var(--gruen-blass); }
+.nav-btn-switch { border-color: rgba(200,120,10,0.4); color: var(--gold-hell); }
+.nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
+
+/* ── Body-Bereich (Sidebar + Inhalt) ─────────────────────── */
+.body-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: white;
+  border-right: 1px solid var(--creme-dunkel);
+  overflow-y: auto;
+  flex-shrink: 0;
+  padding: 16px 0;
+  box-shadow: 2px 0 8px rgba(26,64,16,0.06);
+}
+.sidebar-section {
+  padding: 0 12px 8px 12px;
+}
+.sidebar-section-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--grau-mitte);
+  padding: 8px 8px 4px 8px;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-klein);
+  color: var(--text-mitte);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-decoration: none;
+}
+.sidebar-item:hover { background: var(--grau-hell); color: var(--gruen-dunkel); }
+.sidebar-item.aktiv { background: var(--gruen-blass); color: var(--gruen-dunkel); font-weight: 700; }
+.sidebar-item .icon { font-size: 16px; flex-shrink: 0; }
+.sidebar-item .sub { font-size: 11px; color: var(--grau-mitte); font-weight: 600; display: block; }
+.sidebar-divider { border: none; border-top: 1px solid var(--creme-dunkel); margin: 8px 12px; }
+
+/* ── Hauptinhalt ──────────────────────────────────────────── */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+}
+
+/* ── Karten ───────────────────────────────────────────────── */
+.card {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--schatten);
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.kpi-card {
+  background: white;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--schatten);
+}
+.kpi-card .kpi-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-hell);
+  margin-bottom: 6px;
+}
+.kpi-card .kpi-wert {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 36px;
+  color: var(--gold);
+  line-height: 1;
+}
+.kpi-card .kpi-sub {
+  font-size: 12px;
+  color: var(--grau-mitte);
+  margin-top: 4px;
+}
+.kpi-card.gruen .kpi-wert { color: var(--gruen-mitte); }
+.kpi-card.rot   .kpi-wert { color: var(--rot); }
+
+/* ── Meldungen ───────────────────────────────────────────── */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius-klein);
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.alert-warn { background: #fef8e2; border: 1px solid var(--gold); color: #7a5a00; }
+
+/* ── DB-Status-Badge ─────────────────────────────────────── */
+.db-badge {
+  font-size: 11px; font-weight: 800;
+  padding: 3px 10px; border-radius: 20px;
+}
+.db-badge.ok  { background: #e8f5e0; color: #2e7a2e; }
+.db-badge.err { background: #fde8e8; color: var(--rot); }
+</style>
+{% block extra_style %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+
+  <!-- Navbar -->
+  <div class="navbar">
+    <span class="logo-name">🌾 {{ firma_name }}</span>
+    <span class="logo-sub">· WaWi</span>
+    <div class="spacer"></div>
+    {% if kiosk_url %}
+    <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
+    {% endif %}
+    {% if kasse_url %}
+    <a href="{{ kasse_url }}" class="nav-btn nav-btn-switch">🛒 Kasse</a>
+    {% endif %}
+    {% if db_ok %}
+    <span class="db-badge ok">DB ✓</span>
+    {% else %}
+    <span class="db-badge err">DB ✗</span>
+    {% endif %}
+  </div>
+
+  <!-- Body -->
+  <div class="body-area">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-section">
+        <a href="/" class="sidebar-item {% if request.path == '/' %}aktiv{% endif %}">
+          <span class="icon">📊</span> Dashboard
+        </a>
+      </div>
+
+      <div class="sidebar-section-title">Stammdaten</div>
+      <div class="sidebar-section">
+        <a href="/coming-soon?modul=Adressen" class="sidebar-item">
+          <span class="icon">👥</span> Adressen
+        </a>
+        <a href="/wawi" class="sidebar-item {% if request.path.startswith('/wawi') %}aktiv{% endif %}">
+          <span class="icon">📦</span> Artikel
+          <span class="sub">Preispflege</span>
+        </a>
+        <a href="/coming-soon?modul=Mitarbeiter" class="sidebar-item">
+          <span class="icon">🪪</span> Mitarbeiter
+        </a>
+      </div>
+
+      <hr class="sidebar-divider">
+
+      <div class="sidebar-section-title">Betrieb</div>
+      <div class="sidebar-section">
+        <a href="/coming-soon?modul=Bestellwesen" class="sidebar-item">
+          <span class="icon">🛒</span> Bestellwesen
+        </a>
+        <a href="/coming-soon?modul=Verkauf" class="sidebar-item">
+          <span class="icon">💰</span> Verkauf
+        </a>
+        <a href="/coming-soon?modul=Buchhaltung" class="sidebar-item">
+          <span class="icon">📒</span> Buchhaltung
+        </a>
+      </div>
+
+      <hr class="sidebar-divider">
+
+      <div class="sidebar-section-title">Weitere</div>
+      <div class="sidebar-section">
+        <a href="/coming-soon?modul=Weitere Tools" class="sidebar-item">
+          <span class="icon">🔧</span> Weitere Tools
+        </a>
+        <a href="/coming-soon?modul=Lohnbuchhaltung" class="sidebar-item">
+          <span class="icon">💼</span> Lohnbuchhaltung
+        </a>
+        <a href="/coming-soon?modul=Hygienekonzept (HACCP)" class="sidebar-item">
+          <span class="icon">🧼</span> Hygiene / HACCP
+        </a>
+      </div>
+    </nav>
+
+    <!-- Hauptinhalt -->
+    <main class="main-content">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div>
+</div>
+
+<script>
+async function api(method, url, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  return r.json();
+}
+</script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>

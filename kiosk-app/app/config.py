@@ -28,6 +28,8 @@ EAN_SAMMELARTIKEL = "7408"   # CAO-Sammelartikel Backwaren
 # ── Verknüpfte Apps ───────────────────────────────────────────
 KASSE_URL  = os.environ.get('KASSE_URL',  '')   # oder z.B. http://192.168.1.x:5002
 KASSE_PORT = int(os.environ.get('KASSE_PORT', '5002'))  # Fallback: gleicher Host, Port 5002
+WAWI_URL   = os.environ.get('WAWI_URL',  '')
+WAWI_PORT  = int(os.environ.get('WAWI_PORT',  '5003'))
 
 # ── Lokale Overrides (config_local.py, nicht in git) ──────────
 # Datei anlegen um die obigen Werte zu überschreiben, z.B.:
