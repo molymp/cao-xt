@@ -8,10 +8,18 @@ Alle schreibenden Endpunkte erwarten JSON; Authentifizierung gegen CAO-MITARBEIT
 (analog kasse-app, MD5-Hash in Großbuchstaben).
 """
 
-from flask import Blueprint, jsonify, request, session, abort
+from flask import Blueprint, jsonify, request, session, abort, render_template
 import models as m
 
 bp = Blueprint('wawi', __name__)
+
+
+# ── Artikel-Seite (HTML) ──────────────────────────────────────────────────────
+
+@bp.route('/', strict_slashes=False)
+def artikel_index():
+    """GET /wawi – Artikel-Übersicht und Preispflege."""
+    return render_template('artikel.html')
 
 
 def _benutzer() -> str:
