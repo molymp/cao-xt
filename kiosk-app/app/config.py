@@ -25,6 +25,8 @@ HOST  = "0.0.0.0"      # ganzes LAN erreichbar
 EAN_BEREICH       = "21"
 EAN_SAMMELARTIKEL = "7408"   # CAO-Sammelartikel Backwaren
 
+FIRMA_NAME = os.environ.get('FIRMA_NAME', 'Habacher Dorfladen')
+
 # ── Verknüpfte Apps ───────────────────────────────────────────
 KASSE_URL  = os.environ.get('KASSE_URL',  '')   # oder z.B. http://192.168.1.x:5002
 KASSE_PORT = int(os.environ.get('KASSE_PORT', '5002'))  # Fallback: gleicher Host, Port 5002

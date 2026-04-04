@@ -86,8 +86,10 @@
         }
         header nav { display: flex; gap: 4px; flex-wrap: nowrap; }
         header nav a {
+            display: inline-flex; align-items: center;
             color: var(--creme-dunkel); text-decoration: none;
             padding: 9px 15px; border-radius: var(--radius-klein);
+            border: 1px solid rgba(255,255,255,0.15);
             font-size: 0.88rem; font-weight: 700;
             transition: background 0.15s, color 0.15s; white-space: nowrap;
         }
@@ -277,14 +279,14 @@
              alt="Habacher Dorfladen Logo"
              onerror="this.style.display='none'">
         <div class="logo-text">
-            Habacher Dorfladen
-            <span>Kiosk</span>
+            🌾 {{ firma_name }}
+            <span>Kiosk · {{ db_name }}</span>
         </div>
     </a>
 
     <!-- App-Switcher: Kiosk → Kasse → WaWi (feste Reihenfolge) -->
     <div class="app-switcher">
-        <span class="nav-app-aktiv">🖥️ Kiosk</span>
+        <a href="/" class="nav-app-aktiv">🖥️ Kiosk</a>
         {% if kasse_url %}
         <a href="{{ kasse_url }}" class="nav-app-switch">🛒 Kasse</a>
         {% else %}
