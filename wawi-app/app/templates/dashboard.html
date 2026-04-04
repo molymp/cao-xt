@@ -10,7 +10,7 @@
 
   <div class="kpi-card gruen">
     <div class="kpi-label">Tageseinnahmen heute</div>
-    <div class="kpi-wert">{{ "%.2f"|format(tageseinnahmen)|replace(".", ",") }} €</div>
+    <div class="kpi-wert">{{ tageseinnahmen|eur }} €</div>
     <div class="kpi-sub">Brutto, alle Buchungen</div>
   </div>
 
@@ -40,7 +40,7 @@
       <tr style="border-bottom:1px solid var(--grau-hell);">
         <td style="padding:10px 12px;font-weight:600;">{{ row.label }}</td>
         <td style="padding:10px 12px;text-align:right;font-family:'Lobster',Georgia,serif;font-size:18px;color:var(--gold);">
-          {{ "%.2f"|format(row.brutto)|replace(".", ",") }} €
+          {{ row.brutto|eur }} €
         </td>
         <td style="padding:10px 12px;">
           {% if max_brutto > 0 %}
