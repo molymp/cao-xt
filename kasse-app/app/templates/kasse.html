@@ -324,12 +324,14 @@
 .ean-input.scan-fehler { animation: scanFehler 0.5s ease; }
 
 /* 4×4 Numpad */
-.ean-numpad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.ean-numpad { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 4px; }
 .ean-taste {
-  padding: 9px 2px; border-radius: var(--radius-klein);
+  aspect-ratio: 1 / 1;
+  padding: 0; border-radius: var(--radius-klein);
   background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
   color: var(--gruen-blass); font-size: 15px; font-weight: 700; cursor: pointer;
-  font-family: 'Nunito', sans-serif; text-align: center;
+  font-family: 'Nunito', sans-serif;
+  display: flex; align-items: center; justify-content: center;
 }
 .ean-taste:active { background: rgba(255,255,255,0.25); }
 .ean-taste.t-ok {
