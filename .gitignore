@@ -1,3 +1,10 @@
+# macOS
+.DS_Store
+
+# Claude / AI-Tools
+.claude/
+.claire/
+
 # Python
 .venv/
 __pycache__/
