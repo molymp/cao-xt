@@ -299,6 +299,29 @@ a { text-decoration: none; color: inherit; }
 }
 .db-badge.ok  { background: #e8f5e0; color: #2e7a2e; }
 .db-badge.err { background: #fde8e8; color: var(--rot); }
+
+/* ── Navbar-Uhrzeit ──────────────────────────────────────── */
+.navbar-uhrzeit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 8px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.navbar-uhrzeit .uhr-zeit {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gruen-blass);
+  letter-spacing: 0.04em;
+}
+.navbar-uhrzeit .uhr-datum {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--grau-mitte);
+}
 </style>
 {% block extra_style %}{% endblock %}
 </head>
@@ -330,9 +353,13 @@ a { text-decoration: none; color: inherit; }
     <span class="db-badge err">DB ✗</span>
     {% endif %}
     {% if current_user %}
-    <span class="nav-user">👤 {{ current_user.vname }} {{ current_user.name }}</span>
+    <span class="nav-user">👤 {{ current_user.login_name }}</span>
     <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
     {% endif %}
+    <div class="navbar-uhrzeit" id="navbar-uhrzeit">
+      <span class="uhr-zeit">--:--</span>
+      <span class="uhr-datum">--</span>
+    </div>
   </div>
 
   <!-- Body -->
@@ -493,6 +520,20 @@ function toggleGrp(id) {
   const el = document.getElementById(id);
   if (el) el.classList.toggle('open');
 }
+</script>
+<script>
+(function(){
+  var MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  function _uhrTick() {
+    var jetzt   = new Date();
+    var zeitEl  = document.querySelector('#navbar-uhrzeit .uhr-zeit');
+    var datumEl = document.querySelector('#navbar-uhrzeit .uhr-datum');
+    if (zeitEl)  zeitEl.textContent  = String(jetzt.getHours()).padStart(2,'0') + ':' + String(jetzt.getMinutes()).padStart(2,'0');
+    if (datumEl) datumEl.textContent = String(jetzt.getDate()).padStart(2,'0') + '-' + MONATE[jetzt.getMonth()];
+  }
+  _uhrTick();
+  setInterval(_uhrTick, 10000);
+})();
 </script>
 {% block extra_script %}{% endblock %}
 </body>
