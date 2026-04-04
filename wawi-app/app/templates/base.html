@@ -110,6 +110,13 @@ a { text-decoration: none; color: inherit; }
 .navbar .nav-btn:hover { background: rgba(74,148,40,0.35); color: var(--gruen-blass); }
 .nav-btn-switch { border-color: rgba(200,120,10,0.4); color: var(--gold-hell); }
 .nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
+.nav-btn-logout { border-color: rgba(184,48,48,0.4); color: #f0a0a0; }
+.nav-btn-logout:hover { background: rgba(184,48,48,0.2); color: #fdd; }
+.nav-user {
+  font-size: 13px; font-weight: 700;
+  color: var(--grau-mitte);
+  white-space: nowrap;
+}
 
 /* ── Body-Bereich (Sidebar + Inhalt) ─────────────────────── */
 .body-area {
@@ -246,6 +253,10 @@ a { text-decoration: none; color: inherit; }
     <span class="db-badge ok">DB ✓</span>
     {% else %}
     <span class="db-badge err">DB ✗</span>
+    {% endif %}
+    {% if current_user %}
+    <span class="nav-user">👤 {{ current_user.vname }} {{ current_user.name }}</span>
+    <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
     {% endif %}
   </div>
 

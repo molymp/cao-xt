@@ -2,8 +2,10 @@
 CAO-XT WaWi-App – Flask-Hauptanwendung
 Starten: cd wawi-app/app && python3 app.py
 """
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from datetime import datetime, date
+from functools import wraps
+import hashlib
 import os
 import sys
 import logging
@@ -18,6 +20,38 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
+
+
+# ── Authentifizierung ─────────────────────────────────────────
+
+def _mitarbeiter_login(login_name: str, passwort: str) -> dict | None:
+    """
+    Prüft Credentials gegen MITARBEITER-Tabelle.
+    CAO speichert Passwörter als MD5-Hash (Großbuchstaben).
+    Gibt {MA_ID, LOGIN_NAME, VNAME, NAME} zurück oder None.
+    """
+    pw_hash = hashlib.md5(passwort.encode('utf-8')).hexdigest().upper()
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT MA_ID, LOGIN_NAME, VNAME, NAME FROM MITARBEITER "
+                "WHERE LOGIN_NAME = %s AND USER_PASSWORD = %s",
+                (login_name, pw_hash),
+            )
+            return cur.fetchone()
+    except Exception as e:
+        log.warning("Login-Abfrage fehlgeschlagen: %s", e)
+        return None
+
+
+def _login_required(f):
+    @wraps(f)
+    def _wrapper(*args, **kwargs):
+        if not session.get('ma_id'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return _wrapper
+
 
 # ── WaWi-Blueprint einbinden ──────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -41,10 +75,16 @@ def _inject_globals():
         f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
         if config.KIOSK_PORT else '')
     return {
-        "firma_name": config.FIRMA_NAME,
-        "kasse_url":  kasse_url,
-        "kiosk_url":  kiosk_url,
-        "db_ok":      test_verbindung(),
+        "firma_name":    config.FIRMA_NAME,
+        "kasse_url":     kasse_url,
+        "kiosk_url":     kiosk_url,
+        "db_ok":         test_verbindung(),
+        "current_user":  {
+            "ma_id":      session.get('ma_id'),
+            "login_name": session.get('login_name'),
+            "vname":      session.get('vname'),
+            "name":       session.get('ma_name'),
+        } if session.get('ma_id') else None,
     }
 
 
@@ -107,9 +147,40 @@ def _offene_vorgaenge() -> int:
         return 0
 
 
+# ── Login / Logout ────────────────────────────────────────────
+
+@app.get('/login')
+def login():
+    if session.get('ma_id'):
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
+
+@app.post('/login')
+def login_post():
+    login_name = request.form.get('login_name', '').strip()
+    passwort   = request.form.get('passwort', '')
+    ma = _mitarbeiter_login(login_name, passwort)
+    if ma:
+        session['ma_id']      = ma['MA_ID']
+        session['login_name'] = ma['LOGIN_NAME']
+        session['vname']      = ma['VNAME']
+        session['ma_name']    = ma['NAME']
+        session['mitarbeiter'] = ma['LOGIN_NAME']   # für WaWi-Blueprint
+        return redirect(url_for('dashboard'))
+    return render_template('login.html', fehler='Ungültige Zugangsdaten.')
+
+
+@app.get('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 # ── Routen ───────────────────────────────────────────────────
 
 @app.route('/')
+@_login_required
 def dashboard():
     monatsumsatz   = _monatsumsatz_6_monate()
     tageseinnahmen = _tageseinnahmen_heute()
@@ -124,12 +195,14 @@ def dashboard():
 
 
 @app.route('/coming-soon')
+@_login_required
 def coming_soon():
     modul = request.args.get('modul', 'Dieses Modul')
     return render_template('coming_soon.html', modul=modul)
 
 
 @app.route('/api/status')
+@_login_required
 def api_status():
     return jsonify({
         'app': 'wawi-app',
