@@ -3,7 +3,8 @@ Bäckerei Kiosk – Flask-Hauptanwendung
 Starten: cd app && python3 app.py
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
+from functools import wraps
 from datetime import datetime, timedelta, date
 import base64
 import os
@@ -19,6 +20,7 @@ import druck
 import mittagstisch as mt
 
 app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
 
 
 @app.context_processor
@@ -29,6 +31,7 @@ def _inject_globals():
         "update_verfuegbar": _update_status["verfuegbar"],
         "firma_name":        config.FIRMA_NAME,
         "db_name":           config.DB_NAME,
+        "ma_login_name":     session.get('login_name', ''),
         "kasse_url":         config.KASSE_URL or (
                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
                                  if config.KASSE_PORT else ''),
@@ -36,6 +39,19 @@ def _inject_globals():
                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
                                  if config.WAWI_PORT else ''),
     }
+
+
+def _ist_eingeloggt() -> bool:
+    return bool(session.get('ma_id'))
+
+
+def _login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not _ist_eingeloggt():
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return wrapper
 
 
 # Verzeichnis für Produktbilder (app/produktbilder/<id>.jpg)
@@ -222,9 +238,37 @@ def gesamtbetrag_aktualisieren(cursor, warenkorb_id):
     )
 
 
+# ── Login / Logout ────────────────────────────────────────────
+
+@app.get('/login')
+def login():
+    return render_template('login.html')
+
+
+@app.post('/login')
+def login_post():
+    login_name = request.form.get('login_name', '').strip()
+    passwort   = request.form.get('passwort', '')
+    ma = db.mitarbeiter_login(login_name, passwort)
+    if ma:
+        session['ma_id']      = ma['MA_ID']
+        session['login_name'] = ma['LOGIN_NAME']
+        session['vname']      = ma['VNAME']
+        session['ma_name']    = ma['NAME']
+        return redirect(url_for('index'))
+    return render_template('login.html', fehler='Ungültige Zugangsdaten.')
+
+
+@app.get('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 # ── Kiosk-Hauptansicht ────────────────────────────────────────
 
 @app.route("/")
+@_login_required
 def index():
     wk_id = aktueller_warenkorb_id()
     if not wk_id:
@@ -265,12 +309,14 @@ def index():
 
 # ── Warenkorb-API ─────────────────────────────────────────────
 
+@_login_required
 @app.route("/warenkorb/neu", methods=["POST"])
 def warenkorb_neu():
     wk_id = neuer_warenkorb()
     return jsonify({"ok": True, "warenkorb_id": wk_id})
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/positionen")
 def warenkorb_positionen(wk_id):
     with get_db() as cursor:
@@ -288,6 +334,7 @@ def warenkorb_positionen(wk_id):
     })
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/position", methods=["POST"])
 def position_hinzufuegen(wk_id):
     produkt_id = request.get_json(force=True).get("produkt_id")
@@ -336,6 +383,7 @@ def position_hinzufuegen(wk_id):
     return jsonify({"ok": True, "gesamtbetrag_cent": wk["gesamtbetrag_cent"]})
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/position/<int:pos_id>/menge", methods=["POST"])
 def menge_setzen(wk_id, pos_id):
     menge = int(request.get_json(force=True).get("menge", 0))
@@ -358,6 +406,7 @@ def menge_setzen(wk_id, pos_id):
     return jsonify({"ok": True, "gesamtbetrag_cent": wk["gesamtbetrag_cent"]})
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/position/<int:pos_id>", methods=["DELETE"])
 def position_loeschen(wk_id, pos_id):
     with get_db() as cursor:
@@ -371,6 +420,7 @@ def position_loeschen(wk_id, pos_id):
     return jsonify({"ok": True, "gesamtbetrag_cent": wk["gesamtbetrag_cent"]})
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/parken", methods=["POST"])
 def parken(wk_id):
     with get_db() as cursor:
@@ -383,6 +433,7 @@ def parken(wk_id):
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/abbrechen", methods=["POST"])
 def abbrechen(wk_id):
     with get_db() as cursor:
@@ -395,6 +446,7 @@ def abbrechen(wk_id):
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/warenkorb/<int:wk_id>/buchen", methods=["POST"])
 def buchen(wk_id):
     with get_db() as cursor:
@@ -481,6 +533,7 @@ def buchen(wk_id):
 
 # ── Offene Warenkörbe ─────────────────────────────────────────
 
+@_login_required
 @app.route("/offen")
 def offene_warenkoerbe():
     with get_db() as cursor:
@@ -492,6 +545,7 @@ def offene_warenkoerbe():
     )
 
 
+@_login_required
 @app.route("/offen/<int:wk_id>/uebernehmen", methods=["POST"])
 def uebernehmen(wk_id):
     with get_db() as cursor:
@@ -512,6 +566,7 @@ def uebernehmen(wk_id):
 
 # ── Journal ───────────────────────────────────────────────────
 
+@_login_required
 @app.route("/journal")
 def journal():
     with get_db() as cursor:
@@ -526,6 +581,7 @@ def journal():
     )
 
 
+@_login_required
 @app.route("/journal/mehr")
 def journal_mehr():
     """Liefert weitere Journal-Einträge als JSON (für 'Mehr laden'-Button)."""
@@ -548,6 +604,7 @@ def journal_mehr():
     return jsonify({"ok": True, "eintraege": result, "anzahl": len(result)})
 
 
+@_login_required
 @app.route("/journal/<int:journal_id>/positionen")
 def journal_positionen(journal_id):
     with get_db() as cursor:
@@ -559,6 +616,7 @@ def journal_positionen(journal_id):
     return jsonify({"ok": True, "positionen": positionen})
 
 
+@_login_required
 @app.route("/journal/<int:journal_id>/bon_data")
 def journal_bon_data(journal_id):
     with get_db() as cursor:
@@ -574,6 +632,7 @@ def journal_bon_data(journal_id):
     return jsonify({"ok": True, "bon_data_b64": None})
 
 
+@_login_required
 @app.route("/journal/<int:journal_id>/nachdruck", methods=["POST"])
 def nachdruck(journal_id):
     with get_db() as cursor:
@@ -596,6 +655,7 @@ def nachdruck(journal_id):
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/journal/<int:journal_id>/stornieren", methods=["POST"])
 def stornieren(journal_id):
     with get_db() as cursor:
@@ -609,6 +669,7 @@ def stornieren(journal_id):
 
 # ── Admin: Artikelverwaltung ──────────────────────────────────
 
+@_login_required
 @app.route("/admin/artikel")
 def admin_artikel():
     with get_db() as cursor:
@@ -625,6 +686,7 @@ def admin_artikel():
     )
 
 
+@_login_required
 @app.route("/admin/artikel/<int:artikel_id>", methods=["POST"])
 def admin_artikel_speichern(artikel_id):
     data = request.get_json(force=True, silent=True)
@@ -667,6 +729,7 @@ def admin_artikel_speichern(artikel_id):
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/admin/bereinigen", methods=["POST"])
 def admin_bereinigen():
     with get_db() as cursor:
@@ -685,6 +748,7 @@ def admin_bereinigen():
 
 # ── Mittagstisch ──────────────────────────────────────────────
 
+@_login_required
 @app.route("/mittagstisch")
 def mittagstisch_view():
     heute = date.today()
@@ -705,6 +769,7 @@ def mittagstisch_view():
     )
 
 
+@_login_required
 @app.route("/mittagstisch/speichern", methods=["POST"])
 def mittagstisch_speichern():
     data = request.get_json(force=True)
@@ -750,6 +815,7 @@ _BADGE_SQL = """(
      AND (b.gedruckt_datum IS NULL OR b.gedruckt_datum < CURDATE()))
 )"""
 
+@_login_required
 @app.route("/bestellungen")
 def bestellungen_view():
     wt = _heute_wochentag()
@@ -789,11 +855,13 @@ def bestellungen_view():
     )
 
 
+@_login_required
 @app.route("/bestellungen/neu")
 def bestellung_neu_view():
     return render_template("bestellung_neu.html", terminal_nr=get_terminal_nr())
 
 
+@_login_required
 @app.route("/bestellungen/<int:bestell_id>")
 def bestellung_detail_view(bestell_id):
     with get_db() as cursor:
@@ -814,6 +882,7 @@ def bestellung_detail_view(bestell_id):
     )
 
 
+@_login_required
 @app.route("/api/bestellungen/badge")
 def api_bestellungen_badge():
     wt = _heute_wochentag()
@@ -826,6 +895,7 @@ def api_bestellungen_badge():
     return jsonify({"ok": True, "anzahl": row["n"]})
 
 
+@_login_required
 @app.route("/api/bestellungen/produkte")
 def api_bestellungen_produkte():
     wt = request.args.get("wochentag", "")
@@ -852,12 +922,14 @@ def api_bestellungen_produkte():
     return jsonify({"ok": True, "produkte": produkte})
 
 
+@_login_required
 @app.route("/api/bestellungen/kunden")
 def api_bestellungen_kunden():
     """Veraltet – leitet intern auf /api/kontakte weiter."""
     return api_kontakte()
 
 
+@_login_required
 @app.route("/api/kontakte")
 def api_kontakte():
     """Autocomplete aus der kontakte-Tabelle."""
@@ -890,6 +962,7 @@ def _hole_oder_erstelle_kontakt(cursor, name: str, telefon: str) -> int:
     return cursor.lastrowid
 
 
+@_login_required
 @app.route("/api/bestellungen/neu", methods=["POST"])
 def api_bestellung_neu():
     data = request.get_json(force=True)
@@ -1018,6 +1091,7 @@ def api_bestellung_neu():
     })
 
 
+@_login_required
 @app.route("/api/bestellungen/<int:bestell_id>/speichern", methods=["POST"])
 def api_bestellung_speichern(bestell_id):
     data = request.get_json(force=True)
@@ -1158,6 +1232,7 @@ def api_bestellung_speichern(bestell_id):
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/api/bestellungen/<int:bestell_id>/stornieren", methods=["POST"])
 def api_bestellung_stornieren(bestell_id):
     terminal_nr = get_terminal_nr()
@@ -1195,6 +1270,7 @@ def api_bestellung_stornieren(bestell_id):
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/api/bestellungen/<int:bestell_id>/pausieren", methods=["POST"])
 def api_bestellung_pausieren(bestell_id):
     """
@@ -1263,6 +1339,7 @@ def api_bestellung_pausieren(bestell_id):
         return jsonify({"ok": False, "fehler": str(e)}), 500
 
 
+@_login_required
 @app.route("/api/bestellungen/drucken", methods=["POST"])
 def api_bestellungen_drucken():
     """Druckt Picklisten für 'abholung'-Bestellungen (mit Preisen + EAN)."""
@@ -1313,6 +1390,7 @@ def api_bestellungen_drucken():
     return jsonify({"ok": True, "gedruckt": gedruckt})
 
 
+@_login_required
 @app.route("/api/bestellungen/<int:bestell_id>/nachdruck", methods=["POST"])
 def api_bestellung_nachdruck(bestell_id):
     """
@@ -1376,6 +1454,7 @@ def doku_datei(dateiname):
     return send_from_directory(os.path.abspath(DOKU_DIR), dateiname)
 
 
+@_login_required
 @app.route("/handbuch")
 def handbuch():
     """
@@ -1398,6 +1477,7 @@ def handbuch():
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
+@_login_required
 @app.route("/handbuch/speichern", methods=["POST"])
 def handbuch_speichern():
     """Speichert das bearbeitete Handbuch. Nur Terminal 8 (Superuser)."""
@@ -1422,6 +1502,7 @@ def handbuch_speichern():
     return jsonify({"ok": True})
 
 
+@_login_required
 @app.route("/handbuch/upload", methods=["POST"])
 def handbuch_upload():
     """Speichert ein hochgeladenes Bild im doku/-Verzeichnis. Nur Terminal 8."""
@@ -1465,6 +1546,7 @@ def _parse_git_log(raw: str) -> list[dict]:
     return ergebnis
 
 
+@_login_required
 @app.route("/update")
 def update_seite():
     if get_terminal_nr() != 8:
@@ -1491,6 +1573,7 @@ def update_seite():
     )
 
 
+@_login_required
 @app.route("/api/update/ausfuehren", methods=["POST"])
 def api_update_ausfuehren():
     if get_terminal_nr() != 8:
@@ -1508,6 +1591,7 @@ def api_update_ausfuehren():
     return jsonify({"ok": True, "ausgabe": ausgabe, "neustart": True})
 
 
+@_login_required
 @app.route("/api/update/rollback/<commit_hash>", methods=["POST"])
 def api_update_rollback(commit_hash):
     if get_terminal_nr() != 8:

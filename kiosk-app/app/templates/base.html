@@ -132,6 +132,12 @@
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
         }
+        header .terminal-info .terminal-uhr-user {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--gruen-blass);
+        }
         header .terminal-info .terminal-uhr-zeit {
             display: block;
             font-size: 1rem;
@@ -145,6 +151,13 @@
             font-weight: 600;
             color: var(--grau-mitte);
         }
+        header .nav-logout {
+            font-size: 0.78rem; color: var(--grau-mitte);
+            text-decoration: none; padding: 4px 8px;
+            border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+            transition: background 0.12s;
+        }
+        header .nav-logout:hover { background: rgba(255,255,255,0.1); color: var(--creme); }
 
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -320,10 +333,11 @@
     </nav>
 
     <div class="terminal-info" id="terminal-info">
-        Terminal {{ terminal_nr }}
+        {% if ma_login_name %}<span class="terminal-uhr-user">👤 {{ ma_login_name }}</span>{% endif %}
         <span class="terminal-uhr-zeit" id="terminal-uhr-zeit">--:--</span>
         <span class="terminal-uhr-datum" id="terminal-uhr-datum">--</span>
     </div>
+    <a href="/logout" class="nav-logout">Abmelden</a>
 </header>
 
 {% block inhalt %}{% endblock %}
