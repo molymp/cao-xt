@@ -49,12 +49,19 @@ echo ""
 # ── WaWi-Server neu starten ──────────────────────────────────
 echo "🔄 WaWi-Server auf Port $WAWI_PORT neu starten..."
 
-# Alten Prozess beenden
-PID=$(lsof -ti :"$WAWI_PORT" 2>/dev/null || true)
-if [ -n "$PID" ]; then
-    kill -TERM "$PID" 2>/dev/null || true
-    sleep 2
-    echo "   Alter Prozess ($PID) beendet."
+# Nur den LISTENING-Prozess auf dem Port beenden (keine Client-Verbindungen)
+LISTEN_PID=$(lsof -ti :"$WAWI_PORT" -sTCP:LISTEN 2>/dev/null || true)
+if [ -n "$LISTEN_PID" ]; then
+    kill -TERM "$LISTEN_PID" 2>/dev/null || true
+    echo "   Alter Prozess ($LISTEN_PID) beendet – warte auf Port-Freigabe..."
+    # Warten bis Port frei ist (max 10 Sekunden)
+    for i in $(seq 1 10); do
+        sleep 1
+        STILL_UP=$(lsof -ti :"$WAWI_PORT" -sTCP:LISTEN 2>/dev/null || true)
+        if [ -z "$STILL_UP" ]; then
+            break
+        fi
+    done
 fi
 
 # Neuen Prozess starten
@@ -63,15 +70,20 @@ cd "$WAWI_APP"
 nohup python3 app.py > "$LOG" 2>&1 &
 NEW_PID=$!
 
-# Kurz warten und prüfen ob der Prozess läuft
-sleep 2
-if kill -0 "$NEW_PID" 2>/dev/null; then
-    echo "✅ WaWi-Server gestartet (PID $NEW_PID)"
-else
-    echo "⚠️  Server-Start fehlgeschlagen – Log prüfen: $LOG"
-    tail -20 "$LOG"
-    exit 1
-fi
+# Warten bis der Server tatsächlich lauscht (max 15 Sekunden)
+echo "   Warte auf Server-Start..."
+for i in $(seq 1 15); do
+    sleep 1
+    if lsof -ti :"$WAWI_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "✅ WaWi-Server gestartet (PID $NEW_PID)"
+        break
+    fi
+    if ! kill -0 "$NEW_PID" 2>/dev/null; then
+        echo "⚠️  Server-Prozess abgestürzt – Log prüfen: $LOG"
+        tail -20 "$LOG"
+        exit 1
+    fi
+done
 
 echo ""
 echo "══════════════════════════════════════════════════════════"
