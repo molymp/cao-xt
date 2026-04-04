@@ -72,12 +72,13 @@
   user-select: none;
 }
 .ep-btn {
-  min-width: 72px; min-height: 48px;
-  padding: 4px 7px; border-radius: var(--radius-klein);
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px;
+  padding: 0; border-radius: var(--radius-klein);
   border: 1px solid var(--creme-dunkel);
   background: var(--grau-hell); color: var(--text-hell);
-  font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+  font-size: 16px; font-weight: 700; cursor: pointer; flex-shrink: 0;
   margin-left: 12px;
+  display: flex; align-items: center; justify-content: center;
 }
 .ep-btn.geaendert { background: #fff3cd; border-color: #f0c040; color: #9a6000; }
 .ep-btn:active { background: var(--gruen-blass); color: var(--gruen-dunkel); }
@@ -87,7 +88,8 @@
   min-width: 64px; flex-shrink: 0;
 }
 .pos-del {
-  width: 32px; height: 32px; background: transparent;
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px;
+  background: transparent;
   border: 1px solid #f0c0c0; border-radius: var(--radius-klein);
   color: var(--rot); font-size: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -391,6 +393,15 @@
 
 /* Modal */
 .menge-modal-content { display: flex; flex-direction: column; gap: 16px; align-items: center; }
+.numpad {
+  display: grid; grid-template-columns: repeat(3, 72px); gap: 8px;
+}
+.numpad .btn {
+  width: 72px; height: 72px; min-width: 72px; min-height: 72px;
+  padding: 0; border-radius: 12px;
+  font-size: 20px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
 .menge-display {
   font-family: 'Lobster', Georgia, serif;
   font-size: 52px; font-weight: 400; color: var(--gold);
@@ -482,12 +493,13 @@
   text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
 }
 .z-panel .numpad {
-  gap: 5px;
+  grid-template-columns: repeat(3, 1fr); gap: 5px;
 }
 .z-panel .numpad .btn {
   background: rgba(255,255,255,0.1); color: var(--gruen-blass);
-  border-color: rgba(255,255,255,0.15); min-height: 44px; font-size: 18px;
-  padding: 4px 2px;
+  border-color: rgba(255,255,255,0.15);
+  width: auto; min-width: 0; height: 44px; min-height: 44px;
+  font-size: 18px; padding: 4px 2px;
 }
 .z-panel .numpad .btn:active { background: var(--gold); color: white; }
 .z-wechselgeld {
