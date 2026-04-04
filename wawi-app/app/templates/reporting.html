@@ -167,7 +167,7 @@
     <!-- Monat-Selektor -->
     <form method="get" action="/reporting" style="margin-bottom:16px;">
       <label style="font-weight:700;font-size:13px;margin-right:8px;">Monat:</label>
-      <select name="monat" class="monat-select" onchange="this.form.submit()">
+      <select name="monat" class="monat-select" onchange="window.location.href='/reporting?monat='+this.value+'#wgr'">
         {% for m in monate_liste %}
         <option value="{{ m }}" {% if m == monat_param %}selected{% endif %}>{{ m }}</option>
         {% endfor %}
@@ -232,8 +232,8 @@ function zeigTab(name, btn) {
   // Monat-Selektor-Tab merken
   if (name === 'wgr') history.replaceState(null,'', location.href.split('#')[0] + '#wgr');
 }
-// Beim Laden richtigen Tab aktivieren
-if (location.hash === '#wgr') {
+// Beim Laden richtigen Tab aktivieren (Hash oder monat-Parameter)
+if (location.hash === '#wgr' || new URLSearchParams(location.search).get('monat')) {
   const btn = document.querySelectorAll('.rep-tab')[1];
   if (btn) zeigTab('wgr', btn);
 }
