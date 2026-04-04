@@ -72,11 +72,11 @@
   user-select: none;
 }
 .ep-btn {
-  width: 48px; height: 48px; min-width: 48px; min-height: 48px;
+  width: 40px; height: 40px; min-width: 40px; min-height: 40px;
   padding: 0; border-radius: var(--radius-klein);
-  border: 2px solid var(--creme-dunkel);
-  background: var(--grau-hell); color: var(--text-dunkel);
-  font-size: 15px; font-weight: 800; cursor: pointer; flex-shrink: 0;
+  border: 1px solid var(--creme-dunkel);
+  background: var(--grau-hell); color: var(--text-hell);
+  font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0;
   margin-left: 8px;
   display: flex; align-items: center; justify-content: center;
 }
@@ -394,12 +394,17 @@
 /* Modal */
 .menge-modal-content { display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .numpad {
-  display: grid; grid-template-columns: repeat(3, 72px); gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  grid-template-rows: repeat(4, 72px);
+  gap: 8px;
   justify-content: center;
 }
 .numpad .btn {
-  width: 72px; height: 72px; min-width: 72px; min-height: 72px;
-  padding: 0; border-radius: 12px;
+  width: 72px !important; height: 72px !important;
+  min-width: 72px !important; min-height: 72px !important;
+  max-width: 72px; max-height: 72px;
+  padding: 0 !important; border-radius: 12px;
   font-size: 20px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
 }
@@ -810,14 +815,16 @@
       </div>
       <div class="menge-display" id="epDisplay">0,00</div>
       <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
-      <div class="numpad">
-        {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
-        <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
-        {% endfor %}
-      </div>
-      <div style="display:flex; gap:8px; width:100%;">
-        <button class="btn btn-warning btn-full" onclick="epSetProzent(30)">−30%</button>
-        <button class="btn btn-warning btn-full" onclick="epSetProzent(50)">−50%</button>
+      <div style="display:flex; gap:8px; align-items:flex-start;">
+        <div class="numpad">
+          {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
+          <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
+          {% endfor %}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; padding-top:0;">
+          <button class="btn btn-warning" style="height:152px; min-height:152px; padding:0 12px;" onclick="epSetProzent(30)">−30%</button>
+          <button class="btn btn-warning" style="height:152px; min-height:152px; padding:0 12px;" onclick="epSetProzent(50)">−50%</button>
+        </div>
       </div>
       <div style="display:flex; gap:12px; width:100%;">
         <button class="btn btn-danger btn-full" onclick="epAbbrechen()">Abbrechen</button>

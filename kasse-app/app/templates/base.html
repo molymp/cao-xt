@@ -300,6 +300,7 @@ h1, h2, h3 {
 .numpad {
   display: grid;
   grid-template-columns: repeat(3, 72px);
+  grid-template-rows: repeat(4, 72px);
   gap: 8px;
   justify-content: center;
 }
@@ -311,13 +312,15 @@ h1, h2, h3 {
   font-weight: 700;
   background: var(--grau-hell);
   color: var(--text-dunkel);
-  width: 72px;
-  height: 72px;
-  min-width: 72px;
-  min-height: 72px;
+  width: 72px !important;
+  height: 72px !important;
+  min-width: 72px !important;
+  min-height: 72px !important;
+  max-width: 72px;
+  max-height: 72px;
   border: 1px solid var(--creme-dunkel);
   border-radius: var(--radius-klein);
-  padding: 0;
+  padding: 0 !important;
 }
 .numpad .btn:active { background: var(--gruen-dunkel); color: var(--gruen-blass); }
 
