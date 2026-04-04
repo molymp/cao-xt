@@ -798,8 +798,8 @@
         {% endfor %}
       </div>
       <div style="display:flex; gap:12px; width:100%; margin-bottom:4px;">
-        <button class="btn btn-warning btn-full" onclick="epSetProzent(30)">30%</button>
-        <button class="btn btn-warning btn-full" onclick="epSetProzent(50)">50%</button>
+        <button class="btn btn-warning btn-full" onclick="epSetProzent(30)">-30%</button>
+        <button class="btn btn-warning btn-full" onclick="epSetProzent(50)">-50%</button>
       </div>
       <div style="display:flex; gap:12px; width:100%;">
         <button class="btn btn-danger btn-full" onclick="epAbbrechen()">Abbrechen</button>
@@ -1291,7 +1291,8 @@ function epAbbrechen() {
 function epSetProzent(prozent) {
   const pos = positionen.find(p => p.ID === selPosId);
   if (!pos) return;
-  const neuerEPCents = Math.round(pos.EINZELPREIS_BRUTTO * prozent / 100);
+  const origEPCents = (typeof pos.EP_ORIGINAL === 'number') ? pos.EP_ORIGINAL : pos.EINZELPREIS_BRUTTO;
+  const neuerEPCents = Math.round(origEPCents * (1 - prozent / 100));
   epEingabe = (neuerEPCents / 100).toFixed(2).replace('.', ',');
   document.getElementById('epDisplay').textContent = epEingabe;
 }
