@@ -206,6 +206,13 @@ def coming_soon():
     return render_template('coming_soon.html', modul=modul)
 
 
+@app.route('/wawi', strict_slashes=False)
+@_login_required
+def artikel():
+    """Artikel-Übersicht und Preispflege (Stammdaten)."""
+    return render_template('artikel.html')
+
+
 # ── Reporting ─────────────────────────────────────────────────
 
 def _mwst_monatlich(monate: int = 12) -> list[dict]:
