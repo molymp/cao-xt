@@ -91,16 +91,20 @@ def _inject_globals():
 # ── Dashboard-Abfragen ────────────────────────────────────────
 
 def _monatsumsatz_6_monate() -> list[dict]:
-    """Monatsumsatz (Brutto) der letzten 6 Monate aus CAO-Kassenbuch."""
+    """Monatsumsatz (Brutto) der letzten 6 Monate aus CAO-Journal.
+    Quelle: JOURNAL mit QUELLE=3 (Kasse) und QUELLE_SUB=2 (Kassenbuchung),
+    gemäß CFO-Analyse (HAB-15).
+    """
     sql = """
         SELECT
-            DATE_FORMAT(BUCHUNGSDATUM, '%Y-%m') AS monat,
-            DATE_FORMAT(BUCHUNGSDATUM, '%b %Y') AS label,
-            ROUND(SUM(BETRAG) / 100.0, 2)       AS brutto
-        FROM KASSABUCH
-        WHERE BUCHUNGSDATUM >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-          AND BETRAG > 0
-        GROUP BY DATE_FORMAT(BUCHUNGSDATUM, '%Y-%m')
+            DATE_FORMAT(j.RDATUM, '%Y-%m') AS monat,
+            DATE_FORMAT(j.RDATUM, '%b %Y') AS label,
+            ROUND(SUM(j.BSUMME), 2)        AS brutto
+        FROM JOURNAL j
+        WHERE j.QUELLE = 3
+          AND j.QUELLE_SUB = 2
+          AND j.RDATUM >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(j.RDATUM, '%Y-%m')
         ORDER BY monat ASC
     """
     try:
@@ -113,12 +117,13 @@ def _monatsumsatz_6_monate() -> list[dict]:
 
 
 def _tageseinnahmen_heute() -> float:
-    """Heutige Tageseinnahmen (Brutto) in Euro."""
+    """Heutige Tageseinnahmen (Brutto) in Euro aus CAO-Journal."""
     sql = """
-        SELECT COALESCE(ROUND(SUM(BETRAG) / 100.0, 2), 0.0) AS einnahmen
-        FROM KASSABUCH
-        WHERE DATE(BUCHUNGSDATUM) = CURDATE()
-          AND BETRAG > 0
+        SELECT COALESCE(ROUND(SUM(j.BSUMME), 2), 0.0) AS einnahmen
+        FROM JOURNAL j
+        WHERE j.QUELLE = 3
+          AND j.QUELLE_SUB = 2
+          AND DATE(j.RDATUM) = CURDATE()
     """
     try:
         with get_db() as cur:
