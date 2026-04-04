@@ -790,6 +790,7 @@
     <h2>Einzelpreis ändern</h2>
     <div class="menge-modal-content">
       <div style="color:var(--text-dim); font-size:13px;" id="epAktuell"></div>
+      <div style="color:var(--text-dim); font-size:13px;" id="epOriginal"></div>
       <div class="menge-display" id="epDisplay">0,00</div>
       <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
       <div class="numpad">
@@ -1258,6 +1259,14 @@ function epPos(posId) {
   document.getElementById('epDisplay').textContent = '0,00';
   document.getElementById('epAktuell').textContent =
     'Aktuell: ' + euro(pos.EINZELPREIS_BRUTTO);
+  const origEl = document.getElementById('epOriginal');
+  if (typeof pos.EP_ORIGINAL === 'number') {
+    origEl.textContent = 'Ursprüngl.: ' + euro(pos.EP_ORIGINAL);
+    origEl.style.display = '';
+  } else {
+    origEl.textContent = '';
+    origEl.style.display = 'none';
+  }
   document.getElementById('epOverlay').classList.remove('hidden');
 }
 
