@@ -260,15 +260,14 @@ def _umsatz_warengruppen(monat: str) -> list[dict]:
     """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS + ARTIKEL."""
     sql = """
         SELECT
-            COALESCE(a.WGR, 0)                  AS wgr_id,
-            ROUND(SUM(jp.BPREIS * jp.MENGE), 2) AS umsatz_brutto
+            COALESCE(jp.WARENGRUPPE, 0)          AS wgr_id,
+            ROUND(SUM(jp.GPREIS), 2)             AS umsatz_brutto
         FROM JOURNALPOS jp
-        JOIN JOURNAL j  ON jp.REC_ID  = j.REC_ID
-        JOIN ARTIKEL  a ON jp.ART_NR  = a.ART_NR
+        JOIN JOURNAL j ON jp.JOURNAL_ID = j.REC_ID
         WHERE j.QUELLE     = 3
           AND j.QUELLE_SUB = 2
           AND DATE_FORMAT(j.RDATUM, '%Y-%m') = %s
-        GROUP BY a.WGR
+        GROUP BY jp.WARENGRUPPE
         ORDER BY umsatz_brutto DESC
     """
     try:
