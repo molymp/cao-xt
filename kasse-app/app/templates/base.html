@@ -389,6 +389,9 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% if kiosk_url %}
   <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
   {% endif %}
+  {% if wawi_url %}
+  <a href="{{ wawi_url }}" class="nav-btn nav-btn-switch">📦 WaWi</a>
+  {% endif %}
   {% if update_verfuegbar %}
   <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
   {% endif %}

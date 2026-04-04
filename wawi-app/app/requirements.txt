@@ -1,0 +1,5 @@
+# CAO-XT WaWi-App – Python-Abhängigkeiten
+# Installation: pip3 install -r requirements.txt --break-system-packages
+
+flask>=3.0
+mysql-connector-python>=8.0

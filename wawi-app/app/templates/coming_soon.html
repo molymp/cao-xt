@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ modul }} – Bald verfügbar{% endblock %}
+
+{% block content %}
+<div style="display:flex; flex-direction:column; align-items:center; justify-content:center;
+            min-height:50vh; text-align:center; gap:16px; padding:40px 20px;">
+  <div style="font-size:4rem;">🚧</div>
+  <h1 style="font-size:2.2rem;">{{ modul }}</h1>
+  <p style="font-size:1.1rem; color:var(--text-hell); max-width:440px; line-height:1.6;">
+    Dieses Modul ist in Planung und wird in einer zukünftigen Version des Habacher
+    Dorfladen-WaWi-Systems verfügbar sein.
+  </p>
+  <a href="/"
+     style="margin-top:8px; padding:12px 28px; background:var(--gruen-hell); color:white;
+            border-radius:var(--radius-klein); text-decoration:none; font-weight:700;
+            font-size:15px; display:inline-flex; align-items:center; gap:8px;">
+    ← Zurück zum Dashboard
+  </a>
+</div>
+{% endblock %}

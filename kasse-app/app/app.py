@@ -136,6 +136,9 @@ def _globals():
         'kiosk_url':           config.KIOSK_URL or (
                                    f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
                                    if config.KIOSK_PORT else ''),
+        'wawi_url':            config.WAWI_URL or (
+                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
+                                   if config.WAWI_PORT else ''),
         'ma_login_name':       session.get('login_name', ''),
         'update_verfuegbar':   _update_status["verfuegbar"],
     }

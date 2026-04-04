@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">Dashboard</h1>
+<p style="font-size:14px; color:var(--text-hell); margin-bottom:24px;">
+  {{ jetzt.strftime('%A, %d. %B %Y') }}
+</p>
+
+{% if not db_ok %}
+<div class="alert alert-warn">
+  ⚠️ Datenbankverbindung nicht verfügbar – Kennzahlen konnten nicht geladen werden.
+</div>
+{% endif %}
+
+<!-- ── KPI-Kacheln ─────────────────────────────────────────── -->
+<div class="kpi-grid">
+  <div class="kpi-card kpi-gold">
+    <div class="kpi-label">Heute</div>
+    <div class="kpi-value">{{ tageseinnahmen_str }}</div>
+    <div class="kpi-sub">Tageseinnahmen (Brutto)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Offene Vorgänge</div>
+    <div class="kpi-value {% if offene_vorgaenge > 0 %}kpi-value{% endif %}">{{ offene_vorgaenge }}</div>
+    <div class="kpi-sub">angefangen, noch offen</div>
+  </div>
+</div>
+
+<!-- ── Monatsumsatz ───────────────────────────────────────── -->
+<div class="card">
+  <h2 style="margin-bottom:16px; font-size:1.3rem;">Monatsumsatz – letzte 6 Monate (Brutto)</h2>
+  {% if monatsumsatz %}
+    {% set max_ct = monatsumsatz | map(attribute='umsatz_ct') | max %}
+    <div style="display:flex; flex-direction:column; gap:10px;">
+    {% for m in monatsumsatz %}
+      {% set breite = ((m.umsatz_ct / max_ct) * 100) | round(1) if max_ct > 0 else 0 %}
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="width:72px; font-size:13px; font-weight:700; color:var(--text-hell); flex-shrink:0; text-align:right;">
+          {{ m.monat }}
+        </div>
+        <div style="flex:1; background:var(--grau-hell); border-radius:6px; overflow:hidden; height:28px;">
+          <div style="width:{{ breite }}%; background:var(--gruen-hell); height:100%; border-radius:6px;
+                      display:flex; align-items:center; padding-left:10px; min-width:4px; transition:width 0.4s;">
+            {% if breite > 20 %}
+            <span style="font-size:13px; font-weight:700; color:white; white-space:nowrap;">{{ m.umsatz_str }}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% if breite <= 20 %}
+        <div style="font-size:13px; font-weight:700; color:var(--text-mitte); white-space:nowrap;">{{ m.umsatz_str }}</div>
+        {% else %}
+        <div style="width:100px;"></div>
+        {% endif %}
+      </div>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p style="color:var(--text-hell); font-size:14px;">
+      Keine Umsatzdaten verfügbar.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}
