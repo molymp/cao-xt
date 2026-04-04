@@ -165,6 +165,55 @@ a { text-decoration: none; color: inherit; }
 .sidebar-item .sub { font-size: 11px; color: var(--grau-mitte); font-weight: 600; display: block; }
 .sidebar-divider { border: none; border-top: 1px solid var(--creme-dunkel); margin: 8px 12px; }
 
+/* ── Sidebar Accordion-Gruppen ────────────────────────────── */
+.sidebar-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-klein);
+  color: var(--text-mitte);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  user-select: none;
+  width: 100%;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+}
+.sidebar-group-toggle:hover { background: var(--grau-hell); color: var(--gruen-dunkel); }
+.sidebar-group-toggle .toggle-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--grau-mitte);
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.sidebar-group.open .toggle-arrow { transform: rotate(90deg); }
+.sidebar-group-items {
+  display: none;
+  padding-left: 4px;
+}
+.sidebar-group.open .sidebar-group-items { display: block; }
+.sidebar-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 28px;
+  border-radius: var(--radius-klein);
+  color: var(--text-hell);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-decoration: none;
+}
+.sidebar-sub-item:hover { background: var(--grau-hell); color: var(--gruen-dunkel); }
+.sidebar-sub-item .sub-icon { font-size: 12px; flex-shrink: 0; opacity: 0.7; }
+
 /* ── Hauptinhalt ──────────────────────────────────────────── */
 .main-content {
   flex: 1;
@@ -289,15 +338,77 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">Betrieb</div>
       <div class="sidebar-section">
-        <a href="/coming-soon?modul=Bestellwesen" class="sidebar-item">
-          <span class="icon">🛒</span> Bestellwesen
-        </a>
-        <a href="/coming-soon?modul=Verkauf" class="sidebar-item">
-          <span class="icon">💰</span> Verkauf
-        </a>
-        <a href="/coming-soon?modul=Buchhaltung" class="sidebar-item">
-          <span class="icon">📒</span> Buchhaltung
-        </a>
+        <div class="sidebar-group" id="grp-bestellwesen">
+          <button class="sidebar-group-toggle" onclick="toggleGrp('grp-bestellwesen')">
+            <span class="icon">🛒</span> Bestellwesen
+            <span class="toggle-arrow">▶</span>
+          </button>
+          <div class="sidebar-group-items">
+            <a href="/coming-soon?modul=Bestellungen" class="sidebar-sub-item">
+              <span class="sub-icon">📋</span> Bestellungen
+            </a>
+            <a href="/coming-soon?modul=Bestellvorschläge" class="sidebar-sub-item">
+              <span class="sub-icon">💡</span> Bestellvorschläge
+            </a>
+            <a href="/coming-soon?modul=Wareneingänge" class="sidebar-sub-item">
+              <span class="sub-icon">📥</span> Wareneingänge
+            </a>
+            <a href="/coming-soon?modul=Preisanfragen" class="sidebar-sub-item">
+              <span class="sub-icon">💬</span> Preisanfragen
+            </a>
+          </div>
+        </div>
+
+        <div class="sidebar-group" id="grp-verkauf">
+          <button class="sidebar-group-toggle" onclick="toggleGrp('grp-verkauf')">
+            <span class="icon">💰</span> Verkauf
+            <span class="toggle-arrow">▶</span>
+          </button>
+          <div class="sidebar-group-items">
+            <a href="/coming-soon?modul=Angebote" class="sidebar-sub-item">
+              <span class="sub-icon">📄</span> Angebote
+            </a>
+            <a href="/coming-soon?modul=Lieferscheine" class="sidebar-sub-item">
+              <span class="sub-icon">🚚</span> Lieferscheine
+            </a>
+            <a href="/coming-soon?modul=Rechnungen" class="sidebar-sub-item">
+              <span class="sub-icon">🧾</span> Rechnungen
+            </a>
+            <a href="/coming-soon?modul=Gutschriften" class="sidebar-sub-item">
+              <span class="sub-icon">↩️</span> Gutschriften
+            </a>
+          </div>
+        </div>
+
+        <div class="sidebar-group" id="grp-buchhaltung">
+          <button class="sidebar-group-toggle" onclick="toggleGrp('grp-buchhaltung')">
+            <span class="icon">📒</span> Buchhaltung
+            <span class="toggle-arrow">▶</span>
+          </button>
+          <div class="sidebar-group-items">
+            <a href="/coming-soon?modul=Kassenbuch" class="sidebar-sub-item">
+              <span class="sub-icon">💵</span> Kassenbuch
+            </a>
+            <a href="/coming-soon?modul=Zahlungseingänge" class="sidebar-sub-item">
+              <span class="sub-icon">⬇️</span> Zahlungseingänge
+            </a>
+            <a href="/coming-soon?modul=Zahlungsausgänge" class="sidebar-sub-item">
+              <span class="sub-icon">⬆️</span> Zahlungsausgänge
+            </a>
+            <a href="/coming-soon?modul=Überweisungen" class="sidebar-sub-item">
+              <span class="sub-icon">🏦</span> Überweisungen
+            </a>
+            <a href="/coming-soon?modul=Lastschriften" class="sidebar-sub-item">
+              <span class="sub-icon">📑</span> Lastschriften
+            </a>
+            <a href="/coming-soon?modul=Datev-Export" class="sidebar-sub-item">
+              <span class="sub-icon">📤</span> Datev-Export
+            </a>
+            <a href="/coming-soon?modul=Mahnungen" class="sidebar-sub-item">
+              <span class="sub-icon">⚠️</span> Mahnungen
+            </a>
+          </div>
+        </div>
       </div>
 
       <hr class="sidebar-divider">
@@ -308,9 +419,25 @@ a { text-decoration: none; color: inherit; }
           <span class="icon">📈</span> Reporting
           <span class="sub">CFO-Reports</span>
         </a>
-        <a href="/coming-soon?modul=Weitere Tools" class="sidebar-item">
-          <span class="icon">🔧</span> Weitere Tools
-        </a>
+
+        <div class="sidebar-group" id="grp-tools">
+          <button class="sidebar-group-toggle" onclick="toggleGrp('grp-tools')">
+            <span class="icon">🔧</span> Weitere Tools
+            <span class="toggle-arrow">▶</span>
+          </button>
+          <div class="sidebar-group-items">
+            <a href="/coming-soon?modul=Statistiken" class="sidebar-sub-item">
+              <span class="sub-icon">📊</span> Statistiken
+            </a>
+            <a href="/coming-soon?modul=Inventur" class="sidebar-sub-item">
+              <span class="sub-icon">🔍</span> Inventur
+            </a>
+            <a href="/coming-soon?modul=Inventar und Wartungsdaten" class="sidebar-sub-item">
+              <span class="sub-icon">🛠️</span> Inventar &amp; Wartung
+            </a>
+          </div>
+        </div>
+
         <a href="/coming-soon?modul=Lohnbuchhaltung" class="sidebar-item">
           <span class="icon">💼</span> Lohnbuchhaltung
         </a>
@@ -334,6 +461,11 @@ async function api(method, url, body) {
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
   return r.json();
+}
+
+function toggleGrp(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
 }
 </script>
 {% block extra_script %}{% endblock %}
