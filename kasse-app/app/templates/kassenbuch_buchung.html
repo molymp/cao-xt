@@ -532,7 +532,8 @@ async function buchen() {
 
   if (r.ok) {
     toast('Buchung gespeichert ✓', 'ok');
-    setTimeout(() => location.href = '/kasse/kassenbuch', 900);
+    const _weiter = new URLSearchParams(location.search).get('weiter');
+    setTimeout(() => location.href = _weiter || '/kasse/kassenbuch', 900);
   } else {
     toast(r.fehler || 'Fehler beim Speichern', 'err');
   }

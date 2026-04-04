@@ -7,6 +7,12 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.0] – 2026-04-04
+
+### Behoben
+- Kundenauswahl korrekt mit geparkt/entparkt verknüpfen – Kunde wird beim Parken zurückgesetzt und beim Entparken wiederhergestellt; Geparkte-Bons-Liste zeigt Kundennamen (HAB-95)
+- 3 Abend-Routine UI-Bugs behoben: Kassensturz nach Z-Bon gesperrt, Weiterleitung nach Transfer Kasse→Bank, Status-Wiederherstellung bei nach_bank=1 (HAB-100)
+
 ## [0.1.0] – 2026-04-04
 
 ### Hinzugefügt
