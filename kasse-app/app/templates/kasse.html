@@ -72,10 +72,12 @@
   user-select: none;
 }
 .ep-btn {
+  min-width: 72px; min-height: 48px;
   padding: 4px 7px; border-radius: var(--radius-klein);
   border: 1px solid var(--creme-dunkel);
   background: var(--grau-hell); color: var(--text-hell);
-  font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+  font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+  margin-left: 12px;
 }
 .ep-btn.geaendert { background: #fff3cd; border-color: #f0c040; color: #9a6000; }
 .ep-btn:active { background: var(--gruen-blass); color: var(--gruen-dunkel); }
@@ -586,8 +588,8 @@
 {% endblock %}
 
 {% block nav_extra %}
-<a href="/kasse/journal"  class="nav-btn">📋 Journal</a>
 <a href="/kasse/manager"  class="nav-btn">📊 Manager</a>
+<a href="/kasse/journal"  class="nav-btn">📋 Journal</a>
 {% endblock %}
 
 {% block content %}

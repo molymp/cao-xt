@@ -104,6 +104,27 @@
             0%, 100% { opacity: 1; }
             50%       { opacity: 0.65; }
         }
+        /* App-Switcher */
+        header nav .nav-app-aktiv {
+            border: 2px solid var(--gold); color: var(--gold-hell);
+            background: rgba(200,120,10,0.15); border-radius: var(--radius-klein);
+            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
+            text-decoration: none; white-space: nowrap;
+        }
+        header nav .nav-app-switch {
+            border: 1px solid rgba(200,120,10,0.4); color: var(--gold-hell);
+            border-radius: var(--radius-klein);
+            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
+            text-decoration: none; white-space: nowrap;
+            transition: background 0.15s;
+        }
+        header nav .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
+        header nav .nav-app-inaktiv {
+            border: 1px solid rgba(255,255,255,0.08); color: var(--grau-mitte);
+            border-radius: var(--radius-klein);
+            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
+            white-space: nowrap; opacity: 0.5; cursor: default;
+        }
         header .terminal-info {
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
@@ -270,11 +291,16 @@
             <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+        <span class="nav-app-aktiv">🖥️ Kiosk</span>
         {% if kasse_url %}
-        <a href="{{ kasse_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">🖥️ Kasse</a>
+        <a href="{{ kasse_url }}" class="nav-app-switch">🛒 Kasse</a>
+        {% else %}
+        <span class="nav-app-inaktiv">🛒 Kasse</span>
         {% endif %}
         {% if wawi_url %}
-        <a href="{{ wawi_url }}" style="border:1px solid rgba(200,120,10,0.4); color:var(--gold-hell);">📦 WaWi</a>
+        <a href="{{ wawi_url }}" class="nav-app-switch">📦 WaWi</a>
+        {% else %}
+        <span class="nav-app-inaktiv">📦 WaWi</span>
         {% endif %}
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
