@@ -803,13 +803,22 @@
   <div class="modal">
     <h2>Einzelpreis ändern</h2>
     <div class="menge-modal-content">
-      <div style="color:var(--text-dim); font-size:13px;" id="epAktuell"></div>
+      <div style="display:flex; gap:16px; width:100%; justify-content:center;">
+        <div style="color:var(--text-dim); font-size:13px;" id="epAktuell"></div>
+        <div style="color:var(--text-dim); font-size:13px;" id="epOriginal"></div>
+      </div>
       <div class="menge-display" id="epDisplay">0,00</div>
       <div style="color:var(--text-dim); font-size:14px;">Euro (€)</div>
-      <div class="numpad">
-        {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
-        <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
-        {% endfor %}
+      <div style="display:flex; gap:8px; width:100%; align-items:flex-start;">
+        <div class="numpad" style="flex:1;">
+          {% for z in ['7','8','9','4','5','6','1','2','3',',','0','⌫'] %}
+          <button class="btn numpad-taste" data-z="{{ z }}">{{ z }}</button>
+          {% endfor %}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; padding-top:4px;">
+          <button class="btn btn-warning" onclick="epSetProzent(30)">-30%</button>
+          <button class="btn btn-warning" onclick="epSetProzent(50)">-50%</button>
+        </div>
       </div>
       <div style="display:flex; gap:12px; width:100%;">
         <button class="btn btn-danger btn-full" onclick="epAbbrechen()">Abbrechen</button>
@@ -1268,6 +1277,14 @@ function epPos(posId) {
   document.getElementById('epDisplay').textContent = '0,00';
   document.getElementById('epAktuell').textContent =
     'Aktuell: ' + euro(pos.EINZELPREIS_BRUTTO);
+  const origEl = document.getElementById('epOriginal');
+  if (typeof pos.EP_ORIGINAL === 'number') {
+    origEl.textContent = 'EP: ' + euro(pos.EP_ORIGINAL);
+    origEl.style.display = '';
+  } else {
+    origEl.textContent = '';
+    origEl.style.display = 'none';
+  }
   document.getElementById('epOverlay').classList.remove('hidden');
 }
 
@@ -1296,6 +1313,15 @@ async function epPosBestaetigen() {
 function epAbbrechen() {
   document.getElementById('epOverlay').classList.add('hidden');
   selPosId = null;
+}
+
+function epSetProzent(prozent) {
+  const pos = positionen.find(p => p.ID === selPosId);
+  if (!pos) return;
+  const origEPCents = (typeof pos.EP_ORIGINAL === 'number') ? pos.EP_ORIGINAL : pos.EINZELPREIS_BRUTTO;
+  const neuerEPCents = Math.round(origEPCents * (1 - prozent / 100));
+  epEingabe = (neuerEPCents / 100).toFixed(2).replace('.', ',');
+  document.getElementById('epDisplay').textContent = epEingabe;
 }
 
 // ── Parken ────────────────────────────────────────────────────
