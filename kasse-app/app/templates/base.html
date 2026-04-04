@@ -206,10 +206,28 @@ h1, h2, h3 {
   color: var(--gruen-blass);
   letter-spacing: 0.04em;
 }
+.navbar-uhrzeit .uhr-user {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--grau-mitte);
+  text-align: right;
+}
 .navbar-uhrzeit .uhr-datum {
   font-size: 11px;
   font-weight: 600;
   color: var(--grau-mitte);
+}
+.nav-btn-app-aktiv {
+  border: 2px solid var(--gold) !important;
+  color: var(--gold-hell);
+  background: rgba(200,120,10,0.15);
+}
+.nav-btn-app-inaktiv {
+  border-color: rgba(255,255,255,0.08);
+  color: var(--grau-mitte);
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: default;
 }
 
 /* ── Touch-Targets (44px minimum) ─────────────────────────── */
@@ -378,27 +396,35 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 <div class="navbar{% if trainings_modus %} trainings-aktiv{% elif tse_nicht_produktiv %} sandbox-aktiv{% endif %}">
   <span class="logo">
     <span class="logo-name">🌾 {{ firma_name }}</span>
-    <span class="logo-sub">T{{ terminal_nr }} · {{ db_name }}{% if ma_login_name %} · {{ ma_login_name }}{% endif %}</span>
+    <span class="logo-sub">T{{ terminal_nr }} · {{ db_name }}</span>
   </span>
   {% if trainings_modus %}
   <span class="training-badge">🎓 Trainingsmodus</span>
   {% elif tse_nicht_produktiv %}
   <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
   {% endif %}
-  {% block nav_extra %}{% endblock %}
+  <!-- App-Switcher: Kiosk → Kasse → WaWi (feste Reihenfolge) -->
   {% if kiosk_url %}
   <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
+  {% else %}
+  <span class="nav-btn nav-btn-app-inaktiv">🖥️ Kiosk</span>
   {% endif %}
+  <span class="nav-btn nav-btn-app-aktiv">🛒 Kasse</span>
   {% if wawi_url %}
   <a href="{{ wawi_url }}" class="nav-btn nav-btn-switch">📦 WaWi</a>
+  {% else %}
+  <span class="nav-btn nav-btn-app-inaktiv">📦 WaWi</span>
   {% endif %}
+  <div style="flex:1"></div>
+  {% block nav_extra %}{% endblock %}
   {% if update_verfuegbar %}
   <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
   {% endif %}
-  <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
+  <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/logout"           class="nav-btn danger">Abmelden</a>
   <div class="navbar-uhrzeit" id="navbar-uhrzeit">
+    {% if ma_login_name %}<span class="uhr-user">👤 {{ ma_login_name }}</span>{% endif %}
     <span class="uhr-zeit">--:--</span>
     <span class="uhr-datum">--</span>
   </div>

@@ -2,6 +2,7 @@
 Bäckerei Kiosk – Datenbankverbindung mit Connection Pool
 """
 
+import hashlib
 import mysql.connector
 from mysql.connector import pooling, Error
 from contextlib import contextmanager
@@ -95,6 +96,23 @@ def euro_zu_cent(wert) -> int:
 
 def cent_zu_euro_str(cent: int) -> str:
     return f"{cent / 100:.2f} €".replace(".", ",")
+
+
+def mitarbeiter_login(login_name: str, passwort: str) -> dict | None:
+    """
+    Prüft Credentials gegen MITARBEITER-Tabelle.
+    CAO speichert Passwörter als MD5-Hash (Großbuchstaben).
+    Gibt {MA_ID, LOGIN_NAME, VNAME, NAME} zurück oder None.
+    """
+    pw_hash = hashlib.md5(passwort.encode('utf-8')).hexdigest().upper()
+    with get_db() as cur:
+        cur.execute(
+            """SELECT MA_ID, LOGIN_NAME, VNAME, NAME
+               FROM MITARBEITER
+               WHERE LOGIN_NAME = %s AND USER_PASSWORD = %s""",
+            (login_name, pw_hash)
+        )
+        return cur.fetchone()
 
 
 def test_verbindung() -> bool:
