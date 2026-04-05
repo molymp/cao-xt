@@ -317,7 +317,6 @@
 
     <nav>
         <a href="/" class="{% if request.path == '/' %}aktiv{% endif %}">🧺 Artikelauswahl</a>
-        <a href="/offen" class="{% if request.path == '/offen' %}aktiv{% endif %}">⏸ Geparkt</a>
         <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
         <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
         <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
