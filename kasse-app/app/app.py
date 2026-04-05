@@ -82,6 +82,12 @@ def _git(args: list[str], timeout: int = 25) -> str:
     return r.stdout.strip()
 
 
+try:
+    GIT_COMMIT_SHORT = _git(["rev-parse", "--short", "HEAD"]) if GIT_ROOT else ""
+except Exception:
+    GIT_COMMIT_SHORT = ""
+
+
 def _pruefe_update_loop():
     """Hintergrund-Daemon: prüft alle 10 Minuten auf neue Commits in origin/master."""
     while True:
@@ -141,6 +147,7 @@ def _globals():
                                    if config.WAWI_PORT else ''),
         'ma_login_name':       session.get('login_name', ''),
         'update_verfuegbar':   _update_status["verfuegbar"],
+        'git_commit_short':    GIT_COMMIT_SHORT,
     }
 
 

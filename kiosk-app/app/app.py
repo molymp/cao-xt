@@ -38,6 +38,7 @@ def _inject_globals():
         "wawi_url":          config.WAWI_URL or (
                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
                                  if config.WAWI_PORT else ''),
+        "git_commit_short":  GIT_COMMIT_SHORT,
     }
 
 
@@ -97,6 +98,13 @@ def _git(args: list[str], timeout: int = 25) -> str:
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip() or r.stdout.strip() or f"exit {r.returncode}")
     return r.stdout.strip()
+
+
+try:
+    GIT_COMMIT_SHORT = _git(["rev-parse", "--short", "HEAD"]) if GIT_ROOT else ""
+except Exception:
+    GIT_COMMIT_SHORT = ""
+
 
 def _pruefe_update_loop():
     """Hintergrund-Daemon: prüft alle 10 Minuten auf neue Commits in origin/master."""

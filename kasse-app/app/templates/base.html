@@ -411,6 +411,7 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 {% block extra_style %}{% endblock %}
 </head>
 <body>
+{% if git_commit_short %}<span style="position:fixed;top:2px;left:4px;font-size:9px;font-weight:700;color:#e8970e;font-family:monospace;pointer-events:none;z-index:9999;opacity:0.75;letter-spacing:0.02em;">{{ git_commit_short }}</span>{% endif %}
 <div class="navbar{% if trainings_modus %} trainings-aktiv{% elif tse_nicht_produktiv %} sandbox-aktiv{% endif %}">
   <span class="logo">
     <span class="logo-name">🌾 {{ firma_name }}</span>
