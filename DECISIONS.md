@@ -15,6 +15,17 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-06 Versionierter pre-push Hook mit Paperclip-Approval-Pflicht (HAB-242)
+
+- **Problem:** Der alte `pre-push` Hook in `.git/hooks/pre-push` blockierte ALLE Pushes auf `master` – auch den CTO nach gültiger Board-Freigabe. Zudem war er nicht versioniert und somit nicht reproduzierbar.
+- **Entscheidung:** Neuer Hook in `.githooks/pre-push` (versioniert im Repo). Pushes auf `master`/`main` sind nur erlaubt wenn die Umgebungsvariable `PAPERCLIP_APPROVAL_ID` gesetzt ist. Aktivierung: `git config core.hooksPath .githooks`.
+- **Begründung:** Hooks im `.git/`-Verzeichnis sind lokal und nicht committet. Ein Verzeichnis `.githooks/` im Repo-Root wird versioniert und ist für alle Entwickler/Agenten reproduzierbar. Die `PAPERCLIP_APPROVAL_ID`-Pflicht stellt sicher, dass Pushes auf `master` nachvollziehbar mit einer Board-Freigabe verknüpft sind.
+- **Alternativen:** (a) GitHub Branch-Protection Rules (setzt GitHub-Admin-Zugriff voraus, schützt nur remote), (b) Vollständige Blockade ohne Escape-Hatch (verhindert CTO-Merge nach Freigabe).
+- **Konsequenzen:** CTO muss beim Master-Merge `PAPERCLIP_APPROVAL_ID=<id>` setzen. Alle Entwickler einmalig `git config core.hooksPath .githooks` ausführen.
+- **Referenz:** HAB-242
+
+---
+
 ## 2026-04-04 deploy-review.sh: git reset --hard statt git checkout für Review-Deployment
 
 - **Problem:** Änderungen aus Feature-Branches landeten nicht zuverlässig im Review-Worktree (`cao-xt-review`). Dateien wurden manuell kopiert, Server nicht neu gestartet → inkonsistenter Testzustand.

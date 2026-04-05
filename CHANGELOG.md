@@ -8,6 +8,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- `.githooks/pre-push`: Versionierter Git-Hook mit Paperclip-Approval-Pflicht für `master`/`main` Pushes ([HAB-242](/HAB/issues/HAB-242))
 - `deploy-review.sh`: Script zum atomaren Deployment von Feature-Branches in den Review-Worktree inkl. automatischem WaWi-Server-Neustart ([HAB-194](/HAB/issues/HAB-194))
 - `deploy-review.sh`: Robusteres Port-Handling (SIGTERM + PID-Datei) ([HAB-194](/HAB/issues/HAB-194))
 - Neue Flask-App `wawi-app` auf Port 5003 mit Dashboard (CFO-Kennzahlen), Sidebar-Navigation und WaWi-Blueprint-Integration ([HAB-131](/HAB/issues/HAB-131))
