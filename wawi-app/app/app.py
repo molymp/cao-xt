@@ -257,13 +257,18 @@ def _mwst_monatlich(monate: int = 12) -> list[dict]:
 
 
 def _umsatz_warengruppen(monat: str) -> list[dict]:
-    """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS + ARTIKEL."""
+    """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS + WARENGRUPPEN.
+    Bekannte WGR-IDs werden auf COGS-Kategorien gemappt (HAB-15).
+    Unbekannte IDs verwenden WARENGRUPPEN.NAME aus der Datenbank als Fallback.
+    """
     sql = """
         SELECT
             COALESCE(jp.WARENGRUPPE, 0)          AS wgr_id,
+            MAX(wg.NAME)                         AS wgr_name,
             ROUND(SUM(jp.GPREIS), 2)             AS umsatz_brutto
         FROM JOURNALPOS jp
         JOIN JOURNAL j ON jp.JOURNAL_ID = j.REC_ID
+        LEFT JOIN WARENGRUPPEN wg ON jp.WARENGRUPPE = wg.WARENGRUPPE
         WHERE j.QUELLE     = 3
           AND j.QUELLE_SUB = 2
           AND DATE_FORMAT(j.RDATUM, '%Y-%m') = %s
@@ -274,7 +279,9 @@ def _umsatz_warengruppen(monat: str) -> list[dict]:
         with get_db() as cur:
             cur.execute(sql, (monat,))
             rows = cur.fetchall()
-        # COGS-Kategorie-Mapping gemäß CFO-Analyse (HAB-15)
+        # COGS-Kategorie-Mapping gemäß CFO-Analyse (HAB-15).
+        # Warengruppen-IDs, die hier nicht aufgeführt sind, werden über
+        # WARENGRUPPEN.NAME aus der CAO-Datenbank aufgelöst.
         _WGR_COGS = {
             **{wgr: 'Lebensmittel' for wgr in [1,2,3,4,6,8,9,12,200,300,500,600,800]},
             15: 'Habacher Erzeugnisse',
@@ -289,7 +296,9 @@ def _umsatz_warengruppen(monat: str) -> list[dict]:
         # Aggregation auf COGS-Kategorien
         kategorien: dict[str, float] = {}
         for r in rows:
-            kat = _WGR_COGS.get(int(r['wgr_id']), f"WGR {r['wgr_id']}")
+            wgr_id = int(r['wgr_id'])
+            # Priorität: COGS-Mapping → DB-Name → numerische Fallback-Bezeichnung
+            kat = _WGR_COGS.get(wgr_id, r.get('wgr_name') or f"WGR {wgr_id}")
             kategorien[kat] = round(kategorien.get(kat, 0.0) + float(r['umsatz_brutto']), 2)
         return [{'kategorie': k, 'umsatz_brutto': v}
                 for k, v in sorted(kategorien.items(), key=lambda x: -x[1])]
@@ -373,13 +382,15 @@ def _finance_kpis() -> dict:
 @_login_required
 def reporting():
     from datetime import date
-    # Monat-Parameter (default: laufender Monat)
-    monat_param = request.args.get('monat', date.today().strftime('%Y-%m'))
-    mwst_daten      = _mwst_monatlich(12)
-    warengruppen    = _umsatz_warengruppen(monat_param)
-    kpis            = _finance_kpis()
-    # Liste verfügbarer Monate für Selektor
+    mwst_daten   = _mwst_monatlich(12)
     monate_liste = [r['monat'] for r in mwst_daten]
+    # Monat-Parameter: URL-Param bevorzugen, sonst neuesten Monat mit Daten nehmen.
+    # Verhindert, dass laufender Monat (ohne Buchungen) als Default angezeigt wird.
+    monat_param = request.args.get('monat', '')
+    if not monat_param or monat_param not in monate_liste:
+        monat_param = monate_liste[0] if monate_liste else date.today().strftime('%Y-%m')
+    warengruppen = _umsatz_warengruppen(monat_param)
+    kpis         = _finance_kpis()
     return render_template(
         'reporting.html',
         mwst_daten=mwst_daten,
