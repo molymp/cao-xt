@@ -283,19 +283,23 @@ def _warengruppen_namen() -> dict[int, str]:
 
 
 def _umsatz_warengruppen(monat: str) -> list[dict]:
-    """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS.
-    Namen werden aus der WARENGRUPPEN-Tabelle geladen (separater Query).
+    """Umsatz und COGS nach Warengruppen für einen Monat (YYYY-MM).
+    COGS = SUM(MENGE × ARTIKEL.EK_PREIS) – Näherung mit aktuellem EK-Preis.
+    Warengruppe wird bevorzugt aus ARTIKEL geholt (jp.WARENGRUPPE ist 0
+    für neue Kassen-Einträge).
     """
     sql = """
         SELECT
-            COALESCE(jp.WARENGRUPPE, 0)              AS wgr_id,
-            COALESCE(ROUND(SUM(jp.GPREIS), 2), 0)   AS umsatz_brutto
+            COALESCE(a.WARENGRUPPE, jp.WARENGRUPPE, 0)                       AS wgr_id,
+            COALESCE(ROUND(SUM(jp.GPREIS), 2), 0)                            AS umsatz_brutto,
+            COALESCE(ROUND(SUM(jp.MENGE * COALESCE(a.EK_PREIS, 0)), 2), 0)  AS cogs
         FROM JOURNALPOS jp
         JOIN JOURNAL j ON jp.JOURNAL_ID = j.REC_ID
+        LEFT JOIN ARTIKEL a ON jp.ARTIKEL_ID = a.REC_ID
         WHERE j.QUELLE     = 3
           AND j.QUELLE_SUB = 2
           AND DATE_FORMAT(j.RDATUM, '%Y-%m') = %s
-        GROUP BY jp.WARENGRUPPE
+        GROUP BY COALESCE(a.WARENGRUPPE, jp.WARENGRUPPE, 0)
         ORDER BY umsatz_brutto DESC
     """
     try:
@@ -305,8 +309,9 @@ def _umsatz_warengruppen(monat: str) -> list[dict]:
         namen = _warengruppen_namen()
         return [
             {
-                'kategorie':    namen.get(int(r['wgr_id'])) or f"WGR {r['wgr_id']}",
+                'kategorie':     namen.get(int(r['wgr_id'])) or f"WGR {r['wgr_id']}",
                 'umsatz_brutto': float(r['umsatz_brutto']),
+                'cogs':          float(r['cogs']),
             }
             for r in rows
         ]

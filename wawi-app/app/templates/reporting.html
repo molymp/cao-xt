@@ -181,6 +181,7 @@
       <thead>
         <tr>
           <th>Warengruppe</th>
+          <th class="r">COGS</th>
           <th class="r">Umsatz Brutto</th>
           <th class="r">Anteil</th>
           <th style="width:160px;"></th>
@@ -190,6 +191,7 @@
         {% for r in warengruppen %}
         <tr>
           <td style="font-weight:600;">{{ r.kategorie }}</td>
+          <td class="zahl" style="color:var(--rot);">{{ r.cogs|eur }} €</td>
           <td class="zahl">{{ r.umsatz_brutto|eur }} €</td>
           <td class="r" style="color:var(--text-hell);white-space:nowrap;">
             {% if total_wgr > 0 %}{{ "%.1f"|format(r.umsatz_brutto / total_wgr * 100)|replace(".", ",") }} %{% endif %}
@@ -203,8 +205,10 @@
         {% endfor %}
       </tbody>
       <tfoot>
+        {% set total_cogs = warengruppen|map(attribute='cogs')|list|sum %}
         <tr style="border-top:2px solid var(--creme-dunkel);">
           <td style="font-weight:800;padding:10px 12px;">Gesamt</td>
+          <td class="zahl" style="color:var(--rot);">{{ total_cogs|eur }} €</td>
           <td class="zahl zahl-gruen">{{ total_wgr|eur }} €</td>
           <td class="r" style="font-weight:700;">100 %</td>
           <td></td>
