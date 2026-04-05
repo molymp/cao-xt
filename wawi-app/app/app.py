@@ -103,6 +103,19 @@ def _inject_globals():
 
 # ── Dashboard-Abfragen ────────────────────────────────────────
 
+_DE_MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun',
+              'Jul','Aug','Sep','Okt','Nov','Dez']
+
+
+def _de_monat_label(monat: str) -> str:
+    """'2026-03' → 'Mär 2026' (deutsch)"""
+    try:
+        y, m = monat.split('-')
+        return f"{_DE_MONATE[int(m) - 1]} {y}"
+    except (ValueError, IndexError):
+        return monat
+
+
 def _monatsumsatz_6_monate() -> list[dict]:
     """Monatsumsatz (Brutto) der letzten 6 Monate aus CAO-Journal.
     Quelle: JOURNAL mit QUELLE=3 (Kasse) und QUELLE_SUB=2 (Kassenbuchung),
@@ -111,7 +124,6 @@ def _monatsumsatz_6_monate() -> list[dict]:
     sql = """
         SELECT
             DATE_FORMAT(j.RDATUM, '%Y-%m') AS monat,
-            DATE_FORMAT(j.RDATUM, '%b %Y') AS label,
             ROUND(SUM(j.BSUMME), 2)        AS brutto
         FROM JOURNAL j
         WHERE j.QUELLE = 3
@@ -123,7 +135,8 @@ def _monatsumsatz_6_monate() -> list[dict]:
     try:
         with get_db() as cur:
             cur.execute(sql)
-            return cur.fetchall()
+            rows = cur.fetchall()
+        return [dict(r, label=_de_monat_label(r['monat'])) for r in rows]
     except Exception as e:
         log.warning("Monatsumsatz-Abfrage fehlgeschlagen: %s", e)
         return []
@@ -233,7 +246,6 @@ def _mwst_monatlich(monate: int = 12) -> list[dict]:
     sql = """
         SELECT
             DATE_FORMAT(j.RDATUM, '%Y-%m')  AS monat,
-            DATE_FORMAT(j.RDATUM, '%b %Y')  AS label,
             COUNT(DISTINCT j.REC_ID)        AS belege,
             ROUND(SUM(j.NSUMME_1), 2)       AS netto_19,
             ROUND(SUM(j.NSUMME_2), 2)       AS netto_7,
@@ -250,25 +262,36 @@ def _mwst_monatlich(monate: int = 12) -> list[dict]:
     try:
         with get_db() as cur:
             cur.execute(sql, (monate,))
-            return cur.fetchall()
+            rows = cur.fetchall()
+        return [dict(r, label=_de_monat_label(r['monat'])) for r in rows]
     except Exception as e:
         log.warning("MwSt-Abfrage fehlgeschlagen: %s", e)
         return []
 
 
+def _warengruppen_namen() -> dict[int, str]:
+    """Lädt alle Warengruppen-Namen aus der WARENGRUPPEN-Tabelle.
+    Gibt ein Dict {wgr_id: name} zurück; bei Fehler ein leeres Dict.
+    """
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT WARENGRUPPE AS wgr_id, NAME AS wgr_name FROM WARENGRUPPEN")
+            return {int(r['wgr_id']): r['wgr_name'] for r in cur.fetchall() if r['wgr_name']}
+    except Exception as e:
+        log.warning("Warengruppen-Namen nicht ladbar: %s", e)
+        return {}
+
+
 def _umsatz_warengruppen(monat: str) -> list[dict]:
-    """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS + WARENGRUPPEN.
-    Bekannte WGR-IDs werden auf COGS-Kategorien gemappt (HAB-15).
-    Unbekannte IDs verwenden WARENGRUPPEN.NAME aus der Datenbank als Fallback.
+    """Umsatz nach Warengruppen für einen Monat (YYYY-MM) via JOURNALPOS.
+    Namen werden aus der WARENGRUPPEN-Tabelle geladen (separater Query).
     """
     sql = """
         SELECT
-            COALESCE(jp.WARENGRUPPE, 0)          AS wgr_id,
-            MAX(wg.NAME)                         AS wgr_name,
-            ROUND(SUM(jp.GPREIS), 2)             AS umsatz_brutto
+            COALESCE(jp.WARENGRUPPE, 0)              AS wgr_id,
+            COALESCE(ROUND(SUM(jp.GPREIS), 2), 0)   AS umsatz_brutto
         FROM JOURNALPOS jp
         JOIN JOURNAL j ON jp.JOURNAL_ID = j.REC_ID
-        LEFT JOIN WARENGRUPPEN wg ON jp.WARENGRUPPE = wg.WARENGRUPPE
         WHERE j.QUELLE     = 3
           AND j.QUELLE_SUB = 2
           AND DATE_FORMAT(j.RDATUM, '%Y-%m') = %s
@@ -279,29 +302,14 @@ def _umsatz_warengruppen(monat: str) -> list[dict]:
         with get_db() as cur:
             cur.execute(sql, (monat,))
             rows = cur.fetchall()
-        # COGS-Kategorie-Mapping gemäß CFO-Analyse (HAB-15).
-        # Warengruppen-IDs, die hier nicht aufgeführt sind, werden über
-        # WARENGRUPPEN.NAME aus der CAO-Datenbank aufgelöst.
-        _WGR_COGS = {
-            **{wgr: 'Lebensmittel' for wgr in [1,2,3,4,6,8,9,12,200,300,500,600,800]},
-            15: 'Habacher Erzeugnisse',
-            5:  'Verzehr / Café',
-            **{wgr: 'Getränke alkoholfrei' for wgr in [711,712,713,714]},
-            **{wgr: 'Getränke alkoholisch' for wgr in [731,732,733,734,740]},
-            **{wgr: 'Non-Food' for wgr in [400,410,420,430,460,470,490,499]},
-            450: 'Tabakwaren',
-            990: 'Gutscheine',
-            900: 'Pfand',
-        }
-        # Aggregation auf COGS-Kategorien
-        kategorien: dict[str, float] = {}
-        for r in rows:
-            wgr_id = int(r['wgr_id'])
-            # Priorität: COGS-Mapping → DB-Name → numerische Fallback-Bezeichnung
-            kat = _WGR_COGS.get(wgr_id, r.get('wgr_name') or f"WGR {wgr_id}")
-            kategorien[kat] = round(kategorien.get(kat, 0.0) + float(r['umsatz_brutto']), 2)
-        return [{'kategorie': k, 'umsatz_brutto': v}
-                for k, v in sorted(kategorien.items(), key=lambda x: -x[1])]
+        namen = _warengruppen_namen()
+        return [
+            {
+                'kategorie':    namen.get(int(r['wgr_id'])) or f"WGR {r['wgr_id']}",
+                'umsatz_brutto': float(r['umsatz_brutto']),
+            }
+            for r in rows
+        ]
     except Exception as e:
         log.warning("Warengruppen-Abfrage fehlgeschlagen: %s", e)
         return []
