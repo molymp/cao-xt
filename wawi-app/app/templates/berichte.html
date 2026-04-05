@@ -1,0 +1,488 @@
+{% extends 'base.html' %}
+{% block title %}CFO-Berichte{% endblock %}
+
+{% block extra_style %}
+<style>
+.berichte-nav {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.berichte-nav a {
+  padding: 9px 18px; border-radius: var(--radius-klein);
+  background: white; border: 1px solid var(--creme-dunkel);
+  font-weight: 700; font-size: 14px; color: var(--text-dunkel);
+  text-decoration: none; transition: background 0.12s, border-color 0.12s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.berichte-nav a:hover { background: var(--grau-hell); }
+.berichte-nav a.aktiv {
+  background: var(--gruen-dunkel); color: var(--gruen-blass);
+  border-color: var(--gruen-dunkel);
+}
+
+/* Summenzeile */
+.tabelle tfoot td {
+  background: var(--gruen-blass); font-weight: 700;
+  border-top: 2px solid var(--gruen-mitte);
+}
+
+/* Chart-Container */
+.chart-wrap {
+  position: relative; height: 260px; margin-bottom: 20px;
+}
+
+/* Filter-Formular */
+.filter-form {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+  margin-bottom: 16px;
+}
+.filter-form .fg { display: flex; flex-direction: column; gap: 4px; }
+.filter-form label {
+  font-size: 12px; font-weight: 700; color: var(--text-hell);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.filter-form input, .filter-form select {
+  padding: 8px 10px; background: var(--grau-hell);
+  border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+  font-size: 14px; font-family: 'Nunito', sans-serif; color: var(--text-dunkel);
+}
+.filter-form input:focus, .filter-form select:focus {
+  outline: none; border-color: var(--gruen-mitte);
+}
+
+.summe-karte {
+  display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.summe-box {
+  flex: 1; min-width: 160px;
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius); padding: 14px 18px;
+  box-shadow: var(--schatten);
+}
+.summe-box .label {
+  font-size: 11px; font-weight: 700; color: var(--text-hell);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.summe-box .wert {
+  font-size: 22px; font-weight: 800; color: var(--gruen-dunkel);
+  font-family: 'Nunito', sans-serif;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>📊 CFO-Berichte</h1>
+<p class="text-dim" style="margin-top:4px;margin-bottom:20px;">
+  Auswertungen aus der CAO-Datenbank — nur lesend, Echtdaten.
+</p>
+
+{# ── Berichts-Navigation ─────────────────────────────────────── #}
+<div class="berichte-nav">
+  <a href="{{ url_for('berichte_seite') }}"
+     class="{% if not bericht %}aktiv{% endif %}">🏠 Übersicht</a>
+  <a href="{{ url_for('tagesumsatz_seite') }}"
+     class="{% if bericht == 'tagesumsatz' %}aktiv{% endif %}">💰 Tagesumsatz</a>
+  <a href="{{ url_for('monatsuebersicht_seite') }}"
+     class="{% if bericht == 'monatsuebersicht' %}aktiv{% endif %}">📅 Monatsübersicht</a>
+  <a href="{{ url_for('kassenbuch_seite') }}"
+     class="{% if bericht == 'kassenbuch' %}aktiv{% endif %}">📒 Kassenbuch</a>
+  <a href="{{ url_for('ec_umsaetze_seite') }}"
+     class="{% if bericht == 'ec_umsaetze' %}aktiv{% endif %}">💳 EC-Umsätze</a>
+</div>
+
+{# ════════════════════════════════════════════════════════════════
+   Keine Auswahl → Übersicht
+   ════════════════════════════════════════════════════════════════ #}
+{% if not bericht %}
+<div class="card">
+  <h2 class="card-titel">Verfügbare Berichte (Phase 1)</h2>
+  <p class="text-dim" style="margin-bottom:16px;">
+    Alle Berichte greifen direkt auf die CAO-Faktura-Datenbank zu.
+    Daten sind schreibgeschützt.
+  </p>
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Bericht</th><th>Zeitraum</th><th>Export</th><th>Beschreibung</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a href="{{ url_for('tagesumsatz_seite') }}">💰 Tagesumsatz</a></td>
+        <td>täglich (Zeitraum)</td><td>CSV</td>
+        <td class="text-dim">Kassenbons nach Zahlart, MwSt-Aufteilung</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('monatsuebersicht_seite') }}">📅 Monatsübersicht</a></td>
+        <td>jährlich</td><td>CSV + Chart</td>
+        <td class="text-dim">Netto-VK und EK je Monat, Jahresvergleich</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('kassenbuch_seite') }}">📒 Kassenbuch</a></td>
+        <td>täglich/monatlich</td><td>CSV</td>
+        <td class="text-dim">Alle Transaktionen über FiBu-Konto 1000</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('ec_umsaetze_seite') }}">💳 EC-Umsätze</a></td>
+        <td>täglich/monatlich</td><td>CSV</td>
+        <td class="text-dim">EC-Kartenumsätze nach Datum</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ════════════════════════════════════════════════════════════════
+   1. Tagesumsatz
+   ════════════════════════════════════════════════════════════════ #}
+{% if bericht == 'tagesumsatz' %}
+<div class="card">
+  <h2 class="card-titel">💰 Tagesumsatz nach Zahlart</h2>
+
+  {# Filter #}
+  <form class="filter-form" method="get" action="{{ url_for('tagesumsatz_seite') }}">
+    <div class="fg">
+      <label>Von</label>
+      <input type="date" name="von" value="{{ von }}">
+    </div>
+    <div class="fg">
+      <label>Bis</label>
+      <input type="date" name="bis" value="{{ bis }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Anzeigen</button>
+    {% if zeilen %}
+    <a href="{{ url_for('tagesumsatz_export', von=von, bis=bis) }}"
+       class="btn btn-neutral">⬇ CSV</a>
+    {% endif %}
+  </form>
+
+  {% if zeilen %}
+  {# Summen-Kacheln #}
+  {% set brutto_gesamt = zeilen | sum(attribute='Brutto_Gesamt') %}
+  <div class="summe-karte">
+    <div class="summe-box">
+      <div class="label">Brutto Gesamt</div>
+      <div class="wert" id="brutto-gesamt">{{ '%.2f'|format(brutto_gesamt) | replace('.', ',') }} €</div>
+    </div>
+    <div class="summe-box">
+      <div class="label">Anzahl Belege</div>
+      <div class="wert">{{ zeilen | sum(attribute='Anzahl_Belege') }}</div>
+    </div>
+    <div class="summe-box">
+      <div class="label">MwSt 7 %</div>
+      <div class="wert">{{ '%.2f'|format(zeilen | sum(attribute='MwSt_7_Pct') or 0) | replace('.', ',') }} €</div>
+    </div>
+    <div class="summe-box">
+      <div class="label">MwSt 19 %</div>
+      <div class="wert">{{ '%.2f'|format(zeilen | sum(attribute='MwSt_19_Pct') or 0) | replace('.', ',') }} €</div>
+    </div>
+  </div>
+
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Zahlart</th>
+        <th class="rechts">Belege</th>
+        <th class="rechts">Bon Von</th>
+        <th class="rechts">Bon Bis</th>
+        <th class="rechts">MwSt 0 %</th>
+        <th class="rechts">MwSt 7 %</th>
+        <th class="rechts">MwSt 19 %</th>
+        <th class="rechts">Brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for z in zeilen %}
+      <tr>
+        <td>{{ z.Datum }}</td>
+        <td>{{ z.Zahlart }}</td>
+        <td class="rechts">{{ z.Anzahl_Belege }}</td>
+        <td class="rechts">{{ z.Bon_Von or '–' }}</td>
+        <td class="rechts">{{ z.Bon_Bis or '–' }}</td>
+        <td class="rechts">{{ '%.2f'|format(z.MwSt_0_Pct or 0) | replace('.', ',') }} €</td>
+        <td class="rechts">{{ '%.2f'|format(z.MwSt_7_Pct or 0) | replace('.', ',') }} €</td>
+        <td class="rechts">{{ '%.2f'|format(z.MwSt_19_Pct or 0) | replace('.', ',') }} €</td>
+        <td class="rechts" style="font-weight:700;">{{ '%.2f'|format(z.Brutto_Gesamt or 0) | replace('.', ',') }} €</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2"><strong>Summe</strong></td>
+        <td class="rechts">{{ zeilen | sum(attribute='Anzahl_Belege') }}</td>
+        <td colspan="2"></td>
+        <td class="rechts">{{ '%.2f'|format(zeilen | sum(attribute='MwSt_0_Pct') or 0) | replace('.', ',') }} €</td>
+        <td class="rechts">{{ '%.2f'|format(zeilen | sum(attribute='MwSt_7_Pct') or 0) | replace('.', ',') }} €</td>
+        <td class="rechts">{{ '%.2f'|format(zeilen | sum(attribute='MwSt_19_Pct') or 0) | replace('.', ',') }} €</td>
+        <td class="rechts">{{ '%.2f'|format(brutto_gesamt) | replace('.', ',') }} €</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% else %}
+  <p class="text-dim">Keine Daten für den gewählten Zeitraum.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ════════════════════════════════════════════════════════════════
+   2. Monatsübersicht
+   ════════════════════════════════════════════════════════════════ #}
+{% if bericht == 'monatsuebersicht' %}
+<div class="card">
+  <h2 class="card-titel">📅 Monatsübersicht Umsatz {{ jahr }}</h2>
+
+  {# Filter #}
+  <form class="filter-form" method="get" action="{{ url_for('monatsuebersicht_seite') }}">
+    <div class="fg">
+      <label>Jahr</label>
+      <select name="jahr">
+        {% for y in range(2020, (now.year + 1)) %}
+        <option value="{{ y }}" {% if y == jahr %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Anzeigen</button>
+    {% if zeilen %}
+    <a href="{{ url_for('monatsuebersicht_export', jahr=jahr) }}"
+       class="btn btn-neutral">⬇ CSV</a>
+    {% endif %}
+  </form>
+
+  {% if trend %}
+  {# Chart #}
+  <div class="chart-wrap">
+    <canvas id="umsatzChart"></canvas>
+  </div>
+  {% endif %}
+
+  {% if zeilen %}
+  {% set monate = ['Jan','Feb','Mrz','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'] %}
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Art</th>
+        {% for m in monate %}<th class="rechts">{{ m }}</th>{% endfor %}
+        <th class="rechts">Summe</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for z in zeilen %}
+      <tr>
+        <td>{% if z.Art == 3 %}VK (Kassenbons){% elif z.Art == 5 %}EK (Einkauf){% else %}Quelle {{ z.Art }}{% endif %}</td>
+        {% for m in monate %}
+        <td class="rechts">{{ '%.2f'|format(z[m] or 0) | replace('.', ',') }}</td>
+        {% endfor %}
+        <td class="rechts" style="font-weight:700;">{{ '%.2f'|format(z.Summe or 0) | replace('.', ',') }} €</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-dim">Keine Daten für {{ jahr }}.</p>
+  {% endif %}
+</div>
+
+{% if trend %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const trend = {{ trend | tojson }};
+  const labels = ['Jan','Feb','Mrz','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const data = Array(12).fill(0);
+  trend.forEach(function(r) { data[r.Monat - 1] = parseFloat(r.Netto_Summe) || 0; });
+
+  new Chart(document.getElementById('umsatzChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'VK Netto-Umsatz {{ jahr }} (€)',
+        data: data,
+        backgroundColor: 'rgba(46,110,26,0.55)',
+        borderColor: '#1a4010',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': ' +
+                ctx.parsed.y.toFixed(2).replace('.', ',') + ' €';
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: function(val) {
+              return val.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endif %}
+
+{# ════════════════════════════════════════════════════════════════
+   3. Kassenbuch
+   ════════════════════════════════════════════════════════════════ #}
+{% if bericht == 'kassenbuch' %}
+<div class="card">
+  <h2 class="card-titel">📒 Kassenbuch (FiBu 1000)</h2>
+
+  <form class="filter-form" method="get" action="{{ url_for('kassenbuch_seite') }}">
+    <div class="fg">
+      <label>Von</label>
+      <input type="date" name="von" value="{{ von }}">
+    </div>
+    <div class="fg">
+      <label>Bis</label>
+      <input type="date" name="bis" value="{{ bis }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Anzeigen</button>
+    {% if zeilen %}
+    <a href="{{ url_for('kassenbuch_export', von=von, bis=bis) }}"
+       class="btn btn-neutral">⬇ CSV</a>
+    {% endif %}
+  </form>
+
+  {% if zeilen %}
+  {% set saldo = zeilen | sum(attribute='BETRAG') %}
+  <div class="summe-karte">
+    <div class="summe-box">
+      <div class="label">Saldo (Summe Beträge)</div>
+      <div class="wert">{{ '%.2f'|format(saldo or 0) | replace('.', ',') }} €</div>
+    </div>
+    <div class="summe-box">
+      <div class="label">Positionen</div>
+      <div class="wert">{{ zeilen | length }}</div>
+    </div>
+  </div>
+
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Beleg</th>
+        <th>Verwendungszweck</th>
+        <th>Erstellt von</th>
+        <th>FiBu Kto</th>
+        <th>FiBu Gegenkto</th>
+        <th class="rechts">Betrag</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for z in zeilen %}
+      <tr>
+        <td>{{ z.DATUM }}</td>
+        <td>{{ z.BELEGNUM or '–' }}</td>
+        <td>{{ z.VERW_ZWECK or '–' }}</td>
+        <td>{{ z.ERSTELLT_NAME or '–' }}</td>
+        <td>{{ z.FIBU_KTO or '–' }}</td>
+        <td>{{ z.FIBU_GEGENKTO or '–' }}</td>
+        <td class="rechts" style="font-weight:{% if (z.BETRAG or 0) < 0 %}700;color:var(--rot){% else %}700{% endif %}">
+          {{ '%.2f'|format(z.BETRAG or 0) | replace('.', ',') }} €
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6"><strong>Saldo</strong></td>
+        <td class="rechts">{{ '%.2f'|format(saldo or 0) | replace('.', ',') }} €</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% else %}
+  <p class="text-dim">Keine Einträge für den gewählten Zeitraum.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ════════════════════════════════════════════════════════════════
+   4. EC-Umsätze
+   ════════════════════════════════════════════════════════════════ #}
+{% if bericht == 'ec_umsaetze' %}
+<div class="card">
+  <h2 class="card-titel">💳 EC-Umsätze</h2>
+
+  <form class="filter-form" method="get" action="{{ url_for('ec_umsaetze_seite') }}">
+    <div class="fg">
+      <label>Von</label>
+      <input type="date" name="von" value="{{ von }}">
+    </div>
+    <div class="fg">
+      <label>Bis</label>
+      <input type="date" name="bis" value="{{ bis }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Anzeigen</button>
+    {% if zeilen %}
+    <a href="{{ url_for('ec_umsaetze_export', von=von, bis=bis) }}"
+       class="btn btn-neutral">⬇ CSV</a>
+    {% endif %}
+  </form>
+
+  {% if zeilen %}
+  {% set brutto_gesamt = zeilen | sum(attribute='Brutto_Summe') %}
+  <div class="summe-karte">
+    <div class="summe-box">
+      <div class="label">Brutto Gesamt</div>
+      <div class="wert">{{ '%.2f'|format(brutto_gesamt or 0) | replace('.', ',') }} €</div>
+    </div>
+    <div class="summe-box">
+      <div class="label">Positionen</div>
+      <div class="wert">{{ zeilen | sum(attribute='Anzahl') }}</div>
+    </div>
+  </div>
+
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Buchdatum</th>
+        <th>RN Von</th>
+        <th>RN Bis</th>
+        <th class="rechts">Anzahl</th>
+        <th class="rechts">Brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for z in zeilen %}
+      <tr>
+        <td>{{ z.Datum }}</td>
+        <td>{{ z.Buchdatum or '–' }}</td>
+        <td>{{ z.RN_Von or '–' }}</td>
+        <td>{{ z.RN_Bis or '–' }}</td>
+        <td class="rechts">{{ z.Anzahl }}</td>
+        <td class="rechts" style="font-weight:700;">
+          {{ '%.2f'|format(z.Brutto_Summe or 0) | replace('.', ',') }} €
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4"><strong>Summe</strong></td>
+        <td class="rechts">{{ zeilen | sum(attribute='Anzahl') }}</td>
+        <td class="rechts">{{ '%.2f'|format(brutto_gesamt or 0) | replace('.', ',') }} €</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% else %}
+  <p class="text-dim">Keine EC-Umsätze für den gewählten Zeitraum.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

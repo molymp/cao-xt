@@ -2,16 +2,18 @@
 CAO-XT WaWi-App – Flask-Hauptanwendung
 Starten: cd wawi-app/app && python3 app.py
 """
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file
 from datetime import datetime, date
 from functools import wraps
 import hashlib
+import io
 import os
 import subprocess
 import sys
 import logging
 import config
 import db as db_modul
+import berichte as bericht_modul
 from db import get_db, test_verbindung
 
 logging.basicConfig(level=logging.INFO,
@@ -448,6 +450,142 @@ def api_status():
         'db':  test_verbindung(),
         'ts':  datetime.now().isoformat(),
     })
+
+
+# ── CFO-Berichte ──────────────────────────────────────────────
+
+def _parse_datum(s: str | None, fallback: date) -> date:
+    """Parst YYYY-MM-DD oder gibt fallback zurück."""
+    if s:
+        try:
+            return date.fromisoformat(s)
+        except ValueError:
+            pass
+    return fallback
+
+
+@app.get('/wawi/berichte')
+def berichte_seite():
+    """Übersichtsseite CFO-Berichte."""
+    return render_template('berichte.html')
+
+
+# ── Tagesumsatz ────────────────────────────────────────────────
+
+@app.get('/wawi/berichte/tagesumsatz')
+def tagesumsatz_seite():
+    """Tagesumsatz-Bericht (HTML)."""
+    heute = date.today()
+    von   = _parse_datum(request.args.get('von'), heute)
+    bis   = _parse_datum(request.args.get('bis'), heute)
+    try:
+        zeilen = bericht_modul.tagesumsatz(von, bis)
+    except Exception as e:
+        log.exception("Tagesumsatz-Fehler")
+        zeilen = []
+        flash(f'Datenbankfehler: {e}', 'error')
+    return render_template('berichte.html', bericht='tagesumsatz',
+                           zeilen=zeilen, von=von, bis=bis)
+
+
+@app.get('/wawi/berichte/tagesumsatz/export')
+def tagesumsatz_export():
+    """Tagesumsatz als CSV."""
+    heute = date.today()
+    von   = _parse_datum(request.args.get('von'), heute)
+    bis   = _parse_datum(request.args.get('bis'), heute)
+    inhalt = bericht_modul.tagesumsatz_csv(von, bis)
+    return send_file(io.BytesIO(inhalt), mimetype='text/csv',
+                     as_attachment=True,
+                     download_name=f'tagesumsatz_{von}_{bis}.csv')
+
+
+# ── Monatsübersicht ────────────────────────────────────────────
+
+@app.get('/wawi/berichte/monatsuebersicht')
+def monatsuebersicht_seite():
+    """Monatsübersicht (HTML + Chart-Daten als JSON)."""
+    jahr = int(request.args.get('jahr', date.today().year))
+    try:
+        zeilen = bericht_modul.monatsuebersicht(jahr)
+        trend  = bericht_modul.monatstrend(jahr)
+    except Exception as e:
+        log.exception("Monatsübersicht-Fehler")
+        zeilen = []
+        trend  = []
+        flash(f'Datenbankfehler: {e}', 'error')
+    return render_template('berichte.html', bericht='monatsuebersicht',
+                           zeilen=zeilen, trend=trend, jahr=jahr)
+
+
+@app.get('/wawi/berichte/monatsuebersicht/export')
+def monatsuebersicht_export():
+    """Monatsübersicht als CSV."""
+    jahr   = int(request.args.get('jahr', date.today().year))
+    inhalt = bericht_modul.monatsuebersicht_csv(jahr)
+    return send_file(io.BytesIO(inhalt), mimetype='text/csv',
+                     as_attachment=True,
+                     download_name=f'monatsuebersicht_{jahr}.csv')
+
+
+# ── Kassenbuch ─────────────────────────────────────────────────
+
+@app.get('/wawi/berichte/kassenbuch')
+def kassenbuch_seite():
+    """Kassenbuch-Bericht (HTML)."""
+    heute = date.today()
+    von   = _parse_datum(request.args.get('von'), heute.replace(day=1))
+    bis   = _parse_datum(request.args.get('bis'), heute)
+    try:
+        zeilen = bericht_modul.kassenbuch(von, bis)
+    except Exception as e:
+        log.exception("Kassenbuch-Fehler")
+        zeilen = []
+        flash(f'Datenbankfehler: {e}', 'error')
+    return render_template('berichte.html', bericht='kassenbuch',
+                           zeilen=zeilen, von=von, bis=bis)
+
+
+@app.get('/wawi/berichte/kassenbuch/export')
+def kassenbuch_export():
+    """Kassenbuch als CSV."""
+    heute = date.today()
+    von   = _parse_datum(request.args.get('von'), heute.replace(day=1))
+    bis   = _parse_datum(request.args.get('bis'), heute)
+    inhalt = bericht_modul.kassenbuch_csv(von, bis)
+    return send_file(io.BytesIO(inhalt), mimetype='text/csv',
+                     as_attachment=True,
+                     download_name=f'kassenbuch_{von}_{bis}.csv')
+
+
+# ── EC-Umsätze ─────────────────────────────────────────────────
+
+@app.get('/wawi/berichte/ec-umsaetze')
+def ec_umsaetze_seite():
+    """EC-Umsätze-Bericht (HTML)."""
+    heute = date.today()
+    von   = _parse_datum(request.args.get('von'), heute.replace(day=1))
+    bis   = _parse_datum(request.args.get('bis'), heute)
+    try:
+        zeilen = bericht_modul.ec_umsaetze(von, bis)
+    except Exception as e:
+        log.exception("EC-Umsätze-Fehler")
+        zeilen = []
+        flash(f'Datenbankfehler: {e}', 'error')
+    return render_template('berichte.html', bericht='ec_umsaetze',
+                           zeilen=zeilen, von=von, bis=bis)
+
+
+@app.get('/wawi/berichte/ec-umsaetze/export')
+def ec_umsaetze_export():
+    """EC-Umsätze als CSV."""
+    heute = date.today()
+    von   = _parse_datum(request.args.get('von'), heute.replace(day=1))
+    bis   = _parse_datum(request.args.get('bis'), heute)
+    inhalt = bericht_modul.ec_umsaetze_csv(von, bis)
+    return send_file(io.BytesIO(inhalt), mimetype='text/csv',
+                     as_attachment=True,
+                     download_name=f'ec_umsaetze_{von}_{bis}.csv')
 
 
 # ── Start ────────────────────────────────────────────────────
