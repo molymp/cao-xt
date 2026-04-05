@@ -1,0 +1,58 @@
+#!/bin/bash
+# ============================================================
+# pre-push Hook – Merge-Schutz für master/main Branch
+#
+# Verhindert direkte Pushes auf master/main ohne eine gültige
+# Paperclip-Approval-Referenz.
+#
+# Richtlinie:
+#   1. Alle Änderungen kommen über Feature-Branches (cto/<name>)
+#   2. Board testet im Review-Worktree und gibt schriftlich frei
+#   3. Erst nach Freigabe: PAPERCLIP_APPROVAL_ID=<id> git push origin master
+#
+# Aktivierung (einmalig pro Entwickler):
+#   git config core.hooksPath .githooks
+#
+# Referenz: HAB-242
+# ============================================================
+
+PROTECTED_BRANCHES=("refs/heads/master" "refs/heads/main")
+
+while read local_ref local_sha remote_ref remote_sha; do
+    for protected in "${PROTECTED_BRANCHES[@]}"; do
+        if [ "$remote_ref" = "$protected" ]; then
+            branch_name="${remote_ref#refs/heads/}"
+
+            # Prüfen ob eine Paperclip-Approval-Referenz vorliegt
+            if [ -n "${PAPERCLIP_APPROVAL_ID:-}" ]; then
+                echo "✅ Paperclip-Approval erkannt: $PAPERCLIP_APPROVAL_ID"
+                echo "   Push auf '$branch_name' wird zugelassen."
+                break
+            fi
+
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════╗"
+            echo "║  FEHLER: Push auf '$branch_name' blockiert               ║"
+            echo "╚══════════════════════════════════════════════════════════╝"
+            echo ""
+            echo "  Direkte Pushes auf '$branch_name' sind ohne Board-Freigabe"
+            echo "  nicht erlaubt (Paperclip-Approval erforderlich)."
+            echo ""
+            echo "  Richtiger Ablauf:"
+            echo "  1. Feature-Branch erstellen:  git checkout -b cto/<aufgabe>"
+            echo "  2. Änderungen committen und Branch pushen"
+            echo "  3. deploy-review.sh cto/<aufgabe>  → Review-Umgebung"
+            echo "  4. Task in Paperclip auf 'in_review' setzen"
+            echo "  5. Auf schriftliche Board-Freigabe warten"
+            echo "  6. Nach Freigabe:"
+            echo "     PAPERCLIP_APPROVAL_ID=<approval-id> git push origin $branch_name"
+            echo ""
+            echo "  Alternativ (Board/Notfall):"
+            echo "     PAPERCLIP_APPROVAL_ID=manual git push origin $branch_name"
+            echo ""
+            exit 1
+        fi
+    done
+done
+
+exit 0
