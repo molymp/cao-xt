@@ -275,7 +275,7 @@ def _warengruppen_namen() -> dict[int, str]:
     """
     try:
         with get_db() as cur:
-            cur.execute("SELECT WARENGRUPPE AS wgr_id, NAME AS wgr_name FROM WARENGRUPPEN")
+            cur.execute("SELECT `WARENGRUPPE` AS wgr_id, `NAME` AS wgr_name FROM `WARENGRUPPEN`")
             return {int(r['wgr_id']): r['wgr_name'] for r in cur.fetchall() if r['wgr_name']}
     except Exception as e:
         log.warning("Warengruppen-Namen nicht ladbar: %s", e)
