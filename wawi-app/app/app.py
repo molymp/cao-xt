@@ -284,22 +284,20 @@ def _warengruppen_namen() -> dict[int, str]:
 
 def _umsatz_warengruppen(monat: str) -> list[dict]:
     """Umsatz und COGS nach Warengruppen für einen Monat (YYYY-MM).
-    COGS = SUM(MENGE × ARTIKEL.EK_PREIS) – Näherung mit aktuellem EK-Preis.
-    Warengruppe wird bevorzugt aus ARTIKEL geholt (jp.WARENGRUPPE ist 0
-    für neue Kassen-Einträge).
+    COGS = SUM(MENGE × jp.EK_PREIS) direkt aus JOURNALPOS.
+    Einträge mit EK_PREIS=0 tragen 0 zum COGS bei (neue Kassen-App-Buchungen).
     """
     sql = """
         SELECT
-            COALESCE(a.WARENGRUPPE, jp.WARENGRUPPE, 0)                       AS wgr_id,
-            COALESCE(ROUND(SUM(jp.GPREIS), 2), 0)                            AS umsatz_brutto,
-            COALESCE(ROUND(SUM(jp.MENGE * COALESCE(a.EK_PREIS, 0)), 2), 0)  AS cogs
+            COALESCE(jp.WARENGRUPPE, 0)                           AS wgr_id,
+            COALESCE(ROUND(SUM(jp.GPREIS), 2), 0)                AS umsatz_brutto,
+            COALESCE(ROUND(SUM(jp.MENGE * jp.EK_PREIS), 2), 0)  AS cogs
         FROM JOURNALPOS jp
         JOIN JOURNAL j ON jp.JOURNAL_ID = j.REC_ID
-        LEFT JOIN ARTIKEL a ON jp.ARTIKEL_ID = a.REC_ID
         WHERE j.QUELLE     = 3
           AND j.QUELLE_SUB = 2
           AND DATE_FORMAT(j.RDATUM, '%Y-%m') = %s
-        GROUP BY COALESCE(a.WARENGRUPPE, jp.WARENGRUPPE, 0)
+        GROUP BY jp.WARENGRUPPE
         ORDER BY umsatz_brutto DESC
     """
     try:
