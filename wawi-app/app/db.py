@@ -1,35 +1,50 @@
 """
 CAO-XT WaWi-App – Datenbankverbindungen
-Zwei Connection Pools:
+Zwei lazy-initialisierte Connection Pools:
   _cao_pool  – CAO-Faktura-DB (Artikelstamm, read-only)
   _wawi_pool – WaWi-DB (Preise, read-write)
+
+Lazy Init: Pools werden erst beim ersten DB-Aufruf erstellt, nicht beim
+Import. So startet die App auch dann, wenn die DB beim Start nicht
+erreichbar ist (z. B. kein config_local.py vorhanden).
 """
 import mysql.connector
 from mysql.connector import pooling
 from contextlib import contextmanager
+import threading
 import config
 
 
-# ── CAO-DB Pool (read-only) ───────────────────────────────────
+# ── CAO-DB Pool (read-only, lazy) ────────────────────────────
 
-_cao_pool = pooling.MySQLConnectionPool(
-    pool_name="wawi_cao_pool",
-    pool_size=5,
-    host=config.CAO_DB_HOST,
-    port=config.CAO_DB_PORT,
-    user=config.CAO_DB_USER,
-    password=config.CAO_DB_PASSWORD,
-    database=config.CAO_DB_NAME,
-    charset="utf8mb4",
-    use_unicode=True,
-    autocommit=True,
-    connection_timeout=10,
-)
+_cao_pool: pooling.MySQLConnectionPool | None = None
+_cao_pool_lock = threading.Lock()
+
+
+def _get_cao_pool() -> pooling.MySQLConnectionPool:
+    global _cao_pool
+    if _cao_pool is None:
+        with _cao_pool_lock:
+            if _cao_pool is None:
+                _cao_pool = pooling.MySQLConnectionPool(
+                    pool_name="wawi_cao_pool",
+                    pool_size=5,
+                    host=config.CAO_DB_HOST,
+                    port=config.CAO_DB_PORT,
+                    user=config.CAO_DB_USER,
+                    password=config.CAO_DB_PASSWORD,
+                    database=config.CAO_DB_NAME,
+                    charset="utf8mb4",
+                    use_unicode=True,
+                    autocommit=True,
+                    connection_timeout=10,
+                )
+    return _cao_pool
 
 
 def _get_cao_conn():
     try:
-        return _cao_pool.get_connection()
+        return _get_cao_pool().get_connection()
     except Exception:
         return mysql.connector.connect(
             host=config.CAO_DB_HOST,
@@ -43,26 +58,36 @@ def _get_cao_conn():
         )
 
 
-# ── WaWi-DB Pool (read-write) ─────────────────────────────────
+# ── WaWi-DB Pool (read-write, lazy) ──────────────────────────
 
-_wawi_pool = pooling.MySQLConnectionPool(
-    pool_name="wawi_pool",
-    pool_size=5,
-    host=config.WAWI_DB_HOST,
-    port=config.WAWI_DB_PORT,
-    user=config.WAWI_DB_USER,
-    password=config.WAWI_DB_PASSWORD,
-    database=config.WAWI_DB_NAME,
-    charset="utf8mb4",
-    use_unicode=True,
-    autocommit=True,
-    connection_timeout=10,
-)
+_wawi_pool: pooling.MySQLConnectionPool | None = None
+_wawi_pool_lock = threading.Lock()
+
+
+def _get_wawi_pool() -> pooling.MySQLConnectionPool:
+    global _wawi_pool
+    if _wawi_pool is None:
+        with _wawi_pool_lock:
+            if _wawi_pool is None:
+                _wawi_pool = pooling.MySQLConnectionPool(
+                    pool_name="wawi_pool",
+                    pool_size=5,
+                    host=config.WAWI_DB_HOST,
+                    port=config.WAWI_DB_PORT,
+                    user=config.WAWI_DB_USER,
+                    password=config.WAWI_DB_PASSWORD,
+                    database=config.WAWI_DB_NAME,
+                    charset="utf8mb4",
+                    use_unicode=True,
+                    autocommit=True,
+                    connection_timeout=10,
+                )
+    return _wawi_pool
 
 
 def _get_wawi_conn():
     try:
-        return _wawi_pool.get_connection()
+        return _get_wawi_pool().get_connection()
     except Exception:
         return mysql.connector.connect(
             host=config.WAWI_DB_HOST,
