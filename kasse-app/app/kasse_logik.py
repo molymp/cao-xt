@@ -1704,7 +1704,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
       - ZAHLART_NAME = 'Rechnung'
       - XT_KASSE_VORGAENGE wird abschließend auf ABGESCHLOSSEN gesetzt
 
-    Gibt {'journal_id': int, 'vrenum': str} zurück.
+    Gibt {'journal_id': int, 'vrenum': str, 'vlsnum': str} zurück.
     """
     vorgang    = vorgang_laden(vorgang_id)
     positionen = [p for p in vorgang_positionen(vorgang_id)
@@ -1716,10 +1716,11 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
     if vorgang['STATUS'] not in ('OFFEN', 'GEPARKT'):
         raise ValueError("Vorgang ist nicht offen.")
 
-    # Kundendaten
+    # Kundendaten (vollständig für JOURNAL-Adressfelder)
     with get_db() as cur:
         cur.execute(
-            """SELECT KUNNUM1, NAME1, NAME2, DEB_NUM, PR_EBENE
+            """SELECT KUNNUM1, NAME1, NAME2, ANREDE, ABTEILUNG,
+                      STRASSE, LAND, PLZ, ORT, DEB_NUM, PR_EBENE
                FROM ADRESSEN WHERE REC_ID = %s""",
             (adressen_id,)
         )
@@ -1727,9 +1728,9 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
     if not adresse:
         raise ValueError("Adresse nicht gefunden.")
 
-    kun_num  = adresse.get('KUNNUM1') or ''
-    kun_name1 = adresse.get('NAME1') or 'Kundenverkauf'
-    kun_name2 = adresse.get('NAME2') or ''
+    kun_num          = adresse.get('KUNNUM1') or ''
+    kun_name1        = adresse.get('NAME1') or 'Kundenverkauf'
+    kun_name2        = adresse.get('NAME2') or ''
     gegenkonto_kunde = int(adresse.get('DEB_NUM') or 0)
 
     # POS_TA_ID
@@ -1753,20 +1754,6 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
     except Exception as _e:
         log.warning("lieferschein_zu_journal: FIRMA_ID-Abfrage fehlgeschlagen: %s", _e)
 
-    # ZAHLART 'Rechnung' aus ZAHLUNGSARTEN
-    zahlart_id   = -1
-    zahlart_name = 'Rechnung'
-    try:
-        with get_db() as cur:
-            cur.execute(
-                "SELECT REC_ID FROM ZAHLUNGSARTEN WHERE NAME LIKE 'Rechnung%' LIMIT 1"
-            )
-            za_row = cur.fetchone()
-            if za_row:
-                zahlart_id = int(za_row['REC_ID'])
-    except Exception:
-        pass
-
     # Summen je Steuersatz (Cent)
     bsumme = {0: 0, 1: 0, 2: 0, 3: 0}
     nsumme = {0: 0, 1: 0, 2: 0, 3: 0}
@@ -1784,17 +1771,50 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
     bsumme_total = int(vorgang.get('BETRAG_BRUTTO') or 0)
     nsumme_total = int(vorgang.get('BETRAG_NETTO') or 0)
 
-    vrenum = vorgang.get('VORGANGSNUMMER') or str(vorgang.get('BON_NR', ''))
-    jetzt  = datetime.now()
+    # VRENUM aus REGISTRY MAIN\NUMBERS NAME='29' – eigene Transaktion
+    with get_db_transaction() as cur:
+        cur.execute(
+            r"SELECT VAL_INT2, VAL_CHAR FROM REGISTRY "
+            r"WHERE MAINKEY='MAIN\\NUMBERS' AND NAME='29' FOR UPDATE"
+        )
+        reg29 = cur.fetchone()
+        vrenum_nr = ((reg29['VAL_INT2'] or 0) + 1) if reg29 else 1
+        if reg29:
+            cur.execute(
+                r"UPDATE REGISTRY SET VAL_INT2 = %s "
+                r"WHERE MAINKEY='MAIN\\NUMBERS' AND NAME='29'",
+                (vrenum_nr,)
+            )
+    vrenum = _format_vlsnum(reg29['VAL_CHAR'] if reg29 else '', vrenum_nr)
+
+    # VLSNUM aus REGISTRY MAIN\NUMBERS NAME='VK-LIEF' – eigene Transaktion
+    with get_db_transaction() as cur:
+        cur.execute(
+            r"SELECT VAL_INT2, VAL_CHAR FROM REGISTRY "
+            r"WHERE MAINKEY='MAIN\\NUMBERS' AND NAME='VK-LIEF' FOR UPDATE"
+        )
+        reg_ls = cur.fetchone()
+        vlsnum_nr = ((reg_ls['VAL_INT2'] or 0) + 1) if reg_ls else 1
+        if reg_ls:
+            cur.execute(
+                r"UPDATE REGISTRY SET VAL_INT2 = %s "
+                r"WHERE MAINKEY='MAIN\\NUMBERS' AND NAME='VK-LIEF'",
+                (vlsnum_nr,)
+            )
+    vlsnum = _format_vlsnum(reg_ls['VAL_CHAR'] if reg_ls else '', vlsnum_nr)
+
+    jetzt = datetime.now()
 
     with get_db_transaction() as cur:
         cur.execute(
             """INSERT INTO JOURNAL (
                QUELLE, QUELLE_SUB, KASSEN_ID, POS_TA_ID, TERM_ID,
-               MA_ID, VRENUM, RDATUM, KBDATUM, STADIUM,
+               MA_ID, VRENUM, VLSNUM, RDATUM, KBDATUM, LDATUM, STADIUM,
                ADDR_ID, SPRACH_ID,
                ZAHLART, ZAHLART_NAME, BRUTTO_FLAG, PR_EBENE,
-               KUN_NAME1, KUN_NAME2, KUN_NUM,
+               KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NUM, KUN_ABTEILUNG,
+               KUN_STRASSE, KUN_LAND, KUN_PLZ, KUN_ORT,
+               GEGENKONTO,
                WAEHRUNG, KURS,
                BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
                NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
@@ -1803,14 +1823,18 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                GEGEBEN,
                KOST_NETTO, WARE, WERT_NETTO, LOHN, TKOST, ROHGEWINN,
                ATSUMME, ATMSUMME,
+               SOLL_NTAGE, SOLL_SKONTO, SOLL_SKONTO_TAGE,
+               STORNO_INFO,
                ERSTELLT, ERST_NAME, GEAEND, GEAEND_NAME,
                FIRMA_ID, HASHSUM
             ) VALUES (
                3, 2, %s, %s, 1,
-               %s, %s, %s, %s, 9,
+               %s, %s, %s, %s, %s, %s, 121,
                %s, 2,
-               %s, %s, 'Y', %s,
-               %s, %s, %s,
+               -1, 'Rechnung', 'N', %s,
+               %s, %s, %s, %s, %s,
+               %s, %s, %s, %s,
+               %s,
                '€', 1.0000,
                %s, %s, %s, %s, %s,
                %s, %s, %s, %s, %s,
@@ -1819,23 +1843,28 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                0,
                0, %s, %s, 0, 0, %s,
                0, 0,
-               %s, %s, %s, %s,
+               1, 0, 0,
+               'Belegtransfer',
+               %s, 'Kasse', %s, 'Kasse',
                %s, '$$'
             )""",
             (
                 terminal_nr, pos_ta_id,
-                ma_id, vrenum, jetzt, jetzt,
+                ma_id, vrenum, vlsnum, jetzt, jetzt, jetzt.date(),
                 adressen_id,
-                zahlart_id, zahlart_name,
                 int(adresse.get('PR_EBENE') or 5),
-                kun_name1, kun_name2, kun_num,
+                adresse.get('ANREDE') or '', kun_name1, kun_name2, kun_num,
+                adresse.get('ABTEILUNG') or '',
+                adresse.get('STRASSE') or '', adresse.get('LAND') or 'DE',
+                adresse.get('PLZ') or '', adresse.get('ORT') or '',
+                gegenkonto_kunde,
                 c(bsumme[0]), c(bsumme[1]), c(bsumme[2]), c(bsumme[3]), c(bsumme_total),
                 c(nsumme[0]), c(nsumme[1]), c(nsumme[2]), c(nsumme[3]), c(nsumme_total),
                 c(msumme[0]), c(msumme[1]), c(msumme[2]), c(msumme[3]),
                 c(bsumme_total - nsumme_total),
                 float(mwst_saetze.get(1, 19.0)), float(mwst_saetze.get(2, 7.0)),
                 c(nsumme_total), c(nsumme_total), c(nsumme_total),
-                jetzt, erstellt_von, jetzt, erstellt_von,
+                jetzt, jetzt,
                 firma_id,
             )
         )
@@ -1876,7 +1905,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                    RABATT, RABATT2, RABATT3,
                    E_RABATT_BETRAG, G_RABATT_BETRAG,
                    STEUER_CODE, GEGENKONTO,
-                   BRUTTO_FLAG, GEBUCHT,
+                   BRUTTO_FLAG, GEBUCHT, STATUS_FLAG,
                    ME_EINHEIT, ME_CODE, PR_EINHEIT, VPE,
                    ALTTEIL_PROZ, LAGER_ID
                 ) VALUES (
@@ -1889,7 +1918,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                    0, 0, 0,
                    0, 0,
                    %s, %s,
-                   'Y', 'Y',
+                   'N', 'N', 121,
                    'Stk', 'H87', 1, 1,
                    0.10, -2
                 )""",
@@ -1929,7 +1958,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
         log.info("JOURNAL-Lieferschein erstellt: REC_ID=%d, Vorgang=%d, Kunde=%d, HASHSUM=%s",
                  journal_id, vorgang_id, adressen_id, hashsum)
 
-    return {'journal_id': journal_id, 'vrenum': vrenum}
+    return {'journal_id': journal_id, 'vrenum': vrenum, 'vlsnum': vlsnum}
 
 
 # ─────────────────────────────────────────────────────────────
