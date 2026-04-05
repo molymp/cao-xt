@@ -195,6 +195,7 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   <a href="{{ url_for('massenupdate_seite') }}" class="nav-btn {% if request.endpoint == 'massenupdate_seite' %}aktiv{% endif %}">📈 Massenupdate</a>
   <a href="{{ url_for('csv_import_seite') }}" class="nav-btn {% if request.endpoint == 'csv_import_seite' %}aktiv{% endif %}">📤 CSV-Import</a>
   <a href="{{ url_for('preisgruppen_seite') }}" class="nav-btn {% if request.endpoint == 'preisgruppen_seite' %}aktiv{% endif %}">🏷️ Preisgruppen</a>
+  <a href="{{ url_for('berichte_seite') }}" class="nav-btn {% if request.endpoint in ('berichte_seite','tagesumsatz_seite','monatsuebersicht_seite','kassenbuch_seite','ec_umsaetze_seite') %}aktiv{% endif %}">📊 Berichte</a>
   <span class="spacer"></span>
   <a href="{{ url_for('admin_seite') }}" class="nav-btn">⚙️</a>
 </nav>
