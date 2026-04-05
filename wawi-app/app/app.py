@@ -384,11 +384,16 @@ def reporting():
     from datetime import date
     mwst_daten   = _mwst_monatlich(12)
     monate_liste = [r['monat'] for r in mwst_daten]
-    # Monat-Parameter: URL-Param bevorzugen, sonst neuesten Monat mit Daten nehmen.
-    # Verhindert, dass laufender Monat (ohne Buchungen) als Default angezeigt wird.
+    # Monat-Parameter: URL-Param bevorzugen, sonst letzten abgeschlossenen Monat nehmen.
+    # Laufender Monat wird übersprungen, da JOURNALPOS dort oft noch leer ist,
+    # auch wenn JOURNAL bereits Einträge enthält.
+    akt_monat   = date.today().strftime('%Y-%m')
     monat_param = request.args.get('monat', '')
     if not monat_param or monat_param not in monate_liste:
-        monat_param = monate_liste[0] if monate_liste else date.today().strftime('%Y-%m')
+        abgeschlossen = [m for m in monate_liste if m < akt_monat]
+        monat_param = abgeschlossen[0] if abgeschlossen else (
+            monate_liste[0] if monate_liste else akt_monat
+        )
     warengruppen = _umsatz_warengruppen(monat_param)
     kpis         = _finance_kpis()
     return render_template(
