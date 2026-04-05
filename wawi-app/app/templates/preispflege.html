@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+{% block title %}Preispflege – EK / VK5 / Marge{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ── Toolbar ───────────────────────────────────────────────── */
+.pp-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.pp-toolbar select {
+  padding: 8px 12px;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  font-family: inherit;
+  font-size: 14px;
+  background: white;
+  color: var(--text-dunkel);
+  outline: none;
+  min-width: 200px;
+  cursor: pointer;
+}
+.pp-toolbar select:focus { border-color: var(--gruen-mitte); }
+.pp-toolbar .btn {
+  padding: 8px 16px;
+  background: var(--gruen-mitte);
+  color: white;
+  border: none;
+  border-radius: var(--radius-klein);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pp-toolbar .btn:hover { background: var(--gruen-dunkel); }
+.pp-toolbar .btn:disabled { opacity: 0.5; cursor: default; }
+.pp-info {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--grau-mitte);
+}
+
+/* ── Tabelle ───────────────────────────────────────────────── */
+.pp-table-wrap {
+  overflow-x: auto;
+}
+.pp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.pp-table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--grau-hell);
+  color: var(--text-hell);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid var(--creme-dunkel);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.pp-table th:hover { background: var(--creme-dunkel); }
+.pp-table th .sort-arrow { font-size: 9px; margin-left: 4px; opacity: 0.5; }
+.pp-table th.sort-aktiv .sort-arrow { opacity: 1; color: var(--gruen-mitte); }
+.pp-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  color: var(--text-dunkel);
+  vertical-align: middle;
+}
+.pp-table tr:hover td { background: #f9f7f0; }
+.pp-table tr.marge-niedrig td { background: #fff3f3; }
+.pp-table tr.marge-niedrig:hover td { background: #ffe8e8; }
+
+/* ── Zahlen rechts ausrichten ──────────────────────────────── */
+.td-right { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Marge-Badge ───────────────────────────────────────────── */
+.marge-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.marge-ok   { background: #e8f5e0; color: #2e7a2e; }
+.marge-warn { background: #fff3cd; color: #856404; }
+.marge-rot  { background: #fde8e8; color: var(--rot); }
+.marge-null { background: var(--grau-hell); color: var(--grau-mitte); }
+
+/* ── Inline-Editierfeld ────────────────────────────────────── */
+.vk5-cell { position: relative; }
+.vk5-display {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: inline-block;
+  min-width: 60px;
+  transition: background 0.1s;
+}
+.vk5-display:hover { background: var(--gruen-blass); }
+.vk5-input {
+  width: 80px;
+  padding: 3px 6px;
+  border: 2px solid var(--gruen-mitte);
+  border-radius: 4px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  background: white;
+}
+.vk5-saving { opacity: 0.5; pointer-events: none; }
+
+/* ── Status-Zeile ──────────────────────────────────────────── */
+.pp-statusbar {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--grau-mitte);
+  min-height: 18px;
+}
+.pp-statusbar.ok  { color: #2e7a2e; font-weight: 700; }
+.pp-statusbar.err { color: var(--rot); font-weight: 700; }
+
+/* ── Ladeanimation ─────────────────────────────────────────── */
+.pp-spinner {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border: 2px solid var(--creme-dunkel);
+  border-top-color: var(--gruen-mitte);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">Preispflege</h1>
+<p style="font-size:13px;color:var(--text-hell);margin-bottom:20px;">
+  EK · VK5 (Brutto) · Marge — nur Normalartikel mit VK5 &gt; 0.
+  Klick auf den VK5-Wert zum inline Bearbeiten.
+</p>
+
+<div class="pp-toolbar">
+  <select id="wgr-filter" onchange="ladeTabelle()">
+    <option value="">— Alle Warengruppen —</option>
+  </select>
+  <button class="btn" onclick="ladeTabelle()" id="reload-btn">Aktualisieren</button>
+  <span class="pp-info" id="artikel-count"></span>
+</div>
+
+<div class="card">
+  <div id="pp-ladehinweis" style="padding:16px;color:var(--grau-mitte);">
+    <span class="pp-spinner"></span> Lade Artikeldaten…
+  </div>
+  <div class="pp-table-wrap" id="pp-table-wrap" style="display:none;">
+    <table class="pp-table" id="pp-table">
+      <thead>
+        <tr>
+          <th onclick="sortiere('artnr')" data-col="artnr">Art-Nr.<span class="sort-arrow">▲▼</span></th>
+          <th onclick="sortiere('bezeichnung')" data-col="bezeichnung">Bezeichnung<span class="sort-arrow">▲▼</span></th>
+          <th onclick="sortiere('wgr_name')" data-col="wgr_name">Warengruppe<span class="sort-arrow">▲▼</span></th>
+          <th onclick="sortiere('ek')" data-col="ek" style="text-align:right;">EK (€)<span class="sort-arrow">▲▼</span></th>
+          <th data-col="vk5" style="text-align:right;">VK5 Brutto (€)</th>
+          <th onclick="sortiere('marge_pct')" data-col="marge_pct" style="text-align:right;">Marge %<span class="sort-arrow">▲▼</span></th>
+          <th onclick="sortiere('mwst_pct')" data-col="mwst_pct" style="text-align:right;">MwSt %<span class="sort-arrow">▲▼</span></th>
+        </tr>
+      </thead>
+      <tbody id="pp-tbody"></tbody>
+    </table>
+  </div>
+  <div class="pp-statusbar" id="pp-status"></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+'use strict';
+
+let _daten = [];       // aktuell geladene Artikeldaten
+let _sortCol = 'marge_pct';
+let _sortAsc = true;   // aufsteigend = niedrigste Marge zuerst
+
+// ── Hilfsfunktionen ───────────────────────────────────────────
+
+function _eur(v) {
+  if (v == null) return '–';
+  return Number(v).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function _marge_klasse(pct) {
+  if (pct == null) return 'marge-null';
+  if (pct < 10)   return 'marge-rot';
+  if (pct < 20)   return 'marge-warn';
+  return 'marge-ok';
+}
+
+function _sort_wert(row, col) {
+  const v = row[col];
+  if (v == null) return _sortAsc ? Infinity : -Infinity;
+  return v;
+}
+
+// ── Warengruppen laden ────────────────────────────────────────
+
+async function ladeWarengruppen() {
+  try {
+    const r = await fetch('/wawi/api/warengruppen');
+    const wgr = await r.json();
+    const sel = document.getElementById('wgr-filter');
+    wgr.forEach(w => {
+      const opt = document.createElement('option');
+      opt.value = w.wgr_id;
+      opt.textContent = w.name || `WGR ${w.wgr_id}`;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('Warengruppen konnten nicht geladen werden', e);
+  }
+}
+
+// ── Tabelle laden ─────────────────────────────────────────────
+
+async function ladeTabelle() {
+  const wgrId = document.getElementById('wgr-filter').value;
+  const url = '/wawi/api/preispflege' + (wgrId ? `?wgr_id=${wgrId}` : '');
+
+  document.getElementById('pp-ladehinweis').style.display = 'block';
+  document.getElementById('pp-table-wrap').style.display = 'none';
+  document.getElementById('reload-btn').disabled = true;
+  statusSetzen('', '');
+
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _daten = await r.json();
+    renderTabelle();
+  } catch (e) {
+    document.getElementById('pp-ladehinweis').innerHTML =
+      '<span style="color:var(--rot);">⚠ Fehler beim Laden: ' + e.message + '</span>';
+  } finally {
+    document.getElementById('reload-btn').disabled = false;
+  }
+}
+
+// ── Tabelle rendern ───────────────────────────────────────────
+
+function renderTabelle() {
+  const sortiert = [..._daten].sort((a, b) => {
+    const av = _sort_wert(a, _sortCol);
+    const bv = _sort_wert(b, _sortCol);
+    if (typeof av === 'string') return _sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return _sortAsc ? av - bv : bv - av;
+  });
+
+  const tbody = document.getElementById('pp-tbody');
+  tbody.innerHTML = '';
+
+  sortiert.forEach(art => {
+    const marge_kl = _marge_klasse(art.marge_pct);
+    const tr = document.createElement('tr');
+    if (art.marge_pct != null && art.marge_pct < 10) tr.classList.add('marge-niedrig');
+
+    tr.innerHTML = `
+      <td style="font-family:monospace;font-size:13px;">${_esc(art.artnr)}</td>
+      <td>${_esc(art.bezeichnung || '–')}</td>
+      <td style="font-size:13px;color:var(--text-hell);">${_esc(art.wgr_name || '–')}</td>
+      <td class="td-right">${_eur(art.ek)}</td>
+      <td class="td-right vk5-cell" data-artnr="${_esc(art.artnr)}">
+        <span class="vk5-display" onclick="vk5EditStart(this, '${_esc(art.artnr)}', ${art.vk5})"
+              title="Klicken zum Bearbeiten">${_eur(art.vk5)}</span>
+      </td>
+      <td class="td-right">
+        <span class="marge-badge ${marge_kl}">
+          ${art.marge_pct != null ? art.marge_pct.toFixed(1) + '\u202f%' : '–'}
+        </span>
+      </td>
+      <td class="td-right" style="font-size:13px;color:var(--text-hell);">
+        ${art.mwst_pct != null ? art.mwst_pct.toFixed(1) + '\u202f%' : '–'}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('pp-ladehinweis').style.display = 'none';
+  document.getElementById('pp-table-wrap').style.display = '';
+  document.getElementById('artikel-count').textContent =
+    `${sortiert.length} Artikel`;
+
+  // Sortierpfeile aktualisieren
+  document.querySelectorAll('.pp-table th').forEach(th => {
+    th.classList.remove('sort-aktiv');
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = '▲▼';
+  });
+  const aktTh = document.querySelector(`.pp-table th[data-col="${_sortCol}"]`);
+  if (aktTh) {
+    aktTh.classList.add('sort-aktiv');
+    const arrow = aktTh.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = _sortAsc ? '▲' : '▼';
+  }
+}
+
+// ── Sortierung ────────────────────────────────────────────────
+
+function sortiere(col) {
+  if (_sortCol === col) {
+    _sortAsc = !_sortAsc;
+  } else {
+    _sortCol = col;
+    _sortAsc = (col === 'marge_pct');  // Marge: niedrig zuerst; andere: aufsteigend
+  }
+  renderTabelle();
+}
+
+// ── VK5 Inline-Editing ────────────────────────────────────────
+
+function vk5EditStart(displayEl, artnr, aktuellerWert) {
+  const cell = displayEl.closest('.vk5-cell');
+  if (cell.querySelector('.vk5-input')) return;  // bereits im Editiermodus
+
+  displayEl.style.display = 'none';
+
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'vk5-input';
+  inp.value = aktuellerWert != null ? Number(aktuellerWert).toFixed(2).replace('.', ',') : '';
+  inp.setAttribute('data-artnr', artnr);
+
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); vk5Speichern(inp, displayEl); }
+    if (e.key === 'Escape') { vk5EditAbbrechen(inp, displayEl); }
+  });
+  inp.addEventListener('blur', () => vk5Speichern(inp, displayEl));
+
+  cell.appendChild(inp);
+  inp.focus();
+  inp.select();
+}
+
+function vk5EditAbbrechen(inp, displayEl) {
+  inp.remove();
+  displayEl.style.display = '';
+}
+
+async function vk5Speichern(inp, displayEl) {
+  if (inp._saving) return;
+  inp._saving = true;
+
+  const artnr = inp.getAttribute('data-artnr');
+  const rawVal = inp.value.trim().replace(',', '.');
+  const vk5 = parseFloat(rawVal);
+
+  if (isNaN(vk5) || vk5 < 0) {
+    statusSetzen('err', `⚠ Ungültiger Preis: "${inp.value}"`);
+    inp._saving = false;
+    inp.focus();
+    return;
+  }
+
+  inp.classList.add('vk5-saving');
+
+  try {
+    const r = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vk5 }),
+    });
+    const data = await r.json();
+
+    if (!r.ok || !data.ok) {
+      throw new Error(data.error || `HTTP ${r.status}`);
+    }
+
+    // Lokale Daten aktualisieren
+    const idx = _daten.findIndex(a => a.artnr === artnr);
+    if (idx !== -1) {
+      _daten[idx].vk5 = data.vk5_neu;
+      if (data.marge_pct !== undefined) _daten[idx].marge_pct = data.marge_pct;
+    }
+
+    inp.remove();
+    displayEl.style.display = '';
+    displayEl.textContent = _eur(data.vk5_neu);
+    displayEl.setAttribute('onclick',
+      `vk5EditStart(this, '${_esc(artnr)}', ${data.vk5_neu})`);
+
+    // Zeilen-Marge-Badge aktualisieren
+    const tr = displayEl.closest('tr');
+    if (tr && data.marge_pct !== undefined) {
+      const badge = tr.querySelector('.marge-badge');
+      if (badge) {
+        badge.className = 'marge-badge ' + _marge_klasse(data.marge_pct);
+        badge.textContent = data.marge_pct != null
+          ? data.marge_pct.toFixed(1) + '\u202f%' : '–';
+      }
+      if (data.marge_pct != null && data.marge_pct < 10) {
+        tr.classList.add('marge-niedrig');
+      } else {
+        tr.classList.remove('marge-niedrig');
+      }
+    }
+
+    statusSetzen('ok',
+      `✓ ${artnr} – VK5 gesetzt auf ${_eur(data.vk5_neu)} €`
+      + (data.marge_pct != null ? `, Marge: ${data.marge_pct.toFixed(1)} %` : ''));
+
+  } catch (e) {
+    inp.classList.remove('vk5-saving');
+    inp._saving = false;
+    statusSetzen('err', `⚠ Speichern fehlgeschlagen: ${e.message}`);
+    inp.focus();
+  }
+}
+
+// ── Statuszeile ───────────────────────────────────────────────
+
+function statusSetzen(typ, text) {
+  const el = document.getElementById('pp-status');
+  el.className = 'pp-statusbar' + (typ ? ` ${typ}` : '');
+  el.textContent = text;
+}
+
+// ── XSS-Schutz ───────────────────────────────────────────────
+
+function _esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Init ──────────────────────────────────────────────────────
+
+(async function init() {
+  await ladeWarengruppen();
+  await ladeTabelle();
+})();
+</script>
+{% endblock %}

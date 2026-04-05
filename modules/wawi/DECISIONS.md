@@ -127,6 +127,26 @@ Session-basiert (Flask `session`). Im Blueprint über `_benutzer()` in `routes.p
 
 ---
 
+## 2026-04-06 Preispflege schreibt direkt ARTIKEL.VK5B (HAB-235)
+
+- **Problem:** Die Preispflege-Tabelle muss VK5 (Barverkaufspreis, Brutto) ändern können.
+  Bisher galt ARTIKEL als read-only (CAO ist führendes System).
+- **Entscheidung:** `artikel_vk5_setzen()` schreibt direkt `ARTIKEL.VK5B` per UPDATE.
+  Die bestehende `XT_WAWI_PREISHISTORIE`-Logik (GoBD-konformer Audit-Trail) bleibt unberührt.
+- **Begründung:** Die Kassenintegration liest VK5 direkt aus `ARTIKEL.VK5B`.
+  Würde man nur `XT_WAWI_PREISHISTORIE` befüllen, müsste die Kasse einen extra WaWi-API-Call
+  machen. Direktes Schreiben ist pragmatischer und konsistent mit dem CAO-Workflow.
+- **Alternativen:**
+  - Preis nur in `XT_WAWI_PREISHISTORIE`; Kasse priorisiert WaWi-Preis (Prioritätskette).
+    Nachteil: CAO-Auswertungen sehen weiterhin den alten VK5B-Wert.
+  - Nächtlicher Sync-Job. Nachteil: Latenz, Komplexität.
+- **Konsequenzen:**
+  - `ARTIKEL.VK5B` ist nicht mehr vollständig read-only.
+  - Bei paralleler CAO-Faktura-Preisänderung kann Überschreibung auftreten (akzeptiert).
+- **Referenz:** HAB-235
+
+---
+
 ## Noch nicht implementiert (Phase 2+)
 
 - **Einkaufspreispflege (EK)**: EK-Preise und Kalkulation

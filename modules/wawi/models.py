@@ -8,6 +8,7 @@ Konventionen (analog kasse-app):
     stattdessen append-only Preishistorie
   - Buchungsrelevante Tabellen: created_at, created_by in jeder Zeile
   - CAO-DB-Stammdaten (ARTIKEL, WARENGRUPPEN, ARTIKEL_PREIS) werden read-only genutzt
+    Ausnahme: artikel_vk5_setzen() schreibt direkt ARTIKEL.VK5B (Preispflege HAB-235)
 """
 
 from contextlib import contextmanager
@@ -327,4 +328,127 @@ def vk_berechnen(artnum: str, preisebene: int) -> dict:
         'quelle': 'cao',
         'mwst_code': artikel['MWST_CODE'],
         'artnum': artnum,
+    }
+
+
+# ── Preispflege-Tabelle (HAB-235) ─────────────────────────────────────────────
+
+# MwSt-Sätze je CAO-Steuercode (in Prozent)
+_MWST_MAP: dict[int, float] = {0: 0.0, 1: 19.0, 2: 7.0, 3: 7.8}
+
+
+def warengruppen_liste() -> list:
+    """Alle aktiven Warengruppen für Filter-Dropdown (aufsteigend nach Bezeichnung)."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID AS wgr_id, BEZEICHNUNG AS name "
+            "FROM WARENGRUPPEN ORDER BY BEZEICHNUNG"
+        )
+        return cur.fetchall()
+
+
+def preispflege_liste(wgr_id: int | None = None) -> list:
+    """
+    Alle Normalartikel (ARTIKELTYP='N', VK5B>0) mit EK, VK5 und berechneter Marge.
+
+    EK wird aus ARTIKEL.EK_PREIS gelesen (CAO-Stammdaten).
+    Marge-Berechnung:
+        vk5_netto    = VK5B / (1 + mwst_satz)
+        marge_pct    = (vk5_netto - EK) / vk5_netto * 100
+    """
+    wgr_filter = ''
+    params: list = []
+    if wgr_id is not None:
+        wgr_filter = 'AND a.WG = %s '
+        params.append(wgr_id)
+
+    with get_db() as cur:
+        cur.execute(
+            f"""
+            SELECT
+                a.ARTNUM,
+                COALESCE(a.KAS_NAME, a.KURZNAME, a.SUCHNAME) AS BEZEICHNUNG,
+                a.WG                                          AS wgr_id,
+                COALESCE(wg.BEZEICHNUNG, '')                  AS WGR_NAME,
+                COALESCE(a.VK5B, 0)                          AS VK5,
+                COALESCE(a.EK_PREIS, 0)                      AS EK,
+                COALESCE(a.MWST_CODE, 0)                     AS MWST_CODE
+            FROM ARTIKEL a
+            LEFT JOIN WARENGRUPPEN wg ON wg.REC_ID = a.WG
+            WHERE a.GELOESCHT = 0
+              AND a.ARTIKELTYP = 'N'
+              AND a.VK5B > 0
+              {wgr_filter}
+            ORDER BY a.WG, COALESCE(a.KAS_NAME, a.KURZNAME)
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+
+    result = []
+    for r in rows:
+        vk5 = float(r['VK5'] or 0)
+        ek = float(r['EK'] or 0)
+        mwst_code = int(r['MWST_CODE'] or 0)
+        mwst_pct = _MWST_MAP.get(mwst_code, 0.0)
+        mwst_satz = mwst_pct / 100.0
+
+        vk5_netto = vk5 / (1.0 + mwst_satz) if mwst_satz > 0 else vk5
+        if vk5_netto > 0:
+            marge_pct = round((vk5_netto - ek) / vk5_netto * 100, 1)
+        else:
+            marge_pct = None
+
+        result.append({
+            'artnr':       r['ARTNUM'],
+            'bezeichnung': r['BEZEICHNUNG'],
+            'wgr_id':      r['wgr_id'],
+            'wgr_name':    r['WGR_NAME'],
+            'vk5':         round(vk5, 2),
+            'ek':          round(ek, 2),
+            'mwst_code':   mwst_code,
+            'mwst_pct':    mwst_pct,
+            'vk5_netto':   round(vk5_netto, 4),
+            'marge_pct':   marge_pct,
+        })
+
+    return result
+
+
+def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
+    """
+    Schreibt VK5B direkt in ARTIKEL.VK5B (CAO-Stammdatenpflege).
+
+    Hinweis: Abweichung von der read-only-Konvention für CAO-Tabellen –
+    begründet in DECISIONS.md (HAB-235): Preispflege erfordert Rückschreiben
+    in CAO-ARTIKEL, da die Kassenintegration VK5B direkt aus ARTIKEL liest.
+
+    Gibt dict zurück: {'ok': True, 'artnr': ..., 'vk5_neu': ..., 'marge_pct': ...}
+    """
+    if vk5_brutto < 0:
+        raise ValueError('VK5 darf nicht negativ sein')
+
+    artikel = artikel_by_artnum(artnum)
+    if not artikel:
+        raise ValueError(f'Artikel {artnum!r} nicht gefunden')
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            "UPDATE ARTIKEL SET VK5B = %s WHERE ARTNUM = %s AND GELOESCHT = 0",
+            (vk5_brutto, artnum),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f'Artikel {artnum!r} konnte nicht aktualisiert werden')
+
+    ek = float(artikel.get('EK_PREIS') or 0)
+    mwst_code = int(artikel.get('MWST_CODE') or 0)
+    mwst_satz = _MWST_MAP.get(mwst_code, 0.0) / 100.0
+    vk5_netto = vk5_brutto / (1.0 + mwst_satz) if mwst_satz > 0 else vk5_brutto
+    marge_pct = round((vk5_netto - ek) / vk5_netto * 100, 1) if vk5_netto > 0 else None
+
+    return {
+        'ok':       True,
+        'artnr':    artnum,
+        'vk5_neu':  vk5_brutto,
+        'marge_pct': marge_pct,
     }

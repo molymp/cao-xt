@@ -389,9 +389,13 @@ a { text-decoration: none; color: inherit; }
         <a href="/coming-soon?modul=Adressen" class="sidebar-item">
           <span class="icon">👥</span> Adressen
         </a>
-        <a href="/wawi" class="sidebar-item {% if request.path.startswith('/wawi') %}aktiv{% endif %}">
+        <a href="/wawi" class="sidebar-item {% if request.path == '/wawi' %}aktiv{% endif %}">
           <span class="icon">📦</span> Artikel
-          <span class="sub">Preispflege</span>
+          <span class="sub">Suche &amp; Detail</span>
+        </a>
+        <a href="/wawi/preispflege" class="sidebar-item {% if request.path == '/wawi/preispflege' %}aktiv{% endif %}">
+          <span class="icon">💶</span> Preispflege
+          <span class="sub">EK / VK5 / Marge</span>
         </a>
         <a href="/coming-soon?modul=Mitarbeiter" class="sidebar-item">
           <span class="icon">🪪</span> Mitarbeiter
