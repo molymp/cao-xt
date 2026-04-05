@@ -275,7 +275,7 @@ def _warengruppen_namen() -> dict[int, str]:
     """
     try:
         with get_db() as cur:
-            cur.execute("SELECT `WARENGRUPPE` AS wgr_id, `NAME` AS wgr_name FROM `WARENGRUPPEN`")
+            cur.execute("SELECT `ID` AS wgr_id, `NAME` AS wgr_name FROM `WARENGRUPPEN`")
             return {int(r['wgr_id']): r['wgr_name'] for r in cur.fetchall() if r['wgr_name']}
     except Exception as e:
         log.warning("Warengruppen-Namen nicht ladbar: %s", e)
@@ -391,7 +391,8 @@ def _finance_kpis() -> dict:
 def reporting():
     from datetime import date
     mwst_daten   = _mwst_monatlich(12)
-    monate_liste = [r['monat'] for r in mwst_daten]
+    monate_liste  = [r['monat'] for r in mwst_daten]
+    monat_labels  = {r['monat']: r['label'] for r in mwst_daten}
     # Monat-Parameter: URL-Param bevorzugen, sonst letzten abgeschlossenen Monat nehmen.
     # Laufender Monat wird übersprungen, da JOURNALPOS dort oft noch leer ist,
     # auch wenn JOURNAL bereits Einträge enthält.
@@ -411,6 +412,7 @@ def reporting():
         kpis=kpis,
         monat_param=monat_param,
         monate_liste=monate_liste,
+        monat_labels=monat_labels,
         heute=date.today().strftime('%d.%m.%Y'),
     )
 
