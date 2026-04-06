@@ -38,23 +38,29 @@
   transition: background 0.1s;
   border-left: 3px solid transparent;
   user-select: none;
-  min-height: 38px; /* Touch-Target */
+  min-height: 44px; /* Touch-Target */
 }
 .pp-tree-item.child-item {
-  padding-left: 26px;
+  padding-left: 40px;
   font-size: 12px;
-  border-left-width: 2px;
+  border-left: 2px solid var(--creme-dunkel);
+  margin-left: 16px;
 }
 .pp-tree-item.child-item .wgr-name { font-size: 12px; }
 .pp-tree-toggle {
-  background: none;
+  min-width: 32px;
+  min-height: 32px;
+  font-size: 13px;
+  border-radius: 4px;
+  background: var(--grau-hell);
   border: none;
-  padding: 0 4px 0 0;
+  padding: 0;
   cursor: pointer;
-  font-size: 10px;
   color: var(--grau-mitte);
-  vertical-align: middle;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .pp-tree-row {
   display: flex;
@@ -201,14 +207,19 @@
 .lief-btn {
   background: none;
   border: 1px solid var(--creme-dunkel);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 11px;
+  border-radius: 6px;
+  padding: 4px;
+  font-size: 16px;
   cursor: pointer;
   color: var(--text-hell);
   transition: background 0.1s, border-color 0.1s;
   white-space: nowrap;
   font-family: inherit;
+  min-height: 36px;
+  min-width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .lief-btn:hover { background: var(--gruen-blass); border-color: var(--gruen-mitte); }
 .lief-expand-row td {
@@ -247,13 +258,15 @@
   background: var(--gruen-mitte);
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 11px;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.12s;
+  min-height: 44px;
+  min-width: 88px;
 }
 .anp-btn:hover { background: var(--gruen-dunkel); }
 .anp-row td {
@@ -285,7 +298,7 @@
   border: 2px solid var(--creme-dunkel);
   border-radius: 6px;
   font-family: 'Nunito', sans-serif;
-  font-size: 15px;
+  font-size: 16px;  /* 16px verhindert iOS-Zoom bei Fokus */
   font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -514,8 +527,11 @@ function _renderWarengruppenbaum(wgr) {
     (byParent[pid] ??= []).push(w);
   });
 
-  // Kollabier-Status (wgr_id → boolean collapsed)
+  // Kollabier-Status (wgr_id → boolean collapsed) — Eltern starten zugeklappt
   const collapsed = {};
+  Object.keys(byParent).filter(k => k !== 'null').forEach(k => {
+    collapsed[k] = true;
+  });
 
   function _wgrItem(w, isChild) {
     const el = document.createElement('div');
@@ -590,10 +606,9 @@ function _renderWarengruppenbaum(wgr) {
     if (parentEl) parentEl.textContent = hide ? '▶' : '▼';
   }
 
-  // Elemente mit Kindern initial aufgeklappt (▼)
+  // Elemente mit Kindern initial zugeklappt (▶) — Kinder ausblenden
   Object.keys(byParent).filter(k => k !== 'null').forEach(wgrId => {
-    const toggle = tree.querySelector(`.pp-tree-toggle[data-wgrid="${wgrId}"]`);
-    if (toggle) toggle.textContent = '▼';
+    _toggleChildren(wgrId, true);
   });
 }
 
@@ -844,6 +859,9 @@ function anpassenOeffnen(btn, artnr) {
     </td>
   `;
   tr.after(anpTr);
+
+  // Panel in den sichtbaren Bereich scrollen
+  anpTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   // Erstes Eingabefeld fokussieren (nur Desktop)
   if (!('ontouchstart' in window)) {
