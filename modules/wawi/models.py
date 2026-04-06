@@ -364,34 +364,32 @@ def vk_berechnen(artnum: str, preisebene: int) -> dict:
 # MwSt-Sätze je CAO-Steuercode (in Prozent)
 _MWST_MAP: dict[int, float] = {0: 0.0, 1: 19.0, 2: 7.0, 3: 7.8}
 
-# Cache für VPE-Spalten in ARTIKEL (einmalig ermittelt)
-_vpe_cols_cache: dict | None = None
+# Cache für WARENGRUPPEN-Schema (TOP_ID-Spalte)
+_wg_schema_cache: dict | None = None
 
 
-def _vpe_spalten() -> dict:
-    """Ermittelt welche VPE-Spalten in ARTIKEL vorhanden sind (einmalig gecacht).
+def _wg_top_spalte() -> str | None:
+    """Ermittelt die Hierarchie-Spalte in WARENGRUPPEN (gecacht).
 
-    Prüft SHOW COLUMNS FROM ARTIKEL. Gibt {'vpe_vk': col|None, 'vpe_ek': col|None} zurück.
+    Prüft DESCRIBE WARENGRUPPEN für TOP_ID / PARENT_ID / PARENT / OBERGRUPPE_ID.
+    Gibt Spaltenname oder None zurück.
     """
-    global _vpe_cols_cache
-    if _vpe_cols_cache is not None:
-        return _vpe_cols_cache
+    global _wg_schema_cache
+    if _wg_schema_cache is not None:
+        return _wg_schema_cache.get('top_col')
 
+    kandidaten = ('TOP_ID', 'PARENT_ID', 'PARENT', 'OBERGRUPPE_ID')
     try:
         with get_db() as cur:
-            cur.execute('SHOW COLUMNS FROM ARTIKEL')
+            cur.execute('DESCRIBE WARENGRUPPEN')
             cols = {r['Field'] for r in cur.fetchall()}
     except Exception:
-        _vpe_cols_cache = {'vpe_vk': None, 'vpe_ek': None}
-        return _vpe_cols_cache
+        _wg_schema_cache = {'top_col': None}
+        return None
 
-    vpe_vk = next((c for c in ('VPE', 'VPE_VK', 'VK_VPE') if c in cols), None)
-    vpe_ek = next((c for c in ('EK_VPE', 'VPE_EK', 'EINK_VPE') if c in cols), None)
-    # Fallback: wenn nur ein VPE-Feld vorhanden, gilt es für beide
-    if vpe_vk and not vpe_ek:
-        vpe_ek = vpe_vk
-    _vpe_cols_cache = {'vpe_vk': vpe_vk, 'vpe_ek': vpe_ek}
-    return _vpe_cols_cache
+    top_col = next((c for c in kandidaten if c in cols), None)
+    _wg_schema_cache = {'top_col': top_col}
+    return top_col
 
 
 def _faktor_berechnen(vk5_netto: float, ek: float,
@@ -422,35 +420,40 @@ def warengruppen_liste() -> list:
 
 
 def warengruppen_mit_faktor() -> list:
-    """Warengruppen-Baum mit durchschnittlichem Faktor aller aktiven Normalartikel.
+    """Warengruppen-Hierarchie mit Ø-Faktor aller aktiven Artikel.
 
-    Rückgabe: [{wgr_id, name, anzahl_artikel, avg_faktor}, ...]
-    Faktor wird in Python berechnet (VPE-korrigiert, graceful degradation).
+    Rückgabe: [{wgr_id, name, parent_id, anzahl_artikel, avg_faktor}, ...]
+    parent_id=None = Wurzelknoten.
+    Faktor = vk5_netto × vpe_ek / (ek × vpe_vk), VPE aus ARTIKEL.VPE / ARTIKEL.VPE_EK.
+    Aktive Artikel: kein NO_VK_FLAG ('J'/'Y') und kein GELOESCHT.
     """
-    vpe_cols = _vpe_spalten()
-    vpe_vk_sel = f'COALESCE(a.{vpe_cols["vpe_vk"]}, 1)' if vpe_cols['vpe_vk'] else '1'
-    vpe_ek_sel = f'COALESCE(a.{vpe_cols["vpe_ek"]}, 1)' if vpe_cols['vpe_ek'] else '1'
+    top_col = _wg_top_spalte()
+    top_sel = f'wg.{top_col}' if top_col else 'NULL'
 
     sql = f"""
         SELECT
             wg.ID                                              AS wgr_id,
             wg.NAME                                           AS name,
+            {top_sel}                                          AS top_id,
             COALESCE(a.VK5B, 0)                              AS vk5,
             COALESCE(a.EK_PREIS, 0)                          AS ek,
             COALESCE(a.STEUER_CODE, 0)                       AS mwst_code,
-            {vpe_vk_sel}                                      AS vpe_vk,
-            {vpe_ek_sel}                                      AS vpe_ek
+            COALESCE(a.VPE, 1)                               AS vpe_vk,
+            COALESCE(a.VPE_EK, 1)                            AS vpe_ek
         FROM WARENGRUPPEN wg
         LEFT JOIN ARTIKEL a ON a.WARENGRUPPE = wg.ID
-            AND a.ARTIKELTYP = 'N'
-            AND a.VK5B > 0
             AND a.EK_PREIS > 0
+            AND (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
+            AND (a.GELOESCHT IS NULL OR a.GELOESCHT = 0)
         ORDER BY wg.NAME, wg.ID
     """
     try:
         with get_db() as cur:
             cur.execute(sql)
             rows = cur.fetchall()
+            # Alle WG-IDs für parent_id-Validierung
+            cur.execute('SELECT ID FROM WARENGRUPPEN')
+            alle_wg_ids = {r['ID'] for r in cur.fetchall()}
     except Exception:
         return warengruppen_liste()
 
@@ -458,7 +461,22 @@ def warengruppen_mit_faktor() -> list:
     for r in rows:
         wid = int(r['wgr_id'])
         if wid not in wgr_map:
-            wgr_map[wid] = {'wgr_id': wid, 'name': r['name'] or '', 'faktoren': []}
+            # parent_id nur setzen wenn TOP_ID auf eine andere gültige WG zeigt
+            raw_top = r.get('top_id')
+            parent_id = None
+            if raw_top is not None:
+                try:
+                    pid = int(raw_top)
+                    if pid in alle_wg_ids and pid != wid:
+                        parent_id = pid
+                except (TypeError, ValueError):
+                    pass
+            wgr_map[wid] = {
+                'wgr_id': wid,
+                'name': r['name'] or f'WG {wid}',
+                'parent_id': parent_id,
+                'faktoren': [],
+            }
         vk5 = float(r['vk5'] or 0)
         ek = float(r['ek'] or 0)
         mwst_satz = _MWST_MAP.get(int(r['mwst_code'] or 0), 0.0) / 100.0
@@ -475,6 +493,7 @@ def warengruppen_mit_faktor() -> list:
         result.append({
             'wgr_id':         wid,
             'name':           data['name'],
+            'parent_id':      data['parent_id'],
             'anzahl_artikel': len(faktoren),
             'avg_faktor':     round(sum(faktoren) / len(faktoren), 3) if faktoren else None,
         })
@@ -482,16 +501,12 @@ def warengruppen_mit_faktor() -> list:
 
 
 def preispflege_liste(wgr_id: int | None = None) -> list:
-    """Alle Normalartikel (ARTIKELTYP='N', VK5B>0) mit EK, VK5, VPE und Faktor.
+    """Alle aktiven Artikel mit EK, VK5, VPE und Faktor.
 
-    Faktor = vk5_netto × vpe_ek / (ek × vpe_vk)  — VPE-korrigierte Kalkulation.
-    VPE-Felder werden aus verfügbaren ARTIKEL-Spalten geladen (SHOW COLUMNS gecacht).
-    EK aus ARTIKEL.EK_PREIS, Bestand aus ARTIKEL.MENGE_AKT.
+    Aktive Artikel: kein VK-Sperre (NO_VK_FLAG != 'J'/'Y') und kein Lösch-Flag.
+    VPE: ARTIKEL.VPE (Verkaufseinheit) und ARTIKEL.VPE_EK (Einkaufseinheit).
+    Faktor = vk5_netto × vpe_ek / (ek × vpe_vk)  — VPE-korrigiert.
     """
-    vpe_cols = _vpe_spalten()
-    vpe_vk_sel = f'COALESCE(a.{vpe_cols["vpe_vk"]}, 1)' if vpe_cols['vpe_vk'] else '1'
-    vpe_ek_sel = f'COALESCE(a.{vpe_cols["vpe_ek"]}, 1)' if vpe_cols['vpe_ek'] else '1'
-
     wgr_filter = ''
     params: list = []
     if wgr_id is not None:
@@ -508,12 +523,13 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             COALESCE(a.EK_PREIS, 0)                      AS EK,
             COALESCE(a.STEUER_CODE, 0)                   AS MWST_CODE,
             COALESCE(a.MENGE_AKT, 0)                     AS BESTAND,
-            {vpe_vk_sel}                                  AS VPE_VK,
-            {vpe_ek_sel}                                  AS VPE_EK
+            COALESCE(a.VPE, 1)                           AS VPE_VK,
+            COALESCE(a.VPE_EK, 1)                        AS VPE_EK,
+            a.DEFAULT_LIEF_ID
         FROM ARTIKEL a
         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
-        WHERE a.ARTIKELTYP = 'N'
-          AND a.VK5B > 0
+        WHERE (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
+          AND (a.GELOESCHT IS NULL OR a.GELOESCHT = 0)
           {wgr_filter}
         ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
     """
@@ -535,19 +551,20 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
         faktor = _faktor_berechnen(vk5_netto, ek, vpe_vk, vpe_ek)
 
         result.append({
-            'artnr':       r['ARTNUM'],
-            'bezeichnung': r['BEZEICHNUNG'],
-            'wgr_id':      r['wgr_id'],
-            'wgr_name':    r['WGR_NAME'],
-            'vk5':         round(vk5, 2),
-            'vk5_netto':   round(vk5_netto, 4),
-            'ek':          round(ek, 2),
-            'mwst_code':   mwst_code,
-            'mwst_pct':    mwst_pct,
-            'bestand':     float(r['BESTAND'] or 0),
-            'vpe_vk':      vpe_vk,
-            'vpe_ek':      vpe_ek,
-            'faktor':      faktor,
+            'artnr':           r['ARTNUM'],
+            'bezeichnung':     r['BEZEICHNUNG'],
+            'wgr_id':          r['wgr_id'],
+            'wgr_name':        r['WGR_NAME'],
+            'vk5':             round(vk5, 2),
+            'vk5_netto':       round(vk5_netto, 4),
+            'ek':              round(ek, 2),
+            'mwst_code':       mwst_code,
+            'mwst_pct':        mwst_pct,
+            'bestand':         float(r['BESTAND'] or 0),
+            'vpe_vk':          vpe_vk,
+            'vpe_ek':          vpe_ek,
+            'faktor':          faktor,
+            'default_lief_id': r.get('DEFAULT_LIEF_ID'),
         })
 
     return result
@@ -556,56 +573,132 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
 def lieferantenpreise_fuer_artikel(artnr: str) -> list:
     """Lieferantenpreise für einen Artikel aus CAO-Stammdaten.
 
-    Versucht ARTIKEL_LIEFERANT (CAO-Standardtabelle). Bei fehlender Tabelle
-    oder unbekannten Spalten wird leere Liste zurückgegeben (kein Fehler).
+    Primär: ARTIKEL_PREIS (PT2-Einträge außer 'AP') mit ADRESSEN-Join für Lieferantenname.
+    Fallback: ARTIKEL_LIEFERANT (falls ARTIKEL_PREIS keine Daten liefert).
+    Bei fehlenden Tabellen / Spalten: leere Liste (kein Fehler).
 
-    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe}, ...]
+    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe, ist_standard}, ...]
     """
-    queries = [
-        # Variante 1: mit ADRESSEN-Join für Lieferantenname
-        """
-        SELECT
-            al.LIEF_NR,
-            COALESCE(adr.NAME1, adr.MATCHCODE,
-                     CONCAT('Lieferant ', al.LIEF_NR))  AS lief_name,
-            COALESCE(al.LIEF_ARTNR, al.BESTELL_NR, '') AS lief_artnr,
-            COALESCE(al.EK_PREIS, 0)                    AS ek_preis,
-            COALESCE(al.VPE, 1)                         AS vpe
-        FROM ARTIKEL_LIEFERANT al
-        LEFT JOIN ADRESSEN adr ON adr.LIEF_NR = al.LIEF_NR
-        WHERE al.ARTNUM = %s
-        ORDER BY al.LIEF_NR
-        """,
-        # Variante 2: ohne ADRESSEN-Join
-        """
-        SELECT
-            al.LIEF_NR,
-            CONCAT('Lieferant ', al.LIEF_NR)            AS lief_name,
-            COALESCE(al.LIEF_ARTNR, '')                  AS lief_artnr,
-            COALESCE(al.EK_PREIS, 0)                     AS ek_preis,
-            COALESCE(al.VPE, 1)                          AS vpe
-        FROM ARTIKEL_LIEFERANT al
-        WHERE al.ARTNUM = %s
-        ORDER BY al.LIEF_NR
-        """,
-    ]
-    for sql in queries:
-        try:
-            with get_db() as cur:
-                cur.execute(sql, (artnr,))
-                rows = cur.fetchall()
-            return [
+    # Standard-Lieferant des Artikels für Hervorhebung
+    try:
+        with get_db() as cur:
+            cur.execute('SELECT DEFAULT_LIEF_ID FROM ARTIKEL WHERE ARTNUM = %s', (artnr,))
+            row = cur.fetchone()
+            default_lief_id = row['DEFAULT_LIEF_ID'] if row else None
+    except Exception:
+        default_lief_id = None
+
+    def _mark_standard(rows_out):
+        for r in rows_out:
+            r['ist_standard'] = (
+                default_lief_id is not None
+                and str(r.get('lief_nr', '')) == str(default_lief_id)
+            )
+        return rows_out
+
+    # Variante 1: ARTIKEL_PREIS mit ADRESSEN-Join (Lieferantenname)
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """
+                SELECT
+                    ap.KUNDEN_NR                               AS lief_nr,
+                    COALESCE(adr.NAME1, adr.MATCHCODE,
+                             CONCAT('Lieferant ', ap.KUNDEN_NR)) AS lief_name,
+                    ap.PT2                                     AS lief_artnr,
+                    COALESCE(ap.PREIS, 0)                      AS ek_preis,
+                    COALESCE(ap.MENGE_AB, 1)                   AS vpe
+                FROM ARTIKEL_PREIS ap
+                LEFT JOIN ADRESSEN adr ON adr.LIEF_NR = ap.KUNDEN_NR
+                WHERE ap.ARTNUM = %s
+                  AND ap.PT2 NOT IN ('AP')
+                  AND ap.KUNDEN_NR IS NOT NULL
+                  AND ap.KUNDEN_NR != ''
+                ORDER BY ap.KUNDEN_NR, ap.MENGE_AB
+                """,
+                (artnr,),
+            )
+            rows = cur.fetchall()
+        if rows:
+            return _mark_standard([
+                {
+                    'lief_nr':    r['lief_nr'],
+                    'lief_name':  r['lief_name'],
+                    'lief_artnr': r.get('lief_artnr') or '',
+                    'ek_preis':   float(r['ek_preis'] or 0),
+                    'vpe':        float(r['vpe'] or 1) or 1.0,
+                }
+                for r in rows
+            ])
+    except Exception:
+        pass
+
+    # Variante 2: ARTIKEL_LIEFERANT mit ADRESSEN-Join
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """
+                SELECT
+                    al.LIEF_NR,
+                    COALESCE(adr.NAME1, adr.MATCHCODE,
+                             CONCAT('Lieferant ', al.LIEF_NR))  AS lief_name,
+                    COALESCE(al.LIEF_ARTNR, al.BESTELL_NR, '') AS lief_artnr,
+                    COALESCE(al.EK_PREIS, 0)                    AS ek_preis,
+                    COALESCE(al.VPE, 1)                         AS vpe
+                FROM ARTIKEL_LIEFERANT al
+                LEFT JOIN ADRESSEN adr ON adr.LIEF_NR = al.LIEF_NR
+                WHERE al.ARTNUM = %s
+                ORDER BY al.LIEF_NR
+                """,
+                (artnr,),
+            )
+            rows = cur.fetchall()
+        if rows:
+            return _mark_standard([
                 {
                     'lief_nr':    r['LIEF_NR'],
                     'lief_name':  r['lief_name'],
                     'lief_artnr': r['lief_artnr'],
                     'ek_preis':   float(r['ek_preis'] or 0),
-                    'vpe':        float(r['vpe'] or 1),
+                    'vpe':        float(r['vpe'] or 1) or 1.0,
                 }
                 for r in rows
-            ]
-        except Exception:
-            continue
+            ])
+    except Exception:
+        pass
+
+    # Variante 3: ARTIKEL_LIEFERANT ohne ADRESSEN-Join
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """
+                SELECT
+                    al.LIEF_NR,
+                    CONCAT('Lieferant ', al.LIEF_NR) AS lief_name,
+                    COALESCE(al.LIEF_ARTNR, '')       AS lief_artnr,
+                    COALESCE(al.EK_PREIS, 0)          AS ek_preis,
+                    COALESCE(al.VPE, 1)               AS vpe
+                FROM ARTIKEL_LIEFERANT al
+                WHERE al.ARTNUM = %s
+                ORDER BY al.LIEF_NR
+                """,
+                (artnr,),
+            )
+            rows = cur.fetchall()
+        if rows:
+            return _mark_standard([
+                {
+                    'lief_nr':    r['LIEF_NR'],
+                    'lief_name':  r['lief_name'],
+                    'lief_artnr': r['lief_artnr'],
+                    'ek_preis':   float(r['ek_preis'] or 0),
+                    'vpe':        float(r['vpe'] or 1) or 1.0,
+                }
+                for r in rows
+            ])
+    except Exception:
+        pass
+
     return []
 
 

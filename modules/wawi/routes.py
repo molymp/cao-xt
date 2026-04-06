@@ -8,17 +8,23 @@ Alle schreibenden Endpunkte erwarten JSON; Authentifizierung gegen CAO-MITARBEIT
 (analog kasse-app, MD5-Hash in Großbuchstaben).
 """
 
-from flask import Blueprint, jsonify, request, session, abort
+from flask import Blueprint, jsonify, request, session, abort, Response
+import json
 import models as m
 
 bp = Blueprint('wawi', __name__)
 
 
 def _benutzer() -> str:
-    """Aktuell eingeloggten Benutzer aus Session; 403 wenn nicht gesetzt."""
+    """Aktuell eingeloggten Benutzer aus Session; JSON-403 wenn nicht gesetzt."""
     user = session.get('mitarbeiter')
     if not user:
-        abort(403)
+        # abort() mit Response-Objekt statt int, damit API-Endpunkte JSON zurückgeben
+        abort(Response(
+            json.dumps({'error': 'Nicht angemeldet'}),
+            403,
+            {'Content-Type': 'application/json'},
+        ))
     return user
 
 

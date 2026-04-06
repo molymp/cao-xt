@@ -38,6 +38,28 @@
   transition: background 0.1s;
   border-left: 3px solid transparent;
   user-select: none;
+  min-height: 38px; /* Touch-Target */
+}
+.pp-tree-item.child-item {
+  padding-left: 26px;
+  font-size: 12px;
+  border-left-width: 2px;
+}
+.pp-tree-item.child-item .wgr-name { font-size: 12px; }
+.pp-tree-toggle {
+  background: none;
+  border: none;
+  padding: 0 4px 0 0;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--grau-mitte);
+  vertical-align: middle;
+  line-height: 1;
+}
+.pp-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 .pp-tree-item:hover { background: var(--grau-hell); }
 .pp-tree-item.aktiv {
@@ -259,17 +281,25 @@
 }
 .anp-field input {
   width: 100px;
-  padding: 5px 8px;
+  padding: 8px 10px;          /* größeres Touch-Target */
   border: 2px solid var(--creme-dunkel);
   border-radius: 6px;
   font-family: 'Nunito', sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
   outline: none;
   background: white;
   transition: border-color 0.1s;
+  min-height: 44px;           /* iOS Touch-Target */
+  -webkit-appearance: none;
+  appearance: none;
+}
+.anp-field input[readonly] {
+  background: var(--grau-hell);
+  color: var(--text-hell);
+  cursor: default;
 }
 .anp-field input:focus { border-color: var(--gruen-mitte); }
 .anp-field input.changed { border-color: var(--gold); background: #fffbf0; }
@@ -284,12 +314,13 @@
   color: white;
   border: none;
   border-radius: 6px;
-  padding: 6px 16px;
-  font-size: 13px;
+  padding: 10px 20px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.12s;
+  min-height: 44px;
 }
 .anp-uebernehmen:hover { background: var(--gruen-dunkel); }
 .anp-uebernehmen:disabled { opacity: 0.5; cursor: default; }
@@ -298,14 +329,29 @@
   color: var(--rot);
   border: 1px solid var(--rot);
   border-radius: 6px;
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 10px 18px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.12s;
+  min-height: 44px;
 }
 .anp-abbrechen:hover { background: #fde8e8; }
+/* Standardlieferant-Badge */
+.lief-standard {
+  display: inline-block;
+  background: var(--gruen-blass);
+  color: var(--gruen-dunkel);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
 
 /* ── Status-Zeile ──────────────────────────────────────────── */
 .pp-statusbar {
@@ -355,7 +401,7 @@
   <div class="pp-content">
     <div class="pp-header">
       <h2 id="pp-titel">Preispflege</h2>
-      <div class="pp-sub">EK · VK5 Netto · VK5 Brutto · Faktor — nur Normalartikel mit VK5 &gt; 0</div>
+      <div class="pp-sub">EK · VK5 Netto · VK5 Brutto · Faktor — alle aktiven Artikel (kein VK-Sperre, nicht gelöscht)</div>
     </div>
 
     <div class="pp-toolbar">
@@ -451,7 +497,7 @@ function _renderWarengruppenbaum(wgr) {
   const all = document.createElement('div');
   all.className = 'pp-tree-item' + (_aktWgrId === null ? ' aktiv' : '');
   all.dataset.wgrId = '';
-  all.innerHTML = `<span class="wgr-name">— Alle Warengruppen —</span>`;
+  all.innerHTML = `<div class="pp-tree-row"><span class="wgr-name">— Alle Warengruppen —</span></div>`;
   all.addEventListener('click', () => _wgrWaehlen(null, '— Alle Warengruppen —', all));
   tree.appendChild(all);
 
@@ -461,25 +507,93 @@ function _renderWarengruppenbaum(wgr) {
     tree.appendChild(div);
   }
 
+  // Hierarchischen Baum aufbauen
+  const byParent = {};   // parent_id → [wgr]
   wgr.forEach(w => {
+    const pid = w.parent_id ?? null;
+    (byParent[pid] ??= []).push(w);
+  });
+
+  // Kollabier-Status (wgr_id → boolean collapsed)
+  const collapsed = {};
+
+  function _wgrItem(w, isChild) {
     const el = document.createElement('div');
-    el.className = 'pp-tree-item' + (_aktWgrId === w.wgr_id ? ' aktiv' : '');
+    el.className = 'pp-tree-item' + (isChild ? ' child-item' : '') + (_aktWgrId === w.wgr_id ? ' aktiv' : '');
     el.dataset.wgrId = w.wgr_id;
 
+    const kinder = byParent[w.wgr_id] || [];
+    const hatKinder = kinder.length > 0;
+
     const faktorTxt = w.avg_faktor != null
-      ? `Ø Faktor ${Number(w.avg_faktor).toFixed(2)}`
+      ? `Ø ${Number(w.avg_faktor).toFixed(2)}`
       : '';
     const anzahlTxt = w.anzahl_artikel != null ? `${w.anzahl_artikel} Art.` : '';
 
     el.innerHTML = `
-      <span class="wgr-name">${_esc(w.name || 'WGR ' + w.wgr_id)}</span>
+      <div class="pp-tree-row">
+        ${hatKinder ? `<button class="pp-tree-toggle" data-wgrid="${w.wgr_id}" title="Auf-/Zuklappen">▶</button>` : '<span style="width:14px;display:inline-block;"></span>'}
+        <span class="wgr-name">${_esc(w.name || 'WGR ' + w.wgr_id)}</span>
+      </div>
       <span class="wgr-meta">
         ${anzahlTxt ? `<span>${_esc(anzahlTxt)}</span>` : ''}
         ${faktorTxt ? `<span class="wgr-faktor">${_esc(faktorTxt)}</span>` : ''}
       </span>
     `;
-    el.addEventListener('click', () => _wgrWaehlen(w.wgr_id, w.name, el));
-    tree.appendChild(el);
+
+    // Klick auf den Eintrag (nicht den Toggle-Button)
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('pp-tree-toggle')) return;
+      _wgrWaehlen(w.wgr_id, w.name, el);
+    });
+
+    // Toggle-Button
+    if (hatKinder) {
+      const toggle = el.querySelector('.pp-tree-toggle');
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        collapsed[w.wgr_id] = !collapsed[w.wgr_id];
+        _toggleChildren(w.wgr_id, collapsed[w.wgr_id]);
+        toggle.textContent = collapsed[w.wgr_id] ? '▶' : '▼';
+      });
+    }
+
+    return el;
+  }
+
+  function _appendWgr(parentId, isChild) {
+    const gruppe = byParent[parentId] || [];
+    gruppe.forEach(w => {
+      const el = _wgrItem(w, isChild);
+      el.dataset.parentWgrid = parentId ?? '';
+      tree.appendChild(el);
+      // Kinder zunächst ausklappen
+      _appendWgr(w.wgr_id, true);
+    });
+  }
+
+  _appendWgr(null, false);
+
+  // Toggle: Kinder ein-/ausblenden
+  function _toggleChildren(wgrId, hide) {
+    tree.querySelectorAll(`[data-parent-wgrid="${wgrId}"]`).forEach(el => {
+      el.style.display = hide ? 'none' : '';
+      // Kinder der Kinder auch verstecken
+      if (hide) {
+        const childId = el.dataset.wgrId;
+        if (childId) _toggleChildren(childId, true);
+      }
+    });
+    // Toggle-Pfeil des Elternteils setzen
+    const parentEl = tree.querySelector(`[data-wgr-id="${wgrId}"] .pp-tree-toggle`)
+      || tree.querySelector(`.pp-tree-toggle[data-wgrid="${wgrId}"]`);
+    if (parentEl) parentEl.textContent = hide ? '▶' : '▼';
+  }
+
+  // Elemente mit Kindern initial aufgeklappt (▼)
+  Object.keys(byParent).filter(k => k !== 'null').forEach(wgrId => {
+    const toggle = tree.querySelector(`.pp-tree-toggle[data-wgrid="${wgrId}"]`);
+    if (toggle) toggle.textContent = '▼';
   });
 }
 
@@ -626,15 +740,18 @@ async function toggleLieferanten(btn, artnr) {
           <thead>
             <tr>
               <th>Lieferant</th>
-              <th>Bestell-Nr.</th>
+              <th>Ref/Typ</th>
               <th style="text-align:right;">EK-Preis (€)</th>
               <th style="text-align:right;">VPE</th>
             </tr>
           </thead>
           <tbody>
             ${data.map(l => `
-              <tr>
-                <td>${_esc(l.lief_name)}</td>
+              <tr${l.ist_standard ? ' style="background:#f0f9ea;"' : ''}>
+                <td>
+                  ${_esc(l.lief_name)}
+                  ${l.ist_standard ? '<span class="lief-standard">Standard</span>' : ''}
+                </td>
                 <td style="font-family:monospace;font-size:11px;">${_esc(l.lief_artnr || '–')}</td>
                 <td style="text-align:right;">${_eur(l.ek_preis)}</td>
                 <td style="text-align:right;">${_eur(l.vpe, 0)}</td>
@@ -676,36 +793,49 @@ function anpassenOeffnen(btn, artnr) {
       <form class="anp-panel" id="anp-form-${_esc(artnr)}" onsubmit="return false;">
         <div class="anp-field">
           <label>EK (€)</label>
-          <input type="text" id="anp-ek-${_esc(artnr)}"
-                 value="${Number(art.ek).toFixed(2).replace('.',',')}"
+          <input type="number" inputmode="decimal" step="0.01" id="anp-ek-${_esc(artnr)}"
+                 value="${Number(art.ek).toFixed(2)}"
                  data-field="ek" readonly
                  title="EK kann hier nicht geändert werden (Einkaufskonditionen)">
         </div>
         <div class="anp-field">
+          <label>VPE EK</label>
+          <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpeek-${_esc(artnr)}"
+                 value="${Number(art.vpe_ek || 1).toFixed(0)}"
+                 data-field="vpeek"
+                 oninput="anpBerechnen('${_esc(artnr)}','vpeek',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VPE VK</label>
+          <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpevk-${_esc(artnr)}"
+                 value="${Number(art.vpe_vk || 1).toFixed(0)}"
+                 data-field="vpevk"
+                 oninput="anpBerechnen('${_esc(artnr)}','vpevk',this.value)">
+        </div>
+        <div class="anp-field">
           <label>Faktor</label>
-          <input type="text" id="anp-faktor-${_esc(artnr)}"
-                 value="${art.faktor != null ? Number(art.faktor).toFixed(3).replace('.',',') : ''}"
+          <input type="number" inputmode="decimal" step="0.001" min="0" id="anp-faktor-${_esc(artnr)}"
+                 value="${art.faktor != null ? Number(art.faktor).toFixed(3) : ''}"
                  data-field="faktor"
                  oninput="anpBerechnen('${_esc(artnr)}','faktor',this.value)">
         </div>
         <div class="anp-field">
           <label>VK5 Netto (€)</label>
-          <input type="text" id="anp-vk5netto-${_esc(artnr)}"
-                 value="${Number(art.vk5_netto).toFixed(2).replace('.',',')}"
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5netto-${_esc(artnr)}"
+                 value="${Number(art.vk5_netto).toFixed(4)}"
                  data-field="vk5netto"
                  oninput="anpBerechnen('${_esc(artnr)}','vk5netto',this.value)">
         </div>
         <div class="anp-field">
           <label>VK5 Brutto (€)</label>
-          <input type="text" id="anp-vk5brutto-${_esc(artnr)}"
-                 value="${Number(art.vk5).toFixed(2).replace('.',',')}"
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5brutto-${_esc(artnr)}"
+                 value="${Number(art.vk5).toFixed(2)}"
                  data-field="vk5brutto"
                  oninput="anpBerechnen('${_esc(artnr)}','vk5brutto',this.value)">
         </div>
         <div class="anp-actions">
           <button class="anp-uebernehmen" id="anp-save-${_esc(artnr)}"
-                  onclick="anpSpeichern('${_esc(artnr)}', ${mwstSatz},
-                           ${art.vpe_vk || 1}, ${art.vpe_ek || 1})">
+                  onclick="anpSpeichern('${_esc(artnr)}', ${mwstSatz})">
             Übernehmen
           </button>
           <button class="anp-abbrechen" onclick="anpassenSchliessen()">Abbrechen</button>
@@ -715,8 +845,10 @@ function anpassenOeffnen(btn, artnr) {
   `;
   tr.after(anpTr);
 
-  // Erstes Eingabefeld fokussieren
-  document.getElementById(`anp-faktor-${artnr}`)?.focus();
+  // Erstes Eingabefeld fokussieren (nur Desktop)
+  if (!('ontouchstart' in window)) {
+    document.getElementById(`anp-faktor-${artnr}`)?.focus();
+  }
 }
 
 function anpassenSchliessen() {
@@ -730,11 +862,15 @@ function anpBerechnen(artnr, geaendertesField, rawVal) {
 
   const ek = art.ek;
   const mwstSatz = (art.mwst_pct || 0) / 100.0;
-  const vpeVk = art.vpe_vk || 1;
-  const vpeEk = art.vpe_ek || 1;
 
-  const val = parseFloat(rawVal.replace(',', '.'));
-  if (isNaN(val) || val <= 0) return;
+  // VPE aus den editierbaren Inputs lesen (user kann sie geändert haben)
+  const inpVpeEk  = document.getElementById(`anp-vpeek-${artnr}`);
+  const inpVpeVk  = document.getElementById(`anp-vpevk-${artnr}`);
+  const vpeEk = Math.max(1, parseFloat(inpVpeEk?.value || art.vpe_ek || 1) || 1);
+  const vpeVk = Math.max(1, parseFloat(inpVpeVk?.value || art.vpe_vk || 1) || 1);
+
+  const val = parseFloat(rawVal);
+  if (isNaN(val) || val < 0) return;
 
   const inpFaktor    = document.getElementById(`anp-faktor-${artnr}`);
   const inpVk5netto  = document.getElementById(`anp-vk5netto-${artnr}`);
@@ -743,33 +879,37 @@ function anpBerechnen(artnr, geaendertesField, rawVal) {
 
   let vk5netto, faktor, vk5brutto;
 
-  if (geaendertesField === 'faktor') {
-    // Faktor → VK5 Netto und Brutto
-    faktor = val;
+  if (geaendertesField === 'faktor' || geaendertesField === 'vpeek' || geaendertesField === 'vpevk') {
+    // Faktor (oder VPE-Änderung) → VK5 Netto und Brutto neu berechnen
+    faktor = geaendertesField === 'faktor' ? val : parseFloat(inpFaktor.value);
+    if (isNaN(faktor) || faktor <= 0) return;
     // Faktor = vk5_netto * vpe_ek / (ek * vpe_vk) → vk5_netto = faktor * ek * vpe_vk / vpe_ek
     vk5netto = faktor * ek * vpeVk / vpeEk;
     vk5brutto = vk5netto * (1.0 + mwstSatz);
   } else if (geaendertesField === 'vk5netto') {
     vk5netto = val;
     vk5brutto = vk5netto * (1.0 + mwstSatz);
-    faktor = (ek > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+    faktor = (ek > 0 && vpeVk > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
   } else {  // vk5brutto
     vk5brutto = val;
     vk5netto = mwstSatz > 0 ? vk5brutto / (1.0 + mwstSatz) : vk5brutto;
-    faktor = (ek > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+    faktor = (ek > 0 && vpeVk > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
   }
 
   // Nur die NICHT gerade bearbeiteten Felder aktualisieren
   if (geaendertesField !== 'faktor' && faktor != null)
-    _setFieldSilent(inpFaktor, faktor.toFixed(3).replace('.', ','));
+    _setFieldSilent(inpFaktor, faktor.toFixed(3));
   if (geaendertesField !== 'vk5netto')
-    _setFieldSilent(inpVk5netto, vk5netto.toFixed(2).replace('.', ','));
+    _setFieldSilent(inpVk5netto, vk5netto.toFixed(4));
   if (geaendertesField !== 'vk5brutto')
-    _setFieldSilent(inpVk5brutto, vk5brutto.toFixed(2).replace('.', ','));
+    _setFieldSilent(inpVk5brutto, vk5brutto.toFixed(2));
 
   // Geändertes Feld markieren
-  [inpFaktor, inpVk5netto, inpVk5brutto].forEach(inp => inp.classList.remove('changed'));
-  document.getElementById(`anp-${geaendertesField}-${artnr}`)?.classList.add('changed');
+  [inpFaktor, inpVk5netto, inpVk5brutto, inpVpeEk, inpVpeVk]
+    .filter(Boolean)
+    .forEach(inp => inp.classList.remove('changed'));
+  const changedEl = document.getElementById(`anp-${geaendertesField}-${artnr}`);
+  if (changedEl) changedEl.classList.add('changed');
 }
 
 function _setFieldSilent(inp, val) {
@@ -779,12 +919,12 @@ function _setFieldSilent(inp, val) {
   delete inp.dataset.silent;
 }
 
-async function anpSpeichern(artnr, mwstSatz, vpeVk, vpeEk) {
+async function anpSpeichern(artnr, mwstSatz) {
   const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
   const saveBtn = document.getElementById(`anp-save-${artnr}`);
   if (!inpVk5brutto) return;
 
-  const vk5brutto = parseFloat(inpVk5brutto.value.replace(',', '.'));
+  const vk5brutto = parseFloat(inpVk5brutto.value);
   if (isNaN(vk5brutto) || vk5brutto <= 0) {
     statusSetzen('err', '⚠ Ungültiger VK5-Brutto-Wert');
     inpVk5brutto.focus();
