@@ -573,7 +573,8 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
 def lieferantenpreise_fuer_artikel(artnr: str) -> list:
     """Lieferantenpreise für einen Artikel aus CAO-Stammdaten.
 
-    Primär: ARTIKEL_PREIS (PT2-Einträge außer 'AP') mit ADRESSEN-Join für Lieferantenname.
+    Primär: ARTIKEL_PREIS (PREIS_TYP=5) über ARTIKEL.REC_ID=ARTIKEL_PREIS.ARTIKEL_ID,
+            Lieferantenname über ARTIKEL_PREIS.ADRESS_ID=ADRESSEN.REC_ID.
     Fallback: ARTIKEL_LIEFERANT (falls ARTIKEL_PREIS keine Daten liefert).
     Bei fehlenden Tabellen / Spalten: leere Liste (kein Fehler).
 
@@ -596,25 +597,25 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
             )
         return rows_out
 
-    # Variante 1: ARTIKEL_PREIS mit ADRESSEN-Join (Lieferantenname)
+    # Variante 1: ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5, ADRESS_ID→ADRESSEN
     try:
         with get_db() as cur:
             cur.execute(
                 """
                 SELECT
-                    ap.KUNDEN_NR                               AS lief_nr,
+                    ap.ADRESS_ID                                  AS lief_nr,
                     COALESCE(adr.NAME1, adr.MATCHCODE,
-                             CONCAT('Lieferant ', ap.KUNDEN_NR)) AS lief_name,
-                    ap.PT2                                     AS lief_artnr,
-                    COALESCE(ap.PREIS, 0)                      AS ek_preis,
-                    COALESCE(ap.MENGE_AB, 1)                   AS vpe
-                FROM ARTIKEL_PREIS ap
-                LEFT JOIN ADRESSEN adr ON adr.LIEF_NR = ap.KUNDEN_NR
-                WHERE ap.ARTNUM = %s
-                  AND ap.PT2 NOT IN ('AP')
-                  AND ap.KUNDEN_NR IS NOT NULL
-                  AND ap.KUNDEN_NR != ''
-                ORDER BY ap.KUNDEN_NR, ap.MENGE_AB
+                             CONCAT('Lieferant ', ap.ADRESS_ID))  AS lief_name,
+                    COALESCE(ap.PT2, '')                          AS lief_artnr,
+                    COALESCE(ap.PREIS, 0)                         AS ek_preis,
+                    COALESCE(ap.MENGE_AB, 1)                      AS vpe
+                FROM ARTIKEL a
+                JOIN ARTIKEL_PREIS ap ON ap.ARTIKEL_ID = a.REC_ID
+                    AND ap.PREIS_TYP = 5
+                LEFT JOIN ADRESSEN adr ON adr.REC_ID = ap.ADRESS_ID
+                WHERE a.ARTNUM = %s
+                  AND ap.ADRESS_ID IS NOT NULL
+                ORDER BY ap.ADRESS_ID, ap.MENGE_AB
                 """,
                 (artnr,),
             )
@@ -740,3 +741,26 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
         'vk5_netto': round(vk5_netto, 4),
         'faktor':  faktor,
     }
+
+
+def artikel_ek_setzen(artnum: str, ek: float) -> dict:
+    """Schreibt EK_PREIS direkt in ARTIKEL (CAO-Stammdatenpflege).
+
+    Gibt dict zurück: {'ok': True, 'artnr': ..., 'ek_neu': ...}
+    """
+    if ek < 0:
+        raise ValueError('EK darf nicht negativ sein')
+
+    artikel = artikel_by_artnum(artnum)
+    if not artikel:
+        raise ValueError(f'Artikel {artnum!r} nicht gefunden')
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            'UPDATE ARTIKEL SET EK_PREIS = %s WHERE ARTNUM = %s',
+            (ek, artnum),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f'Artikel {artnum!r} konnte nicht aktualisiert werden')
+
+    return {'ok': True, 'artnr': artnum, 'ek_neu': ek}
