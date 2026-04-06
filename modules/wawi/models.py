@@ -425,7 +425,7 @@ def warengruppen_mit_faktor() -> list:
     Rückgabe: [{wgr_id, name, parent_id, anzahl_artikel, avg_faktor}, ...]
     parent_id=None = Wurzelknoten.
     Faktor = vk5_netto × vpe_ek / (ek × vpe_vk), VPE aus ARTIKEL.VPE / ARTIKEL.VPE_EK.
-    Aktive Artikel: kein NO_VK_FLAG ('J'/'Y') und kein GELOESCHT.
+    Aktive Artikel: kein NO_VK_FLAG ('J'/'Y') und kein Löschvermerk (USERFELD_02).
     """
     top_col = _wg_top_spalte()
     top_sel = f'wg.{top_col}' if top_col else 'NULL'
@@ -444,7 +444,7 @@ def warengruppen_mit_faktor() -> list:
         LEFT JOIN ARTIKEL a ON a.WARENGRUPPE = wg.ID
             AND a.EK_PREIS > 0
             AND (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
-            AND (a.GELOESCHT IS NULL OR a.GELOESCHT = 0)
+            AND (a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')
         ORDER BY wg.NAME, wg.ID
     """
     try:
@@ -503,7 +503,7 @@ def warengruppen_mit_faktor() -> list:
 def preispflege_liste(wgr_id: int | None = None) -> list:
     """Alle aktiven Artikel mit EK, VK5, VPE und Faktor.
 
-    Aktive Artikel: kein VK-Sperre (NO_VK_FLAG != 'J'/'Y') und kein Lösch-Flag.
+    Aktive Artikel: kein VK-Sperre (NO_VK_FLAG != 'J'/'Y') und kein Löschvermerk (USERFELD_02).
     VPE: ARTIKEL.VPE (Verkaufseinheit) und ARTIKEL.VPE_EK (Einkaufseinheit).
     Faktor = vk5_netto × vpe_ek / (ek × vpe_vk)  — VPE-korrigiert.
     """
@@ -529,7 +529,7 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
         FROM ARTIKEL a
         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
         WHERE (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
-          AND (a.GELOESCHT IS NULL OR a.GELOESCHT = 0)
+          AND (a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')
           {wgr_filter}
         ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
     """
