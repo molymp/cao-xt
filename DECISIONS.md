@@ -84,3 +84,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 - **Alternativen:** Externe Wiki-Lösung (zu komplex), nur Kommentare in Commits (nicht zugänglich genug).
 - **Konsequenzen:** Mehr Dokumentationsaufwand pro Feature, aber dauerhaft bessere Übersicht.
 - **Referenz:** [HAB-105](/HAB/issues/HAB-105)
+
+
+---
+
+## 2026-04-07 CFO-Berichte via separatem berichte.py-Modul (HAB-238)
+
+- **Problem:** CFO benötigt operative Berichte (Tagesumsatz, Monatsübersicht, Kassenbuch, EC-Umsätze) direkt in der WaWi-App mit Zeitraumfilter und CSV-Export.
+- **Entscheidung:** Neues Modul `berichte.py` mit parametrisierbaren SQL-Queries (direkt aus CAO-Faktura-DB) und 8 Flask-Routen unter `/wawi/berichte/...`. `get_cao_db` als Alias für `get_db` in `db.py` – beide zeigen auf dieselbe CAO-DB.
+- **Begründung:** Trennung von Business-Logik (berichte.py) und Routing (app.py) hält die Codebasis wartbar. Alias-Ansatz vermeidet Config-Änderungen (keine neuen CAO_DB_*-Variablen nötig) und nutzt bestehenden Pool.
+- **Alternativen:** Berichte direkt im bestehenden `/reporting`-Endpunkt integrieren (würde den bereits vorhandenen Reporting-Bereich überlasten); separater Micro-Service (zu aufwändig).
+- **Konsequenzen:** CSV-Export mit UTF-8-BOM für Excel-Kompatibilität. Phase 2 (Lieferantenumsätze, Wareneinsatz/Marge) steht aus.
+- **Referenz:** [HAB-238](/HAB/issues/HAB-238)

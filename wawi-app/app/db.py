@@ -72,3 +72,7 @@ def test_verbindung() -> bool:
         return True
     except Exception:
         return False
+
+
+# Alias: CFO-Berichte lesen aus derselben CAO-DB wie der WaWi-Pool
+get_cao_db = get_db
