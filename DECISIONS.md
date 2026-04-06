@@ -15,6 +15,21 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-06 Verbindliche Merge-Pflicht: Sofort-Merge nach Board-Freigabe (HAB-267)
+
+- **Problem:** Fix-Branches wurden implementiert und im Review-Worktree getestet, aber nie in `master` gemergt. Bereits gefixte Issues tauchten erneut auf, weil die Fixes zwar auf Branches existierten, aber nie in die Produktionsbasis landeten. Beispiel: `claude/hab-101-bon-timestamp` existierte Wochen ohne Merge. Das Board verlor das Vertrauen in die Stabilität des Systems.
+- **Entscheidung:** Vier verbindliche Regeln:
+  1. **Sofort-Merge-Pflicht:** Jeder board-freigegebene Branch MUSS im selben Heartbeat gemergt werden, in dem die Freigabe eingeht. Kein Branch bleibt nach Freigabe offen.
+  2. **Kurzlebige Branches:** Feature-Branches dürfen maximal 48 Stunden offen sein. Branches ohne Merge nach 48 Stunden gelten als Prozessfehler und werden im zugehörigen Ticket eskaliert.
+  3. **Rebase vor Merge:** Bevor ein Feature-Branch gemergt wird, muss er auf den aktuellen `master` rebased werden (`git rebase master`). Konflikte werden vor dem Merge gelöst.
+  4. **Parallelarbeit über Subtasks:** Parallele Features werden als separate Subtasks mit eigenen Branches geführt. Merge-Reihenfolge wird durch Task-Priorität bestimmt; niedrigpriore Branches warten auf Master-Stand und rebasen dann.
+- **Begründung:** Lange offene Branches erzeugen Regressions-Spiralen: Fixes fehlen in `master`, parallele Branches divergieren zunehmend, und Merges werden immer aufwändiger. Sofortiger Merge nach Freigabe ist die einzige Lösung.
+- **Alternativen:** (a) Separate Merge-Aufgabe als Subtask (erhöht Overhead, Vergessen wahrscheinlich), (b) Automatisierter CI-Merge (zu aufwändig für aktuellen Projektstand), (c) Squash-Commits (verliert Traceability).
+- **Konsequenzen:** Ein Heartbeat ist erst abgeschlossen, wenn alle board-freigegebenen Branches gemergt und mit `PAPERCLIP_APPROVAL_ID` gepusht sind. Der CTO ergänzt die Merge-Pflicht in seinen Agenten-Instruktionen als explizite Checkliste.
+- **Referenz:** [HAB-267](/HAB/issues/HAB-267)
+
+---
+
 ## 2026-04-06 Versionierter pre-push Hook mit Paperclip-Approval-Pflicht (HAB-242)
 
 - **Problem:** Der alte `pre-push` Hook in `.git/hooks/pre-push` blockierte ALLE Pushes auf `master` – auch den CTO nach gültiger Board-Freigabe. Zudem war er nicht versioniert und somit nicht reproduzierbar.
