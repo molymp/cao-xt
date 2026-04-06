@@ -598,23 +598,25 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
         return rows_out
 
     # Variante 1: ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5, ADRESS_ID→ADRESSEN
+    # Hinweis: ADRESS_ID kann NULL sein (EK-Preis ohne Lieferantenzuordnung) – nicht filtern!
     try:
         with get_db() as cur:
             cur.execute(
                 """
                 SELECT
-                    ap.ADRESS_ID                                  AS lief_nr,
+                    ap.ADRESS_ID                                                    AS lief_nr,
                     COALESCE(adr.NAME1, adr.MATCHCODE,
-                             CONCAT('Lieferant ', ap.ADRESS_ID))  AS lief_name,
-                    COALESCE(ap.PT2, '')                          AS lief_artnr,
-                    COALESCE(ap.PREIS, 0)                         AS ek_preis,
-                    COALESCE(ap.MENGE_AB, 1)                      AS vpe
+                             IF(ap.ADRESS_ID IS NOT NULL,
+                                CONCAT('Lieferant ', ap.ADRESS_ID),
+                                'Lieferant (unbekannt)'))                           AS lief_name,
+                    COALESCE(ap.PT2, '')                                            AS lief_artnr,
+                    COALESCE(ap.PREIS, 0)                                           AS ek_preis,
+                    COALESCE(ap.MENGE_AB, 1)                                        AS vpe
                 FROM ARTIKEL a
                 JOIN ARTIKEL_PREIS ap ON ap.ARTIKEL_ID = a.REC_ID
                     AND ap.PREIS_TYP = 5
                 LEFT JOIN ADRESSEN adr ON adr.REC_ID = ap.ADRESS_ID
                 WHERE a.ARTNUM = %s
-                  AND ap.ADRESS_ID IS NOT NULL
                 ORDER BY ap.ADRESS_ID, ap.MENGE_AB
                 """,
                 (artnr,),
