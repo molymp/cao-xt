@@ -27,34 +27,64 @@ def _db(key, fallback=''):
     return os.environ.get(key.upper(), _cfg.get('Datenbank', key.lower(), fallback=fallback))
 
 
-_pool = pooling.MySQLConnectionPool(
-    pool_name='wawi_pool',
-    pool_size=5,
-    host=_db('db_loc', 'localhost'),
-    port=int(_db('db_port', '3306')),
-    user=_db('db_user', ''),
-    password=_db('db_pass', ''),
-    database=_db('db_name', ''),
-    charset='utf8mb4',
-    use_unicode=True,
-    autocommit=True,
-    connection_timeout=10,
-)
+_pool = None
+_pool_lock = None  # threading.Lock(), lazy um Importfehler zu vermeiden
+
+
+def _db_params() -> dict:
+    """Liest DB-Verbindungsparameter.
+
+    Priorität: Flask-App-Config (sys.modules['config']) > caoxt.ini / Env-Vars.
+    Dadurch startet das Blueprint auch wenn caoxt.ini Platzhalter enthält –
+    analog zum Lazy-Pool-Pattern in wawi-app/app/db.py.
+    """
+    import sys
+    try:
+        cfg = sys.modules.get('config')
+        if cfg and hasattr(cfg, 'DB_HOST') and str(cfg.DB_HOST) not in ('', '[server-URL]'):
+            return dict(
+                host=cfg.DB_HOST,
+                port=int(cfg.DB_PORT),
+                user=cfg.DB_USER,
+                password=getattr(cfg, 'DB_PASSWORD', ''),
+                database=cfg.DB_NAME,
+            )
+    except Exception:
+        pass
+    return dict(
+        host=_db('db_loc', 'localhost'),
+        port=int(_db('db_port', '3306')),
+        user=_db('db_user', ''),
+        password=_db('db_pass', ''),
+        database=_db('db_name', ''),
+    )
 
 
 def _get_conn():
+    import threading
+    global _pool, _pool_lock
+    if _pool_lock is None:
+        _pool_lock = threading.Lock()
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = pooling.MySQLConnectionPool(
+                    pool_name='wawi_pool',
+                    pool_size=5,
+                    charset='utf8mb4',
+                    use_unicode=True,
+                    autocommit=True,
+                    connection_timeout=10,
+                    **_db_params(),
+                )
     try:
         return _pool.get_connection()
     except Exception:
         return mysql.connector.connect(
-            host=_db('db_loc', 'localhost'),
-            port=int(_db('db_port', '3306')),
-            user=_db('db_user', ''),
-            password=_db('db_pass', ''),
-            database=_db('db_name', ''),
             charset='utf8mb4',
             use_unicode=True,
             autocommit=True,
+            **_db_params(),
         )
 
 
@@ -96,17 +126,16 @@ def artikel_suche(q: str, limit: int = 50) -> list:
         cur.execute(
             """
             SELECT a.ARTNUM,
-                   COALESCE(a.KAS_NAME, a.KURZNAME, a.SUCHNAME) AS BEZEICHNUNG,
+                   COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
                    a.BARCODE,
                    a.VK1B, a.VK2B, a.VK3B, a.VK4B, a.VK5B,
-                   a.MWST_CODE,
+                   a.STEUER_CODE AS MWST_CODE,
                    a.MENGE_AKT,
                    a.ARTIKELTYP,
-                   wg.BEZEICHNUNG AS WG_NAME
+                   wg.NAME AS WG_NAME
               FROM ARTIKEL a
-         LEFT JOIN WARENGRUPPEN wg ON wg.REC_ID = a.WG
-             WHERE a.GELOESCHT = 0
-               AND (a.ARTNUM LIKE %s OR a.KURZNAME LIKE %s
+         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
+             WHERE (a.ARTNUM LIKE %s OR a.KURZNAME LIKE %s
                     OR a.KAS_NAME LIKE %s OR a.BARCODE LIKE %s)
           ORDER BY a.KAS_NAME
              LIMIT %s
@@ -122,18 +151,17 @@ def artikel_by_artnum(artnum: str) -> dict | None:
         cur.execute(
             """
             SELECT a.ARTNUM,
-                   COALESCE(a.KAS_NAME, a.KURZNAME, a.SUCHNAME) AS BEZEICHNUNG,
+                   COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
                    a.BARCODE,
                    a.VK1B, a.VK2B, a.VK3B, a.VK4B, a.VK5B,
                    a.EK_PREIS,
-                   a.MWST_CODE,
+                   a.STEUER_CODE AS MWST_CODE,
                    a.MENGE_AKT,
                    a.ARTIKELTYP,
-                   wg.BEZEICHNUNG AS WG_NAME
+                   wg.NAME AS WG_NAME
               FROM ARTIKEL a
-         LEFT JOIN WARENGRUPPEN wg ON wg.REC_ID = a.WG
+         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
              WHERE a.ARTNUM = %s
-               AND a.GELOESCHT = 0
             """,
             (artnum,),
         )
@@ -341,8 +369,8 @@ def warengruppen_liste() -> list:
     """Alle aktiven Warengruppen für Filter-Dropdown (aufsteigend nach Bezeichnung)."""
     with get_db() as cur:
         cur.execute(
-            "SELECT REC_ID AS wgr_id, BEZEICHNUNG AS name "
-            "FROM WARENGRUPPEN ORDER BY BEZEICHNUNG"
+            "SELECT ID AS wgr_id, NAME AS name "
+            "FROM WARENGRUPPEN ORDER BY NAME"
         )
         return cur.fetchall()
 
@@ -359,7 +387,7 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
     wgr_filter = ''
     params: list = []
     if wgr_id is not None:
-        wgr_filter = 'AND a.WG = %s '
+        wgr_filter = 'AND a.WARENGRUPPE = %s '
         params.append(wgr_id)
 
     with get_db() as cur:
@@ -367,19 +395,18 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             f"""
             SELECT
                 a.ARTNUM,
-                COALESCE(a.KAS_NAME, a.KURZNAME, a.SUCHNAME) AS BEZEICHNUNG,
-                a.WG                                          AS wgr_id,
-                COALESCE(wg.BEZEICHNUNG, '')                  AS WGR_NAME,
+                COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
+                a.WARENGRUPPE                                  AS wgr_id,
+                COALESCE(wg.NAME, '')                         AS WGR_NAME,
                 COALESCE(a.VK5B, 0)                          AS VK5,
                 COALESCE(a.EK_PREIS, 0)                      AS EK,
-                COALESCE(a.MWST_CODE, 0)                     AS MWST_CODE
+                COALESCE(a.STEUER_CODE, 0)                   AS MWST_CODE
             FROM ARTIKEL a
-            LEFT JOIN WARENGRUPPEN wg ON wg.REC_ID = a.WG
-            WHERE a.GELOESCHT = 0
-              AND a.ARTIKELTYP = 'N'
+            LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
+            WHERE a.ARTIKELTYP = 'N'
               AND a.VK5B > 0
               {wgr_filter}
-            ORDER BY a.WG, COALESCE(a.KAS_NAME, a.KURZNAME)
+            ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
             """,
             params,
         )
@@ -434,7 +461,7 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
 
     with get_db_transaction() as cur:
         cur.execute(
-            "UPDATE ARTIKEL SET VK5B = %s WHERE ARTNUM = %s AND GELOESCHT = 0",
+            "UPDATE ARTIKEL SET VK5B = %s WHERE ARTNUM = %s",
             (vk5_brutto, artnum),
         )
         if cur.rowcount == 0:
