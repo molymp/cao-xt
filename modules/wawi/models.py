@@ -598,9 +598,7 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
         return rows_out
 
     # Variante 1: ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5, ADRESS_ID→ADRESSEN
-    # Hinweis: ADRESS_ID kann NULL sein (EK-Preis ohne Lieferantenzuordnung) – nicht filtern!
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
+    # Spalten ARTIKEL_PREIS: ARTIKEL_ID, PREIS_TYP, ADRESS_ID, PREIS, PT2 – MENGE_AB existiert nicht!
     try:
         with get_db() as cur:
             cur.execute(
@@ -612,14 +610,13 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                                 CONCAT('Lieferant ', ap.ADRESS_ID),
                                 'Lieferant (unbekannt)'))                           AS lief_name,
                     COALESCE(ap.PT2, '')                                            AS lief_artnr,
-                    COALESCE(ap.PREIS, 0)                                           AS ek_preis,
-                    COALESCE(ap.MENGE_AB, 1)                                        AS vpe
+                    COALESCE(ap.PREIS, 0)                                           AS ek_preis
                 FROM ARTIKEL a
                 JOIN ARTIKEL_PREIS ap ON ap.ARTIKEL_ID = a.REC_ID
                     AND ap.PREIS_TYP = 5
                 LEFT JOIN ADRESSEN adr ON adr.REC_ID = ap.ADRESS_ID
                 WHERE a.ARTNUM = %s
-                ORDER BY ap.ADRESS_ID, ap.MENGE_AB
+                ORDER BY ap.ADRESS_ID
                 """,
                 (artnr,),
             )
@@ -631,73 +628,7 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                     'lief_name':  r['lief_name'],
                     'lief_artnr': r.get('lief_artnr') or '',
                     'ek_preis':   float(r['ek_preis'] or 0),
-                    'vpe':        float(r['vpe'] or 1) or 1.0,
-                }
-                for r in rows
-            ])
-    except Exception as _e:
-        _log.error('lieferantenpreise Variante1 Fehler fuer %s: %s', artnr, _e)
-
-    # Variante 2: ARTIKEL_LIEFERANT mit ADRESSEN-Join
-    try:
-        with get_db() as cur:
-            cur.execute(
-                """
-                SELECT
-                    al.LIEF_NR,
-                    COALESCE(adr.NAME1, adr.MATCHCODE,
-                             CONCAT('Lieferant ', al.LIEF_NR))  AS lief_name,
-                    COALESCE(al.LIEF_ARTNR, al.BESTELL_NR, '') AS lief_artnr,
-                    COALESCE(al.EK_PREIS, 0)                    AS ek_preis,
-                    COALESCE(al.VPE, 1)                         AS vpe
-                FROM ARTIKEL_LIEFERANT al
-                LEFT JOIN ADRESSEN adr ON adr.LIEF_NR = al.LIEF_NR
-                WHERE al.ARTNUM = %s
-                ORDER BY al.LIEF_NR
-                """,
-                (artnr,),
-            )
-            rows = cur.fetchall()
-        if rows:
-            return _mark_standard([
-                {
-                    'lief_nr':    r['LIEF_NR'],
-                    'lief_name':  r['lief_name'],
-                    'lief_artnr': r['lief_artnr'],
-                    'ek_preis':   float(r['ek_preis'] or 0),
-                    'vpe':        float(r['vpe'] or 1) or 1.0,
-                }
-                for r in rows
-            ])
-    except Exception as _e:
-        _log.error('lieferantenpreise Variante2 Fehler fuer %s: %s', artnr, _e)
-
-    # Variante 3: ARTIKEL_LIEFERANT ohne ADRESSEN-Join
-    try:
-        with get_db() as cur:
-            cur.execute(
-                """
-                SELECT
-                    al.LIEF_NR,
-                    CONCAT('Lieferant ', al.LIEF_NR) AS lief_name,
-                    COALESCE(al.LIEF_ARTNR, '')       AS lief_artnr,
-                    COALESCE(al.EK_PREIS, 0)          AS ek_preis,
-                    COALESCE(al.VPE, 1)               AS vpe
-                FROM ARTIKEL_LIEFERANT al
-                WHERE al.ARTNUM = %s
-                ORDER BY al.LIEF_NR
-                """,
-                (artnr,),
-            )
-            rows = cur.fetchall()
-        if rows:
-            return _mark_standard([
-                {
-                    'lief_nr':    r['LIEF_NR'],
-                    'lief_name':  r['lief_name'],
-                    'lief_artnr': r['lief_artnr'],
-                    'ek_preis':   float(r['ek_preis'] or 0),
-                    'vpe':        float(r['vpe'] or 1) or 1.0,
+                    'vpe':        1.0,
                 }
                 for r in rows
             ])
