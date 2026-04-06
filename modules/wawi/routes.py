@@ -208,3 +208,26 @@ def api_artikel_vk5_setzen(artnr: str):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     return jsonify(result)
+
+
+@bp.patch('/api/artikel/<artnr>/ek')
+def api_artikel_ek_setzen(artnr: str):
+    """
+    PATCH /wawi/api/artikel/<artnr>/ek
+    Body: { "ek": 1.20 }  — EK in Euro
+
+    Schreibt direkt ARTIKEL.EK_PREIS (CAO-Stammdatenpflege).
+    """
+    _benutzer()
+    data = request.get_json(force=True) or {}
+    if 'ek' not in data:
+        return jsonify({'error': 'Feld ek fehlt'}), 400
+    try:
+        ek = float(data['ek'])
+    except (TypeError, ValueError):
+        return jsonify({'error': 'ek muss eine Zahl sein'}), 400
+    try:
+        result = m.artikel_ek_setzen(artnr, ek)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify(result)

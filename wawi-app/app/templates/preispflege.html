@@ -793,10 +793,10 @@ function anpassenOeffnen(btn, artnr) {
       <form class="anp-panel" id="anp-form-${_esc(artnr)}" onsubmit="return false;">
         <div class="anp-field">
           <label>EK (€)</label>
-          <input type="number" inputmode="decimal" step="0.01" id="anp-ek-${_esc(artnr)}"
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-ek-${_esc(artnr)}"
                  value="${Number(art.ek).toFixed(2)}"
-                 data-field="ek" readonly
-                 title="EK kann hier nicht geändert werden (Einkaufskonditionen)">
+                 data-field="ek"
+                 oninput="anpBerechnen('${_esc(artnr)}','ek',this.value)">
         </div>
         <div class="anp-field">
           <label>VPE EK</label>
@@ -860,8 +860,11 @@ function anpBerechnen(artnr, geaendertesField, rawVal) {
   const art = _daten.find(a => a.artnr === artnr);
   if (!art) return;
 
-  const ek = art.ek;
   const mwstSatz = (art.mwst_pct || 0) / 100.0;
+
+  // EK aus editierbarem Input lesen (user kann ihn geändert haben)
+  const inpEk = document.getElementById(`anp-ek-${artnr}`);
+  const ek = Math.max(0, parseFloat(inpEk?.value ?? art.ek) || 0);
 
   // VPE aus den editierbaren Inputs lesen (user kann sie geändert haben)
   const inpVpeEk  = document.getElementById(`anp-vpeek-${artnr}`);
@@ -879,13 +882,21 @@ function anpBerechnen(artnr, geaendertesField, rawVal) {
 
   let vk5netto, faktor, vk5brutto;
 
-  if (geaendertesField === 'faktor' || geaendertesField === 'vpeek' || geaendertesField === 'vpevk') {
-    // Faktor (oder VPE-Änderung) → VK5 Netto und Brutto neu berechnen
-    faktor = geaendertesField === 'faktor' ? val : parseFloat(inpFaktor.value);
-    if (isNaN(faktor) || faktor <= 0) return;
-    // Faktor = vk5_netto * vpe_ek / (ek * vpe_vk) → vk5_netto = faktor * ek * vpe_vk / vpe_ek
-    vk5netto = faktor * ek * vpeVk / vpeEk;
-    vk5brutto = vk5netto * (1.0 + mwstSatz);
+  if (geaendertesField === 'faktor' || geaendertesField === 'vpeek' || geaendertesField === 'vpevk' || geaendertesField === 'ek') {
+    // Faktor/VPE/EK-Änderung → VK5 Netto und Brutto neu berechnen (VK5 bleibt konstant bei EK-Änderung, Faktor ändert sich)
+    const curVk5netto = parseFloat(inpVk5netto.value) || 0;
+    if (geaendertesField === 'ek') {
+      // EK geändert → Faktor aus aktuellem VK5 neu berechnen
+      vk5netto = curVk5netto;
+      vk5brutto = vk5netto * (1.0 + mwstSatz);
+      faktor = (val > 0 && vpeVk > 0) ? vk5netto * vpeEk / (val * vpeVk) : null;
+    } else {
+      faktor = geaendertesField === 'faktor' ? val : parseFloat(inpFaktor.value);
+      if (isNaN(faktor) || faktor <= 0) return;
+      // Faktor = vk5_netto * vpe_ek / (ek * vpe_vk) → vk5_netto = faktor * ek * vpe_vk / vpe_ek
+      vk5netto = faktor * ek * vpeVk / vpeEk;
+      vk5brutto = vk5netto * (1.0 + mwstSatz);
+    }
   } else if (geaendertesField === 'vk5netto') {
     vk5netto = val;
     vk5brutto = vk5netto * (1.0 + mwstSatz);
@@ -921,7 +932,8 @@ function _setFieldSilent(inp, val) {
 
 async function anpSpeichern(artnr, mwstSatz) {
   const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
-  const saveBtn = document.getElementById(`anp-save-${artnr}`);
+  const inpEk        = document.getElementById(`anp-ek-${artnr}`);
+  const saveBtn      = document.getElementById(`anp-save-${artnr}`);
   if (!inpVk5brutto) return;
 
   const vk5brutto = parseFloat(inpVk5brutto.value);
@@ -931,30 +943,52 @@ async function anpSpeichern(artnr, mwstSatz) {
     return;
   }
 
+  const art = _daten.find(a => a.artnr === artnr);
+  const ekNeu = inpEk ? parseFloat(inpEk.value) : null;
+  const ekGeaendert = inpEk && art && !isNaN(ekNeu) && ekNeu >= 0 && Math.abs(ekNeu - (art.ek || 0)) > 0.001;
+
   saveBtn.disabled = true;
   try {
-    const r = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
+    // VK5 speichern
+    const rVk5 = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
       method: 'PATCH',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vk5: vk5brutto }),
     });
-    const data = await r.json();
+    const dataVk5 = await rVk5.json();
+    if (!rVk5.ok || !dataVk5.ok) throw new Error(dataVk5.error || `HTTP ${rVk5.status}`);
 
-    if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    // EK speichern (nur wenn geändert)
+    let ekGespeichert = false;
+    if (ekGeaendert) {
+      const rEk = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/ek`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ek: ekNeu }),
+      });
+      const dataEk = await rEk.json();
+      if (!rEk.ok || !dataEk.ok) throw new Error(dataEk.error || `HTTP ${rEk.status}`);
+      ekGespeichert = true;
+    }
 
     // Lokale Daten aktualisieren
     const idx = _daten.findIndex(a => a.artnr === artnr);
     if (idx !== -1) {
-      _daten[idx].vk5 = data.vk5_neu;
-      if (data.vk5_netto !== undefined) _daten[idx].vk5_netto = data.vk5_netto;
-      if (data.faktor    !== undefined) _daten[idx].faktor    = data.faktor;
+      _daten[idx].vk5 = dataVk5.vk5_neu;
+      if (dataVk5.vk5_netto !== undefined) _daten[idx].vk5_netto = dataVk5.vk5_netto;
+      if (dataVk5.faktor    !== undefined) _daten[idx].faktor    = dataVk5.faktor;
+      if (ekGespeichert) _daten[idx].ek = ekNeu;
     }
 
     anpassenSchliessen();
     renderTabelle();
+    const ekInfo = ekGespeichert ? ` | EK: ${_eur(ekNeu)} €` : '';
     statusSetzen('ok',
-      `✓ ${artnr} – VK5 Brutto: ${_eur(data.vk5_neu)} €`
-      + (data.faktor != null ? ` | Faktor: ${Number(data.faktor).toFixed(2)}` : ''));
+      `✓ ${artnr} – VK5 Brutto: ${_eur(dataVk5.vk5_neu)} €`
+      + (dataVk5.faktor != null ? ` | Faktor: ${Number(dataVk5.faktor).toFixed(2)}` : '')
+      + ekInfo);
   } catch (e) {
     saveBtn.disabled = false;
     statusSetzen('err', `⚠ Speichern fehlgeschlagen: ${e.message}`);
