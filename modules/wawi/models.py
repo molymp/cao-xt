@@ -599,6 +599,8 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
 
     # Variante 1: ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5, ADRESS_ID→ADRESSEN
     # Hinweis: ADRESS_ID kann NULL sein (EK-Preis ohne Lieferantenzuordnung) – nicht filtern!
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     try:
         with get_db() as cur:
             cur.execute(
@@ -633,8 +635,8 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                 }
                 for r in rows
             ])
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.error('lieferantenpreise Variante1 Fehler fuer %s: %s', artnr, _e)
 
     # Variante 2: ARTIKEL_LIEFERANT mit ADRESSEN-Join
     try:
@@ -667,8 +669,8 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                 }
                 for r in rows
             ])
-    except Exception:
-        pass
+    except Exception as _e:
+        _log.error('lieferantenpreise Variante2 Fehler fuer %s: %s', artnr, _e)
 
     # Variante 3: ARTIKEL_LIEFERANT ohne ADRESSEN-Join
     try:
