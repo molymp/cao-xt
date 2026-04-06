@@ -62,7 +62,7 @@ def mitarbeiter_liste() -> list:
 _mwst_cache: dict | None = None
 
 
-def _format_vlsnum(pattern: str, nummer: int) -> str:
+def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0) -> str:
     """Wendet ein CAO-Nummernpattern auf die Belegnummer an.
 
     CAO-Format: '"EDI-"000000'
@@ -71,29 +71,107 @@ def _format_vlsnum(pattern: str, nummer: int) -> str:
       Beispiel: '"EDI-"000000' mit Nr. 18165 → 'EDI-018165'
 
     Fallback bei unbekanntem / leerem Pattern: 'LS018165'
+
+    max_len: wenn > 0 und das Ergebnis zu lang wäre, wird die Nullen-Auffüllung
+             reduziert. Reicht das nicht, wird von rechts abgeschnitten (Warnung).
     """
     import re as _re
     if not pattern:
-        return f"LS{nummer:06d}"
+        result = f"LS{nummer:06d}"
+    else:
+        # Quoted Prefix extrahieren: alles zwischen den ersten "..."
+        prefix = ''
+        rest   = pattern
+        m = _re.match(r'^"([^"]*)"(.*)', pattern)
+        if m:
+            prefix = m.group(1)
+            rest   = m.group(2)
 
-    # Quoted Prefix extrahieren: alles zwischen den ersten "..."
-    prefix = ''
-    rest   = pattern
-    m = _re.match(r'^"([^"]*)"(.*)', pattern)
-    if m:
-        prefix = m.group(1)
-        rest   = m.group(2)
+        # Nullen im Rest zählen → Stellenbreite
+        stellen = rest.count('0')
+        if stellen:
+            result = prefix + str(nummer).zfill(stellen)
+        elif prefix:
+            result = f"{prefix}{nummer:06d}"
+        else:
+            result = f"LS{nummer:06d}"
 
-    # Nullen im Rest zählen → Stellenbreite
-    stellen = rest.count('0')
-    if stellen:
-        return prefix + str(nummer).zfill(stellen)
+    if max_len and len(result) > max_len:
+        # Padding reduzieren: Präfix + Nummer ohne führende Nullen
+        import re as _re2
+        m2 = _re2.match(r'^(.*?)(\d+)$', result)
+        if m2:
+            compact = m2.group(1) + str(int(m2.group(2)))
+            if len(compact) <= max_len:
+                log.warning(
+                    "_format_vlsnum: '%s' überschreitet Spaltenlänge %d, "
+                    "Nullen-Auffüllung wird reduziert → '%s'",
+                    result, max_len, compact
+                )
+                return compact
+        log.error(
+            "_format_vlsnum: '%s' überschreitet Spaltenlänge %d und kann nicht "
+            "gekürzt werden ohne Datenverlust – wird auf %d Zeichen abgeschnitten",
+            result, max_len, max_len
+        )
+        result = result[:max_len]
 
-    # Kein Nullen-Block: Präfix + 6-stellige Nummer als Fallback
-    if prefix:
-        return f"{prefix}{nummer:06d}"
+    return result
 
-    return f"LS{nummer:06d}"
+
+_col_max_len_cache: dict[str, int] = {}
+_col_exists_cache:  dict[str, bool] = {}
+
+
+def _table_col_exists(table: str, col_name: str) -> bool:
+    """Gibt True zurück wenn die Spalte col_name in der Tabelle table existiert (gecacht)."""
+    key = f"{table}.{col_name}"
+    if key in _col_exists_cache:
+        return _col_exists_cache[key]
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT 1
+                   FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME   = %s
+                     AND COLUMN_NAME  = %s
+                   LIMIT 1""",
+                (table, col_name)
+            )
+            exists = cur.fetchone() is not None
+    except Exception as e:
+        log.warning("_table_col_exists: Abfrage für '%s.%s' fehlgeschlagen: %s", table, col_name, e)
+        exists = True  # im Zweifel annehmen dass sie existiert
+    _col_exists_cache[key] = exists
+    return exists
+
+
+def _journal_col_max_len(col_name: str) -> int:
+    """Gibt die maximale Zeichenlänge einer JOURNAL-Spalte zurück (gecacht).
+
+    Fragt INFORMATION_SCHEMA.COLUMNS ab. Gibt 0 zurück wenn die Spalte
+    nicht gefunden wird (kein Limit anwenden).
+    """
+    if col_name in _col_max_len_cache:
+        return _col_max_len_cache[col_name]
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT CHARACTER_MAXIMUM_LENGTH
+                   FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'JOURNAL'
+                     AND COLUMN_NAME = %s""",
+                (col_name,)
+            )
+            row = cur.fetchone()
+            max_len = int(row['CHARACTER_MAXIMUM_LENGTH']) if row and row['CHARACTER_MAXIMUM_LENGTH'] else 0
+    except Exception as e:
+        log.warning("_journal_col_max_len: Abfrage für '%s' fehlgeschlagen: %s", col_name, e)
+        max_len = 0
+    _col_max_len_cache[col_name] = max_len
+    return max_len
 
 
 def mwst_saetze_laden() -> dict:
@@ -1788,7 +1866,10 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 r"WHERE MAINKEY='MAIN\\NUMBERS' AND NAME='29'",
                 (vrenum_nr,)
             )
-    vrenum = _format_vlsnum(reg29['VAL_CHAR'] if reg29 else '', vrenum_nr)
+    vrenum = _format_vlsnum(
+        reg29['VAL_CHAR'] if reg29 else '', vrenum_nr,
+        max_len=_journal_col_max_len('VRENUM')
+    )
 
     # VLSNUM aus REGISTRY MAIN\NUMBERS NAME='VK-LIEF' – eigene Transaktion
     with get_db_transaction() as cur:
@@ -1808,16 +1889,23 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
 
     jetzt = datetime.now()
 
+    # GEGENKONTO existiert nicht in allen CAO-Installationen – bedingt einbinden
+    has_gk_j    = _table_col_exists('JOURNAL',    'GEGENKONTO')
+    has_gk_jpos = _table_col_exists('JOURNALPOS', 'GEGENKONTO')
+    gk_j_col    = ', GEGENKONTO' if has_gk_j    else ''
+    gk_j_ph     = ', %s'         if has_gk_j    else ''
+    gk_jpos_col = ', GEGENKONTO' if has_gk_jpos else ''
+    gk_jpos_ph  = ', %s'         if has_gk_jpos else ''
+
     with get_db_transaction() as cur:
         cur.execute(
-            """INSERT INTO JOURNAL (
+            f"""INSERT INTO JOURNAL (
                QUELLE, QUELLE_SUB, KASSEN_ID, POS_TA_ID, TERM_ID,
                MA_ID, VRENUM, VLSNUM, RDATUM, KBDATUM, LDATUM, STADIUM,
                ADDR_ID, SPRACH_ID,
                ZAHLART, ZAHLART_NAME, BRUTTO_FLAG, PR_EBENE,
                KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NUM, KUN_ABTEILUNG,
-               KUN_STRASSE, KUN_LAND, KUN_PLZ, KUN_ORT,
-               GEGENKONTO,
+               KUN_STRASSE, KUN_LAND, KUN_PLZ, KUN_ORT{gk_j_col},
                WAEHRUNG, KURS,
                BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
                NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
@@ -1834,10 +1922,9 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                3, 2, %s, %s, 1,
                %s, %s, %s, %s, %s, %s, 121,
                %s, 2,
-               -1, 'Rechnung', 'N', %s,
+               -1, 'Rechnung', 'Y', %s,
                %s, %s, %s, %s, %s,
-               %s, %s, %s, %s,
-               %s,
+               %s, %s, %s, %s{gk_j_ph},
                '€', 1.0000,
                %s, %s, %s, %s, %s,
                %s, %s, %s, %s, %s,
@@ -1848,7 +1935,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                0, 0,
                1, 0,
                'Belegtransfer',
-               %s, 'Kasse', %s, 'Kasse',
+               %s, %s, %s, %s,
                %s, '$$'
             )""",
             (
@@ -1860,14 +1947,14 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 adresse.get('ABTEILUNG') or '',
                 adresse.get('STRASSE') or '', adresse.get('LAND') or 'DE',
                 adresse.get('PLZ') or '', adresse.get('ORT') or '',
-                gegenkonto_kunde,
+                *((gegenkonto_kunde,) if has_gk_j else ()),
                 c(bsumme[0]), c(bsumme[1]), c(bsumme[2]), c(bsumme[3]), c(bsumme_total),
                 c(nsumme[0]), c(nsumme[1]), c(nsumme[2]), c(nsumme[3]), c(nsumme_total),
                 c(msumme[0]), c(msumme[1]), c(msumme[2]), c(msumme[3]),
                 c(bsumme_total - nsumme_total),
                 float(mwst_saetze.get(1, 19.0)), float(mwst_saetze.get(2, 7.0)),
                 c(nsumme_total), c(nsumme_total), c(nsumme_total),
-                jetzt, jetzt,
+                jetzt, erstellt_von, jetzt, erstellt_von,
                 firma_id,
             )
         )
@@ -1898,7 +1985,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
             ep_n  = round(gp_n / menge, 4) if menge else gp_n
 
             cur.execute(
-                """INSERT INTO JOURNALPOS (
+                f"""INSERT INTO JOURNALPOS (
                    QUELLE, QUELLE_SUB, JOURNAL_ID, POSITION,
                    ARTIKELTYP, ARTIKEL_ID, WARENGRUPPE,
                    ADDR_ID, VRENUM,
@@ -1907,7 +1994,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                    E_RGEWINN, G_RGEWINN,
                    RABATT, RABATT2, RABATT3,
                    E_RABATT_BETRAG, G_RABATT_BETRAG,
-                   STEUER_CODE, GEGENKONTO,
+                   STEUER_CODE{gk_jpos_col},
                    BRUTTO_FLAG, GEBUCHT, STATUS_FLAG,
                    ME_EINHEIT, ME_CODE, PR_EINHEIT, VPE,
                    ALTTEIL_PROZ, LAGER_ID
@@ -1920,8 +2007,8 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                    %s, %s,
                    0, 0, 0,
                    0, 0,
-                   %s, %s,
-                   'N', 'N', 121,
+                   %s{gk_jpos_ph},
+                   'Y', 'N', 121,
                    'Stk', 'H87', 1, 1,
                    0.10, -2
                 )""",
@@ -1933,7 +2020,8 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                     matchcode, pos.get('BEZEICHNUNG') or '', kurzbezeichnung,
                     menge, ep, gp,
                     ep_n, gp_n,
-                    int(pos.get('STEUER_CODE') or 0), gegenkonto_kunde,
+                    int(pos.get('STEUER_CODE') or 0),
+                    *((gegenkonto_kunde,) if has_gk_jpos else ()),
                 )
             )
 
