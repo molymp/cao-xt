@@ -8,17 +8,23 @@ Alle schreibenden Endpunkte erwarten JSON; Authentifizierung gegen CAO-MITARBEIT
 (analog kasse-app, MD5-Hash in Großbuchstaben).
 """
 
-from flask import Blueprint, jsonify, request, session, abort
+from flask import Blueprint, jsonify, request, session, abort, Response
+import json
 import models as m
 
 bp = Blueprint('wawi', __name__)
 
 
 def _benutzer() -> str:
-    """Aktuell eingeloggten Benutzer aus Session; 403 wenn nicht gesetzt."""
+    """Aktuell eingeloggten Benutzer aus Session; JSON-403 wenn nicht gesetzt."""
     user = session.get('mitarbeiter')
     if not user:
-        abort(403)
+        # abort() mit Response-Objekt statt int, damit API-Endpunkte JSON zurückgeben
+        abort(Response(
+            json.dumps({'error': 'Nicht angemeldet'}),
+            403,
+            {'Content-Type': 'application/json'},
+        ))
     return user
 
 
@@ -137,3 +143,91 @@ def api_preishistorie_alle():
     limit = min(int(request.args.get('limit', 200)), 1000)
     offset = int(request.args.get('offset', 0))
     return jsonify(m.preishistorie_alle(limit=limit, offset=offset, artnum=artnum))
+
+
+# ── Preispflege-Tabelle (HAB-235) ─────────────────────────────────────────────
+
+@bp.get('/api/warengruppen')
+def api_warengruppen():
+    """GET /wawi/api/warengruppen – Alle Warengruppen für Filter-Dropdown."""
+    return jsonify(m.warengruppen_liste())
+
+
+@bp.get('/api/warengruppen/mit-faktor')
+def api_warengruppen_mit_faktor():
+    """GET /wawi/api/warengruppen/mit-faktor – Warengruppen mit Durchschnitts-Faktor."""
+    return jsonify(m.warengruppen_mit_faktor())
+
+
+@bp.get('/api/preispflege')
+def api_preispflege():
+    """
+    GET /wawi/api/preispflege?wgr_id=<optional>
+
+    Liefert alle Normalartikel (ARTIKELTYP='N', VK5B>0) mit EK, VK5 und
+    berechneter Marge. Optional gefiltert nach Warengruppe.
+    """
+    wgr_id = request.args.get('wgr_id')
+    try:
+        wgr_id_int = int(wgr_id) if wgr_id else None
+    except (TypeError, ValueError):
+        return jsonify({'error': 'wgr_id muss eine Ganzzahl sein'}), 400
+    return jsonify(m.preispflege_liste(wgr_id=wgr_id_int))
+
+
+@bp.get('/api/artikel/<artnr>/lieferanten')
+def api_artikel_lieferanten(artnr: str):
+    """
+    GET /wawi/api/artikel/<artnr>/lieferanten
+
+    Lieferantenpreise für einen Artikel.
+    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe}, ...]
+    Leere Liste wenn keine Lieferantendaten vorhanden oder Tabelle fehlt.
+    """
+    return jsonify(m.lieferantenpreise_fuer_artikel(artnr))
+
+
+@bp.patch('/api/artikel/<artnr>/vk5')
+def api_artikel_vk5_setzen(artnr: str):
+    """
+    PATCH /wawi/api/artikel/<artnr>/vk5
+    Body: { "vk5": 2.49 }  — Brutto-VK5 in Euro
+
+    Schreibt direkt ARTIKEL.VK5B (CAO-Stammdatenpflege).
+    """
+    _benutzer()
+    data = request.get_json(force=True) or {}
+    if 'vk5' not in data:
+        return jsonify({'error': 'Feld vk5 fehlt'}), 400
+    try:
+        vk5 = float(data['vk5'])
+    except (TypeError, ValueError):
+        return jsonify({'error': 'vk5 muss eine Zahl sein'}), 400
+    try:
+        result = m.artikel_vk5_setzen(artnr, vk5)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.patch('/api/artikel/<artnr>/ek')
+def api_artikel_ek_setzen(artnr: str):
+    """
+    PATCH /wawi/api/artikel/<artnr>/ek
+    Body: { "ek": 1.20 }  — EK in Euro
+
+    Schreibt direkt ARTIKEL.EK_PREIS (CAO-Stammdatenpflege).
+    """
+    _benutzer()
+    data = request.get_json(force=True) or {}
+    if 'ek' not in data:
+        return jsonify({'error': 'Feld ek fehlt'}), 400
+    try:
+        ek = float(data['ek'])
+    except (TypeError, ValueError):
+        return jsonify({'error': 'ek muss eine Zahl sein'}), 400
+    try:
+        result = m.artikel_ek_setzen(artnr, ek)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify(result)

@@ -1,0 +1,1015 @@
+{% extends "base.html" %}
+{% block title %}Preispflege – EK / VK5 / Faktor{% endblock %}
+
+{% block extra_style %}
+<style>
+/* ── Preispflege-Layout (Split: Baum + Tabelle) ─────────────── */
+.pp-layout {
+  display: flex;
+  gap: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Warengruppenbaum (links) ───────────────────────────────── */
+.pp-tree {
+  width: 230px;
+  min-width: 180px;
+  flex-shrink: 0;
+  background: white;
+  border-right: 1px solid var(--creme-dunkel);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.pp-tree-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--grau-mitte);
+  padding: 6px 12px 4px;
+}
+.pp-tree-item {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 12px 7px 14px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-left: 3px solid transparent;
+  user-select: none;
+  min-height: 38px; /* Touch-Target */
+}
+.pp-tree-item.child-item {
+  padding-left: 26px;
+  font-size: 12px;
+  border-left-width: 2px;
+}
+.pp-tree-item.child-item .wgr-name { font-size: 12px; }
+.pp-tree-toggle {
+  background: none;
+  border: none;
+  padding: 0 4px 0 0;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--grau-mitte);
+  vertical-align: middle;
+  line-height: 1;
+}
+.pp-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pp-tree-item:hover { background: var(--grau-hell); }
+.pp-tree-item.aktiv {
+  background: var(--gruen-blass);
+  border-left-color: var(--gruen-mitte);
+  font-weight: 700;
+}
+.pp-tree-item .wgr-name {
+  font-size: 13px;
+  color: var(--text-dunkel);
+  line-height: 1.3;
+}
+.pp-tree-item.aktiv .wgr-name { color: var(--gruen-dunkel); }
+.pp-tree-item .wgr-meta {
+  font-size: 11px;
+  color: var(--grau-mitte);
+  margin-top: 1px;
+  display: flex;
+  gap: 6px;
+}
+.pp-tree-item .wgr-faktor {
+  font-weight: 700;
+  color: var(--text-hell);
+}
+.pp-tree-divider { border: none; border-top: 1px solid var(--creme-dunkel); margin: 4px 0; }
+
+/* ── Tabellenbereich (rechts) ───────────────────────────────── */
+.pp-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.pp-header {
+  padding: 14px 20px 8px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  background: var(--grau-hell);
+  flex-shrink: 0;
+}
+.pp-header h2 {
+  font-size: 18px;
+  margin-bottom: 2px;
+  color: var(--gruen-dunkel);
+}
+.pp-header .pp-sub {
+  font-size: 12px;
+  color: var(--grau-mitte);
+}
+.pp-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  background: white;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.pp-toolbar .btn {
+  padding: 6px 14px;
+  background: var(--gruen-mitte);
+  color: white;
+  border: none;
+  border-radius: var(--radius-klein);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pp-toolbar .btn:hover { background: var(--gruen-dunkel); }
+.pp-toolbar .btn:disabled { opacity: 0.5; cursor: default; }
+.pp-info {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--grau-mitte);
+}
+
+/* ── Tabelle ───────────────────────────────────────────────── */
+.pp-table-wrap {
+  flex: 1;
+  overflow: auto;
+}
+.pp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pp-table th {
+  text-align: left;
+  padding: 7px 10px;
+  background: var(--grau-hell);
+  color: var(--text-hell);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid var(--creme-dunkel);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.pp-table th:hover { background: var(--creme-dunkel); }
+.pp-table th .sort-arrow { font-size: 8px; margin-left: 3px; opacity: 0.4; }
+.pp-table th.sort-aktiv .sort-arrow { opacity: 1; color: var(--gruen-mitte); }
+.pp-table th.no-sort { cursor: default; }
+.pp-table th.no-sort:hover { background: var(--grau-hell); }
+.pp-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  color: var(--text-dunkel);
+  vertical-align: middle;
+}
+.pp-table tr:hover td { background: #f9f7f0; }
+.pp-table tr.faktor-niedrig td { background: #fff3f3; }
+.pp-table tr.faktor-niedrig:hover td { background: #ffe8e8; }
+
+/* ── Zahlen rechts ─────────────────────────────────────────── */
+.td-right { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Faktor-Badge ──────────────────────────────────────────── */
+.faktor-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.faktor-ok   { background: #e8f5e0; color: #2e7a2e; }
+.faktor-warn { background: #fff3cd; color: #856404; }
+.faktor-rot  { background: #fde8e8; color: var(--rot); }
+.faktor-null { background: var(--grau-hell); color: var(--grau-mitte); }
+
+/* ── Lieferanten-Expand ────────────────────────────────────── */
+.lief-btn {
+  background: none;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-hell);
+  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.lief-btn:hover { background: var(--gruen-blass); border-color: var(--gruen-mitte); }
+.lief-expand-row td {
+  background: #f5f9f0;
+  padding: 8px 10px 8px 30px;
+  border-bottom: 2px solid var(--creme-dunkel);
+}
+.lief-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.lief-tabelle th {
+  text-align: left;
+  padding: 4px 8px;
+  background: var(--grau-hell);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--grau-mitte);
+  border-bottom: 1px solid var(--creme-dunkel);
+  position: static;
+  cursor: default;
+}
+.lief-tabelle td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  color: var(--text-dunkel);
+  background: transparent;
+}
+.lief-tabelle tr:last-child td { border-bottom: none; }
+.lief-leer { color: var(--grau-mitte); font-style: italic; font-size: 12px; padding: 6px 0; }
+
+/* ── Anpassen-Panel ────────────────────────────────────────── */
+.anp-btn {
+  background: var(--gruen-mitte);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.anp-btn:hover { background: var(--gruen-dunkel); }
+.anp-row td {
+  background: #e8f5e0;
+  padding: 12px 10px 12px 30px;
+  border-bottom: 2px solid var(--gruen-mitte);
+}
+.anp-panel {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.anp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.anp-field label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--grau-mitte);
+  letter-spacing: 0.08em;
+}
+.anp-field input {
+  width: 100px;
+  padding: 8px 10px;          /* größeres Touch-Target */
+  border: 2px solid var(--creme-dunkel);
+  border-radius: 6px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  background: white;
+  transition: border-color 0.1s;
+  min-height: 44px;           /* iOS Touch-Target */
+  -webkit-appearance: none;
+  appearance: none;
+}
+.anp-field input[readonly] {
+  background: var(--grau-hell);
+  color: var(--text-hell);
+  cursor: default;
+}
+.anp-field input:focus { border-color: var(--gruen-mitte); }
+.anp-field input.changed { border-color: var(--gold); background: #fffbf0; }
+.anp-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-left: 8px;
+}
+.anp-uebernehmen {
+  background: var(--gruen-mitte);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+  min-height: 44px;
+}
+.anp-uebernehmen:hover { background: var(--gruen-dunkel); }
+.anp-uebernehmen:disabled { opacity: 0.5; cursor: default; }
+.anp-abbrechen {
+  background: none;
+  color: var(--rot);
+  border: 1px solid var(--rot);
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+  min-height: 44px;
+}
+.anp-abbrechen:hover { background: #fde8e8; }
+/* Standardlieferant-Badge */
+.lief-standard {
+  display: inline-block;
+  background: var(--gruen-blass);
+  color: var(--gruen-dunkel);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+/* ── Status-Zeile ──────────────────────────────────────────── */
+.pp-statusbar {
+  padding: 6px 20px;
+  font-size: 12px;
+  color: var(--grau-mitte);
+  min-height: 28px;
+  border-top: 1px solid var(--creme-dunkel);
+  flex-shrink: 0;
+  background: white;
+}
+.pp-statusbar.ok  { color: #2e7a2e; font-weight: 700; }
+.pp-statusbar.err { color: var(--rot); font-weight: 700; }
+
+/* ── Ladeanimation ─────────────────────────────────────────── */
+.pp-spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid var(--creme-dunkel);
+  border-top-color: var(--gruen-mitte);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.pp-lade-center {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--grau-mitte);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pp-layout" style="margin: -28px -32px; height: calc(100vh - var(--navbar-h));">
+
+  <!-- Warengruppenbaum links -->
+  <div class="pp-tree" id="pp-tree">
+    <div class="pp-tree-title">Warengruppen</div>
+    <div id="pp-tree-leer" style="padding:10px 14px;font-size:12px;color:var(--grau-mitte);">
+      <span class="pp-spinner"></span> Lade…
+    </div>
+  </div>
+
+  <!-- Tabelle rechts -->
+  <div class="pp-content">
+    <div class="pp-header">
+      <h2 id="pp-titel">Preispflege</h2>
+      <div class="pp-sub">EK · VK5 Netto · VK5 Brutto · Faktor — alle aktiven Artikel (kein VK-Sperre, nicht gelöscht)</div>
+    </div>
+
+    <div class="pp-toolbar">
+      <button class="btn" onclick="ladeTabelle()" id="reload-btn">↻ Aktualisieren</button>
+      <span class="pp-info" id="artikel-count"></span>
+    </div>
+
+    <div class="pp-table-wrap" id="pp-table-wrap">
+      <div class="pp-lade-center" id="pp-ladehinweis">
+        <span class="pp-spinner"></span> Lade Artikeldaten…
+      </div>
+      <table class="pp-table" id="pp-table" style="display:none;">
+        <thead>
+          <tr>
+            <th onclick="sortiere('artnr')" data-col="artnr">Art-Nr.<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('bezeichnung')" data-col="bezeichnung">Bezeichnung<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('bestand')" data-col="bestand" style="text-align:right;">Bestand<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('vpe_ek')" data-col="vpe_ek" style="text-align:right;" title="Einheiten pro Einkaufsverpackung">VPE EK<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('vpe_vk')" data-col="vpe_vk" style="text-align:right;" title="Einheiten pro Verkaufsverpackung">VPE VK<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('ek')" data-col="ek" style="text-align:right;">EK (€)<span class="sort-arrow">▲▼</span></th>
+            <th class="no-sort" style="text-align:center;font-size:9px;">Lief.</th>
+            <th onclick="sortiere('vk5_netto')" data-col="vk5_netto" style="text-align:right;">VK5 Netto (€)<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('faktor')" data-col="faktor" style="text-align:right;">Faktor<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('vk5')" data-col="vk5" style="text-align:right;">VK5 Brutto (€)<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('mwst_pct')" data-col="mwst_pct" style="text-align:right;">MwSt<span class="sort-arrow">▲▼</span></th>
+            <th class="no-sort"></th>
+          </tr>
+        </thead>
+        <tbody id="pp-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="pp-statusbar" id="pp-status"> </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+'use strict';
+
+let _daten = [];
+let _sortCol = 'faktor';
+let _sortAsc = true;       // Faktor aufsteigend = niedrigster zuerst
+let _aktWgrId = null;      // null = alle Warengruppen
+
+// ── XSS-Schutz ────────────────────────────────────────────────
+function _esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Zahlen-Formatierung ───────────────────────────────────────
+function _eur(v, dp=2) {
+  if (v == null) return '–';
+  return Number(v).toLocaleString('de-DE', {
+    minimumFractionDigits: dp,
+    maximumFractionDigits: dp,
+  });
+}
+
+function _faktorKlasse(f) {
+  if (f == null) return 'faktor-null';
+  if (f < 1.2)   return 'faktor-rot';
+  if (f < 1.5)   return 'faktor-warn';
+  return 'faktor-ok';
+}
+
+function _sortWert(row, col) {
+  const v = row[col];
+  if (v == null) return _sortAsc ? Infinity : -Infinity;
+  return v;
+}
+
+// ── Warengruppenbaum laden ────────────────────────────────────
+async function ladeWarengruppenbaum() {
+  try {
+    const r = await fetch('/wawi/api/warengruppen/mit-faktor');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const wgr = await r.json();
+    _renderWarengruppenbaum(wgr);
+  } catch (e) {
+    document.getElementById('pp-tree-leer').textContent = '⚠ Baum nicht ladbar';
+    console.warn('Warengruppenbaum:', e);
+  }
+}
+
+function _renderWarengruppenbaum(wgr) {
+  const tree = document.getElementById('pp-tree');
+  tree.innerHTML = '<div class="pp-tree-title">Warengruppen</div>';
+
+  // Eintrag "Alle"
+  const all = document.createElement('div');
+  all.className = 'pp-tree-item' + (_aktWgrId === null ? ' aktiv' : '');
+  all.dataset.wgrId = '';
+  all.innerHTML = `<div class="pp-tree-row"><span class="wgr-name">— Alle Warengruppen —</span></div>`;
+  all.addEventListener('click', () => _wgrWaehlen(null, '— Alle Warengruppen —', all));
+  tree.appendChild(all);
+
+  if (wgr.length > 0) {
+    const div = document.createElement('hr');
+    div.className = 'pp-tree-divider';
+    tree.appendChild(div);
+  }
+
+  // Hierarchischen Baum aufbauen
+  const byParent = {};   // parent_id → [wgr]
+  wgr.forEach(w => {
+    const pid = w.parent_id ?? null;
+    (byParent[pid] ??= []).push(w);
+  });
+
+  // Kollabier-Status (wgr_id → boolean collapsed)
+  const collapsed = {};
+
+  function _wgrItem(w, isChild) {
+    const el = document.createElement('div');
+    el.className = 'pp-tree-item' + (isChild ? ' child-item' : '') + (_aktWgrId === w.wgr_id ? ' aktiv' : '');
+    el.dataset.wgrId = w.wgr_id;
+
+    const kinder = byParent[w.wgr_id] || [];
+    const hatKinder = kinder.length > 0;
+
+    const faktorTxt = w.avg_faktor != null
+      ? `Ø ${Number(w.avg_faktor).toFixed(2)}`
+      : '';
+    const anzahlTxt = w.anzahl_artikel != null ? `${w.anzahl_artikel} Art.` : '';
+
+    el.innerHTML = `
+      <div class="pp-tree-row">
+        ${hatKinder ? `<button class="pp-tree-toggle" data-wgrid="${w.wgr_id}" title="Auf-/Zuklappen">▶</button>` : '<span style="width:14px;display:inline-block;"></span>'}
+        <span class="wgr-name">${_esc(w.name || 'WGR ' + w.wgr_id)}</span>
+      </div>
+      <span class="wgr-meta">
+        ${anzahlTxt ? `<span>${_esc(anzahlTxt)}</span>` : ''}
+        ${faktorTxt ? `<span class="wgr-faktor">${_esc(faktorTxt)}</span>` : ''}
+      </span>
+    `;
+
+    // Klick auf den Eintrag (nicht den Toggle-Button)
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('pp-tree-toggle')) return;
+      _wgrWaehlen(w.wgr_id, w.name, el);
+    });
+
+    // Toggle-Button
+    if (hatKinder) {
+      const toggle = el.querySelector('.pp-tree-toggle');
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        collapsed[w.wgr_id] = !collapsed[w.wgr_id];
+        _toggleChildren(w.wgr_id, collapsed[w.wgr_id]);
+        toggle.textContent = collapsed[w.wgr_id] ? '▶' : '▼';
+      });
+    }
+
+    return el;
+  }
+
+  function _appendWgr(parentId, isChild) {
+    const gruppe = byParent[parentId] || [];
+    gruppe.forEach(w => {
+      const el = _wgrItem(w, isChild);
+      el.dataset.parentWgrid = parentId ?? '';
+      tree.appendChild(el);
+      // Kinder zunächst ausklappen
+      _appendWgr(w.wgr_id, true);
+    });
+  }
+
+  _appendWgr(null, false);
+
+  // Toggle: Kinder ein-/ausblenden
+  function _toggleChildren(wgrId, hide) {
+    tree.querySelectorAll(`[data-parent-wgrid="${wgrId}"]`).forEach(el => {
+      el.style.display = hide ? 'none' : '';
+      // Kinder der Kinder auch verstecken
+      if (hide) {
+        const childId = el.dataset.wgrId;
+        if (childId) _toggleChildren(childId, true);
+      }
+    });
+    // Toggle-Pfeil des Elternteils setzen
+    const parentEl = tree.querySelector(`[data-wgr-id="${wgrId}"] .pp-tree-toggle`)
+      || tree.querySelector(`.pp-tree-toggle[data-wgrid="${wgrId}"]`);
+    if (parentEl) parentEl.textContent = hide ? '▶' : '▼';
+  }
+
+  // Elemente mit Kindern initial aufgeklappt (▼)
+  Object.keys(byParent).filter(k => k !== 'null').forEach(wgrId => {
+    const toggle = tree.querySelector(`.pp-tree-toggle[data-wgrid="${wgrId}"]`);
+    if (toggle) toggle.textContent = '▼';
+  });
+}
+
+function _wgrWaehlen(wgrId, name, el) {
+  document.querySelectorAll('.pp-tree-item').forEach(e => e.classList.remove('aktiv'));
+  el.classList.add('aktiv');
+  _aktWgrId = wgrId;
+  document.getElementById('pp-titel').textContent =
+    wgrId === null ? 'Preispflege' : `Preispflege – ${name}`;
+  ladeTabelle();
+}
+
+// ── Tabelle laden ─────────────────────────────────────────────
+async function ladeTabelle() {
+  const url = '/wawi/api/preispflege'
+    + (_aktWgrId != null ? `?wgr_id=${_aktWgrId}` : '');
+
+  document.getElementById('pp-ladehinweis').style.display = 'block';
+  document.getElementById('pp-table').style.display = 'none';
+  document.getElementById('reload-btn').disabled = true;
+  statusSetzen('', '');
+
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _daten = await r.json();
+    renderTabelle();
+  } catch (e) {
+    document.getElementById('pp-ladehinweis').innerHTML =
+      `<span style="color:var(--rot);">⚠ Fehler beim Laden: ${_esc(e.message)}</span>`;
+  } finally {
+    document.getElementById('reload-btn').disabled = false;
+  }
+}
+
+// ── Tabelle rendern ───────────────────────────────────────────
+function renderTabelle() {
+  const sortiert = [..._daten].sort((a, b) => {
+    const av = _sortWert(a, _sortCol);
+    const bv = _sortWert(b, _sortCol);
+    if (typeof av === 'string') return _sortAsc ? av.localeCompare(bv,'de') : bv.localeCompare(av,'de');
+    return _sortAsc ? av - bv : bv - av;
+  });
+
+  const tbody = document.getElementById('pp-tbody');
+  tbody.innerHTML = '';
+
+  sortiert.forEach((art, idx) => {
+    const fKl = _faktorKlasse(art.faktor);
+    const tr = document.createElement('tr');
+    tr.dataset.artnr = art.artnr;
+    tr.dataset.idx = idx;
+    if (art.faktor != null && art.faktor < 1.2) tr.classList.add('faktor-niedrig');
+
+    const faktorTxt = art.faktor != null
+      ? `<span class="faktor-badge ${fKl}">${Number(art.faktor).toFixed(2)}</span>`
+      : `<span class="faktor-badge faktor-null">–</span>`;
+
+    const vpeEkTxt = art.vpe_ek !== 1 ? _eur(art.vpe_ek, 0) : '1';
+    const vpeVkTxt = art.vpe_vk !== 1 ? _eur(art.vpe_vk, 0) : '1';
+
+    tr.innerHTML = `
+      <td style="font-family:monospace;font-size:12px;">${_esc(art.artnr)}</td>
+      <td>${_esc(art.bezeichnung || '–')}</td>
+      <td class="td-right" style="font-size:12px;">${_eur(art.bestand, 0)}</td>
+      <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeEkTxt)}</td>
+      <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeVkTxt)}</td>
+      <td class="td-right">${_eur(art.ek)}</td>
+      <td style="text-align:center;">
+        <button class="lief-btn" onclick="toggleLieferanten(this,'${_esc(art.artnr)}')"
+                title="Lieferantenpreise anzeigen">▶</button>
+      </td>
+      <td class="td-right">${_eur(art.vk5_netto)}</td>
+      <td class="td-right">${faktorTxt}</td>
+      <td class="td-right" style="font-weight:700;">${_eur(art.vk5)}</td>
+      <td class="td-right" style="font-size:12px;color:var(--text-hell);">
+        ${art.mwst_pct != null ? art.mwst_pct.toFixed(1) + '\u202f%' : '–'}
+      </td>
+      <td style="text-align:right;">
+        <button class="anp-btn" onclick="anpassenOeffnen(this,'${_esc(art.artnr)}')">Anpassen</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('pp-ladehinweis').style.display = 'none';
+  document.getElementById('pp-table').style.display = '';
+  document.getElementById('artikel-count').textContent = `${sortiert.length} Artikel`;
+
+  // Sortierpfeile aktualisieren
+  document.querySelectorAll('.pp-table th[data-col]').forEach(th => {
+    th.classList.remove('sort-aktiv');
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = '▲▼';
+  });
+  const aktTh = document.querySelector(`.pp-table th[data-col="${_sortCol}"]`);
+  if (aktTh) {
+    aktTh.classList.add('sort-aktiv');
+    const arrow = aktTh.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = _sortAsc ? '▲' : '▼';
+  }
+}
+
+// ── Sortierung ────────────────────────────────────────────────
+function sortiere(col) {
+  if (_sortCol === col) {
+    _sortAsc = !_sortAsc;
+  } else {
+    _sortCol = col;
+    _sortAsc = (col === 'faktor');  // Faktor: niedrig zuerst; andere: aufsteigend
+  }
+  renderTabelle();
+}
+
+// ── Lieferanten-Expand ────────────────────────────────────────
+async function toggleLieferanten(btn, artnr) {
+  const tr = btn.closest('tr');
+  const existingRow = tr.nextElementSibling;
+  if (existingRow && existingRow.classList.contains('lief-expand-row')) {
+    existingRow.remove();
+    btn.textContent = '▶';
+    return;
+  }
+
+  // Andere offene Lieferantenzeilen schließen
+  document.querySelectorAll('.lief-expand-row').forEach(r => r.remove());
+  document.querySelectorAll('.lief-btn').forEach(b => b.textContent = '▶');
+
+  btn.textContent = '⌛';
+
+  try {
+    const r = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/lieferanten`);
+    const data = await r.json();
+
+    const expandTr = document.createElement('tr');
+    expandTr.className = 'lief-expand-row';
+
+    let inhalt;
+    if (!data || data.length === 0) {
+      inhalt = `<div class="lief-leer">Keine Lieferantenpreise hinterlegt.</div>`;
+    } else {
+      inhalt = `
+        <table class="lief-tabelle">
+          <thead>
+            <tr>
+              <th>Lieferant</th>
+              <th>Ref/Typ</th>
+              <th style="text-align:right;">EK-Preis (€)</th>
+              <th style="text-align:right;">VPE</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.map(l => `
+              <tr${l.ist_standard ? ' style="background:#f0f9ea;"' : ''}>
+                <td>
+                  ${_esc(l.lief_name)}
+                  ${l.ist_standard ? '<span class="lief-standard">Standard</span>' : ''}
+                </td>
+                <td style="font-family:monospace;font-size:11px;">${_esc(l.lief_artnr || '–')}</td>
+                <td style="text-align:right;">${_eur(l.ek_preis)}</td>
+                <td style="text-align:right;">${_eur(l.vpe, 0)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    expandTr.innerHTML = `<td colspan="12">${inhalt}</td>`;
+    tr.after(expandTr);
+    btn.textContent = '▼';
+  } catch (e) {
+    btn.textContent = '▶';
+    statusSetzen('err', `⚠ Lieferanten konnten nicht geladen werden: ${e.message}`);
+  }
+}
+
+// ── Anpassen-Panel ────────────────────────────────────────────
+function anpassenOeffnen(btn, artnr) {
+  // Andere offene Panels und Lieferantenzeilen schließen
+  document.querySelectorAll('.anp-row').forEach(r => r.remove());
+  document.querySelectorAll('.lief-expand-row').forEach(r => r.remove());
+  document.querySelectorAll('.lief-btn').forEach(b => b.textContent = '▶');
+
+  const tr = btn.closest('tr');
+  const art = _daten.find(a => a.artnr === artnr);
+  if (!art) return;
+
+  const anpTr = document.createElement('tr');
+  anpTr.className = 'anp-row';
+  anpTr.dataset.artnr = artnr;
+
+  const mwstSatz = (art.mwst_pct || 0) / 100.0;
+
+  anpTr.innerHTML = `
+    <td colspan="12">
+      <form class="anp-panel" id="anp-form-${_esc(artnr)}" onsubmit="return false;">
+        <div class="anp-field">
+          <label>EK (€)</label>
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-ek-${_esc(artnr)}"
+                 value="${Number(art.ek).toFixed(2)}"
+                 data-field="ek"
+                 oninput="anpBerechnen('${_esc(artnr)}','ek',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VPE EK</label>
+          <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpeek-${_esc(artnr)}"
+                 value="${Number(art.vpe_ek || 1).toFixed(0)}"
+                 data-field="vpeek"
+                 oninput="anpBerechnen('${_esc(artnr)}','vpeek',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VPE VK</label>
+          <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpevk-${_esc(artnr)}"
+                 value="${Number(art.vpe_vk || 1).toFixed(0)}"
+                 data-field="vpevk"
+                 oninput="anpBerechnen('${_esc(artnr)}','vpevk',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>Faktor</label>
+          <input type="number" inputmode="decimal" step="0.001" min="0" id="anp-faktor-${_esc(artnr)}"
+                 value="${art.faktor != null ? Number(art.faktor).toFixed(3) : ''}"
+                 data-field="faktor"
+                 oninput="anpBerechnen('${_esc(artnr)}','faktor',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VK5 Netto (€)</label>
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5netto-${_esc(artnr)}"
+                 value="${Number(art.vk5_netto).toFixed(4)}"
+                 data-field="vk5netto"
+                 oninput="anpBerechnen('${_esc(artnr)}','vk5netto',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VK5 Brutto (€)</label>
+          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5brutto-${_esc(artnr)}"
+                 value="${Number(art.vk5).toFixed(2)}"
+                 data-field="vk5brutto"
+                 oninput="anpBerechnen('${_esc(artnr)}','vk5brutto',this.value)">
+        </div>
+        <div class="anp-actions">
+          <button class="anp-uebernehmen" id="anp-save-${_esc(artnr)}"
+                  onclick="anpSpeichern('${_esc(artnr)}', ${mwstSatz})">
+            Übernehmen
+          </button>
+          <button class="anp-abbrechen" onclick="anpassenSchliessen()">Abbrechen</button>
+        </div>
+      </form>
+    </td>
+  `;
+  tr.after(anpTr);
+
+  // Erstes Eingabefeld fokussieren (nur Desktop)
+  if (!('ontouchstart' in window)) {
+    document.getElementById(`anp-faktor-${artnr}`)?.focus();
+  }
+}
+
+function anpassenSchliessen() {
+  document.querySelectorAll('.anp-row').forEach(r => r.remove());
+}
+
+// Wechselseitige Umrechnung im Anpassen-Panel
+function anpBerechnen(artnr, geaendertesField, rawVal) {
+  const art = _daten.find(a => a.artnr === artnr);
+  if (!art) return;
+
+  const mwstSatz = (art.mwst_pct || 0) / 100.0;
+
+  // EK aus editierbarem Input lesen (user kann ihn geändert haben)
+  const inpEk = document.getElementById(`anp-ek-${artnr}`);
+  const ek = Math.max(0, parseFloat(inpEk?.value ?? art.ek) || 0);
+
+  // VPE aus den editierbaren Inputs lesen (user kann sie geändert haben)
+  const inpVpeEk  = document.getElementById(`anp-vpeek-${artnr}`);
+  const inpVpeVk  = document.getElementById(`anp-vpevk-${artnr}`);
+  const vpeEk = Math.max(1, parseFloat(inpVpeEk?.value || art.vpe_ek || 1) || 1);
+  const vpeVk = Math.max(1, parseFloat(inpVpeVk?.value || art.vpe_vk || 1) || 1);
+
+  const val = parseFloat(rawVal);
+  if (isNaN(val) || val < 0) return;
+
+  const inpFaktor    = document.getElementById(`anp-faktor-${artnr}`);
+  const inpVk5netto  = document.getElementById(`anp-vk5netto-${artnr}`);
+  const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
+  if (!inpFaktor || !inpVk5netto || !inpVk5brutto) return;
+
+  let vk5netto, faktor, vk5brutto;
+
+  if (geaendertesField === 'faktor' || geaendertesField === 'vpeek' || geaendertesField === 'vpevk' || geaendertesField === 'ek') {
+    // Faktor/VPE/EK-Änderung → VK5 Netto und Brutto neu berechnen (VK5 bleibt konstant bei EK-Änderung, Faktor ändert sich)
+    const curVk5netto = parseFloat(inpVk5netto.value) || 0;
+    if (geaendertesField === 'ek') {
+      // EK geändert → Faktor aus aktuellem VK5 neu berechnen
+      vk5netto = curVk5netto;
+      vk5brutto = vk5netto * (1.0 + mwstSatz);
+      faktor = (val > 0 && vpeVk > 0) ? vk5netto * vpeEk / (val * vpeVk) : null;
+    } else {
+      faktor = geaendertesField === 'faktor' ? val : parseFloat(inpFaktor.value);
+      if (isNaN(faktor) || faktor <= 0) return;
+      // Faktor = vk5_netto * vpe_ek / (ek * vpe_vk) → vk5_netto = faktor * ek * vpe_vk / vpe_ek
+      vk5netto = faktor * ek * vpeVk / vpeEk;
+      vk5brutto = vk5netto * (1.0 + mwstSatz);
+    }
+  } else if (geaendertesField === 'vk5netto') {
+    vk5netto = val;
+    vk5brutto = vk5netto * (1.0 + mwstSatz);
+    faktor = (ek > 0 && vpeVk > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+  } else {  // vk5brutto
+    vk5brutto = val;
+    vk5netto = mwstSatz > 0 ? vk5brutto / (1.0 + mwstSatz) : vk5brutto;
+    faktor = (ek > 0 && vpeVk > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+  }
+
+  // Nur die NICHT gerade bearbeiteten Felder aktualisieren
+  if (geaendertesField !== 'faktor' && faktor != null)
+    _setFieldSilent(inpFaktor, faktor.toFixed(3));
+  if (geaendertesField !== 'vk5netto')
+    _setFieldSilent(inpVk5netto, vk5netto.toFixed(4));
+  if (geaendertesField !== 'vk5brutto')
+    _setFieldSilent(inpVk5brutto, vk5brutto.toFixed(2));
+
+  // Geändertes Feld markieren
+  [inpFaktor, inpVk5netto, inpVk5brutto, inpVpeEk, inpVpeVk]
+    .filter(Boolean)
+    .forEach(inp => inp.classList.remove('changed'));
+  const changedEl = document.getElementById(`anp-${geaendertesField}-${artnr}`);
+  if (changedEl) changedEl.classList.add('changed');
+}
+
+function _setFieldSilent(inp, val) {
+  // oninput nicht auslösen wenn wir programmatisch setzen
+  inp.dataset.silent = '1';
+  inp.value = val;
+  delete inp.dataset.silent;
+}
+
+async function anpSpeichern(artnr, mwstSatz) {
+  const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
+  const inpEk        = document.getElementById(`anp-ek-${artnr}`);
+  const saveBtn      = document.getElementById(`anp-save-${artnr}`);
+  if (!inpVk5brutto) return;
+
+  const vk5brutto = parseFloat(inpVk5brutto.value);
+  if (isNaN(vk5brutto) || vk5brutto <= 0) {
+    statusSetzen('err', '⚠ Ungültiger VK5-Brutto-Wert');
+    inpVk5brutto.focus();
+    return;
+  }
+
+  const art = _daten.find(a => a.artnr === artnr);
+  const ekNeu = inpEk ? parseFloat(inpEk.value) : null;
+  const ekGeaendert = inpEk && art && !isNaN(ekNeu) && ekNeu >= 0 && Math.abs(ekNeu - (art.ek || 0)) > 0.001;
+
+  saveBtn.disabled = true;
+  try {
+    // VK5 speichern
+    const rVk5 = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vk5: vk5brutto }),
+    });
+    const dataVk5 = await rVk5.json();
+    if (!rVk5.ok || !dataVk5.ok) throw new Error(dataVk5.error || `HTTP ${rVk5.status}`);
+
+    // EK speichern (nur wenn geändert)
+    let ekGespeichert = false;
+    if (ekGeaendert) {
+      const rEk = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/ek`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ek: ekNeu }),
+      });
+      const dataEk = await rEk.json();
+      if (!rEk.ok || !dataEk.ok) throw new Error(dataEk.error || `HTTP ${rEk.status}`);
+      ekGespeichert = true;
+    }
+
+    // Lokale Daten aktualisieren
+    const idx = _daten.findIndex(a => a.artnr === artnr);
+    if (idx !== -1) {
+      _daten[idx].vk5 = dataVk5.vk5_neu;
+      if (dataVk5.vk5_netto !== undefined) _daten[idx].vk5_netto = dataVk5.vk5_netto;
+      if (dataVk5.faktor    !== undefined) _daten[idx].faktor    = dataVk5.faktor;
+      if (ekGespeichert) _daten[idx].ek = ekNeu;
+    }
+
+    anpassenSchliessen();
+    renderTabelle();
+    const ekInfo = ekGespeichert ? ` | EK: ${_eur(ekNeu)} €` : '';
+    statusSetzen('ok',
+      `✓ ${artnr} – VK5 Brutto: ${_eur(dataVk5.vk5_neu)} €`
+      + (dataVk5.faktor != null ? ` | Faktor: ${Number(dataVk5.faktor).toFixed(2)}` : '')
+      + ekInfo);
+  } catch (e) {
+    saveBtn.disabled = false;
+    statusSetzen('err', `⚠ Speichern fehlgeschlagen: ${e.message}`);
+  }
+}
+
+// ── Statuszeile ───────────────────────────────────────────────
+function statusSetzen(typ, text) {
+  const el = document.getElementById('pp-status');
+  el.className = 'pp-statusbar' + (typ ? ` ${typ}` : '');
+  el.textContent = text || '\u00a0';
+}
+
+// ── oninput-Schutz für _setFieldSilent ───────────────────────
+document.addEventListener('input', e => {
+  if (e.target.dataset.silent) e.stopImmediatePropagation();
+}, true);
+
+// ── Init ──────────────────────────────────────────────────────
+(async function init() {
+  await Promise.all([ladeWarengruppenbaum(), ladeTabelle()]);
+})();
+</script>
+{% endblock %}

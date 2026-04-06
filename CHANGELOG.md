@@ -8,6 +8,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- WaWi Preispflege-Tabelle: Alle Normalartikel mit EK / VK5 (Brutto) / Marge auf einen Blick; VK5 inline editierbar, Filter nach Warengruppe, Sortierung nach Marge, Rot-Markierung bei Marge < 10 % ([HAB-235](/HAB/issues/HAB-235))
 - Commit-ID-Anzeige: In allen drei Apps (Kasse, Kiosk, WaWi) wird der aktuelle Git-Commit-Hash oben links als kleiner orangener Hinweis angezeigt (position:fixed, kein Layout-Einfluss) ([HAB-244](/HAB/issues/HAB-244))
 - Verbindliche Merge-Pflicht: Sofort-Merge nach Board-Freigabe, 48h-Limit für offene Branches, Rebase-Strategie für Parallelarbeit ([HAB-267](/HAB/issues/HAB-267))
 - `.githooks/pre-push`: Versionierter Git-Hook mit Paperclip-Approval-Pflicht für `master`/`main` Pushes ([HAB-242](/HAB/issues/HAB-242))

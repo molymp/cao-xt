@@ -252,6 +252,13 @@ def artikel():
     return render_template('artikel.html')
 
 
+@app.route('/wawi/preispflege')
+@_login_required
+def preispflege():
+    """Preispflege-Tabelle: EK / VK5 / Marge für alle Normalartikel."""
+    return render_template('preispflege.html')
+
+
 # ── Reporting ─────────────────────────────────────────────────
 
 def _mwst_monatlich(monate: int = 12) -> list[dict]:
