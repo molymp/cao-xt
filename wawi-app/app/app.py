@@ -7,6 +7,7 @@ from datetime import datetime, date
 from functools import wraps
 import hashlib
 import os
+import subprocess
 import sys
 import logging
 import config
@@ -77,6 +78,17 @@ except Exception as e:
     log.warning("WaWi-Blueprint konnte nicht geladen werden: %s", e)
 
 
+# ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
+try:
+    _r = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        capture_output=True, text=True, timeout=5, cwd=BASE_DIR,
+    )
+    GIT_COMMIT_SHORT = _r.stdout.strip() if _r.returncode == 0 else ""
+except Exception:
+    GIT_COMMIT_SHORT = ""
+
+
 # ── Context-Processor ─────────────────────────────────────────
 
 @app.context_processor
@@ -98,6 +110,7 @@ def _inject_globals():
             "vname":      session.get('vname'),
             "name":       session.get('ma_name'),
         } if session.get('ma_id') else None,
+        "git_commit_short": GIT_COMMIT_SHORT,
     }
 
 
