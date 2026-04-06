@@ -1163,7 +1163,9 @@ def api_zu_lieferschein(vid):
     if not adressen_id:
         return jsonify({'ok': False, 'fehler': 'Keine Kundenadresse angegeben'}), 400
     ma    = _mitarbeiter()
-    name  = ma.get('LOGIN_NAME') or 'kasse'
+    _vname = (ma.get('VNAME') or '').strip()
+    _nname = (ma.get('NAME') or '').strip()
+    name  = f"{_vname} {_nname}".strip() or 'Kasse'
     ma_id = int(ma.get('MA_ID') or -1)
     try:
         result = kl.lieferschein_zu_journal(

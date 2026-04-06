@@ -62,7 +62,8 @@ def mitarbeiter_liste() -> list:
 _mwst_cache: dict | None = None
 
 
-def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0) -> str:
+def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0,
+                   no_pad: bool = False) -> str:
     """Wendet ein CAO-Nummernpattern auf die Belegnummer an.
 
     CAO-Format: '"EDI-"000000'
@@ -74,10 +75,12 @@ def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0) -> str:
 
     max_len: wenn > 0 und das Ergebnis zu lang wäre, wird die Nullen-Auffüllung
              reduziert. Reicht das nicht, wird von rechts abgeschnitten (Warnung).
+    no_pad: wenn True, werden keine führenden Nullen geschrieben (z.B. 'RE-18' statt 'RE-000018').
     """
     import re as _re
+    num_str = str(nummer)
     if not pattern:
-        result = f"LS{nummer:06d}"
+        result = f"LS{nummer:06d}" if not no_pad else f"LS{num_str}"
     else:
         # Quoted Prefix extrahieren: alles zwischen den ersten "..."
         prefix = ''
@@ -90,11 +93,11 @@ def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0) -> str:
         # Nullen im Rest zählen → Stellenbreite
         stellen = rest.count('0')
         if stellen:
-            result = prefix + str(nummer).zfill(stellen)
+            result = prefix + (num_str if no_pad else num_str.zfill(stellen))
         elif prefix:
-            result = f"{prefix}{nummer:06d}"
+            result = f"{prefix}{nummer:06d}" if not no_pad else f"{prefix}{num_str}"
         else:
-            result = f"LS{nummer:06d}"
+            result = f"LS{nummer:06d}" if not no_pad else f"LS{num_str}"
 
     if max_len and len(result) > max_len:
         # Padding reduzieren: Präfix + Nummer ohne führende Nullen
@@ -1781,8 +1784,10 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
     Nachbearbeitungsschritte in CAO-Faktura.
 
     Unterschiede zu `bon_zu_journal()` (Barverkauf):
-      - ADDR_ID, KUN_NAME1/2, KUN_NUM aus ADRESSEN (nicht -2/'Barverkauf')
-      - ZAHLART_NAME = 'Rechnung'
+      - ADDR_ID, KUN_NAME1/2/3, KUN_NUM aus ADRESSEN (nicht -2/'Barverkauf')
+      - ZAHLART_NAME = NULL (wie CAO-Kasse)
+      - FOLGENR, VERTRETER_ID=0, LIEFART=0, SOLL_RATINTERVALL=1
+      - MWST_3/AT_MWST aus MwSt-Sätzen, leere Textfelder statt NULL
       - XT_KASSE_VORGAENGE wird abschließend auf ABGESCHLOSSEN gesetzt
 
     Gibt {'journal_id': int, 'vrenum': str, 'vlsnum': str} zurück.
@@ -1868,7 +1873,8 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
             )
     vrenum = _format_vlsnum(
         reg29['VAL_CHAR'] if reg29 else '', vrenum_nr,
-        max_len=_journal_col_max_len('VRENUM')
+        max_len=_journal_col_max_len('VRENUM'),
+        no_pad=True
     )
 
     # VLSNUM aus REGISTRY MAIN\NUMBERS NAME='VK-LIEF' – eigene Transaktion
@@ -1889,6 +1895,12 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
 
     jetzt = datetime.now()
 
+    # FOLGENR: letzter Wert in JOURNAL + 1
+    with get_db() as cur:
+        cur.execute("SELECT COALESCE(MAX(FOLGENR), 0) + 1 AS next_folgenr FROM JOURNAL")
+        fn_row = cur.fetchone()
+    folgenr = int(fn_row['next_folgenr']) if fn_row else 1
+
     # GEGENKONTO existiert nicht in allen CAO-Installationen – bedingt einbinden
     has_gk_j    = _table_col_exists('JOURNAL',    'GEGENKONTO')
     has_gk_jpos = _table_col_exists('JOURNALPOS', 'GEGENKONTO')
@@ -1904,37 +1916,47 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                MA_ID, VRENUM, VLSNUM, RDATUM, KBDATUM, LDATUM, STADIUM,
                ADDR_ID, SPRACH_ID,
                ZAHLART, ZAHLART_NAME, BRUTTO_FLAG, PR_EBENE,
-               KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NUM, KUN_ABTEILUNG,
-               KUN_STRASSE, KUN_LAND, KUN_PLZ, KUN_ORT{gk_j_col},
+               KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NAME3, KUN_NUM, KUN_ABTEILUNG,
+               KUN_STRASSE, KUN_LAND, KUN_PLZ, KUN_ORT,
+               KUN_UST_NUM, KUN_HAUSNR, KUN_ADRESSZUSATZ{gk_j_col},
                WAEHRUNG, KURS,
                BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
                NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
                MSUMME_0, MSUMME_1, MSUMME_2, MSUMME_3, MSUMME,
-               MWST_1, MWST_2,
+               MWST_1, MWST_2, MWST_3, AT_MWST,
                GEGEBEN,
                KOST_NETTO, WARE, WERT_NETTO, LOHN, TKOST, ROHGEWINN,
                ATSUMME, ATMSUMME,
-               SOLL_NTAGE, SOLL_SKONTO,
+               SOLL_NTAGE, SOLL_SKONTO, SOLL_RATINTERVALL,
+               FOLGENR, VERTRETER_ID, LIEFART,
                STORNO_INFO,
+               USR1, USR2,
+               KOPFTEXT, FUSSTEXT, PROJEKT, ORGNUM,
+               BEST_NAME, BEST_CODE, INFO, TRACKINGCODE,
                ERSTELLT, ERST_NAME, GEAEND, GEAEND_NAME,
                FIRMA_ID, HASHSUM
             ) VALUES (
                3, 2, %s, %s, 1,
                %s, %s, %s, %s, %s, %s, 121,
                %s, 2,
-               -1, 'Rechnung', 'Y', %s,
-               %s, %s, %s, %s, %s,
-               %s, %s, %s, %s{gk_j_ph},
+               -1, %s, 'Y', %s,
+               %s, %s, %s, '', %s, %s,
+               %s, %s, %s, %s,
+               '', '', ''{gk_j_ph},
                '€', 1.0000,
                %s, %s, %s, %s, %s,
                %s, %s, %s, %s, %s,
                %s, %s, %s, %s, %s,
-               %s, %s,
+               %s, %s, %s, %s,
                0,
                0, %s, %s, 0, 0, %s,
                0, 0,
-               1, 0,
+               1, 0, 1,
+               %s, 0, 0,
                'Belegtransfer',
+               '', '',
+               '', '', '', '',
+               '', '', '', '',
                %s, %s, %s, %s,
                %s, '$$'
             )""",
@@ -1942,9 +1964,10 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 terminal_nr, pos_ta_id,
                 ma_id, vrenum, vlsnum, jetzt, jetzt, jetzt.date(),
                 adressen_id,
+                None,   # ZAHLART_NAME
                 int(adresse.get('PR_EBENE') or 5),
-                adresse.get('ANREDE') or '', kun_name1, kun_name2, kun_num,
-                adresse.get('ABTEILUNG') or '',
+                adresse.get('ANREDE') or '', kun_name1, kun_name2,
+                kun_num, adresse.get('ABTEILUNG') or '',
                 adresse.get('STRASSE') or '', adresse.get('LAND') or 'DE',
                 adresse.get('PLZ') or '', adresse.get('ORT') or '',
                 *((gegenkonto_kunde,) if has_gk_j else ()),
@@ -1953,8 +1976,10 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 c(msumme[0]), c(msumme[1]), c(msumme[2]), c(msumme[3]),
                 c(bsumme_total - nsumme_total),
                 float(mwst_saetze.get(1, 19.0)), float(mwst_saetze.get(2, 7.0)),
+                float(mwst_saetze.get(3, 0.0)), float(mwst_saetze.get(3, 0.0)),
                 c(nsumme_total), c(nsumme_total), c(nsumme_total),
-                jetzt, erstellt_von, jetzt, erstellt_von,
+                folgenr,
+                jetzt, erstellt_von, None, '',
                 firma_id,
             )
         )
