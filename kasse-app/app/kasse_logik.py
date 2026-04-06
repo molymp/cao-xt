@@ -122,8 +122,41 @@ def _format_vlsnum(pattern: str, nummer: int, max_len: int = 0,
     return result
 
 
-_col_max_len_cache: dict[str, int] = {}
-_col_exists_cache:  dict[str, bool] = {}
+_col_max_len_cache:  dict[str, int]  = {}
+_col_exists_cache:   dict[str, bool] = {}
+_col_is_str_cache:   dict[str, bool] = {}
+
+
+def _journal_col_is_str(col_name: str) -> bool:
+    """True wenn JOURNAL-Spalte ein String-Typ ist (VARCHAR/TEXT/CHAR/ENUM).
+
+    Nutzt INFORMATION_SCHEMA.CHARACTER_MAXIMUM_LENGTH: gesetzt → String-Typ.
+    Gecacht für wiederholte Aufrufe.
+    """
+    if col_name in _col_is_str_cache:
+        return _col_is_str_cache[col_name]
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT CHARACTER_MAXIMUM_LENGTH
+                   FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'JOURNAL'
+                     AND COLUMN_NAME = %s""",
+                (col_name,)
+            )
+            row = cur.fetchone()
+            is_str = bool(row and row['CHARACTER_MAXIMUM_LENGTH'] is not None)
+    except Exception as e:
+        log.warning("_journal_col_is_str: Abfrage für '%s' fehlgeschlagen: %s", col_name, e)
+        is_str = True  # im Zweifel String annehmen
+    _col_is_str_cache[col_name] = is_str
+    return is_str
+
+
+def _journal_leer(col_name: str) -> 'str | None':
+    """Gibt '' für String-Spalten zurück, None für numerische/Datum-Spalten."""
+    return '' if _journal_col_is_str(col_name) else None
 
 
 def _table_col_exists(table: str, col_name: str) -> bool:
@@ -1901,6 +1934,14 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
         fn_row = cur.fetchone()
     folgenr = int(fn_row['next_folgenr']) if fn_row else 1
 
+    # Leer-Werte je Spaltentyp ('' für VARCHAR/TEXT, None für INT/DATE/DECIMAL)
+    _leer_cols = (
+        'KUN_NAME3', 'KUN_UST_NUM', 'KUN_HAUSNR', 'KUN_ADRESSZUSATZ',
+        'USR1', 'USR2', 'KOPFTEXT', 'FUSSTEXT', 'PROJEKT', 'ORGNUM',
+        'BEST_NAME', 'BEST_CODE', 'INFO', 'TRACKINGCODE',
+    )
+    _leer = {col: _journal_leer(col) for col in _leer_cols}
+
     # GEGENKONTO existiert nicht in allen CAO-Installationen – bedingt einbinden
     has_gk_j    = _table_col_exists('JOURNAL',    'GEGENKONTO')
     has_gk_jpos = _table_col_exists('JOURNALPOS', 'GEGENKONTO')
@@ -1940,9 +1981,9 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                %s, %s, %s, %s, %s, %s, 121,
                %s, 2,
                -1, %s, 'Y', %s,
-               %s, %s, %s, '', %s, %s,
+               %s, %s, %s, %s, %s, %s,
                %s, %s, %s, %s,
-               '', '', ''{gk_j_ph},
+               %s, %s, %s{gk_j_ph},
                '€', 1.0000,
                %s, %s, %s, %s, %s,
                %s, %s, %s, %s, %s,
@@ -1954,9 +1995,9 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                1, 0, 1,
                %s, 0, 0,
                'Belegtransfer',
-               '', '',
-               '', '', '', '',
-               '', '', '', '',
+               %s, %s,
+               %s, %s, %s, %s,
+               %s, %s, %s, %s,
                %s, %s, %s, %s,
                %s, '$$'
             )""",
@@ -1967,9 +2008,11 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 None,   # ZAHLART_NAME
                 int(adresse.get('PR_EBENE') or 5),
                 adresse.get('ANREDE') or '', kun_name1, kun_name2,
+                _leer['KUN_NAME3'],
                 kun_num, adresse.get('ABTEILUNG') or '',
                 adresse.get('STRASSE') or '', adresse.get('LAND') or 'DE',
                 adresse.get('PLZ') or '', adresse.get('ORT') or '',
+                _leer['KUN_UST_NUM'], _leer['KUN_HAUSNR'], _leer['KUN_ADRESSZUSATZ'],
                 *((gegenkonto_kunde,) if has_gk_j else ()),
                 c(bsumme[0]), c(bsumme[1]), c(bsumme[2]), c(bsumme[3]), c(bsumme_total),
                 c(nsumme[0]), c(nsumme[1]), c(nsumme[2]), c(nsumme[3]), c(nsumme_total),
@@ -1979,6 +2022,9 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 float(mwst_saetze.get(3, 0.0)), float(mwst_saetze.get(3, 0.0)),
                 c(nsumme_total), c(nsumme_total), c(nsumme_total),
                 folgenr,
+                _leer['USR1'], _leer['USR2'],
+                _leer['KOPFTEXT'], _leer['FUSSTEXT'], _leer['PROJEKT'], _leer['ORGNUM'],
+                _leer['BEST_NAME'], _leer['BEST_CODE'], _leer['INFO'], _leer['TRACKINGCODE'],
                 jetzt, erstellt_von, None, '',
                 firma_id,
             )
