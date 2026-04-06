@@ -1,37 +1,109 @@
 {% extends "base.html" %}
-{% block title %}Preispflege – EK / VK5 / Marge{% endblock %}
+{% block title %}Preispflege – EK / VK5 / Faktor{% endblock %}
 
 {% block extra_style %}
 <style>
-/* ── Toolbar ───────────────────────────────────────────────── */
+/* ── Preispflege-Layout (Split: Baum + Tabelle) ─────────────── */
+.pp-layout {
+  display: flex;
+  gap: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Warengruppenbaum (links) ───────────────────────────────── */
+.pp-tree {
+  width: 230px;
+  min-width: 180px;
+  flex-shrink: 0;
+  background: white;
+  border-right: 1px solid var(--creme-dunkel);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.pp-tree-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--grau-mitte);
+  padding: 6px 12px 4px;
+}
+.pp-tree-item {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 12px 7px 14px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-left: 3px solid transparent;
+  user-select: none;
+}
+.pp-tree-item:hover { background: var(--grau-hell); }
+.pp-tree-item.aktiv {
+  background: var(--gruen-blass);
+  border-left-color: var(--gruen-mitte);
+  font-weight: 700;
+}
+.pp-tree-item .wgr-name {
+  font-size: 13px;
+  color: var(--text-dunkel);
+  line-height: 1.3;
+}
+.pp-tree-item.aktiv .wgr-name { color: var(--gruen-dunkel); }
+.pp-tree-item .wgr-meta {
+  font-size: 11px;
+  color: var(--grau-mitte);
+  margin-top: 1px;
+  display: flex;
+  gap: 6px;
+}
+.pp-tree-item .wgr-faktor {
+  font-weight: 700;
+  color: var(--text-hell);
+}
+.pp-tree-divider { border: none; border-top: 1px solid var(--creme-dunkel); margin: 4px 0; }
+
+/* ── Tabellenbereich (rechts) ───────────────────────────────── */
+.pp-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.pp-header {
+  padding: 14px 20px 8px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  background: var(--grau-hell);
+  flex-shrink: 0;
+}
+.pp-header h2 {
+  font-size: 18px;
+  margin-bottom: 2px;
+  color: var(--gruen-dunkel);
+}
+.pp-header .pp-sub {
+  font-size: 12px;
+  color: var(--grau-mitte);
+}
 .pp-toolbar {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  margin-bottom: 20px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  background: white;
+  flex-shrink: 0;
   flex-wrap: wrap;
 }
-.pp-toolbar select {
-  padding: 8px 12px;
-  border: 1px solid var(--creme-dunkel);
-  border-radius: var(--radius-klein);
-  font-family: inherit;
-  font-size: 14px;
-  background: white;
-  color: var(--text-dunkel);
-  outline: none;
-  min-width: 200px;
-  cursor: pointer;
-}
-.pp-toolbar select:focus { border-color: var(--gruen-mitte); }
 .pp-toolbar .btn {
-  padding: 8px 16px;
+  padding: 6px 14px;
   background: var(--gruen-mitte);
   color: white;
   border: none;
   border-radius: var(--radius-klein);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s;
@@ -46,19 +118,20 @@
 
 /* ── Tabelle ───────────────────────────────────────────────── */
 .pp-table-wrap {
-  overflow-x: auto;
+  flex: 1;
+  overflow: auto;
 }
 .pp-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
 }
 .pp-table th {
   text-align: left;
-  padding: 8px 10px;
+  padding: 7px 10px;
   background: var(--grau-hell);
   color: var(--text-hell);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -66,67 +139,183 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .pp-table th:hover { background: var(--creme-dunkel); }
-.pp-table th .sort-arrow { font-size: 9px; margin-left: 4px; opacity: 0.5; }
+.pp-table th .sort-arrow { font-size: 8px; margin-left: 3px; opacity: 0.4; }
 .pp-table th.sort-aktiv .sort-arrow { opacity: 1; color: var(--gruen-mitte); }
+.pp-table th.no-sort { cursor: default; }
+.pp-table th.no-sort:hover { background: var(--grau-hell); }
 .pp-table td {
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--creme-dunkel);
   color: var(--text-dunkel);
   vertical-align: middle;
 }
 .pp-table tr:hover td { background: #f9f7f0; }
-.pp-table tr.marge-niedrig td { background: #fff3f3; }
-.pp-table tr.marge-niedrig:hover td { background: #ffe8e8; }
+.pp-table tr.faktor-niedrig td { background: #fff3f3; }
+.pp-table tr.faktor-niedrig:hover td { background: #ffe8e8; }
 
-/* ── Zahlen rechts ausrichten ──────────────────────────────── */
+/* ── Zahlen rechts ─────────────────────────────────────────── */
 .td-right { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ── Marge-Badge ───────────────────────────────────────────── */
-.marge-badge {
+/* ── Faktor-Badge ──────────────────────────────────────────── */
+.faktor-badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
+  white-space: nowrap;
 }
-.marge-ok   { background: #e8f5e0; color: #2e7a2e; }
-.marge-warn { background: #fff3cd; color: #856404; }
-.marge-rot  { background: #fde8e8; color: var(--rot); }
-.marge-null { background: var(--grau-hell); color: var(--grau-mitte); }
+.faktor-ok   { background: #e8f5e0; color: #2e7a2e; }
+.faktor-warn { background: #fff3cd; color: #856404; }
+.faktor-rot  { background: #fde8e8; color: var(--rot); }
+.faktor-null { background: var(--grau-hell); color: var(--grau-mitte); }
 
-/* ── Inline-Editierfeld ────────────────────────────────────── */
-.vk5-cell { position: relative; }
-.vk5-display {
+/* ── Lieferanten-Expand ────────────────────────────────────── */
+.lief-btn {
+  background: none;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  display: inline-block;
-  min-width: 60px;
-  transition: background 0.1s;
+  color: var(--text-hell);
+  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+  font-family: inherit;
 }
-.vk5-display:hover { background: var(--gruen-blass); }
-.vk5-input {
-  width: 80px;
-  padding: 3px 6px;
-  border: 2px solid var(--gruen-mitte);
+.lief-btn:hover { background: var(--gruen-blass); border-color: var(--gruen-mitte); }
+.lief-expand-row td {
+  background: #f5f9f0;
+  padding: 8px 10px 8px 30px;
+  border-bottom: 2px solid var(--creme-dunkel);
+}
+.lief-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.lief-tabelle th {
+  text-align: left;
+  padding: 4px 8px;
+  background: var(--grau-hell);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--grau-mitte);
+  border-bottom: 1px solid var(--creme-dunkel);
+  position: static;
+  cursor: default;
+}
+.lief-tabelle td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  color: var(--text-dunkel);
+  background: transparent;
+}
+.lief-tabelle tr:last-child td { border-bottom: none; }
+.lief-leer { color: var(--grau-mitte); font-style: italic; font-size: 12px; padding: 6px 0; }
+
+/* ── Anpassen-Panel ────────────────────────────────────────── */
+.anp-btn {
+  background: var(--gruen-mitte);
+  color: white;
+  border: none;
   border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.anp-btn:hover { background: var(--gruen-dunkel); }
+.anp-row td {
+  background: #e8f5e0;
+  padding: 12px 10px 12px 30px;
+  border-bottom: 2px solid var(--gruen-mitte);
+}
+.anp-panel {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.anp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.anp-field label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--grau-mitte);
+  letter-spacing: 0.08em;
+}
+.anp-field input {
+  width: 100px;
+  padding: 5px 8px;
+  border: 2px solid var(--creme-dunkel);
+  border-radius: 6px;
   font-family: 'Nunito', sans-serif;
   font-size: 14px;
-  font-variant-numeric: tabular-nums;
+  font-weight: 700;
   text-align: right;
+  font-variant-numeric: tabular-nums;
   outline: none;
   background: white;
+  transition: border-color 0.1s;
 }
-.vk5-saving { opacity: 0.5; pointer-events: none; }
+.anp-field input:focus { border-color: var(--gruen-mitte); }
+.anp-field input.changed { border-color: var(--gold); background: #fffbf0; }
+.anp-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-left: 8px;
+}
+.anp-uebernehmen {
+  background: var(--gruen-mitte);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.anp-uebernehmen:hover { background: var(--gruen-dunkel); }
+.anp-uebernehmen:disabled { opacity: 0.5; cursor: default; }
+.anp-abbrechen {
+  background: none;
+  color: var(--rot);
+  border: 1px solid var(--rot);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.anp-abbrechen:hover { background: #fde8e8; }
 
 /* ── Status-Zeile ──────────────────────────────────────────── */
 .pp-statusbar {
-  margin-top: 10px;
+  padding: 6px 20px;
   font-size: 12px;
   color: var(--grau-mitte);
-  min-height: 18px;
+  min-height: 28px;
+  border-top: 1px solid var(--creme-dunkel);
+  flex-shrink: 0;
+  background: white;
 }
 .pp-statusbar.ok  { color: #2e7a2e; font-weight: 700; }
 .pp-statusbar.err { color: var(--rot); font-weight: 700; }
@@ -134,7 +323,7 @@
 /* ── Ladeanimation ─────────────────────────────────────────── */
 .pp-spinner {
   display: inline-block;
-  width: 18px; height: 18px;
+  width: 16px; height: 16px;
   border: 2px solid var(--creme-dunkel);
   border-top-color: var(--gruen-mitte);
   border-radius: 50%;
@@ -143,45 +332,64 @@
   margin-right: 6px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.pp-lade-center {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--grau-mitte);
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<h1 style="margin-bottom:6px;">Preispflege</h1>
-<p style="font-size:13px;color:var(--text-hell);margin-bottom:20px;">
-  EK · VK5 (Brutto) · Marge — nur Normalartikel mit VK5 &gt; 0.
-  Klick auf den VK5-Wert zum inline Bearbeiten.
-</p>
+<div class="pp-layout" style="margin: -28px -32px; height: calc(100vh - var(--navbar-h));">
 
-<div class="pp-toolbar">
-  <select id="wgr-filter" onchange="ladeTabelle()">
-    <option value="">— Alle Warengruppen —</option>
-  </select>
-  <button class="btn" onclick="ladeTabelle()" id="reload-btn">Aktualisieren</button>
-  <span class="pp-info" id="artikel-count"></span>
-</div>
+  <!-- Warengruppenbaum links -->
+  <div class="pp-tree" id="pp-tree">
+    <div class="pp-tree-title">Warengruppen</div>
+    <div id="pp-tree-leer" style="padding:10px 14px;font-size:12px;color:var(--grau-mitte);">
+      <span class="pp-spinner"></span> Lade…
+    </div>
+  </div>
 
-<div class="card">
-  <div id="pp-ladehinweis" style="padding:16px;color:var(--grau-mitte);">
-    <span class="pp-spinner"></span> Lade Artikeldaten…
+  <!-- Tabelle rechts -->
+  <div class="pp-content">
+    <div class="pp-header">
+      <h2 id="pp-titel">Preispflege</h2>
+      <div class="pp-sub">EK · VK5 Netto · VK5 Brutto · Faktor — nur Normalartikel mit VK5 &gt; 0</div>
+    </div>
+
+    <div class="pp-toolbar">
+      <button class="btn" onclick="ladeTabelle()" id="reload-btn">↻ Aktualisieren</button>
+      <span class="pp-info" id="artikel-count"></span>
+    </div>
+
+    <div class="pp-table-wrap" id="pp-table-wrap">
+      <div class="pp-lade-center" id="pp-ladehinweis">
+        <span class="pp-spinner"></span> Lade Artikeldaten…
+      </div>
+      <table class="pp-table" id="pp-table" style="display:none;">
+        <thead>
+          <tr>
+            <th onclick="sortiere('artnr')" data-col="artnr">Art-Nr.<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('bezeichnung')" data-col="bezeichnung">Bezeichnung<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('bestand')" data-col="bestand" style="text-align:right;">Bestand<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('vpe_ek')" data-col="vpe_ek" style="text-align:right;" title="Einheiten pro Einkaufsverpackung">VPE EK<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('vpe_vk')" data-col="vpe_vk" style="text-align:right;" title="Einheiten pro Verkaufsverpackung">VPE VK<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('ek')" data-col="ek" style="text-align:right;">EK (€)<span class="sort-arrow">▲▼</span></th>
+            <th class="no-sort" style="text-align:center;font-size:9px;">Lief.</th>
+            <th onclick="sortiere('vk5_netto')" data-col="vk5_netto" style="text-align:right;">VK5 Netto (€)<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('faktor')" data-col="faktor" style="text-align:right;">Faktor<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('vk5')" data-col="vk5" style="text-align:right;">VK5 Brutto (€)<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('mwst_pct')" data-col="mwst_pct" style="text-align:right;">MwSt<span class="sort-arrow">▲▼</span></th>
+            <th class="no-sort"></th>
+          </tr>
+        </thead>
+        <tbody id="pp-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="pp-statusbar" id="pp-status"> </div>
   </div>
-  <div class="pp-table-wrap" id="pp-table-wrap" style="display:none;">
-    <table class="pp-table" id="pp-table">
-      <thead>
-        <tr>
-          <th onclick="sortiere('artnr')" data-col="artnr">Art-Nr.<span class="sort-arrow">▲▼</span></th>
-          <th onclick="sortiere('bezeichnung')" data-col="bezeichnung">Bezeichnung<span class="sort-arrow">▲▼</span></th>
-          <th onclick="sortiere('wgr_name')" data-col="wgr_name">Warengruppe<span class="sort-arrow">▲▼</span></th>
-          <th onclick="sortiere('ek')" data-col="ek" style="text-align:right;">EK (€)<span class="sort-arrow">▲▼</span></th>
-          <th data-col="vk5" style="text-align:right;">VK5 Brutto (€)</th>
-          <th onclick="sortiere('marge_pct')" data-col="marge_pct" style="text-align:right;">Marge %<span class="sort-arrow">▲▼</span></th>
-          <th onclick="sortiere('mwst_pct')" data-col="mwst_pct" style="text-align:right;">MwSt %<span class="sort-arrow">▲▼</span></th>
-        </tr>
-      </thead>
-      <tbody id="pp-tbody"></tbody>
-    </table>
-  </div>
-  <div class="pp-statusbar" id="pp-status"></div>
 </div>
 {% endblock %}
 
@@ -189,56 +397,108 @@
 <script>
 'use strict';
 
-let _daten = [];       // aktuell geladene Artikeldaten
-let _sortCol = 'marge_pct';
-let _sortAsc = true;   // aufsteigend = niedrigste Marge zuerst
+let _daten = [];
+let _sortCol = 'faktor';
+let _sortAsc = true;       // Faktor aufsteigend = niedrigster zuerst
+let _aktWgrId = null;      // null = alle Warengruppen
 
-// ── Hilfsfunktionen ───────────────────────────────────────────
+// ── XSS-Schutz ────────────────────────────────────────────────
+function _esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
-function _eur(v) {
+// ── Zahlen-Formatierung ───────────────────────────────────────
+function _eur(v, dp=2) {
   if (v == null) return '–';
-  return Number(v).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  return Number(v).toLocaleString('de-DE', {
+    minimumFractionDigits: dp,
+    maximumFractionDigits: dp,
+  });
 }
 
-function _marge_klasse(pct) {
-  if (pct == null) return 'marge-null';
-  if (pct < 10)   return 'marge-rot';
-  if (pct < 20)   return 'marge-warn';
-  return 'marge-ok';
+function _faktorKlasse(f) {
+  if (f == null) return 'faktor-null';
+  if (f < 1.2)   return 'faktor-rot';
+  if (f < 1.5)   return 'faktor-warn';
+  return 'faktor-ok';
 }
 
-function _sort_wert(row, col) {
+function _sortWert(row, col) {
   const v = row[col];
   if (v == null) return _sortAsc ? Infinity : -Infinity;
   return v;
 }
 
-// ── Warengruppen laden ────────────────────────────────────────
-
-async function ladeWarengruppen() {
+// ── Warengruppenbaum laden ────────────────────────────────────
+async function ladeWarengruppenbaum() {
   try {
-    const r = await fetch('/wawi/api/warengruppen');
+    const r = await fetch('/wawi/api/warengruppen/mit-faktor');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const wgr = await r.json();
-    const sel = document.getElementById('wgr-filter');
-    wgr.forEach(w => {
-      const opt = document.createElement('option');
-      opt.value = w.wgr_id;
-      opt.textContent = w.name || `WGR ${w.wgr_id}`;
-      sel.appendChild(opt);
-    });
+    _renderWarengruppenbaum(wgr);
   } catch (e) {
-    console.warn('Warengruppen konnten nicht geladen werden', e);
+    document.getElementById('pp-tree-leer').textContent = '⚠ Baum nicht ladbar';
+    console.warn('Warengruppenbaum:', e);
   }
 }
 
-// ── Tabelle laden ─────────────────────────────────────────────
+function _renderWarengruppenbaum(wgr) {
+  const tree = document.getElementById('pp-tree');
+  tree.innerHTML = '<div class="pp-tree-title">Warengruppen</div>';
 
+  // Eintrag "Alle"
+  const all = document.createElement('div');
+  all.className = 'pp-tree-item' + (_aktWgrId === null ? ' aktiv' : '');
+  all.dataset.wgrId = '';
+  all.innerHTML = `<span class="wgr-name">— Alle Warengruppen —</span>`;
+  all.addEventListener('click', () => _wgrWaehlen(null, '— Alle Warengruppen —', all));
+  tree.appendChild(all);
+
+  if (wgr.length > 0) {
+    const div = document.createElement('hr');
+    div.className = 'pp-tree-divider';
+    tree.appendChild(div);
+  }
+
+  wgr.forEach(w => {
+    const el = document.createElement('div');
+    el.className = 'pp-tree-item' + (_aktWgrId === w.wgr_id ? ' aktiv' : '');
+    el.dataset.wgrId = w.wgr_id;
+
+    const faktorTxt = w.avg_faktor != null
+      ? `Ø Faktor ${Number(w.avg_faktor).toFixed(2)}`
+      : '';
+    const anzahlTxt = w.anzahl_artikel != null ? `${w.anzahl_artikel} Art.` : '';
+
+    el.innerHTML = `
+      <span class="wgr-name">${_esc(w.name || 'WGR ' + w.wgr_id)}</span>
+      <span class="wgr-meta">
+        ${anzahlTxt ? `<span>${_esc(anzahlTxt)}</span>` : ''}
+        ${faktorTxt ? `<span class="wgr-faktor">${_esc(faktorTxt)}</span>` : ''}
+      </span>
+    `;
+    el.addEventListener('click', () => _wgrWaehlen(w.wgr_id, w.name, el));
+    tree.appendChild(el);
+  });
+}
+
+function _wgrWaehlen(wgrId, name, el) {
+  document.querySelectorAll('.pp-tree-item').forEach(e => e.classList.remove('aktiv'));
+  el.classList.add('aktiv');
+  _aktWgrId = wgrId;
+  document.getElementById('pp-titel').textContent =
+    wgrId === null ? 'Preispflege' : `Preispflege – ${name}`;
+  ladeTabelle();
+}
+
+// ── Tabelle laden ─────────────────────────────────────────────
 async function ladeTabelle() {
-  const wgrId = document.getElementById('wgr-filter').value;
-  const url = '/wawi/api/preispflege' + (wgrId ? `?wgr_id=${wgrId}` : '');
+  const url = '/wawi/api/preispflege'
+    + (_aktWgrId != null ? `?wgr_id=${_aktWgrId}` : '');
 
   document.getElementById('pp-ladehinweis').style.display = 'block';
-  document.getElementById('pp-table-wrap').style.display = 'none';
+  document.getElementById('pp-table').style.display = 'none';
   document.getElementById('reload-btn').disabled = true;
   statusSetzen('', '');
 
@@ -249,58 +509,68 @@ async function ladeTabelle() {
     renderTabelle();
   } catch (e) {
     document.getElementById('pp-ladehinweis').innerHTML =
-      '<span style="color:var(--rot);">⚠ Fehler beim Laden: ' + e.message + '</span>';
+      `<span style="color:var(--rot);">⚠ Fehler beim Laden: ${_esc(e.message)}</span>`;
   } finally {
     document.getElementById('reload-btn').disabled = false;
   }
 }
 
 // ── Tabelle rendern ───────────────────────────────────────────
-
 function renderTabelle() {
   const sortiert = [..._daten].sort((a, b) => {
-    const av = _sort_wert(a, _sortCol);
-    const bv = _sort_wert(b, _sortCol);
-    if (typeof av === 'string') return _sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    const av = _sortWert(a, _sortCol);
+    const bv = _sortWert(b, _sortCol);
+    if (typeof av === 'string') return _sortAsc ? av.localeCompare(bv,'de') : bv.localeCompare(av,'de');
     return _sortAsc ? av - bv : bv - av;
   });
 
   const tbody = document.getElementById('pp-tbody');
   tbody.innerHTML = '';
 
-  sortiert.forEach(art => {
-    const marge_kl = _marge_klasse(art.marge_pct);
+  sortiert.forEach((art, idx) => {
+    const fKl = _faktorKlasse(art.faktor);
     const tr = document.createElement('tr');
-    if (art.marge_pct != null && art.marge_pct < 10) tr.classList.add('marge-niedrig');
+    tr.dataset.artnr = art.artnr;
+    tr.dataset.idx = idx;
+    if (art.faktor != null && art.faktor < 1.2) tr.classList.add('faktor-niedrig');
+
+    const faktorTxt = art.faktor != null
+      ? `<span class="faktor-badge ${fKl}">${Number(art.faktor).toFixed(2)}</span>`
+      : `<span class="faktor-badge faktor-null">–</span>`;
+
+    const vpeEkTxt = art.vpe_ek !== 1 ? _eur(art.vpe_ek, 0) : '1';
+    const vpeVkTxt = art.vpe_vk !== 1 ? _eur(art.vpe_vk, 0) : '1';
 
     tr.innerHTML = `
-      <td style="font-family:monospace;font-size:13px;">${_esc(art.artnr)}</td>
+      <td style="font-family:monospace;font-size:12px;">${_esc(art.artnr)}</td>
       <td>${_esc(art.bezeichnung || '–')}</td>
-      <td style="font-size:13px;color:var(--text-hell);">${_esc(art.wgr_name || '–')}</td>
+      <td class="td-right" style="font-size:12px;">${_eur(art.bestand, 0)}</td>
+      <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeEkTxt)}</td>
+      <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeVkTxt)}</td>
       <td class="td-right">${_eur(art.ek)}</td>
-      <td class="td-right vk5-cell" data-artnr="${_esc(art.artnr)}">
-        <span class="vk5-display" onclick="vk5EditStart(this, '${_esc(art.artnr)}', ${art.vk5})"
-              title="Klicken zum Bearbeiten">${_eur(art.vk5)}</span>
+      <td style="text-align:center;">
+        <button class="lief-btn" onclick="toggleLieferanten(this,'${_esc(art.artnr)}')"
+                title="Lieferantenpreise anzeigen">▶</button>
       </td>
-      <td class="td-right">
-        <span class="marge-badge ${marge_kl}">
-          ${art.marge_pct != null ? art.marge_pct.toFixed(1) + '\u202f%' : '–'}
-        </span>
-      </td>
-      <td class="td-right" style="font-size:13px;color:var(--text-hell);">
+      <td class="td-right">${_eur(art.vk5_netto)}</td>
+      <td class="td-right">${faktorTxt}</td>
+      <td class="td-right" style="font-weight:700;">${_eur(art.vk5)}</td>
+      <td class="td-right" style="font-size:12px;color:var(--text-hell);">
         ${art.mwst_pct != null ? art.mwst_pct.toFixed(1) + '\u202f%' : '–'}
+      </td>
+      <td style="text-align:right;">
+        <button class="anp-btn" onclick="anpassenOeffnen(this,'${_esc(art.artnr)}')">Anpassen</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
 
   document.getElementById('pp-ladehinweis').style.display = 'none';
-  document.getElementById('pp-table-wrap').style.display = '';
-  document.getElementById('artikel-count').textContent =
-    `${sortiert.length} Artikel`;
+  document.getElementById('pp-table').style.display = '';
+  document.getElementById('artikel-count').textContent = `${sortiert.length} Artikel`;
 
   // Sortierpfeile aktualisieren
-  document.querySelectorAll('.pp-table th').forEach(th => {
+  document.querySelectorAll('.pp-table th[data-col]').forEach(th => {
     th.classList.remove('sort-aktiv');
     const arrow = th.querySelector('.sort-arrow');
     if (arrow) arrow.textContent = '▲▼';
@@ -314,137 +584,258 @@ function renderTabelle() {
 }
 
 // ── Sortierung ────────────────────────────────────────────────
-
 function sortiere(col) {
   if (_sortCol === col) {
     _sortAsc = !_sortAsc;
   } else {
     _sortCol = col;
-    _sortAsc = (col === 'marge_pct');  // Marge: niedrig zuerst; andere: aufsteigend
+    _sortAsc = (col === 'faktor');  // Faktor: niedrig zuerst; andere: aufsteigend
   }
   renderTabelle();
 }
 
-// ── VK5 Inline-Editing ────────────────────────────────────────
-
-function vk5EditStart(displayEl, artnr, aktuellerWert) {
-  const cell = displayEl.closest('.vk5-cell');
-  if (cell.querySelector('.vk5-input')) return;  // bereits im Editiermodus
-
-  displayEl.style.display = 'none';
-
-  const inp = document.createElement('input');
-  inp.type = 'text';
-  inp.className = 'vk5-input';
-  inp.value = aktuellerWert != null ? Number(aktuellerWert).toFixed(2).replace('.', ',') : '';
-  inp.setAttribute('data-artnr', artnr);
-
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter')  { e.preventDefault(); vk5Speichern(inp, displayEl); }
-    if (e.key === 'Escape') { vk5EditAbbrechen(inp, displayEl); }
-  });
-  inp.addEventListener('blur', () => vk5Speichern(inp, displayEl));
-
-  cell.appendChild(inp);
-  inp.focus();
-  inp.select();
-}
-
-function vk5EditAbbrechen(inp, displayEl) {
-  inp.remove();
-  displayEl.style.display = '';
-}
-
-async function vk5Speichern(inp, displayEl) {
-  if (inp._saving) return;
-  inp._saving = true;
-
-  const artnr = inp.getAttribute('data-artnr');
-  const rawVal = inp.value.trim().replace(',', '.');
-  const vk5 = parseFloat(rawVal);
-
-  if (isNaN(vk5) || vk5 < 0) {
-    statusSetzen('err', `⚠ Ungültiger Preis: "${inp.value}"`);
-    inp._saving = false;
-    inp.focus();
+// ── Lieferanten-Expand ────────────────────────────────────────
+async function toggleLieferanten(btn, artnr) {
+  const tr = btn.closest('tr');
+  const existingRow = tr.nextElementSibling;
+  if (existingRow && existingRow.classList.contains('lief-expand-row')) {
+    existingRow.remove();
+    btn.textContent = '▶';
     return;
   }
 
-  inp.classList.add('vk5-saving');
+  // Andere offene Lieferantenzeilen schließen
+  document.querySelectorAll('.lief-expand-row').forEach(r => r.remove());
+  document.querySelectorAll('.lief-btn').forEach(b => b.textContent = '▶');
 
+  btn.textContent = '⌛';
+
+  try {
+    const r = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/lieferanten`);
+    const data = await r.json();
+
+    const expandTr = document.createElement('tr');
+    expandTr.className = 'lief-expand-row';
+
+    let inhalt;
+    if (!data || data.length === 0) {
+      inhalt = `<div class="lief-leer">Keine Lieferantenpreise hinterlegt.</div>`;
+    } else {
+      inhalt = `
+        <table class="lief-tabelle">
+          <thead>
+            <tr>
+              <th>Lieferant</th>
+              <th>Bestell-Nr.</th>
+              <th style="text-align:right;">EK-Preis (€)</th>
+              <th style="text-align:right;">VPE</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.map(l => `
+              <tr>
+                <td>${_esc(l.lief_name)}</td>
+                <td style="font-family:monospace;font-size:11px;">${_esc(l.lief_artnr || '–')}</td>
+                <td style="text-align:right;">${_eur(l.ek_preis)}</td>
+                <td style="text-align:right;">${_eur(l.vpe, 0)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    expandTr.innerHTML = `<td colspan="12">${inhalt}</td>`;
+    tr.after(expandTr);
+    btn.textContent = '▼';
+  } catch (e) {
+    btn.textContent = '▶';
+    statusSetzen('err', `⚠ Lieferanten konnten nicht geladen werden: ${e.message}`);
+  }
+}
+
+// ── Anpassen-Panel ────────────────────────────────────────────
+function anpassenOeffnen(btn, artnr) {
+  // Andere offene Panels und Lieferantenzeilen schließen
+  document.querySelectorAll('.anp-row').forEach(r => r.remove());
+  document.querySelectorAll('.lief-expand-row').forEach(r => r.remove());
+  document.querySelectorAll('.lief-btn').forEach(b => b.textContent = '▶');
+
+  const tr = btn.closest('tr');
+  const art = _daten.find(a => a.artnr === artnr);
+  if (!art) return;
+
+  const anpTr = document.createElement('tr');
+  anpTr.className = 'anp-row';
+  anpTr.dataset.artnr = artnr;
+
+  const mwstSatz = (art.mwst_pct || 0) / 100.0;
+
+  anpTr.innerHTML = `
+    <td colspan="12">
+      <form class="anp-panel" id="anp-form-${_esc(artnr)}" onsubmit="return false;">
+        <div class="anp-field">
+          <label>EK (€)</label>
+          <input type="text" id="anp-ek-${_esc(artnr)}"
+                 value="${Number(art.ek).toFixed(2).replace('.',',')}"
+                 data-field="ek" readonly
+                 title="EK kann hier nicht geändert werden (Einkaufskonditionen)">
+        </div>
+        <div class="anp-field">
+          <label>Faktor</label>
+          <input type="text" id="anp-faktor-${_esc(artnr)}"
+                 value="${art.faktor != null ? Number(art.faktor).toFixed(3).replace('.',',') : ''}"
+                 data-field="faktor"
+                 oninput="anpBerechnen('${_esc(artnr)}','faktor',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VK5 Netto (€)</label>
+          <input type="text" id="anp-vk5netto-${_esc(artnr)}"
+                 value="${Number(art.vk5_netto).toFixed(2).replace('.',',')}"
+                 data-field="vk5netto"
+                 oninput="anpBerechnen('${_esc(artnr)}','vk5netto',this.value)">
+        </div>
+        <div class="anp-field">
+          <label>VK5 Brutto (€)</label>
+          <input type="text" id="anp-vk5brutto-${_esc(artnr)}"
+                 value="${Number(art.vk5).toFixed(2).replace('.',',')}"
+                 data-field="vk5brutto"
+                 oninput="anpBerechnen('${_esc(artnr)}','vk5brutto',this.value)">
+        </div>
+        <div class="anp-actions">
+          <button class="anp-uebernehmen" id="anp-save-${_esc(artnr)}"
+                  onclick="anpSpeichern('${_esc(artnr)}', ${mwstSatz},
+                           ${art.vpe_vk || 1}, ${art.vpe_ek || 1})">
+            Übernehmen
+          </button>
+          <button class="anp-abbrechen" onclick="anpassenSchliessen()">Abbrechen</button>
+        </div>
+      </form>
+    </td>
+  `;
+  tr.after(anpTr);
+
+  // Erstes Eingabefeld fokussieren
+  document.getElementById(`anp-faktor-${artnr}`)?.focus();
+}
+
+function anpassenSchliessen() {
+  document.querySelectorAll('.anp-row').forEach(r => r.remove());
+}
+
+// Wechselseitige Umrechnung im Anpassen-Panel
+function anpBerechnen(artnr, geaendertesField, rawVal) {
+  const art = _daten.find(a => a.artnr === artnr);
+  if (!art) return;
+
+  const ek = art.ek;
+  const mwstSatz = (art.mwst_pct || 0) / 100.0;
+  const vpeVk = art.vpe_vk || 1;
+  const vpeEk = art.vpe_ek || 1;
+
+  const val = parseFloat(rawVal.replace(',', '.'));
+  if (isNaN(val) || val <= 0) return;
+
+  const inpFaktor    = document.getElementById(`anp-faktor-${artnr}`);
+  const inpVk5netto  = document.getElementById(`anp-vk5netto-${artnr}`);
+  const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
+  if (!inpFaktor || !inpVk5netto || !inpVk5brutto) return;
+
+  let vk5netto, faktor, vk5brutto;
+
+  if (geaendertesField === 'faktor') {
+    // Faktor → VK5 Netto und Brutto
+    faktor = val;
+    // Faktor = vk5_netto * vpe_ek / (ek * vpe_vk) → vk5_netto = faktor * ek * vpe_vk / vpe_ek
+    vk5netto = faktor * ek * vpeVk / vpeEk;
+    vk5brutto = vk5netto * (1.0 + mwstSatz);
+  } else if (geaendertesField === 'vk5netto') {
+    vk5netto = val;
+    vk5brutto = vk5netto * (1.0 + mwstSatz);
+    faktor = (ek > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+  } else {  // vk5brutto
+    vk5brutto = val;
+    vk5netto = mwstSatz > 0 ? vk5brutto / (1.0 + mwstSatz) : vk5brutto;
+    faktor = (ek > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+  }
+
+  // Nur die NICHT gerade bearbeiteten Felder aktualisieren
+  if (geaendertesField !== 'faktor' && faktor != null)
+    _setFieldSilent(inpFaktor, faktor.toFixed(3).replace('.', ','));
+  if (geaendertesField !== 'vk5netto')
+    _setFieldSilent(inpVk5netto, vk5netto.toFixed(2).replace('.', ','));
+  if (geaendertesField !== 'vk5brutto')
+    _setFieldSilent(inpVk5brutto, vk5brutto.toFixed(2).replace('.', ','));
+
+  // Geändertes Feld markieren
+  [inpFaktor, inpVk5netto, inpVk5brutto].forEach(inp => inp.classList.remove('changed'));
+  document.getElementById(`anp-${geaendertesField}-${artnr}`)?.classList.add('changed');
+}
+
+function _setFieldSilent(inp, val) {
+  // oninput nicht auslösen wenn wir programmatisch setzen
+  inp.dataset.silent = '1';
+  inp.value = val;
+  delete inp.dataset.silent;
+}
+
+async function anpSpeichern(artnr, mwstSatz, vpeVk, vpeEk) {
+  const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
+  const saveBtn = document.getElementById(`anp-save-${artnr}`);
+  if (!inpVk5brutto) return;
+
+  const vk5brutto = parseFloat(inpVk5brutto.value.replace(',', '.'));
+  if (isNaN(vk5brutto) || vk5brutto <= 0) {
+    statusSetzen('err', '⚠ Ungültiger VK5-Brutto-Wert');
+    inpVk5brutto.focus();
+    return;
+  }
+
+  saveBtn.disabled = true;
   try {
     const r = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vk5 }),
+      body: JSON.stringify({ vk5: vk5brutto }),
     });
     const data = await r.json();
 
-    if (!r.ok || !data.ok) {
-      throw new Error(data.error || `HTTP ${r.status}`);
-    }
+    if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
 
     // Lokale Daten aktualisieren
     const idx = _daten.findIndex(a => a.artnr === artnr);
     if (idx !== -1) {
       _daten[idx].vk5 = data.vk5_neu;
-      if (data.marge_pct !== undefined) _daten[idx].marge_pct = data.marge_pct;
+      if (data.vk5_netto !== undefined) _daten[idx].vk5_netto = data.vk5_netto;
+      if (data.faktor    !== undefined) _daten[idx].faktor    = data.faktor;
     }
 
-    inp.remove();
-    displayEl.style.display = '';
-    displayEl.textContent = _eur(data.vk5_neu);
-    displayEl.setAttribute('onclick',
-      `vk5EditStart(this, '${_esc(artnr)}', ${data.vk5_neu})`);
-
-    // Zeilen-Marge-Badge aktualisieren
-    const tr = displayEl.closest('tr');
-    if (tr && data.marge_pct !== undefined) {
-      const badge = tr.querySelector('.marge-badge');
-      if (badge) {
-        badge.className = 'marge-badge ' + _marge_klasse(data.marge_pct);
-        badge.textContent = data.marge_pct != null
-          ? data.marge_pct.toFixed(1) + '\u202f%' : '–';
-      }
-      if (data.marge_pct != null && data.marge_pct < 10) {
-        tr.classList.add('marge-niedrig');
-      } else {
-        tr.classList.remove('marge-niedrig');
-      }
-    }
-
+    anpassenSchliessen();
+    renderTabelle();
     statusSetzen('ok',
-      `✓ ${artnr} – VK5 gesetzt auf ${_eur(data.vk5_neu)} €`
-      + (data.marge_pct != null ? `, Marge: ${data.marge_pct.toFixed(1)} %` : ''));
-
+      `✓ ${artnr} – VK5 Brutto: ${_eur(data.vk5_neu)} €`
+      + (data.faktor != null ? ` | Faktor: ${Number(data.faktor).toFixed(2)}` : ''));
   } catch (e) {
-    inp.classList.remove('vk5-saving');
-    inp._saving = false;
+    saveBtn.disabled = false;
     statusSetzen('err', `⚠ Speichern fehlgeschlagen: ${e.message}`);
-    inp.focus();
   }
 }
 
 // ── Statuszeile ───────────────────────────────────────────────
-
 function statusSetzen(typ, text) {
   const el = document.getElementById('pp-status');
   el.className = 'pp-statusbar' + (typ ? ` ${typ}` : '');
-  el.textContent = text;
+  el.textContent = text || '\u00a0';
 }
 
-// ── XSS-Schutz ───────────────────────────────────────────────
-
-function _esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+// ── oninput-Schutz für _setFieldSilent ───────────────────────
+document.addEventListener('input', e => {
+  if (e.target.dataset.silent) e.stopImmediatePropagation();
+}, true);
 
 // ── Init ──────────────────────────────────────────────────────
-
 (async function init() {
-  await ladeWarengruppen();
-  await ladeTabelle();
+  await Promise.all([ladeWarengruppenbaum(), ladeTabelle()]);
 })();
 </script>
 {% endblock %}

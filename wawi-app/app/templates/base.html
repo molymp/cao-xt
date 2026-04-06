@@ -235,6 +235,7 @@ a { text-decoration: none; color: inherit; }
   text-decoration: none;
 }
 .sidebar-sub-item:hover { background: var(--grau-hell); color: var(--gruen-dunkel); }
+.sidebar-sub-item.aktiv { background: var(--gruen-blass); color: var(--gruen-dunkel); font-weight: 700; }
 .sidebar-sub-item .sub-icon { font-size: 12px; flex-shrink: 0; opacity: 0.7; }
 
 /* ── Hauptinhalt ──────────────────────────────────────────── */
@@ -389,14 +390,25 @@ a { text-decoration: none; color: inherit; }
         <a href="/coming-soon?modul=Adressen" class="sidebar-item">
           <span class="icon">👥</span> Adressen
         </a>
-        <a href="/wawi" class="sidebar-item {% if request.path == '/wawi' %}aktiv{% endif %}">
-          <span class="icon">📦</span> Artikel
-          <span class="sub">Suche &amp; Detail</span>
-        </a>
-        <a href="/wawi/preispflege" class="sidebar-item {% if request.path == '/wawi/preispflege' %}aktiv{% endif %}">
-          <span class="icon">💶</span> Preispflege
-          <span class="sub">EK / VK5 / Marge</span>
-        </a>
+
+        {% set artikel_aktiv = request.path in ('/wawi', '/wawi/preispflege') %}
+        <div class="sidebar-group {% if artikel_aktiv %}open{% endif %}" id="grp-artikel">
+          <button class="sidebar-group-toggle" onclick="toggleGrp('grp-artikel')">
+            <span class="icon">📦</span> Artikel
+            <span class="toggle-arrow">▶</span>
+          </button>
+          <div class="sidebar-group-items">
+            <a href="/wawi"
+               class="sidebar-sub-item {% if request.path == '/wawi' %}aktiv{% endif %}">
+              <span class="sub-icon">🔍</span> Suche &amp; Detail
+            </a>
+            <a href="/wawi/preispflege"
+               class="sidebar-sub-item {% if request.path == '/wawi/preispflege' %}aktiv{% endif %}">
+              <span class="sub-icon">💶</span> Preispflege
+            </a>
+          </div>
+        </div>
+
         <a href="/coming-soon?modul=Mitarbeiter" class="sidebar-item">
           <span class="icon">🪪</span> Mitarbeiter
         </a>

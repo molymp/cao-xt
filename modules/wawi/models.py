@@ -364,52 +364,161 @@ def vk_berechnen(artnum: str, preisebene: int) -> dict:
 # MwSt-Sätze je CAO-Steuercode (in Prozent)
 _MWST_MAP: dict[int, float] = {0: 0.0, 1: 19.0, 2: 7.0, 3: 7.8}
 
+# Cache für VPE-Spalten in ARTIKEL (einmalig ermittelt)
+_vpe_cols_cache: dict | None = None
+
+
+def _vpe_spalten() -> dict:
+    """Ermittelt welche VPE-Spalten in ARTIKEL vorhanden sind (einmalig gecacht).
+
+    Prüft SHOW COLUMNS FROM ARTIKEL. Gibt {'vpe_vk': col|None, 'vpe_ek': col|None} zurück.
+    """
+    global _vpe_cols_cache
+    if _vpe_cols_cache is not None:
+        return _vpe_cols_cache
+
+    try:
+        with get_db() as cur:
+            cur.execute('SHOW COLUMNS FROM ARTIKEL')
+            cols = {r['Field'] for r in cur.fetchall()}
+    except Exception:
+        _vpe_cols_cache = {'vpe_vk': None, 'vpe_ek': None}
+        return _vpe_cols_cache
+
+    vpe_vk = next((c for c in ('VPE', 'VPE_VK', 'VK_VPE') if c in cols), None)
+    vpe_ek = next((c for c in ('EK_VPE', 'VPE_EK', 'EINK_VPE') if c in cols), None)
+    # Fallback: wenn nur ein VPE-Feld vorhanden, gilt es für beide
+    if vpe_vk and not vpe_ek:
+        vpe_ek = vpe_vk
+    _vpe_cols_cache = {'vpe_vk': vpe_vk, 'vpe_ek': vpe_ek}
+    return _vpe_cols_cache
+
+
+def _faktor_berechnen(vk5_netto: float, ek: float,
+                      vpe_vk: float = 1.0, vpe_ek: float = 1.0) -> float | None:
+    """Preisfaktor (VK/EK-Verhältnis, VPE-korrigiert).
+
+    Faktor = (vk5_netto × vpe_ek) / (ek × vpe_vk)
+
+    Beispiel: VPE_EK=12 (Karton à 12 Stk), VPE_VK=1 (Einzelstk),
+              EK=12 € (Karton), VK5 Netto=2 € → Faktor = 2×12/(12×1) = 2,0
+
+    Rückgabe None wenn EK oder VK5 fehlen/null.
+    """
+    divisor = ek * (vpe_vk or 1.0)
+    if divisor <= 0 or vk5_netto <= 0:
+        return None
+    return round(vk5_netto * (vpe_ek or 1.0) / divisor, 3)
+
 
 def warengruppen_liste() -> list:
-    """Alle aktiven Warengruppen für Filter-Dropdown (aufsteigend nach Bezeichnung)."""
+    """Alle Warengruppen für Filter-Dropdown (aufsteigend nach Name)."""
     with get_db() as cur:
         cur.execute(
-            "SELECT ID AS wgr_id, NAME AS name "
-            "FROM WARENGRUPPEN ORDER BY NAME"
+            'SELECT ID AS wgr_id, NAME AS name '
+            'FROM WARENGRUPPEN ORDER BY NAME'
         )
         return cur.fetchall()
 
 
-def preispflege_liste(wgr_id: int | None = None) -> list:
-    """
-    Alle Normalartikel (ARTIKELTYP='N', VK5B>0) mit EK, VK5 und berechneter Marge.
+def warengruppen_mit_faktor() -> list:
+    """Warengruppen-Baum mit durchschnittlichem Faktor aller aktiven Normalartikel.
 
-    EK wird aus ARTIKEL.EK_PREIS gelesen (CAO-Stammdaten).
-    Marge-Berechnung:
-        vk5_netto    = VK5B / (1 + mwst_satz)
-        marge_pct    = (vk5_netto - EK) / vk5_netto * 100
+    Rückgabe: [{wgr_id, name, anzahl_artikel, avg_faktor}, ...]
+    Faktor wird in Python berechnet (VPE-korrigiert, graceful degradation).
     """
+    vpe_cols = _vpe_spalten()
+    vpe_vk_sel = f'COALESCE(a.{vpe_cols["vpe_vk"]}, 1)' if vpe_cols['vpe_vk'] else '1'
+    vpe_ek_sel = f'COALESCE(a.{vpe_cols["vpe_ek"]}, 1)' if vpe_cols['vpe_ek'] else '1'
+
+    sql = f"""
+        SELECT
+            wg.ID                                              AS wgr_id,
+            wg.NAME                                           AS name,
+            COALESCE(a.VK5B, 0)                              AS vk5,
+            COALESCE(a.EK_PREIS, 0)                          AS ek,
+            COALESCE(a.STEUER_CODE, 0)                       AS mwst_code,
+            {vpe_vk_sel}                                      AS vpe_vk,
+            {vpe_ek_sel}                                      AS vpe_ek
+        FROM WARENGRUPPEN wg
+        LEFT JOIN ARTIKEL a ON a.WARENGRUPPE = wg.ID
+            AND a.ARTIKELTYP = 'N'
+            AND a.VK5B > 0
+            AND a.EK_PREIS > 0
+        ORDER BY wg.NAME, wg.ID
+    """
+    try:
+        with get_db() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+    except Exception:
+        return warengruppen_liste()
+
+    wgr_map: dict[int, dict] = {}
+    for r in rows:
+        wid = int(r['wgr_id'])
+        if wid not in wgr_map:
+            wgr_map[wid] = {'wgr_id': wid, 'name': r['name'] or '', 'faktoren': []}
+        vk5 = float(r['vk5'] or 0)
+        ek = float(r['ek'] or 0)
+        mwst_satz = _MWST_MAP.get(int(r['mwst_code'] or 0), 0.0) / 100.0
+        vpe_vk = float(r['vpe_vk'] or 1) or 1.0
+        vpe_ek = float(r['vpe_ek'] or 1) or 1.0
+        vk5_netto = vk5 / (1.0 + mwst_satz) if mwst_satz > 0 else vk5
+        f = _faktor_berechnen(vk5_netto, ek, vpe_vk, vpe_ek)
+        if f is not None:
+            wgr_map[wid]['faktoren'].append(f)
+
+    result = []
+    for wid, data in sorted(wgr_map.items(), key=lambda x: x[1]['name']):
+        faktoren = data['faktoren']
+        result.append({
+            'wgr_id':         wid,
+            'name':           data['name'],
+            'anzahl_artikel': len(faktoren),
+            'avg_faktor':     round(sum(faktoren) / len(faktoren), 3) if faktoren else None,
+        })
+    return result
+
+
+def preispflege_liste(wgr_id: int | None = None) -> list:
+    """Alle Normalartikel (ARTIKELTYP='N', VK5B>0) mit EK, VK5, VPE und Faktor.
+
+    Faktor = vk5_netto × vpe_ek / (ek × vpe_vk)  — VPE-korrigierte Kalkulation.
+    VPE-Felder werden aus verfügbaren ARTIKEL-Spalten geladen (SHOW COLUMNS gecacht).
+    EK aus ARTIKEL.EK_PREIS, Bestand aus ARTIKEL.MENGE_AKT.
+    """
+    vpe_cols = _vpe_spalten()
+    vpe_vk_sel = f'COALESCE(a.{vpe_cols["vpe_vk"]}, 1)' if vpe_cols['vpe_vk'] else '1'
+    vpe_ek_sel = f'COALESCE(a.{vpe_cols["vpe_ek"]}, 1)' if vpe_cols['vpe_ek'] else '1'
+
     wgr_filter = ''
     params: list = []
     if wgr_id is not None:
         wgr_filter = 'AND a.WARENGRUPPE = %s '
         params.append(wgr_id)
 
+    sql = f"""
+        SELECT
+            a.ARTNUM,
+            COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
+            a.WARENGRUPPE                                  AS wgr_id,
+            COALESCE(wg.NAME, '')                         AS WGR_NAME,
+            COALESCE(a.VK5B, 0)                          AS VK5,
+            COALESCE(a.EK_PREIS, 0)                      AS EK,
+            COALESCE(a.STEUER_CODE, 0)                   AS MWST_CODE,
+            COALESCE(a.MENGE_AKT, 0)                     AS BESTAND,
+            {vpe_vk_sel}                                  AS VPE_VK,
+            {vpe_ek_sel}                                  AS VPE_EK
+        FROM ARTIKEL a
+        LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
+        WHERE a.ARTIKELTYP = 'N'
+          AND a.VK5B > 0
+          {wgr_filter}
+        ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
+    """
     with get_db() as cur:
-        cur.execute(
-            f"""
-            SELECT
-                a.ARTNUM,
-                COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
-                a.WARENGRUPPE                                  AS wgr_id,
-                COALESCE(wg.NAME, '')                         AS WGR_NAME,
-                COALESCE(a.VK5B, 0)                          AS VK5,
-                COALESCE(a.EK_PREIS, 0)                      AS EK,
-                COALESCE(a.STEUER_CODE, 0)                   AS MWST_CODE
-            FROM ARTIKEL a
-            LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
-            WHERE a.ARTIKELTYP = 'N'
-              AND a.VK5B > 0
-              {wgr_filter}
-            ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
-            """,
-            params,
-        )
+        cur.execute(sql, params)
         rows = cur.fetchall()
 
     result = []
@@ -419,12 +528,11 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
         mwst_code = int(r['MWST_CODE'] or 0)
         mwst_pct = _MWST_MAP.get(mwst_code, 0.0)
         mwst_satz = mwst_pct / 100.0
+        vpe_vk = float(r['VPE_VK'] or 1) or 1.0
+        vpe_ek = float(r['VPE_EK'] or 1) or 1.0
 
         vk5_netto = vk5 / (1.0 + mwst_satz) if mwst_satz > 0 else vk5
-        if vk5_netto > 0:
-            marge_pct = round((vk5_netto - ek) / vk5_netto * 100, 1)
-        else:
-            marge_pct = None
+        faktor = _faktor_berechnen(vk5_netto, ek, vpe_vk, vpe_ek)
 
         result.append({
             'artnr':       r['ARTNUM'],
@@ -432,14 +540,73 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             'wgr_id':      r['wgr_id'],
             'wgr_name':    r['WGR_NAME'],
             'vk5':         round(vk5, 2),
+            'vk5_netto':   round(vk5_netto, 4),
             'ek':          round(ek, 2),
             'mwst_code':   mwst_code,
             'mwst_pct':    mwst_pct,
-            'vk5_netto':   round(vk5_netto, 4),
-            'marge_pct':   marge_pct,
+            'bestand':     float(r['BESTAND'] or 0),
+            'vpe_vk':      vpe_vk,
+            'vpe_ek':      vpe_ek,
+            'faktor':      faktor,
         })
 
     return result
+
+
+def lieferantenpreise_fuer_artikel(artnr: str) -> list:
+    """Lieferantenpreise für einen Artikel aus CAO-Stammdaten.
+
+    Versucht ARTIKEL_LIEFERANT (CAO-Standardtabelle). Bei fehlender Tabelle
+    oder unbekannten Spalten wird leere Liste zurückgegeben (kein Fehler).
+
+    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe}, ...]
+    """
+    queries = [
+        # Variante 1: mit ADRESSEN-Join für Lieferantenname
+        """
+        SELECT
+            al.LIEF_NR,
+            COALESCE(adr.NAME1, adr.MATCHCODE,
+                     CONCAT('Lieferant ', al.LIEF_NR))  AS lief_name,
+            COALESCE(al.LIEF_ARTNR, al.BESTELL_NR, '') AS lief_artnr,
+            COALESCE(al.EK_PREIS, 0)                    AS ek_preis,
+            COALESCE(al.VPE, 1)                         AS vpe
+        FROM ARTIKEL_LIEFERANT al
+        LEFT JOIN ADRESSEN adr ON adr.LIEF_NR = al.LIEF_NR
+        WHERE al.ARTNUM = %s
+        ORDER BY al.LIEF_NR
+        """,
+        # Variante 2: ohne ADRESSEN-Join
+        """
+        SELECT
+            al.LIEF_NR,
+            CONCAT('Lieferant ', al.LIEF_NR)            AS lief_name,
+            COALESCE(al.LIEF_ARTNR, '')                  AS lief_artnr,
+            COALESCE(al.EK_PREIS, 0)                     AS ek_preis,
+            COALESCE(al.VPE, 1)                          AS vpe
+        FROM ARTIKEL_LIEFERANT al
+        WHERE al.ARTNUM = %s
+        ORDER BY al.LIEF_NR
+        """,
+    ]
+    for sql in queries:
+        try:
+            with get_db() as cur:
+                cur.execute(sql, (artnr,))
+                rows = cur.fetchall()
+            return [
+                {
+                    'lief_nr':    r['LIEF_NR'],
+                    'lief_name':  r['lief_name'],
+                    'lief_artnr': r['lief_artnr'],
+                    'ek_preis':   float(r['ek_preis'] or 0),
+                    'vpe':        float(r['vpe'] or 1),
+                }
+                for r in rows
+            ]
+        except Exception:
+            continue
+    return []
 
 
 def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
@@ -450,7 +617,7 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
     begründet in DECISIONS.md (HAB-235): Preispflege erfordert Rückschreiben
     in CAO-ARTIKEL, da die Kassenintegration VK5B direkt aus ARTIKEL liest.
 
-    Gibt dict zurück: {'ok': True, 'artnr': ..., 'vk5_neu': ..., 'marge_pct': ...}
+    Gibt dict zurück: {'ok': True, 'artnr': ..., 'vk5_neu': ..., 'faktor': ...}
     """
     if vk5_brutto < 0:
         raise ValueError('VK5 darf nicht negativ sein')
@@ -461,7 +628,7 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
 
     with get_db_transaction() as cur:
         cur.execute(
-            "UPDATE ARTIKEL SET VK5B = %s WHERE ARTNUM = %s",
+            'UPDATE ARTIKEL SET VK5B = %s WHERE ARTNUM = %s',
             (vk5_brutto, artnum),
         )
         if cur.rowcount == 0:
@@ -471,11 +638,12 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
     mwst_code = int(artikel.get('MWST_CODE') or 0)
     mwst_satz = _MWST_MAP.get(mwst_code, 0.0) / 100.0
     vk5_netto = vk5_brutto / (1.0 + mwst_satz) if mwst_satz > 0 else vk5_brutto
-    marge_pct = round((vk5_netto - ek) / vk5_netto * 100, 1) if vk5_netto > 0 else None
+    faktor = _faktor_berechnen(vk5_netto, ek)
 
     return {
-        'ok':       True,
-        'artnr':    artnum,
-        'vk5_neu':  vk5_brutto,
-        'marge_pct': marge_pct,
+        'ok':      True,
+        'artnr':   artnum,
+        'vk5_neu': vk5_brutto,
+        'vk5_netto': round(vk5_netto, 4),
+        'faktor':  faktor,
     }

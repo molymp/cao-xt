@@ -147,6 +147,12 @@ def api_warengruppen():
     return jsonify(m.warengruppen_liste())
 
 
+@bp.get('/api/warengruppen/mit-faktor')
+def api_warengruppen_mit_faktor():
+    """GET /wawi/api/warengruppen/mit-faktor – Warengruppen mit Durchschnitts-Faktor."""
+    return jsonify(m.warengruppen_mit_faktor())
+
+
 @bp.get('/api/preispflege')
 def api_preispflege():
     """
@@ -161,6 +167,18 @@ def api_preispflege():
     except (TypeError, ValueError):
         return jsonify({'error': 'wgr_id muss eine Ganzzahl sein'}), 400
     return jsonify(m.preispflege_liste(wgr_id=wgr_id_int))
+
+
+@bp.get('/api/artikel/<artnr>/lieferanten')
+def api_artikel_lieferanten(artnr: str):
+    """
+    GET /wawi/api/artikel/<artnr>/lieferanten
+
+    Lieferantenpreise für einen Artikel.
+    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe}, ...]
+    Leere Liste wenn keine Lieferantendaten vorhanden oder Tabelle fehlt.
+    """
+    return jsonify(m.lieferantenpreise_fuer_artikel(artnr))
 
 
 @bp.patch('/api/artikel/<artnr>/vk5')
