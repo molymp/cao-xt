@@ -1928,12 +1928,6 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
 
     jetzt = datetime.now()
 
-    # FOLGENR: letzter Wert in JOURNAL + 1
-    with get_db() as cur:
-        cur.execute("SELECT COALESCE(MAX(FOLGENR), 0) + 1 AS next_folgenr FROM JOURNAL")
-        fn_row = cur.fetchone()
-    folgenr = int(fn_row['next_folgenr']) if fn_row else 1
-
     # Leer-Werte je Spaltentyp ('' für VARCHAR/TEXT, None für INT/DATE/DECIMAL)
     _leer_cols = (
         'KUN_NAME3', 'KUN_UST_NUM', 'KUN_HAUSNR', 'KUN_ADRESSZUSATZ',
@@ -1969,7 +1963,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                KOST_NETTO, WARE, WERT_NETTO, LOHN, TKOST, ROHGEWINN,
                ATSUMME, ATMSUMME,
                SOLL_NTAGE, SOLL_SKONTO, SOLL_RATINTERVALL,
-               FOLGENR, VERTRETER_ID, LIEFART,
+               FOLGENR, VERTRETER_ID, LIEFART, KM_STAND,
                STORNO_INFO,
                USR1, USR2,
                KOPFTEXT, FUSSTEXT, PROJEKT, ORGNUM,
@@ -1993,7 +1987,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                0, %s, %s, 0, 0, %s,
                0, 0,
                1, 0, 1,
-               %s, 0, 0,
+               0, 0, 0, -1,
                'Belegtransfer',
                %s, %s,
                %s, %s, %s, %s,
@@ -2021,7 +2015,6 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
                 float(mwst_saetze.get(1, 19.0)), float(mwst_saetze.get(2, 7.0)),
                 float(mwst_saetze.get(3, 0.0)), float(mwst_saetze.get(3, 0.0)),
                 c(nsumme_total), c(nsumme_total), c(nsumme_total),
-                folgenr,
                 _leer['USR1'], _leer['USR2'],
                 _leer['KOPFTEXT'], _leer['FUSSTEXT'], _leer['PROJEKT'], _leer['ORGNUM'],
                 _leer['BEST_NAME'], _leer['BEST_CODE'], _leer['INFO'], _leer['TRACKINGCODE'],
@@ -2030,6 +2023,9 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
             )
         )
         journal_id = cur.lastrowid
+        # FOLGENR = REC_ID (CAO-Konvention: Folgenummer entspricht dem Primärschlüssel)
+        cur.execute("UPDATE JOURNAL SET FOLGENR = %s WHERE REC_ID = %s",
+                    (journal_id, journal_id))
 
         # JOURNALPOS
         for pos in positionen:
