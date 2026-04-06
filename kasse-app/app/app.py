@@ -1739,7 +1739,8 @@ def update_seite():
 @_login_required
 def api_update_ausfuehren():
     try:
-        ausgabe = _git(["pull", "origin", "master"], timeout=60)
+        ausgabe = _git(["fetch", "origin", "master"], timeout=60)
+        ausgabe += "\n" + _git(["reset", "--hard", "origin/master"], timeout=30)
     except Exception as exc:
         return jsonify({"ok": False, "fehler": str(exc)})
 
