@@ -1,7 +1,7 @@
 # Benutzerhandbuch – WaWi (Warenwirtschaft)
 
-**Version:** 0.3.0
-**Stand:** 2026-04-06
+**Version:** 0.4.0
+**Stand:** 2026-04-07
 **App:** `wawi-app` · Port 5003
 
 ---
@@ -84,3 +84,27 @@ Zeigt Basisdetails, aktuelle VK-Preise aller Ebenen (VK1–VK5) und EK.
 - **MwSt-Tabelle:** Aufschlüsselung nach 7 % / 19 % je Monat (letzte 12 Monate).
 - **Warengruppen-Umsatz:** Brutto-Umsatz und COGS nach Warengruppe für gewählten Monat.
 - **Finance-KPIs:** Aktueller und Vormonat im Vergleich (Umsatz, Belege, Tages-Ø, Ø 6 Monate).
+
+---
+
+## CFO-Berichte (`/wawi/berichte`)
+
+Erreichbar über Sidebar → **Weitere → Reporting / CFO-Reports** oder direkt unter `/wawi/berichte`.
+
+### Verfügbare Berichte
+
+| Bericht | URL | Beschreibung |
+|---------|-----|--------------|
+| Übersicht | `/wawi/berichte` | Startseite mit Links zu allen 4 Berichten |
+| Tagesumsatz | `/wawi/berichte/tagesumsatz` | Tagesumsätze nach Zahlart (Zeitraumfilter: Von/Bis) |
+| Monatsübersicht | `/wawi/berichte/monatsuebersicht` | VK/EK je Monat + Balken-Chart (Jahresauswahl) |
+| Kassenbuch | `/wawi/berichte/kassenbuch` | FiBu-Konto 1000 – Kasseneinnahmen/-ausgaben |
+| EC-Umsätze | `/wawi/berichte/ec-umsaetze` | EC-Kartentransaktionen nach Zahlungsart |
+
+### Zeitraumfilter
+
+Alle Berichte mit Datum-Filter akzeptieren `?von=YYYY-MM-DD&bis=YYYY-MM-DD` als URL-Parameter. Die Formularfelder auf der Seite setzen diese Parameter automatisch.
+
+### CSV-Export
+
+Jeder Bericht hat einen **CSV exportieren**-Button. Die heruntergeladene Datei ist UTF-8-BOM-kodiert für direkte Öffnung in Excel (ohne Zeichensatzprobleme bei Umlauten).

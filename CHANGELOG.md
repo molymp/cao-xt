@@ -8,6 +8,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- WaWi CFO-Berichte (Phase 1): Tagesumsatz, Monatsübersicht, Kassenbuch, EC-Umsätze – parametrisierbare Zeitraumfilter, CSV-Export je Bericht, Monats-Chart (Chart.js) ([HAB-238](/HAB/issues/HAB-238))
 - WaWi Preispflege: Touch-optimierter Warengruppenbaum (größere Tap-Targets, aktiver Zustand) und verbessertes Anpassen-Panel für Touch-Bedienung ([HAB-280](/HAB/issues/HAB-280))
 - WaWi Preispflege-Tabelle: Alle Normalartikel mit EK / VK5 (Brutto) / Marge auf einen Blick; VK5 inline editierbar, Filter nach Warengruppe, Sortierung nach Marge, Rot-Markierung bei Marge < 10 % ([HAB-235](/HAB/issues/HAB-235))
 - Commit-ID-Anzeige: In allen drei Apps (Kasse, Kiosk, WaWi) wird der aktuelle Git-Commit-Hash oben links als kleiner orangener Hinweis angezeigt (position:fixed, kein Layout-Einfluss) ([HAB-244](/HAB/issues/HAB-244))
