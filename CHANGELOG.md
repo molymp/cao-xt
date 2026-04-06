@@ -24,6 +24,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - Kiosk-App: `firma_name` und `db_name` im Context-Processor; FIRMA_NAME-Konfigurationsvariable ([HAB-149](/HAB/issues/HAB-149))
 
 ### Geändert
+- Update-Funktion in kasse-app und kiosk-app: `git pull` durch `git fetch` + `git reset --hard origin/master` ersetzt – behebt Fehler bei abweichenden Branches ([HAB-272](/HAB/issues/HAB-272))
 - `kasse-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt ([HAB-131](/HAB/issues/HAB-131))
 - `kiosk-app/app/config.py`: WAWI_URL / WAWI_PORT ergänzt ([HAB-131](/HAB/issues/HAB-131))
 - WaWi-Reporting: SQL Datumsformat-Escaping und Warengruppen-SQL korrigiert ([HAB-139](/HAB/issues/HAB-139))
