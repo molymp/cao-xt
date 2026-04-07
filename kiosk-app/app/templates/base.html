@@ -317,15 +317,13 @@
     </div>
 
     <nav>
-        <a href="/" class="{% if request.path == '/' %}aktiv{% endif %}">🧺 Artikelauswahl</a>
-        <a href="/offen" class="{% if request.path == '/offen' %}aktiv{% endif %}">⏸ Geparkt</a>
-        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
-        <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
         <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
             📦 Bestellungen
             <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
+        <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}
