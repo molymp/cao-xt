@@ -257,7 +257,7 @@ def artikel():
 @app.route('/wawi/preispflege')
 @_login_required
 def preispflege():
-    """Preispflege-Tabelle: EK / VK5 / Marge für alle Normalartikel."""
+    """Preispflege-Tabelle: EK / VK5 / Faktor für alle aktiven Artikel (N/F/S)."""
     return render_template('preispflege.html')
 
 
