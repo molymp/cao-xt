@@ -501,11 +501,11 @@ def warengruppen_mit_faktor() -> list:
 
 
 def preispflege_liste(wgr_id: int | None = None) -> list:
-    """Alle aktiven Artikel mit EK, VK5, VPE und Faktor.
+    """Alle aktiven Artikel (N/F/S) mit EK, VK5, VPE und Faktor.
 
-    Aktive Artikel: kein VK-Sperre (NO_VK_FLAG != 'J'/'Y') und kein Löschvermerk (USERFELD_02).
-    VPE: ARTIKEL.VPE (Verkaufseinheit) und ARTIKEL.VPE_EK (Einkaufseinheit).
-    Faktor = vk5_netto × vpe_ek / (ek × vpe_vk)  — VPE-korrigiert.
+    Aktive Artikel: ARTIKELTYP IN ('N','F','S'), kein VK-Sperre
+    (NO_VK_FLAG != 'J'/'Y') und kein Löschvermerk (USERFELD_02).
+    Auch Artikel ohne VK5 werden angezeigt (Faktor = None).
     """
     wgr_filter = ''
     params: list = []
@@ -519,6 +519,7 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
             a.WARENGRUPPE                                  AS wgr_id,
             COALESCE(wg.NAME, '')                         AS WGR_NAME,
+            COALESCE(a.ARTIKELTYP, 'N')                  AS ART_TYP,
             COALESCE(a.VK5B, 0)                          AS VK5,
             COALESCE(a.EK_PREIS, 0)                      AS EK,
             COALESCE(a.STEUER_CODE, 0)                   AS MWST_CODE,
@@ -528,7 +529,8 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             a.DEFAULT_LIEF_ID
         FROM ARTIKEL a
         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
-        WHERE (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
+        WHERE a.ARTIKELTYP IN ('N', 'F', 'S')
+          AND (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
           AND (a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')
           {wgr_filter}
         ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
@@ -555,6 +557,7 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             'bezeichnung':     r['BEZEICHNUNG'],
             'wgr_id':          r['wgr_id'],
             'wgr_name':        r['WGR_NAME'],
+            'art_typ':         r['ART_TYP'],
             'vk5':             round(vk5, 2),
             'vk5_netto':       round(vk5_netto, 4),
             'ek':              round(ek, 2),

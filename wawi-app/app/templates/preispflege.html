@@ -414,7 +414,7 @@
   <div class="pp-content">
     <div class="pp-header">
       <h2 id="pp-titel">Preispflege</h2>
-      <div class="pp-sub">EK · VK5 Netto · VK5 Brutto · Faktor — alle aktiven Artikel (kein VK-Sperre, nicht gelöscht)</div>
+      <div class="pp-sub">EK · VK5 Netto · VK5 Brutto · Faktor — alle aktiven Artikel (N/F/S, keine VK-Sperre, nicht gelöscht)</div>
     </div>
 
     <div class="pp-toolbar">
@@ -430,6 +430,7 @@
         <thead>
           <tr>
             <th onclick="sortiere('artnr')" data-col="artnr">Art-Nr.<span class="sort-arrow">▲▼</span></th>
+            <th onclick="sortiere('art_typ')" data-col="art_typ">Typ<span class="sort-arrow">▲▼</span></th>
             <th onclick="sortiere('bezeichnung')" data-col="bezeichnung">Bezeichnung<span class="sort-arrow">▲▼</span></th>
             <th onclick="sortiere('bestand')" data-col="bestand" style="text-align:right;">Bestand<span class="sort-arrow">▲▼</span></th>
             <th onclick="sortiere('vpe_ek')" data-col="vpe_ek" style="text-align:right;" title="Einheiten pro Einkaufsverpackung">VPE EK<span class="sort-arrow">▲▼</span></th>
@@ -670,8 +671,10 @@ function renderTabelle() {
     const vpeEkTxt = art.vpe_ek !== 1 ? _eur(art.vpe_ek, 0) : '1';
     const vpeVkTxt = art.vpe_vk !== 1 ? _eur(art.vpe_vk, 0) : '1';
 
+    const typLabel = {'N':'Normal','F':'Frei','S':'Stückliste'}[art.art_typ] || art.art_typ || '–';
     tr.innerHTML = `
       <td style="font-family:monospace;font-size:12px;">${_esc(art.artnr)}</td>
+      <td style="font-size:11px;text-align:center;color:var(--text-hell);" title="${_esc(typLabel)}">${_esc(art.art_typ || '–')}</td>
       <td>${_esc(art.bezeichnung || '–')}</td>
       <td class="td-right" style="font-size:12px;">${_eur(art.bestand, 0)}</td>
       <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeEkTxt)}</td>

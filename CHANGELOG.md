@@ -7,6 +7,9 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Geändert
+- WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
+
 ### Hinzugefügt
 - WaWi CFO-Berichte (Phase 1): Tagesumsatz, Monatsübersicht, Kassenbuch, EC-Umsätze – parametrisierbare Zeitraumfilter, CSV-Export je Bericht, Monats-Chart (Chart.js) ([HAB-238](/HAB/issues/HAB-238))
 - WaWi Preispflege: Touch-optimierter Warengruppenbaum (größere Tap-Targets, aktiver Zustand) und verbessertes Anpassen-Panel für Touch-Bedienung ([HAB-280](/HAB/issues/HAB-280))

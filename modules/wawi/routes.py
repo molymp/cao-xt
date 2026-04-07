@@ -164,8 +164,8 @@ def api_preispflege():
     """
     GET /wawi/api/preispflege?wgr_id=<optional>
 
-    Liefert alle Normalartikel (ARTIKELTYP='N', VK5B>0) mit EK, VK5 und
-    berechneter Marge. Optional gefiltert nach Warengruppe.
+    Liefert alle aktiven Artikel (ARTIKELTYP N/F/S, nicht gelöscht, keine
+    VK-Sperre) mit EK, VK5, Typ und Faktor. Optional gefiltert nach Warengruppe.
     """
     wgr_id = request.args.get('wgr_id')
     try:

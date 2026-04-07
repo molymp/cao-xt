@@ -25,20 +25,21 @@ Nach dem Login erscheint das Dashboard.
 |---------|-------|-------------|
 | Dashboard | `/` | Tageseinnahmen, Monatsumsatz, offene Vorgänge |
 | Stammdaten → Artikel | `/wawi` | Artikelsuche & Detailansicht |
-| Stammdaten → Preispflege | `/wawi/preispflege` | EK / VK5 / Marge aller Normalartikel |
+| Stammdaten → Preispflege | `/wawi/preispflege` | EK / VK5 / Faktor aller aktiven Artikel (N/F/S) |
 | Weitere → Reporting | `/reporting` | CFO-Reports: MwSt, Warengruppen-Umsatz |
 
 ---
 
 ## Preispflege (HAB-235)
 
-Unter **Stammdaten → Preispflege** werden alle Normalartikel mit VK5 > 0 angezeigt.
+Unter **Stammdaten → Preispflege** werden alle aktiven Artikel angezeigt – Normal (N), Freie (F) und Stückliste (S). Gelöschte und VK-gesperrte Artikel werden ausgeschlossen.
 
 ### Spalten
 
 | Spalte | Bedeutung |
 |--------|-----------|
 | Art-Nr. | CAO-Artikelnummer |
+| Typ | Artikeltyp: N (Normal), F (Frei), S (Stückliste) |
 | Bezeichnung | Kassenname des Artikels |
 | Warengruppe | Zugeordnete Warengruppe |
 | EK (€) | Einkaufspreis aus CAO-Stammdaten |
