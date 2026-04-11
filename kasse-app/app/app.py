@@ -529,10 +529,14 @@ def api_zahlung(vid):
 @app.post('/api/drucker/letzter-bon')
 @_login_required
 def api_letzter_bon():
-    """Letzten abgeschlossenen Bon nochmal drucken (Kopie)."""
+    """Letzten abgeschlossenen Bon nochmal drucken (Kopie).
+
+    Bei einem Lieferschein-Vorgang wird das Lieferscheinlayout verwendet
+    (ohne Preise, mit Unterschriftszeile); sonst der normale Kassenbon.
+    """
     with get_db() as cur:
         cur.execute(
-            "SELECT ID FROM XT_KASSE_VORGAENGE "
+            "SELECT ID, BON_NR, VORGANG_TYP, ADRESSEN_ID FROM XT_KASSE_VORGAENGE "
             "WHERE TERMINAL_NR=%s AND STATUS='ABGESCHLOSSEN' "
             "ORDER BY ID DESC LIMIT 1",
             (_eff_terminal_nr(),)
@@ -540,7 +544,12 @@ def api_letzter_bon():
         row = cur.fetchone()
     if not row:
         return jsonify({'ok': False, 'fehler': 'Kein abgeschlossener Bon vorhanden'}), 404
+
     try:
+        if (row.get('VORGANG_TYP') or '') == 'Lieferschein':
+            adressen_id = int(row.get('ADRESSEN_ID') or 0)
+            druck.drucke_lieferschein_bon(config.TERMINAL_NR, row['ID'], adressen_id)
+            return jsonify({'ok': True, 'bon_nr': row['BON_NR']})
         vorgang = _bon_drucken(row['ID'], ist_kopie=True)
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)})
