@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Datenbank{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:24px;">🗄️ Datenbank-Konfiguration</h1>
+
+<div class="card" style="max-width:600px;">
+  <form id="dbForm" onsubmit="return saveConfig(event)">
+    <div class="form-group">
+      <label>Server (Host)</label>
+      <input class="form-control" name="db_loc" value="{{ ini.get('db_loc', '') }}">
+    </div>
+    <div class="form-group">
+      <label>Port</label>
+      <input class="form-control" name="db_port" type="number" value="{{ ini.get('db_port', '3306') }}">
+    </div>
+    <div class="form-group">
+      <label>Datenbank</label>
+      <input class="form-control" name="db_name" value="{{ ini.get('db_name', '') }}">
+    </div>
+    <div class="form-group">
+      <label>Benutzer</label>
+      <input class="form-control" name="db_user" value="{{ ini.get('db_user', '') }}">
+    </div>
+    <div class="form-group">
+      <label>Passwort</label>
+      <input class="form-control" name="db_pass" type="password" placeholder="(unverändert lassen = kein Update)">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button type="submit" class="btn btn-primary">💾 Speichern</button>
+      <button type="button" class="btn btn-neutral" onclick="testConnection()">🔌 Verbindung testen</button>
+    </div>
+  </form>
+  <div id="testResult" style="margin-top:16px;"></div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+async function saveConfig(e) {
+  e.preventDefault();
+  const fd = new FormData(document.getElementById('dbForm'));
+  const r = await fetch('/db-config', {
+    method: 'POST',
+    body: fd,
+  });
+  const d = await r.json();
+  toast(d.msg, d.ok ? 'ok' : 'err');
+  return false;
+}
+
+async function testConnection() {
+  const el = document.getElementById('testResult');
+  el.innerHTML = '<span style="color:var(--text-dim)">Teste Verbindung...</span>';
+  const r = await api('POST', '/db-config/test');
+  el.innerHTML = r.ok
+    ? '<span style="color:var(--gruen-hell)">✅ ' + r.msg + '</span>'
+    : '<span style="color:#f08080">❌ ' + r.msg + '</span>';
+}
+</script>
+{% endblock %}

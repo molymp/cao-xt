@@ -29,6 +29,8 @@ KIOSK_URL          = os.environ.get('KIOSK_URL',          '')
 KIOSK_PORT         = int(os.environ.get('KIOSK_PORT',      '5001'))
 WAWI_URL           = os.environ.get('WAWI_URL',           '')
 WAWI_PORT          = int(os.environ.get('WAWI_PORT',       '5003'))
+VERWALTUNG_URL     = os.environ.get('VERWALTUNG_URL',     '')
+VERWALTUNG_PORT    = int(os.environ.get('VERWALTUNG_PORT', '5004'))
 
 FIRMA_NAME         = os.environ.get('FIRMA_NAME',         'Habacher Dorfladen')
 FIRMA_STRASSE      = os.environ.get('FIRMA_STRASSE',      '')

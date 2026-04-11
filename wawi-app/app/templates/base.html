@@ -358,6 +358,9 @@ a { text-decoration: none; color: inherit; }
     <span class="nav-btn nav-btn-app-inaktiv">🛒 Kasse</span>
     {% endif %}
     <a href="/" class="nav-btn nav-btn-app-aktiv">📦 WaWi</a>
+    {% if verwaltung_url %}
+    <a href="{{ verwaltung_url }}" class="nav-btn nav-btn-switch">⚙️ Verwaltung</a>
+    {% endif %}
     <div class="spacer"></div>
     {% if db_ok %}
     <span class="db-badge ok">DB ✓</span>

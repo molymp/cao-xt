@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}TSE-Geräte{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:24px;">🔐 TSE-Geräteverwaltung</h1>
+
+<div class="card">
+  <table class="tbl" id="tseTbl">
+    <thead>
+      <tr>
+        <th>Terminal</th>
+        <th>TSE-ID</th>
+        <th>Typ</th>
+        <th>Status</th>
+        <th>Serial</th>
+      </tr>
+    </thead>
+    <tbody id="tseBody"></tbody>
+  </table>
+  <div id="leer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+    Keine TSE-Geräte gefunden.
+  </div>
+</div>
+
+<div class="alert alert-warn" style="margin-top:24px;max-width:600px;">
+  ℹ️ TSE-Konfiguration (Aktivierung, Deaktivierung, Selbsttest) wird weiterhin
+  über die jeweilige Kassen-App gesteuert. Hier sehen Sie die Geräte-Übersicht.
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+async function load() {
+  const r = await api('GET', '/api/tse');
+  if (!r.ok) {
+    document.getElementById('leer').classList.remove('hidden');
+    document.getElementById('leer').textContent = 'Fehler: ' + r.msg;
+    return;
+  }
+  const geraete = r.geraete;
+  const body = document.getElementById('tseBody');
+  const leer = document.getElementById('leer');
+  if (!geraete.length) {
+    body.innerHTML = '';
+    leer.classList.remove('hidden');
+    return;
+  }
+  leer.classList.add('hidden');
+  body.innerHTML = geraete.map(g => `
+    <tr>
+      <td>${g.TERMINAL_NR} ${g.terminal_name ? '(' + g.terminal_name + ')' : ''}</td>
+      <td style="font-family:monospace;font-size:13px;">${g.TSE_ID || '–'}</td>
+      <td>${g.TSE_TYP || '–'}</td>
+      <td>${g.STATUS || '–'}</td>
+      <td style="font-family:monospace;font-size:12px;">${g.SERIAL_NR || '–'}</td>
+    </tr>
+  `).join('');
+}
+
+load();
+</script>
+{% endblock %}

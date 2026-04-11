@@ -1,5 +1,5 @@
 # ============================================================
-# CAO-XT WaWi-App – Konfiguration (thin wrapper um common.config)
+# CAO-XT Verwaltungs-App – Konfiguration (thin wrapper um common.config)
 # Priorität: config_local.py > Umgebungsvariablen > caoxt.ini
 # ============================================================
 import os
@@ -11,26 +11,28 @@ if _REPO_ROOT not in sys.path:
 
 from common.config import load_db_config
 
-_cfg        = load_db_config("WAWI")
+_cfg        = load_db_config("VERWALTUNG")
 DB_HOST     = _cfg['host']
 DB_PORT     = _cfg['port']
 DB_NAME     = _cfg['name']
 DB_USER     = _cfg['user']
 DB_PASSWORD = _cfg['password']
 
-PORT       = int(os.environ.get('WAWI_PORT', '5003'))
-HOST       = os.environ.get('WAWI_HOST', '0.0.0.0')
-SECRET_KEY = os.environ.get('WAWI_SECRET_KEY', 'bitte-in-produktion-aendern')
-DEBUG      = os.environ.get('WAWI_DEBUG', 'false').lower() == 'true'
+PORT       = int(os.environ.get('VERWALTUNG_PORT', '5004'))
+HOST       = os.environ.get('VERWALTUNG_HOST', '0.0.0.0')
+SECRET_KEY = os.environ.get('VERWALTUNG_SECRET_KEY', 'bitte-in-produktion-aendern')
+DEBUG      = os.environ.get('VERWALTUNG_DEBUG', 'false').lower() == 'true'
 
 KASSE_URL  = os.environ.get('KASSE_URL', '')
 KASSE_PORT = int(os.environ.get('KASSE_PORT', '5002'))
-KIOSK_URL       = os.environ.get('KIOSK_URL', '')
-KIOSK_PORT      = int(os.environ.get('KIOSK_PORT', '5001'))
-VERWALTUNG_URL  = os.environ.get('VERWALTUNG_URL', '')
-VERWALTUNG_PORT = int(os.environ.get('VERWALTUNG_PORT', '5004'))
+KIOSK_URL  = os.environ.get('KIOSK_URL', '')
+KIOSK_PORT = int(os.environ.get('KIOSK_PORT', '5001'))
+WAWI_URL   = os.environ.get('WAWI_URL', '')
+WAWI_PORT  = int(os.environ.get('WAWI_PORT', '5003'))
 
 FIRMA_NAME = os.environ.get('FIRMA_NAME', 'Habacher Dorfladen')
+
+INI_PATH = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini')
 
 # ── Lokale Overrides (config_local.py, nicht in git) ─────────
 try:

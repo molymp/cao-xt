@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Bondrucker{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+  <h1>🖨️ Bondrucker</h1>
+  <button class="btn btn-primary btn-sm" onclick="showAdd()">+ Neuer Drucker</button>
+</div>
+
+<div class="card">
+  <table class="tbl" id="druckerTbl">
+    <thead>
+      <tr>
+        <th>Terminal</th>
+        <th>IP-Adresse</th>
+        <th>Port</th>
+        <th>Bezeichnung</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody id="druckerBody"></tbody>
+  </table>
+  <div id="leer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+    Keine Drucker konfiguriert.
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;display:flex;align-items:center;justify-content:center;">
+  <div class="card" style="width:min(440px,95vw);padding:24px;">
+    <h2 id="modalTitle" style="margin-bottom:16px;font-size:20px;">Drucker</h2>
+    <input type="hidden" id="editId">
+    <div class="form-group">
+      <label>Terminal-Nr.</label>
+      <input class="form-control" id="fTerminal" type="number" min="1" max="99">
+    </div>
+    <div class="form-group">
+      <label>IP-Adresse</label>
+      <input class="form-control" id="fIp" placeholder="192.168.1.100">
+    </div>
+    <div class="form-group">
+      <label>Port</label>
+      <input class="form-control" id="fPort" type="number" value="9100">
+    </div>
+    <div class="form-group">
+      <label>Bezeichnung</label>
+      <input class="form-control" id="fBez" placeholder="z.B. Kasse 1 Bondrucker">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" onclick="saveDrucker()">Speichern</button>
+      <button class="btn btn-neutral" onclick="closeModal()">Abbrechen</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+let drucker = [];
+
+async function load() {
+  const r = await api('GET', '/api/drucker');
+  if (!r.ok) { toast(r.msg, 'err'); return; }
+  drucker = r.drucker;
+  render();
+}
+
+function render() {
+  const body = document.getElementById('druckerBody');
+  const leer = document.getElementById('leer');
+  if (!drucker.length) {
+    body.innerHTML = '';
+    leer.classList.remove('hidden');
+    return;
+  }
+  leer.classList.add('hidden');
+  body.innerHTML = drucker.map(d => `
+    <tr>
+      <td>${d.terminal_nr}</td>
+      <td>${d.ip_adresse}</td>
+      <td>${d.port}</td>
+      <td>${d.bezeichnung || '–'}</td>
+      <td style="display:flex;gap:6px;">
+        <button class="btn btn-neutral btn-sm" onclick="testDrucker(${d.id})">🔌 Test</button>
+        <button class="btn btn-neutral btn-sm" onclick="editDrucker(${d.id})">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="delDrucker(${d.id})">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function showAdd() {
+  document.getElementById('editId').value = '';
+  document.getElementById('fTerminal').value = '';
+  document.getElementById('fIp').value = '';
+  document.getElementById('fPort').value = '9100';
+  document.getElementById('fBez').value = '';
+  document.getElementById('modalTitle').textContent = 'Neuer Drucker';
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').style.display = 'flex';
+}
+
+function editDrucker(id) {
+  const d = drucker.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('editId').value = id;
+  document.getElementById('fTerminal').value = d.terminal_nr;
+  document.getElementById('fIp').value = d.ip_adresse;
+  document.getElementById('fPort').value = d.port;
+  document.getElementById('fBez').value = d.bezeichnung || '';
+  document.getElementById('modalTitle').textContent = 'Drucker bearbeiten';
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+  document.getElementById('modal').style.display = 'none';
+}
+
+async function saveDrucker() {
+  const id = document.getElementById('editId').value;
+  const data = {
+    terminal_nr: parseInt(document.getElementById('fTerminal').value),
+    ip_adresse:  document.getElementById('fIp').value.trim(),
+    port:        parseInt(document.getElementById('fPort').value) || 9100,
+    bezeichnung: document.getElementById('fBez').value.trim(),
+  };
+  if (!data.terminal_nr || !data.ip_adresse) {
+    toast('Terminal-Nr. und IP sind Pflichtfelder.', 'err');
+    return;
+  }
+  const r = id
+    ? await api('PUT', '/api/drucker/' + id, data)
+    : await api('POST', '/api/drucker', data);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) { closeModal(); load(); }
+}
+
+async function delDrucker(id) {
+  if (!confirm('Drucker wirklich löschen?')) return;
+  const r = await api('DELETE', '/api/drucker/' + id);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) load();
+}
+
+async function testDrucker(id) {
+  toast('Teste Verbindung...', 'ok', 5000);
+  const r = await api('POST', '/api/drucker/' + id + '/test');
+  toast(r.msg, r.ok ? 'ok' : 'err');
+}
+
+load();
+</script>
+{% endblock %}
