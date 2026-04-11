@@ -41,6 +41,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-05 Teststrategie & CI-Pipeline: GitHub Actions + Unit Tests mit Mocks
+
+- **Problem:** Kein automatisiertes Testing vorhanden. Nur kasse-app hatte manuell ausführbare Tests; wawi-app und kiosk-app hatten keine Tests. Kein CI/CD-System.
+- **Entscheidung:** GitHub Actions als CI-Plattform. Unit Tests mit `unittest.mock` (kein echter DB-Server). Separate Jobs pro App. Coverage-Messung auf dem jeweiligen Kernmodul.
+- **Begründung:** GitHub Actions ist kostenfrei für das Repo und benötigt keine eigene Infrastruktur. Der Mock-Ansatz (bereits in kasse-app bewährt) funktioniert ohne DB-Server – CI läuft auf Standard-Ubuntu-Runner. Coverage-Gate absichtlich nicht scharf geschaltet (Vertrauen auf Disziplin), kann bei Bedarf nachgezogen werden.
+- **Alternativen:** (a) Self-hosted Runner auf RPi – abgelehnt, RPi ist Produktions- und Review-System; (b) Integrationstests mit echter SQLite-DB – optional, später möglich; (c) pytest-django / pytest-flask – nicht nötig, da Geschäftslogik ohne laufenden Server testbar ist.
+- **Konsequenzen:** CI läuft bei jedem Push auf Feature-Branches und bei PRs gegen `master`. Coverage-Baselines: kasse-app (kasse_logik) 17%, wawi-app (models) 48%. Ziele: kasse-app → 80%, wawi-app → 40% (bereits erreicht).
+- **Referenz:** HAB-201 (Umsetzung), HAB-106 (Teststrategie-Beschluss)
+
 ## 2026-04-04 deploy-review.sh: git reset --hard statt git checkout für Review-Deployment
 
 - **Problem:** Änderungen aus Feature-Branches landeten nicht zuverlässig im Review-Worktree (`cao-xt-review`). Dateien wurden manuell kopiert, Server nicht neu gestartet → inkonsistenter Testzustand.
