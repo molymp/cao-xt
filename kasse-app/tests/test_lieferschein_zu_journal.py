@@ -437,6 +437,33 @@ class TestLieferscheinZuJournalAbschluss(unittest.TestCase):
         self.assertIn('ABGESCHLOSSEN', calls)
         self.assertIn('Lieferschein', calls)
 
+    @patch('kasse_logik.vorgang_laden')
+    @patch('kasse_logik.vorgang_positionen')
+    @patch('kasse_logik.mwst_saetze_laden')
+    @patch('kasse_logik.get_db')
+    @patch('kasse_logik.get_db_transaction')
+    def test_adressen_id_wird_im_vorgang_gespeichert(
+        self, mock_txn, mock_db, mock_mwst, mock_pos, mock_laden
+    ):
+        """ADRESSEN_ID muss im UPDATE von XT_KASSE_VORGAENGE gesetzt werden."""
+        mock_laden.return_value = _vorgang()
+        mock_pos.return_value = [_position()]
+        mock_mwst.return_value = {1: 19.0, 2: 7.0, 3: 0.0}
+
+        db_ctx = _make_db_ctx([_adresse(), {'ID': 5}, {'REC_ID': 8}])
+        mock_db.return_value = db_ctx
+
+        cur = _make_cursor()
+        mock_txn.return_value = _make_txn_mock(cur)
+
+        kasse_logik.lieferschein_zu_journal(42, 777, 'Kassierer', terminal_nr=1)
+
+        # UPDATE muss ADRESSEN_ID enthalten
+        calls = str(cur.execute.call_args_list)
+        self.assertIn('ADRESSEN_ID', calls)
+        # adressen_id=777 muss als Parameter übergeben worden sein
+        self.assertIn('777', calls)
+
 
 # ── Rückgabewert-Tests ────────────────────────────────────────
 
