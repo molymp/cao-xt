@@ -1,16 +1,28 @@
 # ============================================================
-# Bäckerei Kiosk – Konfiguration
-# Priorität: config_local.py > Umgebungsvariablen > diese Defaults
+# Bäckerei Kiosk – Konfiguration (thin wrapper um common.config)
+# Priorität: config_local.py > Umgebungsvariablen > caoxt.ini
 # Lokale Overrides in config_local.py (nicht in git) eintragen.
 # ============================================================
 import os
+import sys
+
+_REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from common.config import load_db_config
 
 # ── Datenbank ─────────────────────────────────────────────────
-DB_HOST     = "<DB_HOST>"       # z.B. 192.168.x.x (lokale LAN-IP des MariaDB-Servers)
-DB_PORT     = 3306              # Standard MariaDB-Port anpassen falls nötig
-DB_USER     = "<DB_USER>"
-DB_PASSWORD = "<DB_PASSWORD>"
-DB_NAME     = "Backwaren"
+# Host/Port/User/Password aus caoxt.ini (gleicher MySQL-Server wie CAO Faktura).
+# DB_NAME NICHT aus caoxt.ini: Kiosk nutzt eigene Datenbank 'Backwaren',
+# die von der CAO-Faktura-DB (db_name in caoxt.ini) abweicht.
+# Überschreiben via Env-Var KIOSK_DB_NAME oder config_local.py.
+_cfg        = load_db_config("KIOSK")
+DB_HOST     = _cfg['host']
+DB_PORT     = _cfg['port']
+DB_USER     = _cfg['user']
+DB_PASSWORD = _cfg['password']
+DB_NAME     = os.environ.get('KIOSK_DB_NAME') or 'Backwaren'
 
 # ── Terminal ──────────────────────────────────────────────────
 # Einstellige Zahl 1–9, pro Gerät einmalig vergeben.

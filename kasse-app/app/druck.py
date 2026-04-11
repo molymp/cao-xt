@@ -8,33 +8,32 @@ Erfüllt §6 AEAO zu §146a AO (Pflichtangaben auf Kassenbon):
   • TSE-Seriennummer, Transaktionsnummer, Signaturzähler, Prüfwert
   • QR-Code (optional, empfohlen)
 """
-import socket
 import io
+import socket
 import config
 from db import get_db
+from common.druck.escpos import (
+    ESC_INIT      as _ESC_INIT,
+    CODEPAGE_1252 as _CODEPAGE_1252,
+    ALIGN_LEFT    as _ALIGN_LEFT,
+    ALIGN_CENTER  as _ALIGN_CENTER,
+    ALIGN_RIGHT   as _ALIGN_RIGHT,
+    BOLD_ON       as _BOLD_ON,
+    BOLD_OFF      as _BOLD_OFF,
+    DOUBLE_HW     as _DOUBLE_HW,
+    NORMAL_SIZE   as _NORMAL_SIZE,
+    DOUBLE_HEIGHT as _DOUBLE_HEIGHT,
+    FONT_B        as _FONT_B,
+    FONT_A        as _FONT_A,
+    CUT           as _CUT,
+    DRAWER_PIN2   as _DRAWER_PIN2,
+    DRAWER_PIN5   as _DRAWER_PIN5,
+    tcp_send,
+)
 from datetime import datetime
 import logging
 
 log = logging.getLogger(__name__)
-
-# ESC/POS-Kommandos
-_ESC_INIT      = b'\x1b\x40'
-_CODEPAGE_1252 = b'\x1b\x74\x10'   # WPC1252 (Windows-1252): €, Umlaute nativ
-_ALIGN_LEFT    = b'\x1b\x61\x00'
-_ALIGN_CENTER  = b'\x1b\x61\x01'
-_ALIGN_RIGHT   = b'\x1b\x61\x02'
-_BOLD_ON       = b'\x1b\x45\x01'
-_BOLD_OFF      = b'\x1b\x45\x00'
-_DOUBLE_HW     = b'\x1b\x21\x30'   # doppelte Breite + Höhe
-_NORMAL_SIZE   = b'\x1b\x21\x00'
-_DOUBLE_HEIGHT = b'\x1b\x21\x10'
-_FONT_B        = b'\x1b\x4d\x01'   # Font B (kleiner)
-_FONT_A        = b'\x1b\x4d\x00'   # Font A (normal)
-_CUT           = b'\x1d\x56\x01'   # Teilschnitt
-
-# Kassenlade öffnen
-_DRAWER_PIN2   = b'\x1b\x70\x00\x19\xfa'
-_DRAWER_PIN5   = b'\x1b\x70\x01\x19\xfa'
 
 # Zeichensatz – WPC1252 druckt Umlaute und € nativ; nur typografische Sonderzeichen ersetzen
 _UMLAUT_MAP = str.maketrans({
@@ -137,13 +136,7 @@ def _firma_info(terminal_nr: int) -> dict:
 
 
 def _sende(ip: str, port: int, daten: bytes):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(10)
-    try:
-        sock.connect((ip, port))
-        sock.sendall(daten)
-    finally:
-        sock.close()
+    tcp_send(ip, port, daten, timeout=10)
 
 
 def _qr_bytes(text: str, groesse: int = 3) -> bytes:

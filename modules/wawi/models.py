@@ -702,3 +702,29 @@ def artikel_ek_setzen(artnum: str, ek: float) -> dict:
             raise ValueError(f'Artikel {artnum!r} konnte nicht aktualisiert werden')
 
     return {'ok': True, 'artnr': artnum, 'ek_neu': ek}
+
+
+def artikel_vpe_setzen(artnum: str, vpe_vk: int, vpe_ek: int) -> dict:
+    """Schreibt VPE (Verkaufsverpackung) und VPE_EK (Einkaufsverpackung) in ARTIKEL.
+
+    VPE  = Einheiten pro Verkaufsverpackung (ARTIKEL.VPE)
+    VPE_EK = Einheiten pro Einkaufsverpackung (ARTIKEL.VPE_EK)
+
+    Gibt dict zurück: {'ok': True, 'artnr': ..., 'vpe_vk': ..., 'vpe_ek': ...}
+    """
+    if vpe_vk < 1 or vpe_ek < 1:
+        raise ValueError('VPE-Werte müssen mindestens 1 sein')
+
+    artikel = artikel_by_artnum(artnum)
+    if not artikel:
+        raise ValueError(f'Artikel {artnum!r} nicht gefunden')
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            'UPDATE ARTIKEL SET VPE = %s, VPE_EK = %s WHERE ARTNUM = %s',
+            (vpe_vk, vpe_ek, artnum),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f'Artikel {artnum!r} konnte nicht aktualisiert werden')
+
+    return {'ok': True, 'artnr': artnum, 'vpe_vk': vpe_vk, 'vpe_ek': vpe_ek}

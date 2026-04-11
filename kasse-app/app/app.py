@@ -5,7 +5,6 @@ Starten: cd kasse-app/app && python3 app.py
 from flask import (Flask, render_template, request, jsonify,
                    redirect, url_for, session, send_file, abort,
                    send_from_directory)
-from functools import wraps
 from datetime import datetime, date
 import io
 import json
@@ -18,6 +17,7 @@ import time
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
+from common.auth import login_required as _login_required, login_user, logout_user
 import kasse_logik as kl
 import druck
 import dsfinvk
@@ -151,11 +151,6 @@ def _globals():
     }
 
 
-# ── Auth-Hilfsfunktionen ──────────────────────────────────────
-def _ist_eingeloggt() -> bool:
-    return bool(session.get('ma_id'))
-
-
 def _terminal_settings(terminal_nr: int) -> dict:
     """Liest Terminal-Einstellungen inkl. TSE-Typ aus XT_KASSE_TERMINALS + XT_KASSE_TSE_GERAETE."""
     with get_db() as cur:
@@ -214,15 +209,6 @@ def _mitarbeiter() -> dict:
     }
 
 
-def _login_required(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if not _ist_eingeloggt():
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return wrapper
-
-
 def _bon_drucken(vid: int, *, ist_kopie: bool = False, ist_storno: bool = False,
                  vorgang=None, positionen=None, zahlungen=None):
     """
@@ -274,17 +260,14 @@ def login_post():
     passwort   = request.form.get('passwort', '')
     ma = kl.mitarbeiter_login(login_name, passwort)
     if ma:
-        session['ma_id']      = ma['MA_ID']
-        session['login_name'] = ma['LOGIN_NAME']
-        session['vname']      = ma['VNAME']
-        session['ma_name']    = ma['NAME']
+        login_user(ma)
         return redirect(url_for('kasse'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
 
 
 @app.get('/logout')
 def logout():
-    session.clear()
+    logout_user()
     return redirect(url_for('login'))
 
 
@@ -529,10 +512,14 @@ def api_zahlung(vid):
 @app.post('/api/drucker/letzter-bon')
 @_login_required
 def api_letzter_bon():
-    """Letzten abgeschlossenen Bon nochmal drucken (Kopie)."""
+    """Letzten abgeschlossenen Bon nochmal drucken (Kopie).
+
+    Bei einem Lieferschein-Vorgang wird das Lieferscheinlayout verwendet
+    (ohne Preise, mit Unterschriftszeile); sonst der normale Kassenbon.
+    """
     with get_db() as cur:
         cur.execute(
-            "SELECT ID FROM XT_KASSE_VORGAENGE "
+            "SELECT ID, BON_NR, VORGANG_TYP, ADRESSEN_ID FROM XT_KASSE_VORGAENGE "
             "WHERE TERMINAL_NR=%s AND STATUS='ABGESCHLOSSEN' "
             "ORDER BY ID DESC LIMIT 1",
             (_eff_terminal_nr(),)
@@ -540,7 +527,12 @@ def api_letzter_bon():
         row = cur.fetchone()
     if not row:
         return jsonify({'ok': False, 'fehler': 'Kein abgeschlossener Bon vorhanden'}), 404
+
     try:
+        if (row.get('VORGANG_TYP') or '') == 'Lieferschein':
+            adressen_id = int(row.get('ADRESSEN_ID') or 0)
+            druck.drucke_lieferschein_bon(config.TERMINAL_NR, row['ID'], adressen_id)
+            return jsonify({'ok': True, 'bon_nr': row['BON_NR']})
         vorgang = _bon_drucken(row['ID'], ist_kopie=True)
     except Exception as e:
         return jsonify({'ok': False, 'fehler': str(e)})

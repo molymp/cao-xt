@@ -396,6 +396,97 @@
   text-align: center;
   color: var(--grau-mitte);
 }
+
+/* ── On-Screen Numpad ────────────────────────────────────────── */
+.pp-numpad-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 2000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.pp-numpad {
+  background: white;
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 -6px 32px rgba(0,0,0,0.25);
+  user-select: none;
+}
+.pp-numpad-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.pp-numpad-feldname {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--grau-mitte);
+}
+.pp-numpad-close-btn {
+  min-width: 40px;
+  min-height: 40px;
+  background: var(--grau-hell);
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-dunkel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pp-numpad-display {
+  background: var(--grau-hell);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: right;
+  margin-bottom: 14px;
+  min-height: 54px;
+  color: var(--gruen-dunkel);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pp-numpad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.pp-numpad-btn {
+  min-height: 64px;
+  font-size: 24px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  background: var(--grau-hell);
+  color: var(--text-dunkel);
+  cursor: pointer;
+  transition: background 0.08s, transform 0.06s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+.pp-numpad-btn:active { background: #d0d0d0; transform: scale(0.95); }
+.pp-numpad-btn.np-clear { background: #fde8e8; color: #c0392b; }
+.pp-numpad-btn.np-back  { background: var(--creme-dunkel); font-size: 20px; }
+.pp-numpad-btn.np-confirm {
+  background: var(--gruen-mitte);
+  color: white;
+  font-size: 22px;
+  grid-column: span 2;
+}
+.pp-numpad-btn.np-confirm:active { background: var(--gruen-dunkel); }
 </style>
 {% endblock %}
 
@@ -449,6 +540,34 @@
     </div>
 
     <div class="pp-statusbar" id="pp-status"> </div>
+  </div>
+</div>
+
+<!-- On-Screen Numpad Overlay -->
+<div class="pp-numpad-overlay" id="pp-numpad-overlay" style="display:none;"
+     onclick="if(event.target===this)numpadSchliessen()">
+  <div class="pp-numpad" id="pp-numpad">
+    <div class="pp-numpad-header">
+      <span class="pp-numpad-feldname" id="pp-numpad-label"></span>
+      <button class="pp-numpad-close-btn" onclick="numpadSchliessen()">✕</button>
+    </div>
+    <div class="pp-numpad-display" id="pp-numpad-display">0</div>
+    <div class="pp-numpad-grid">
+      <button class="pp-numpad-btn" onclick="numpadTaste('7')">7</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('8')">8</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('9')">9</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('4')">4</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('5')">5</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('6')">6</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('1')">1</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('2')">2</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('3')">3</button>
+      <button class="pp-numpad-btn np-clear" onclick="numpadTaste('C')">C</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('0')">0</button>
+      <button class="pp-numpad-btn" onclick="numpadTaste('.')">.</button>
+      <button class="pp-numpad-btn np-back" onclick="numpadTaste('back')">⌫</button>
+      <button class="pp-numpad-btn np-confirm" onclick="numpadBestaetigen()">✓ Übernehmen</button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -814,6 +933,7 @@ function anpassenOeffnen(btn, artnr) {
           <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-ek-${_esc(artnr)}"
                  value="${Number(art.ek).toFixed(2)}"
                  data-field="ek"
+                 onclick="numpadOeffnen(this,'EK (€)')"
                  oninput="anpBerechnen('${_esc(artnr)}','ek',this.value)">
         </div>
         <div class="anp-field">
@@ -821,6 +941,7 @@ function anpassenOeffnen(btn, artnr) {
           <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpeek-${_esc(artnr)}"
                  value="${Number(art.vpe_ek || 1).toFixed(0)}"
                  data-field="vpeek"
+                 onclick="numpadOeffnen(this,'VPE EK')"
                  oninput="anpBerechnen('${_esc(artnr)}','vpeek',this.value)">
         </div>
         <div class="anp-field">
@@ -828,6 +949,7 @@ function anpassenOeffnen(btn, artnr) {
           <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpevk-${_esc(artnr)}"
                  value="${Number(art.vpe_vk || 1).toFixed(0)}"
                  data-field="vpevk"
+                 onclick="numpadOeffnen(this,'VPE VK')"
                  oninput="anpBerechnen('${_esc(artnr)}','vpevk',this.value)">
         </div>
         <div class="anp-field">
@@ -835,6 +957,7 @@ function anpassenOeffnen(btn, artnr) {
           <input type="number" inputmode="decimal" step="0.001" min="0" id="anp-faktor-${_esc(artnr)}"
                  value="${art.faktor != null ? Number(art.faktor).toFixed(3) : ''}"
                  data-field="faktor"
+                 onclick="numpadOeffnen(this,'Faktor')"
                  oninput="anpBerechnen('${_esc(artnr)}','faktor',this.value)">
         </div>
         <div class="anp-field">
@@ -842,6 +965,7 @@ function anpassenOeffnen(btn, artnr) {
           <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5netto-${_esc(artnr)}"
                  value="${Number(art.vk5_netto).toFixed(4)}"
                  data-field="vk5netto"
+                 onclick="numpadOeffnen(this,'VK5 Netto (€)')"
                  oninput="anpBerechnen('${_esc(artnr)}','vk5netto',this.value)">
         </div>
         <div class="anp-field">
@@ -849,6 +973,7 @@ function anpassenOeffnen(btn, artnr) {
           <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5brutto-${_esc(artnr)}"
                  value="${Number(art.vk5).toFixed(2)}"
                  data-field="vk5brutto"
+                 onclick="numpadOeffnen(this,'VK5 Brutto (€)')"
                  oninput="anpBerechnen('${_esc(artnr)}','vk5brutto',this.value)">
         </div>
         <div class="anp-actions">
@@ -954,34 +1079,54 @@ function _setFieldSilent(inp, val) {
 async function anpSpeichern(artnr, mwstSatz) {
   const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
   const inpEk        = document.getElementById(`anp-ek-${artnr}`);
+  const inpVpeEk     = document.getElementById(`anp-vpeek-${artnr}`);
+  const inpVpeVk     = document.getElementById(`anp-vpevk-${artnr}`);
   const saveBtn      = document.getElementById(`anp-save-${artnr}`);
   if (!inpVk5brutto) return;
 
+  const art = _daten.find(a => a.artnr === artnr);
+  if (!art) return;
+
   const vk5brutto = parseFloat(inpVk5brutto.value);
-  if (isNaN(vk5brutto) || vk5brutto <= 0) {
+  const ekNeu     = inpEk  ? parseFloat(inpEk.value)  : null;
+  const newVpeEk  = inpVpeEk ? Math.max(1, parseInt(inpVpeEk.value) || 1) : (art.vpe_ek || 1);
+  const newVpeVk  = inpVpeVk ? Math.max(1, parseInt(inpVpeVk.value) || 1) : (art.vpe_vk || 1);
+
+  const vk5Geaendert = !isNaN(vk5brutto) && Math.abs(vk5brutto - (art.vk5 || 0)) > 0.001;
+  const ekGeaendert  = inpEk && !isNaN(ekNeu) && ekNeu >= 0
+                       && Math.abs(ekNeu - (art.ek || 0)) > 0.001;
+  const vpeGeaendert = Math.abs(newVpeEk - (art.vpe_ek || 1)) > 0.01
+                       || Math.abs(newVpeVk - (art.vpe_vk || 1)) > 0.01;
+
+  if (!vk5Geaendert && !ekGeaendert && !vpeGeaendert) {
+    statusSetzen('', 'Keine Änderungen.');
+    anpassenSchliessen();
+    return;
+  }
+
+  if (vk5Geaendert && (isNaN(vk5brutto) || vk5brutto <= 0)) {
     statusSetzen('err', '⚠ Ungültiger VK5-Brutto-Wert');
     inpVk5brutto.focus();
     return;
   }
 
-  const art = _daten.find(a => a.artnr === artnr);
-  const ekNeu = inpEk ? parseFloat(inpEk.value) : null;
-  const ekGeaendert = inpEk && art && !isNaN(ekNeu) && ekNeu >= 0 && Math.abs(ekNeu - (art.ek || 0)) > 0.001;
-
   saveBtn.disabled = true;
   try {
-    // VK5 speichern
-    const rVk5 = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
-      method: 'PATCH',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vk5: vk5brutto }),
-    });
-    const dataVk5 = await rVk5.json();
-    if (!rVk5.ok || !dataVk5.ok) throw new Error(dataVk5.error || `HTTP ${rVk5.status}`);
+    let dataVk5 = null, ekGespeichert = false, vpeGespeichert = false;
+
+    // VK5 speichern (nur wenn geändert)
+    if (vk5Geaendert) {
+      const rVk5 = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vk5: vk5brutto }),
+      });
+      dataVk5 = await rVk5.json();
+      if (!rVk5.ok || !dataVk5.ok) throw new Error(dataVk5.error || `HTTP ${rVk5.status}`);
+    }
 
     // EK speichern (nur wenn geändert)
-    let ekGespeichert = false;
     if (ekGeaendert) {
       const rEk = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/ek`, {
         method: 'PATCH',
@@ -994,22 +1139,43 @@ async function anpSpeichern(artnr, mwstSatz) {
       ekGespeichert = true;
     }
 
-    // Lokale Daten aktualisieren
+    // VPE speichern (nur wenn geändert)
+    if (vpeGeaendert) {
+      const rVpe = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vpe`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vpe_vk: newVpeVk, vpe_ek: newVpeEk }),
+      });
+      const dataVpe = await rVpe.json();
+      if (!rVpe.ok || !dataVpe.ok) throw new Error(dataVpe.error || `HTTP ${rVpe.status}`);
+      vpeGespeichert = true;
+    }
+
+    // Lokale Daten aktualisieren und Faktor neu berechnen
     const idx = _daten.findIndex(a => a.artnr === artnr);
     if (idx !== -1) {
-      _daten[idx].vk5 = dataVk5.vk5_neu;
-      if (dataVk5.vk5_netto !== undefined) _daten[idx].vk5_netto = dataVk5.vk5_netto;
-      if (dataVk5.faktor    !== undefined) _daten[idx].faktor    = dataVk5.faktor;
-      if (ekGespeichert) _daten[idx].ek = ekNeu;
+      if (dataVk5) _daten[idx].vk5 = dataVk5.vk5_neu;
+      if (ekGespeichert)  _daten[idx].ek      = ekNeu;
+      if (vpeGespeichert) { _daten[idx].vpe_ek = newVpeEk; _daten[idx].vpe_vk = newVpeVk; }
+      const vk5Cur = _daten[idx].vk5  || 0;
+      const ekCur  = _daten[idx].ek   || 0;
+      const vpeE   = _daten[idx].vpe_ek || 1;
+      const vpeV   = _daten[idx].vpe_vk || 1;
+      const vk5n   = mwstSatz > 0 ? vk5Cur / (1 + mwstSatz) : vk5Cur;
+      _daten[idx].vk5_netto = vk5n;
+      _daten[idx].faktor = (ekCur > 0 && vpeV > 0)
+        ? Math.round(vk5n * vpeE / (ekCur * vpeV) * 1000) / 1000
+        : null;
     }
 
     anpassenSchliessen();
     renderTabelle();
-    const ekInfo = ekGespeichert ? ` | EK: ${_eur(ekNeu)} €` : '';
-    statusSetzen('ok',
-      `✓ ${artnr} – VK5 Brutto: ${_eur(dataVk5.vk5_neu)} €`
-      + (dataVk5.faktor != null ? ` | Faktor: ${Number(dataVk5.faktor).toFixed(2)}` : '')
-      + ekInfo);
+    const parts = [];
+    if (dataVk5)       parts.push(`VK5: ${_eur(dataVk5.vk5_neu)} €`);
+    if (ekGespeichert) parts.push(`EK: ${_eur(ekNeu)} €`);
+    if (vpeGespeichert) parts.push(`VPE EK: ${newVpeEk} / VPE VK: ${newVpeVk}`);
+    statusSetzen('ok', `✓ ${artnr} – ${parts.join(' | ')}`);
   } catch (e) {
     saveBtn.disabled = false;
     statusSetzen('err', `⚠ Speichern fehlgeschlagen: ${e.message}`);
@@ -1021,6 +1187,52 @@ function statusSetzen(typ, text) {
   const el = document.getElementById('pp-status');
   el.className = 'pp-statusbar' + (typ ? ` ${typ}` : '');
   el.textContent = text || '\u00a0';
+}
+
+// ── On-Screen Numpad ──────────────────────────────────────────
+let _numpadTarget = null;   // aktuell bearbeitetes Input-Element
+let _numpadWert   = '';     // aktuell eingetippter Wert
+
+function numpadOeffnen(inp, label) {
+  _numpadTarget = inp;
+  _numpadWert   = inp.value || '';
+  document.getElementById('pp-numpad-label').textContent   = label;
+  document.getElementById('pp-numpad-display').textContent = _numpadWert || '0';
+  document.getElementById('pp-numpad-overlay').style.display = 'flex';
+  // Native Tastatur unterdrücken
+  inp.blur();
+}
+
+function numpadSchliessen() {
+  document.getElementById('pp-numpad-overlay').style.display = 'none';
+  _numpadTarget = null;
+  _numpadWert   = '';
+}
+
+function numpadTaste(taste) {
+  if (taste === 'C') {
+    _numpadWert = '';
+  } else if (taste === 'back') {
+    _numpadWert = _numpadWert.slice(0, -1);
+  } else if (taste === '.') {
+    if (_numpadWert.includes('.')) return;
+    if (_numpadWert === '') _numpadWert = '0';
+    _numpadWert += '.';
+  } else {
+    // Führende Null entfernen (außer "0.")
+    if (_numpadWert === '0') _numpadWert = '';
+    _numpadWert += taste;
+  }
+  document.getElementById('pp-numpad-display').textContent = _numpadWert || '0';
+}
+
+function numpadBestaetigen() {
+  if (!_numpadTarget) { numpadSchliessen(); return; }
+  _numpadTarget.value = _numpadWert;
+  // oninput-Handler auslösen → anpBerechnen wird aufgerufen
+  _numpadTarget.dispatchEvent(new Event('input', { bubbles: true }));
+  numpadSchliessen();
+  _numpadTarget?.focus();
 }
 
 // ── oninput-Schutz für _setFieldSilent ───────────────────────

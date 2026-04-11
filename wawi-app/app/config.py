@@ -1,25 +1,22 @@
 # ============================================================
-# CAO-XT WaWi-App – Konfiguration
+# CAO-XT WaWi-App – Konfiguration (thin wrapper um common.config)
 # Priorität: config_local.py > Umgebungsvariablen > caoxt.ini
 # ============================================================
 import os
-import configparser
+import sys
 
-_INI = os.path.join(os.path.dirname(__file__), '..', '..', 'caoxt', 'caoxt.ini')
-_cfg = configparser.ConfigParser()
-_cfg.read(_INI)
+_REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
+from common.config import load_db_config
 
-def _db(key, fallback=''):
-    return os.environ.get(key.upper(), _cfg.get('Datenbank', key.lower(), fallback=fallback))
-
-
-# ── Defaults aus caoxt.ini / Umgebungsvariablen ───────────────
-DB_HOST     = _db('db_loc',  'localhost')
-DB_PORT     = int(_db('db_port', '3306'))
-DB_NAME     = _db('db_name', '')
-DB_USER     = _db('db_user', '')
-DB_PASSWORD = _db('db_pass', '')
+_cfg        = load_db_config("WAWI")
+DB_HOST     = _cfg['host']
+DB_PORT     = _cfg['port']
+DB_NAME     = _cfg['name']
+DB_USER     = _cfg['user']
+DB_PASSWORD = _cfg['password']
 
 PORT       = int(os.environ.get('WAWI_PORT', '5003'))
 HOST       = os.environ.get('WAWI_HOST', '0.0.0.0')

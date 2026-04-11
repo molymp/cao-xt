@@ -4,8 +4,6 @@ Starten: cd wawi-app/app && python3 app.py
 """
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file
 from datetime import datetime, date
-from functools import wraps
-import hashlib
 import io
 import os
 import subprocess
@@ -15,6 +13,7 @@ import config
 import db as db_modul
 import berichte as bericht_modul
 from db import get_db, test_verbindung
+from common.auth import login_required as _login_required, mitarbeiter_login as _mitarbeiter_login
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -38,35 +37,13 @@ def _fmt_eur(value, dp=2):
 app.jinja_env.filters['eur'] = _fmt_eur
 
 
-# ── Authentifizierung ─────────────────────────────────────────
-
-def _mitarbeiter_login(login_name: str, passwort: str) -> dict | None:
-    """
-    Prüft Credentials gegen MITARBEITER-Tabelle.
-    CAO speichert Passwörter als MD5-Hash (Großbuchstaben).
-    Gibt {MA_ID, LOGIN_NAME, VNAME, NAME} zurück oder None.
-    """
-    pw_hash = hashlib.md5(passwort.encode('utf-8')).hexdigest().upper()
-    try:
-        with get_db() as cur:
-            cur.execute(
-                "SELECT MA_ID, LOGIN_NAME, VNAME, NAME FROM MITARBEITER "
-                "WHERE LOGIN_NAME = %s AND USER_PASSWORD = %s",
-                (login_name, pw_hash),
-            )
-            return cur.fetchone()
-    except Exception as e:
-        log.warning("Login-Abfrage fehlgeschlagen: %s", e)
-        return None
-
-
-def _login_required(f):
-    @wraps(f)
-    def _wrapper(*args, **kwargs):
-        if not session.get('ma_id'):
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return _wrapper
+@app.before_request
+def _sync_mitarbeiter_session():
+    """session['mitarbeiter'] sicherstellen wenn eingeloggt.
+    WaWi-Blueprint prüft diesen Key; bei Sessions ohne mitarbeiter-Key
+    (z.B. Altdaten vor Migration) wird er aus login_name ergaenzt."""
+    if session.get('ma_id') and not session.get('mitarbeiter'):
+        session['mitarbeiter'] = session.get('login_name', '')
 
 
 # ── WaWi-Blueprint einbinden ──────────────────────────────────
@@ -206,12 +183,10 @@ def login():
 def login_post():
     login_name = request.form.get('login_name', '').strip()
     passwort   = request.form.get('passwort', '')
+    from common.auth import login_user, logout_user
     ma = _mitarbeiter_login(login_name, passwort)
     if ma:
-        session['ma_id']      = ma['MA_ID']
-        session['login_name'] = ma['LOGIN_NAME']
-        session['vname']      = ma['VNAME']
-        session['ma_name']    = ma['NAME']
+        login_user(ma)
         session['mitarbeiter'] = ma['LOGIN_NAME']   # für WaWi-Blueprint
         return redirect(url_for('dashboard'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
@@ -219,7 +194,8 @@ def login_post():
 
 @app.get('/logout')
 def logout():
-    session.clear()
+    from common.auth import logout_user
+    logout_user()
     return redirect(url_for('login'))
 
 
