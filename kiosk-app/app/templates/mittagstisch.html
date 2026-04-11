@@ -147,6 +147,7 @@
     display: flex;
     gap: 12px;
     align-items: center;
+    flex-wrap: wrap;
 }
 .speichern-status {
     font-size: 0.88rem;
@@ -340,6 +341,12 @@
                     onclick="speichern({{ wi }}, '{{ w.montag }}')">
                 💾 Speichern
             </button>
+            {% if not loop.last %}
+            <button class="btn btn-sekundaer"
+                    onclick="kopierenInNaechsteWoche({{ wi }})">
+                📋 In nächste Woche kopieren
+            </button>
+            {% endif %}
             <span class="speichern-status" id="status-{{ wi }}">✓ Gespeichert</span>
         </div>
 
@@ -600,6 +607,40 @@ async function speichern(panelIdx, montag) {
         status.classList.add('sichtbar');
         setTimeout(() => status.classList.remove('sichtbar'), 2500);
     }
+}
+
+function kopierenInNaechsteWoche(vonIdx) {
+    verbergeTastatur();
+    const nachIdx = vonIdx + 1;
+    const vonPanel  = document.getElementById('panel-' + vonIdx);
+    const nachPanel = document.getElementById('panel-' + nachIdx);
+    if (!nachPanel) return;
+
+    // Gerichte kopieren
+    const vonGerichteInputs  = Array.from(vonPanel.querySelectorAll('.gericht-input'));
+    const nachGerichteInputs = Array.from(nachPanel.querySelectorAll('.gericht-input'));
+    vonGerichteInputs.forEach((inp, i) => {
+        if (nachGerichteInputs[i]) {
+            nachGerichteInputs[i].value = inp.value;
+            nachGerichteInputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    });
+
+    // Zusatzfelder kopieren
+    const vonTaeglich  = document.getElementById('taeglich-'  + vonIdx);
+    const nachTaeglich = document.getElementById('taeglich-'  + nachIdx);
+    if (vonTaeglich && nachTaeglich) {
+        nachTaeglich.value = vonTaeglich.value;
+    }
+
+    const vonNeu  = document.getElementById('jetzt-neu-' + vonIdx);
+    const nachNeu = document.getElementById('jetzt-neu-' + nachIdx);
+    if (vonNeu && nachNeu) {
+        nachNeu.value = vonNeu.value;
+    }
+
+    // Zur nächsten Woche wechseln
+    zeigeWoche(nachIdx);
 }
 </script>
 {% endblock %}
