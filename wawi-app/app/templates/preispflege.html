@@ -954,34 +954,54 @@ function _setFieldSilent(inp, val) {
 async function anpSpeichern(artnr, mwstSatz) {
   const inpVk5brutto = document.getElementById(`anp-vk5brutto-${artnr}`);
   const inpEk        = document.getElementById(`anp-ek-${artnr}`);
+  const inpVpeEk     = document.getElementById(`anp-vpeek-${artnr}`);
+  const inpVpeVk     = document.getElementById(`anp-vpevk-${artnr}`);
   const saveBtn      = document.getElementById(`anp-save-${artnr}`);
   if (!inpVk5brutto) return;
 
+  const art = _daten.find(a => a.artnr === artnr);
+  if (!art) return;
+
   const vk5brutto = parseFloat(inpVk5brutto.value);
-  if (isNaN(vk5brutto) || vk5brutto <= 0) {
+  const ekNeu     = inpEk  ? parseFloat(inpEk.value)  : null;
+  const newVpeEk  = inpVpeEk ? Math.max(1, parseInt(inpVpeEk.value) || 1) : (art.vpe_ek || 1);
+  const newVpeVk  = inpVpeVk ? Math.max(1, parseInt(inpVpeVk.value) || 1) : (art.vpe_vk || 1);
+
+  const vk5Geaendert = !isNaN(vk5brutto) && Math.abs(vk5brutto - (art.vk5 || 0)) > 0.001;
+  const ekGeaendert  = inpEk && !isNaN(ekNeu) && ekNeu >= 0
+                       && Math.abs(ekNeu - (art.ek || 0)) > 0.001;
+  const vpeGeaendert = Math.abs(newVpeEk - (art.vpe_ek || 1)) > 0.01
+                       || Math.abs(newVpeVk - (art.vpe_vk || 1)) > 0.01;
+
+  if (!vk5Geaendert && !ekGeaendert && !vpeGeaendert) {
+    statusSetzen('', 'Keine Änderungen.');
+    anpassenSchliessen();
+    return;
+  }
+
+  if (vk5Geaendert && (isNaN(vk5brutto) || vk5brutto <= 0)) {
     statusSetzen('err', '⚠ Ungültiger VK5-Brutto-Wert');
     inpVk5brutto.focus();
     return;
   }
 
-  const art = _daten.find(a => a.artnr === artnr);
-  const ekNeu = inpEk ? parseFloat(inpEk.value) : null;
-  const ekGeaendert = inpEk && art && !isNaN(ekNeu) && ekNeu >= 0 && Math.abs(ekNeu - (art.ek || 0)) > 0.001;
-
   saveBtn.disabled = true;
   try {
-    // VK5 speichern
-    const rVk5 = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
-      method: 'PATCH',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vk5: vk5brutto }),
-    });
-    const dataVk5 = await rVk5.json();
-    if (!rVk5.ok || !dataVk5.ok) throw new Error(dataVk5.error || `HTTP ${rVk5.status}`);
+    let dataVk5 = null, ekGespeichert = false, vpeGespeichert = false;
+
+    // VK5 speichern (nur wenn geändert)
+    if (vk5Geaendert) {
+      const rVk5 = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vk5`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vk5: vk5brutto }),
+      });
+      dataVk5 = await rVk5.json();
+      if (!rVk5.ok || !dataVk5.ok) throw new Error(dataVk5.error || `HTTP ${rVk5.status}`);
+    }
 
     // EK speichern (nur wenn geändert)
-    let ekGespeichert = false;
     if (ekGeaendert) {
       const rEk = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/ek`, {
         method: 'PATCH',
@@ -994,22 +1014,43 @@ async function anpSpeichern(artnr, mwstSatz) {
       ekGespeichert = true;
     }
 
-    // Lokale Daten aktualisieren
+    // VPE speichern (nur wenn geändert)
+    if (vpeGeaendert) {
+      const rVpe = await fetch(`/wawi/api/artikel/${encodeURIComponent(artnr)}/vpe`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vpe_vk: newVpeVk, vpe_ek: newVpeEk }),
+      });
+      const dataVpe = await rVpe.json();
+      if (!rVpe.ok || !dataVpe.ok) throw new Error(dataVpe.error || `HTTP ${rVpe.status}`);
+      vpeGespeichert = true;
+    }
+
+    // Lokale Daten aktualisieren und Faktor neu berechnen
     const idx = _daten.findIndex(a => a.artnr === artnr);
     if (idx !== -1) {
-      _daten[idx].vk5 = dataVk5.vk5_neu;
-      if (dataVk5.vk5_netto !== undefined) _daten[idx].vk5_netto = dataVk5.vk5_netto;
-      if (dataVk5.faktor    !== undefined) _daten[idx].faktor    = dataVk5.faktor;
-      if (ekGespeichert) _daten[idx].ek = ekNeu;
+      if (dataVk5) _daten[idx].vk5 = dataVk5.vk5_neu;
+      if (ekGespeichert)  _daten[idx].ek      = ekNeu;
+      if (vpeGespeichert) { _daten[idx].vpe_ek = newVpeEk; _daten[idx].vpe_vk = newVpeVk; }
+      const vk5Cur = _daten[idx].vk5  || 0;
+      const ekCur  = _daten[idx].ek   || 0;
+      const vpeE   = _daten[idx].vpe_ek || 1;
+      const vpeV   = _daten[idx].vpe_vk || 1;
+      const vk5n   = mwstSatz > 0 ? vk5Cur / (1 + mwstSatz) : vk5Cur;
+      _daten[idx].vk5_netto = vk5n;
+      _daten[idx].faktor = (ekCur > 0 && vpeV > 0)
+        ? Math.round(vk5n * vpeE / (ekCur * vpeV) * 1000) / 1000
+        : null;
     }
 
     anpassenSchliessen();
     renderTabelle();
-    const ekInfo = ekGespeichert ? ` | EK: ${_eur(ekNeu)} €` : '';
-    statusSetzen('ok',
-      `✓ ${artnr} – VK5 Brutto: ${_eur(dataVk5.vk5_neu)} €`
-      + (dataVk5.faktor != null ? ` | Faktor: ${Number(dataVk5.faktor).toFixed(2)}` : '')
-      + ekInfo);
+    const parts = [];
+    if (dataVk5)       parts.push(`VK5: ${_eur(dataVk5.vk5_neu)} €`);
+    if (ekGespeichert) parts.push(`EK: ${_eur(ekNeu)} €`);
+    if (vpeGespeichert) parts.push(`VPE EK: ${newVpeEk} / VPE VK: ${newVpeVk}`);
+    statusSetzen('ok', `✓ ${artnr} – ${parts.join(' | ')}`);
   } catch (e) {
     saveBtn.disabled = false;
     statusSetzen('err', `⚠ Speichern fehlgeschlagen: ${e.message}`);
