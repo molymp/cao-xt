@@ -15,7 +15,7 @@ from common.db import (
     test_verbindung,
 )
 
-init_pool("wawi_pool", db_config={
+init_pool("wawi_app_pool", db_config={
     'host':     config.DB_HOST,
     'port':     config.DB_PORT,
     'name':     config.DB_NAME,

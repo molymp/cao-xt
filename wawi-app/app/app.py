@@ -37,6 +37,15 @@ def _fmt_eur(value, dp=2):
 app.jinja_env.filters['eur'] = _fmt_eur
 
 
+@app.before_request
+def _sync_mitarbeiter_session():
+    """session['mitarbeiter'] sicherstellen wenn eingeloggt.
+    WaWi-Blueprint prüft diesen Key; bei Sessions ohne mitarbeiter-Key
+    (z.B. Altdaten vor Migration) wird er aus login_name ergaenzt."""
+    if session.get('ma_id') and not session.get('mitarbeiter'):
+        session['mitarbeiter'] = session.get('login_name', '')
+
+
 # ── WaWi-Blueprint einbinden ──────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(BASE_DIR, '..', '..', 'modules', 'wawi'))
