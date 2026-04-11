@@ -904,6 +904,15 @@ def api_bestellungen_badge():
 
 
 @_login_required
+@app.route("/api/offen/badge")
+def api_offen_badge():
+    with get_db() as cursor:
+        cursor.execute("SELECT COUNT(*) AS n FROM warenkoerbe WHERE status='geparkt'")
+        row = cursor.fetchone()
+    return jsonify({"ok": True, "anzahl": row["n"]})
+
+
+@_login_required
 @app.route("/api/bestellungen/produkte")
 def api_bestellungen_produkte():
     wt = request.args.get("wochentag", "")

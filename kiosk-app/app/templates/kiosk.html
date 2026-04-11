@@ -121,7 +121,7 @@
 .summe-label { font-size: 0.85rem; color: rgba(255,255,255,0.5); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
 .summe-betrag { font-family: 'Lobster', cursive; font-size: 2.2rem; color: var(--creme); }
 
-.warenkorb-aktionen { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 24px 16px; flex-shrink: 0; }
+.warenkorb-aktionen { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 24px 16px; flex-shrink: 0; }
 .btn-buchen {
     grid-column: 1 / -1; background: var(--akzent); color: white;
     padding: 18px; font-size: 1.1rem; border-radius: var(--radius); border: none; cursor: pointer;
@@ -139,6 +139,20 @@
     display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s;
 }
 .btn-parken:hover { background: rgba(255,255,255,0.14); }
+.btn-geparkt {
+    padding: 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-klein);
+    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.75);
+    cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 0.9rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.15s;
+    text-decoration: none; white-space: nowrap; overflow: hidden;
+}
+.btn-geparkt:hover { background: rgba(255,255,255,0.14); }
+.btn-geparkt .geparkt-badge {
+    background: var(--rot); color: white; border-radius: 10px;
+    padding: 1px 7px; font-size: 0.75rem; font-weight: 800;
+    display: none;
+}
+.btn-geparkt .geparkt-badge.sichtbar { display: inline-block; }
 .btn-abbrechen:hover { background: rgba(180,40,40,0.25); color: #ff8070; }
 </style>
 {% endblock %}
@@ -243,6 +257,7 @@
                 🖨️ Buchen & Drucken
             </button>
             <button class="btn-parken" onclick="parken()">⏸ Parken</button>
+            <a href="/offen" class="btn-geparkt" id="btn-geparkt">⏸ Geparkt <span class="geparkt-badge" id="geparkt-badge">0</span></a>
             <button class="btn-abbrechen" onclick="abbrechen()">✕ Abbrechen</button>
         </div>
     </div>
@@ -340,7 +355,7 @@ async function positionLoeschen(posId, produktId) {
 async function parken() {
     if (!warenkorbId) return;
     const res = await apiFetch(`/warenkorb/${warenkorbId}/parken`, { method: 'POST' });
-    if (res) { zeigToast('Warenkorb geparkt'); setTimeout(() => location.reload(), 800); }
+    if (res) { zeigToast('Warenkorb geparkt'); aktualisiereGeparktBadge(); setTimeout(() => location.reload(), 800); }
 }
 
 async function abbrechen() {
@@ -420,6 +435,25 @@ function aktualisiereBadge(produktId) {
 function aktualisiereAlleBadges() {
     for (const [pid] of Object.entries(mengen)) aktualisiereBadge(parseInt(pid));
 }
+
+// ── Geparkt-Badge ────────────────────────────────────────────
+async function aktualisiereGeparktBadge() {
+    try {
+        const res = await fetch('/api/offen/badge');
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('geparkt-badge');
+        if (!badge) return;
+        if (data.anzahl > 0) {
+            badge.textContent = data.anzahl;
+            badge.classList.add('sichtbar');
+        } else {
+            badge.classList.remove('sichtbar');
+        }
+    } catch(e) {}
+}
+aktualisiereGeparktBadge();
+setInterval(aktualisiereGeparktBadge, 30000);
 
 function pruefeLeererKorb() {
     const liste = document.getElementById('positionen-liste');
