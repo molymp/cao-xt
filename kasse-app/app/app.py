@@ -5,7 +5,6 @@ Starten: cd kasse-app/app && python3 app.py
 from flask import (Flask, render_template, request, jsonify,
                    redirect, url_for, session, send_file, abort,
                    send_from_directory)
-from functools import wraps
 from datetime import datetime, date
 import io
 import json
@@ -18,6 +17,7 @@ import time
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
+from common.auth import login_required as _login_required, login_user, logout_user
 import kasse_logik as kl
 import druck
 import dsfinvk
@@ -151,11 +151,6 @@ def _globals():
     }
 
 
-# ── Auth-Hilfsfunktionen ──────────────────────────────────────
-def _ist_eingeloggt() -> bool:
-    return bool(session.get('ma_id'))
-
-
 def _terminal_settings(terminal_nr: int) -> dict:
     """Liest Terminal-Einstellungen inkl. TSE-Typ aus XT_KASSE_TERMINALS + XT_KASSE_TSE_GERAETE."""
     with get_db() as cur:
@@ -214,15 +209,6 @@ def _mitarbeiter() -> dict:
     }
 
 
-def _login_required(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if not _ist_eingeloggt():
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return wrapper
-
-
 def _bon_drucken(vid: int, *, ist_kopie: bool = False, ist_storno: bool = False,
                  vorgang=None, positionen=None, zahlungen=None):
     """
@@ -274,17 +260,14 @@ def login_post():
     passwort   = request.form.get('passwort', '')
     ma = kl.mitarbeiter_login(login_name, passwort)
     if ma:
-        session['ma_id']      = ma['MA_ID']
-        session['login_name'] = ma['LOGIN_NAME']
-        session['vname']      = ma['VNAME']
-        session['ma_name']    = ma['NAME']
+        login_user(ma)
         return redirect(url_for('kasse'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
 
 
 @app.get('/logout')
 def logout():
-    session.clear()
+    logout_user()
     return redirect(url_for('login'))
 
 

@@ -1,16 +1,24 @@
 # ============================================================
-# Bäckerei Kiosk – Konfiguration
-# Priorität: config_local.py > Umgebungsvariablen > diese Defaults
+# Bäckerei Kiosk – Konfiguration (thin wrapper um common.config)
+# Priorität: config_local.py > Umgebungsvariablen > caoxt.ini
 # Lokale Overrides in config_local.py (nicht in git) eintragen.
 # ============================================================
 import os
+import sys
 
-# ── Datenbank ─────────────────────────────────────────────────
-DB_HOST     = "<DB_HOST>"       # z.B. 192.168.x.x (lokale LAN-IP des MariaDB-Servers)
-DB_PORT     = 3306              # Standard MariaDB-Port anpassen falls nötig
-DB_USER     = "<DB_USER>"
-DB_PASSWORD = "<DB_PASSWORD>"
-DB_NAME     = "Backwaren"
+_REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from common.config import load_db_config
+
+# ── Datenbank (aus caoxt.ini oder KIOSK_DB_* Env-Vars) ───────
+_cfg        = load_db_config("KIOSK")
+DB_HOST     = _cfg['host']
+DB_PORT     = _cfg['port']
+DB_USER     = _cfg['user']
+DB_PASSWORD = _cfg['password']
+DB_NAME     = _cfg['name'] or "Backwaren"
 
 # ── Terminal ──────────────────────────────────────────────────
 # Einstellige Zahl 1–9, pro Gerät einmalig vergeben.
