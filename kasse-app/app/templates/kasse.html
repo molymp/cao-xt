@@ -99,8 +99,8 @@
 /* ── Fixe Schnelltasten: unteres Drittel ─────────────────── */
 .schnell-section {
   flex-shrink: 0;
-  /* 5 Reihen × 56px + 4 Gaps × 5px + Grid-Padding 12px + Nav ~44px + Border 2px */
-  height: 358px;
+  /* 5 Reihen × 56px + 4 Gaps × 5px + Grid-Padding 12px + Nav ~50px + Border 2px */
+  height: 380px;
   display: flex; flex-direction: column; overflow: hidden;
   border-top: 2px solid var(--creme-dunkel);
   background: var(--grau-hell);
@@ -507,10 +507,15 @@
   background: rgba(255,255,255,0.1); color: var(--gruen-blass);
   border-color: rgba(255,255,255,0.15);
   width: auto !important; min-width: 0 !important; max-width: none !important;
-  height: 44px !important; min-height: 44px !important; max-height: none !important;
-  font-size: 18px; padding: 4px 2px !important;
+  height: auto !important; min-height: 0 !important; max-height: none !important;
+  aspect-ratio: 1 / 1;
+  font-size: 15px; padding: 0 !important;
+  display: flex; align-items: center; justify-content: center;
 }
 .z-panel .numpad .btn:active { background: var(--gold); color: white; }
+.z-panel .numpad .z-numpad-c {
+  aspect-ratio: unset; min-height: 34px !important; font-size: 13px !important;
+}
 .z-wechselgeld {
   text-align: center; font-size: 22px; font-weight: 700;
   color: var(--gruen-blass);
@@ -531,8 +536,10 @@
 .z-kasse-btn {
   background: rgba(255,255,255,0.1); color: var(--gruen-blass);
   border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-klein);
-  padding: 8px 4px; font-size: 13px; font-weight: 700; cursor: pointer;
+  padding: 0; font-size: 13px; font-weight: 700; cursor: pointer;
   font-family: 'Nunito', sans-serif; text-align: center; line-height: 1.2;
+  aspect-ratio: 1 / 1;
+  display: flex; align-items: center; justify-content: center;
 }
 .z-kasse-btn:active { background: var(--gold); color: white; border-color: var(--gold); }
 .z-schein-btn { background: rgba(200,160,0,0.15); border-color: rgba(200,160,0,0.35); }
@@ -658,12 +665,14 @@
   <!-- ── Rechte Spalte: Aktionen + EAN + Numpad ─────────────── -->
   <div class="aktionen-panel">
     <!-- Bon-Nr + Parken + Geparkt -->
-    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-      <span class="wk-bon-nr" id="bonNrAnzeige">–</span>
-      <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
-      <button class="btn btn-neutral btn-sm" onclick="geparkteOverlayOeffnen()" id="btnGeparkt">
-        📋 Geparkt<span class="geparkt-badge" id="geparkteAnzahl" style="display:none">0</span>
-      </button>
+    <div>
+      <span class="wk-bon-nr" id="bonNrAnzeige" style="display:block; margin-bottom:4px;">–</span>
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
+        <button class="btn btn-neutral btn-sm" onclick="geparkteOverlayOeffnen()" id="btnGeparkt">
+          📋 Geparkt<span class="geparkt-badge" id="geparkteAnzahl" style="display:none">0</span>
+        </button>
+      </div>
     </div>
 
     <!-- Netto + MwSt-Aufschlüsselung -->
@@ -976,8 +985,8 @@
               {% for z in ['7','8','9','4','5','6','1','2','3','00','0','⌫'] %}
               <button class="btn z-numpad-taste" data-z="{{ z }}">{{ z }}</button>
               {% endfor %}
-              <button class="btn z-numpad-taste" data-z="C"
-                      style="grid-column:span 3; min-height:34px; font-size:13px;">
+              <button class="btn z-numpad-taste z-numpad-c" data-z="C"
+                      style="grid-column:span 3;">
                 C – Löschen
               </button>
             </div>
