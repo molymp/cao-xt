@@ -15,6 +15,17 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-11 Common-Package: Shared Modules im Repo-Root statt separatem pip-Package (HAB-333)
+
+- **Problem:** `db.py`, `config.py`, `auth.py` und ESC/POS-Konstanten waren in allen drei Apps (kasse-app, kiosk-app, wawi-app) nahezu identisch dupliziert (~70–90 % Übereinstimmung). Fehler und Erweiterungen mussten dreifach eingepflegt werden.
+- **Entscheidung:** Einheitliches Python-Package `common/` im Repo-Root mit den Modulen `config.py`, `db.py`, `auth.py` und `druck/escpos.py`. Jede App hat einen dünnen lokalen Wrapper (`config.py`, `db.py`), der `common.*` importiert und app-spezifische Werte exponiert. Die `sys.path`-Erweiterung auf den Repo-Root wird in jedem `config.py`-Wrapper einmalig gesetzt.
+- **Begründung:** (a) Kein Packaging-Overhead (`pyproject.toml` für interne Nutzung unnötig). (b) Passt zur bestehenden Konvention: `modules/wawi` zeigt bereits, dass der Repo-Root als Modul-Basis genutzt wird. (c) `sys.path`-Erweiterung ist der bewährte Weg in diesem Projekt. (d) Blueprint-basierter Auth-Ansatz hätte Login/Logout-Templates geteilt – unerwünscht, da sie app-spezifisch sind.
+- **Alternativen:** (a) Separates pip-Package mit `pyproject.toml` – abgelehnt, da interner Overhead ohne Mehrwert; (b) Blueprint-only mit SharedAuth-Blueprint – abgelehnt, da Login-Routen app-spezifische Templates rendern; (c) Symlinks auf gemeinsame Dateien – abgelehnt, da fragil und schlecht versionierbar.
+- **Konsequenzen:** Alle drei Apps nutzen `common.config`, `common.db`, `common.auth` und `common.druck.escpos`. Login/Logout-**Routen** und Bon-Aufbau-Logik verbleiben app-lokal (Phase-1-Scope). Unit-Tests in `tests/test_common.py` (22 Tests, keine DB-Verbindung nötig). Kiosk-spezifisch: `DB_NAME` wird nicht aus `caoxt.ini` geladen, sondern ist `'Backwaren'` (eigene Datenbank, unabhängig von CAO-Faktura).
+- **Referenz:** [HAB-333](/HAB/issues/HAB-333) | Architekturplan: [HAB-326](/HAB/issues/HAB-326#document-plan)
+
+---
+
 ## 2026-04-06 Verbindliche Merge-Pflicht: Sofort-Merge nach Board-Freigabe (HAB-267)
 
 - **Problem:** Fix-Branches wurden implementiert und im Review-Worktree getestet, aber nie in `master` gemergt. Bereits gefixte Issues tauchten erneut auf, weil die Fixes zwar auf Branches existierten, aber nie in die Produktionsbasis landeten. Beispiel: `claude/hab-101-bon-timestamp` existierte Wochen ohne Merge. Das Board verlor das Vertrauen in die Stabilität des Systems.

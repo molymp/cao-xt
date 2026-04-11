@@ -19,6 +19,9 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
 
 ### Hinzugefügt
+- Common-Package `common/` im Repo-Root: `config.py`, `db.py`, `auth.py`, `druck/escpos.py` als gemeinsame Basis für alle drei Apps – dünne Wrapper in den Apps ersetzen bisherige Duplikate ([HAB-333](/HAB/issues/HAB-333))
+- Unit-Tests `tests/test_common.py` (22 Tests): `cent_zu_euro_str`, `euro_zu_cent`, Session-Helpers, `login_required`-Decorator, ESC/POS-Konstanten, `tcp_send` – ohne echte DB-Verbindung ([HAB-333](/HAB/issues/HAB-333))
+- WaWi Preispflege: On-Screen-Numpad für Preis/EK/VPE-Eingaben (Touch-optimiert) ([HAB-332](/HAB/issues/HAB-332))
 - WaWi CFO-Berichte (Phase 1): Tagesumsatz, Monatsübersicht, Kassenbuch, EC-Umsätze – parametrisierbare Zeitraumfilter, CSV-Export je Bericht, Monats-Chart (Chart.js) ([HAB-238](/HAB/issues/HAB-238))
 - WaWi Preispflege: Touch-optimierter Warengruppenbaum (größere Tap-Targets, aktiver Zustand) und verbessertes Anpassen-Panel für Touch-Bedienung ([HAB-280](/HAB/issues/HAB-280))
 - WaWi Preispflege-Tabelle: Alle Normalartikel mit EK / VK5 (Brutto) / Marge auf einen Blick; VK5 inline editierbar, Filter nach Warengruppe, Sortierung nach Marge, Rot-Markierung bei Marge < 10 % ([HAB-235](/HAB/issues/HAB-235))
