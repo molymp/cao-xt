@@ -22,6 +22,10 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
 
 ### Hinzugefügt
+- Common-Bereich / Shared Modules: Neues `common/`-Package mit gemeinsamer DB-, Config-, Auth- und Druck-Logik; alle drei Apps (Kasse, Kiosk, WaWi) migriert ([HAB-332](/HAB/issues/HAB-332))
+- WaWi Preispflege: On-Screen-Numpad für Touch-Eingabe ([HAB-332](/HAB/issues/HAB-332))
+- Kasse Manager: Volle Breite, Transfer-Bereich nebeneinander, Ein-Klick-Buchung ([HAB-329](/HAB/issues/HAB-329))
+- Kasse: Letzter Bon druckt Lieferschein-Layout bei Lieferschein-Vorgängen korrekt ([HAB-328](/HAB/issues/HAB-328))
 - WaWi CFO-Berichte (Phase 1): Tagesumsatz, Monatsübersicht, Kassenbuch, EC-Umsätze – parametrisierbare Zeitraumfilter, CSV-Export je Bericht, Monats-Chart (Chart.js) ([HAB-238](/HAB/issues/HAB-238))
 - WaWi Preispflege: Touch-optimierter Warengruppenbaum (größere Tap-Targets, aktiver Zustand) und verbessertes Anpassen-Panel für Touch-Bedienung ([HAB-280](/HAB/issues/HAB-280))
 - WaWi Preispflege-Tabelle: Alle Normalartikel mit EK / VK5 (Brutto) / Marge auf einen Blick; VK5 inline editierbar, Filter nach Warengruppe, Sortierung nach Marge, Rot-Markierung bei Marge < 10 % ([HAB-235](/HAB/issues/HAB-235))

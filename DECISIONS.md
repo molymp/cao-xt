@@ -105,3 +105,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 - **Alternativen:** Berichte direkt im bestehenden `/reporting`-Endpunkt integrieren (würde den bereits vorhandenen Reporting-Bereich überlasten); separater Micro-Service (zu aufwändig).
 - **Konsequenzen:** CSV-Export mit UTF-8-BOM für Excel-Kompatibilität. Phase 2 (Lieferantenumsätze, Wareneinsatz/Marge) steht aus.
 - **Referenz:** [HAB-238](/HAB/issues/HAB-238)
+
+
+---
+
+## 2026-04-12 Common-Bereich / Shared Modules Package (HAB-332)
+
+- **Problem:** DB-Verbindung, Config-Laden, Auth-Middleware und Druck-Logik waren dreifach dupliziert (kasse-app, kiosk-app, wawi-app). Änderungen mussten in drei Apps parallel gepflegt werden.
+- **Entscheidung:** Neues `common/`-Package im Repo-Root mit den Modulen `db.py`, `config.py`, `auth.py` und `druck/escpos.py`. Alle drei Apps wurden auf dieses gemeinsame Package migriert.
+- **Begründung:** Single Source of Truth für infrastrukturelle Logik. Neue Apps (z.B. Verwaltungs-App) können das Package sofort nutzen ohne Codeduplizierung.
+- **Alternativen:** Separate pip-Package-Veröffentlichung (zu aufwändig für internes Projekt); Symlinks (nicht portabel, Git-unfreundlich).
+- **Konsequenzen:** `PYTHONPATH` muss beim App-Start auf Repo-Root zeigen. Kiosk-App liest eigene `Backwaren`-DB – nutzt daher `common/db.py` mit eigenem DB-Namen, nicht die Standard-CAO-DB.
+- **Referenz:** [HAB-332](/HAB/issues/HAB-332)
