@@ -8,6 +8,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Behoben
+- Kasse: `_format_vlsnum()` Fallback erzeugt jetzt reines Zahlenformat (z.B. `018165`) statt `LS018165` – kompatibel mit CAO-VRENUM-Feld (VARCHAR ≤ 7) ([HAB-322](/HAB/issues/HAB-322))
 - Kasse: VRENUM/VLSNUM wird korrekt aus REGISTRY MAIN\NUMBERS mit STADIUM=121 gelesen ([HAB-240](/HAB/issues/HAB-240), [HAB-310](/HAB/issues/HAB-310))
 - Kasse: NULL/leer-Handling für BEST_CODE, BRUTTO_FLAG und Login-Namen (ERST_NAME/GEAEND_NAME) ([HAB-240](/HAB/issues/HAB-240))
 - Kasse: FOLGENR=REC_ID und KM_STAND=-1 korrekt initialisiert; SOLL_SKONTO_TAGE aus lieferschein_zu_journal entfernt ([HAB-240](/HAB/issues/HAB-240))
