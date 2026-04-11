@@ -12,13 +12,17 @@ if _REPO_ROOT not in sys.path:
 
 from common.config import load_db_config
 
-# ── Datenbank (aus caoxt.ini oder KIOSK_DB_* Env-Vars) ───────
+# ── Datenbank ─────────────────────────────────────────────────
+# Host/Port/User/Password aus caoxt.ini (gleicher MySQL-Server wie CAO Faktura).
+# DB_NAME NICHT aus caoxt.ini: Kiosk nutzt eigene Datenbank 'Backwaren',
+# die von der CAO-Faktura-DB (db_name in caoxt.ini) abweicht.
+# Überschreiben via Env-Var KIOSK_DB_NAME oder config_local.py.
 _cfg        = load_db_config("KIOSK")
 DB_HOST     = _cfg['host']
 DB_PORT     = _cfg['port']
 DB_USER     = _cfg['user']
 DB_PASSWORD = _cfg['password']
-DB_NAME     = _cfg['name'] or "Backwaren"
+DB_NAME     = os.environ.get('KIOSK_DB_NAME') or 'Backwaren'
 
 # ── Terminal ──────────────────────────────────────────────────
 # Einstellige Zahl 1–9, pro Gerät einmalig vergeben.
