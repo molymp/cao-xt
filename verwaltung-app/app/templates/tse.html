@@ -7,11 +7,12 @@
   <table class="tbl" id="tseTbl">
     <thead>
       <tr>
-        <th>Terminal</th>
-        <th>TSE-ID</th>
+        <th>ID</th>
+        <th>Bezeichnung</th>
         <th>Typ</th>
-        <th>Status</th>
-        <th>Serial</th>
+        <th>Umgebung</th>
+        <th>Terminals</th>
+        <th>Gültig bis</th>
       </tr>
     </thead>
     <tbody id="tseBody"></tbody>
@@ -22,7 +23,7 @@
 </div>
 
 <div class="alert alert-warn" style="margin-top:24px;max-width:600px;">
-  ℹ️ TSE-Konfiguration (Aktivierung, Deaktivierung, Selbsttest) wird weiterhin
+  TSE-Konfiguration (Aktivierung, Deaktivierung, Selbsttest) wird weiterhin
   über die jeweilige Kassen-App gesteuert. Hier sehen Sie die Geräte-Übersicht.
 </div>
 {% endblock %}
@@ -46,11 +47,12 @@ async function load() {
   leer.classList.add('hidden');
   body.innerHTML = geraete.map(g => `
     <tr>
-      <td>${g.TERMINAL_NR} ${g.terminal_name ? '(' + g.terminal_name + ')' : ''}</td>
-      <td style="font-family:monospace;font-size:13px;">${g.TSE_ID || '–'}</td>
-      <td>${g.TSE_TYP || '–'}</td>
-      <td>${g.STATUS || '–'}</td>
-      <td style="font-family:monospace;font-size:12px;">${g.SERIAL_NR || '–'}</td>
+      <td><strong>${g.REC_ID}</strong></td>
+      <td>${g.BEZEICHNUNG || '–'}</td>
+      <td>${g.TYP || '–'}</td>
+      <td>${g.FISKALY_ENV || '–'}</td>
+      <td>${g.TERMINAL_NRS || '–'}</td>
+      <td>${g.ZERTIFIKAT_GUELTIG_BIS || '–'}</td>
     </tr>
   `).join('');
 }

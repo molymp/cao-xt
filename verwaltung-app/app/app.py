@@ -200,6 +200,8 @@ def db_config_save():
         # In-Memory-Config und DB-Pool mit neuen Werten neu laden
         config.reload_db_config()
         reset_pool()
+        # Migrationen erneut versuchen (beim Start evtl. fehlgeschlagen)
+        _migrationen_ausfuehren()
         return jsonify(ok=True, msg='Konfiguration gespeichert.')
     except Exception as e:
         log.error("caoxt.ini schreiben fehlgeschlagen: %s", e)
@@ -310,7 +312,7 @@ def terminals():
 def api_terminals_list():
     try:
         with get_db() as cur:
-            cur.execute("SELECT * FROM XT_TERMINAL ORDER BY TERMINAL_NR")
+            cur.execute("SELECT * FROM XT_KASSE_TERMINALS ORDER BY TERMINAL_NR")
             return jsonify(ok=True, terminals=cur.fetchall())
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
@@ -323,7 +325,7 @@ def api_terminal_update(terminal_nr):
     try:
         with get_db() as cur:
             cur.execute(
-                "UPDATE XT_TERMINAL SET BEZEICHNUNG=%s WHERE TERMINAL_NR=%s",
+                "UPDATE XT_KASSE_TERMINALS SET BEZEICHNUNG=%s WHERE TERMINAL_NR=%s",
                 (d.get('bezeichnung', ''), terminal_nr),
             )
         return jsonify(ok=True, msg='Terminal aktualisiert.')
@@ -342,14 +344,16 @@ def tse():
 @app.get('/api/tse')
 @_login_required
 def api_tse_list():
-    """TSE-Geräte aus XT_TSE_DEVICE."""
+    """TSE-Geräte aus XT_KASSE_TSE_GERAETE mit zugeordneten Terminals."""
     try:
         with get_db() as cur:
             cur.execute("""
-                SELECT d.*, t.BEZEICHNUNG AS terminal_name
-                FROM XT_TSE_DEVICE d
-                LEFT JOIN XT_TERMINAL t ON d.TERMINAL_NR = t.TERMINAL_NR
-                ORDER BY d.TERMINAL_NR
+                SELECT g.*,
+                       GROUP_CONCAT(t.TERMINAL_NR ORDER BY t.TERMINAL_NR) AS TERMINAL_NRS
+                  FROM XT_KASSE_TSE_GERAETE g
+                  LEFT JOIN XT_KASSE_TERMINALS t ON t.TSE_ID = g.REC_ID
+                 GROUP BY g.REC_ID
+                 ORDER BY g.REC_ID DESC
             """)
             return jsonify(ok=True, geraete=cur.fetchall())
     except Exception as e:
