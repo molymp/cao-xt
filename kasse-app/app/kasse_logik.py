@@ -2110,9 +2110,10 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
             """UPDATE XT_KASSE_VORGAENGE
                SET STATUS = 'ABGESCHLOSSEN',
                    VORGANG_TYP = 'Lieferschein',
+                   ADRESSEN_ID = %s,
                    ABSCHLUSS_DATUM = %s
                WHERE ID = %s AND STATUS IN ('OFFEN', 'GEPARKT')""",
-            (jetzt, vorgang_id)
+            (adressen_id, jetzt, vorgang_id)
         )
         log.info("JOURNAL-Lieferschein erstellt: REC_ID=%d, Vorgang=%d, Kunde=%d, HASHSUM=%s",
                  journal_id, vorgang_id, adressen_id, hashsum)
@@ -2336,6 +2337,9 @@ def migrationen_ausfuehren():
          "ALTER TABLE XT_KASSE_TAGESABSCHLUSS ADD COLUMN IST_TRAINING TINYINT(1) NOT NULL DEFAULT 0 AFTER TERMINAL_NR"),
         ("XT_KASSE_KASSENBUCH",     "IST_TRAINING",
          "ALTER TABLE XT_KASSE_KASSENBUCH ADD COLUMN IST_TRAINING TINYINT(1) NOT NULL DEFAULT 0 AFTER TERMINAL_NR"),
+        # ADRESSEN_ID: speichert Kunden-Adresse bei Lieferschein-Vorgängen für Nachdruck
+        ("XT_KASSE_VORGAENGE", "ADRESSEN_ID",
+         "ALTER TABLE XT_KASSE_VORGAENGE ADD COLUMN ADRESSEN_ID INT NULL AFTER VORGANG_TYP"),
     ]
     try:
         with get_db() as cur:
