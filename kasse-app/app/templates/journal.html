@@ -303,7 +303,7 @@ async function suchen() {
         <tr class="daten-zeile${zeilenKlasse ? ' '+zeilenKlasse : ''}" onclick="togglePos(${v.ID})">
           <td style="text-align:center;"><span class="j-pfeil" id="pfeil-${v.ID}">▶</span></td>
           <td><strong>Bon ${v.BON_NR}</strong></td>
-          <td style="color:var(--th);">${datFmt(v.BON_DATUM)}</td>
+          <td style="color:var(--th);">${datFmt(v.ABSCHLUSS_DATUM || v.BON_DATUM)}</td>
           <td class="j-betrag">${euro(v.BETRAG_BRUTTO)}</td>
           <td class="j-zahlart">${fmtZahlart(v.ZAHLARTEN)}</td>
           <td>${badge}${trainingBadge ? ' ' + trainingBadge : ''}</td>
