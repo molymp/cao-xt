@@ -231,3 +231,27 @@ def api_artikel_ek_setzen(artnr: str):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     return jsonify(result)
+
+
+@bp.patch('/api/artikel/<artnr>/vpe')
+def api_artikel_vpe_setzen(artnr: str):
+    """
+    PATCH /wawi/api/artikel/<artnr>/vpe
+    Body: { "vpe_vk": 1, "vpe_ek": 12 }
+
+    Schreibt VPE (Verkaufsverpackung) und VPE_EK (Einkaufsverpackung) in ARTIKEL.
+    """
+    _benutzer()
+    data = request.get_json(force=True) or {}
+    if 'vpe_vk' not in data or 'vpe_ek' not in data:
+        return jsonify({'error': 'Felder vpe_vk und vpe_ek erforderlich'}), 400
+    try:
+        vpe_vk = max(1, int(data['vpe_vk']))
+        vpe_ek = max(1, int(data['vpe_ek']))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'vpe_vk und vpe_ek müssen Ganzzahlen sein'}), 400
+    try:
+        result = m.artikel_vpe_setzen(artnr, vpe_vk, vpe_ek)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify(result)

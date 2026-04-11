@@ -4,7 +4,6 @@ Starten: cd app && python3 app.py
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
-from functools import wraps
 from datetime import datetime, timedelta, date
 import base64
 import os
@@ -15,6 +14,7 @@ import time
 import config
 import db
 from db import get_db, get_db_transaction, cent_zu_euro_str
+from common.auth import login_required as _login_required, login_user, logout_user
 import ean as ean_modul
 import druck
 import mittagstisch as mt
@@ -40,19 +40,6 @@ def _inject_globals():
                                  if config.WAWI_PORT else ''),
         "git_commit_short":  GIT_COMMIT_SHORT,
     }
-
-
-def _ist_eingeloggt() -> bool:
-    return bool(session.get('ma_id'))
-
-
-def _login_required(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if not _ist_eingeloggt():
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return wrapper
 
 
 # Verzeichnis für Produktbilder (app/produktbilder/<id>.jpg)
@@ -257,19 +244,17 @@ def login():
 def login_post():
     login_name = request.form.get('login_name', '').strip()
     passwort   = request.form.get('passwort', '')
-    ma = db.mitarbeiter_login(login_name, passwort)
+    from common.auth import mitarbeiter_login
+    ma = mitarbeiter_login(login_name, passwort)
     if ma:
-        session['ma_id']      = ma['MA_ID']
-        session['login_name'] = ma['LOGIN_NAME']
-        session['vname']      = ma['VNAME']
-        session['ma_name']    = ma['NAME']
+        login_user(ma)
         return redirect(url_for('index'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
 
 
 @app.get('/logout')
 def logout():
-    session.clear()
+    logout_user()
     return redirect(url_for('login'))
 
 

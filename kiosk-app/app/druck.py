@@ -3,9 +3,9 @@ Bäckerei Kiosk – Bondruck und Bon-Datengenerierung
 Nur Standard-ESC/POS-Befehle die alle Thermal-Drucker unterstützen.
 """
 
-import socket
 import config
 from db import get_db, cent_zu_euro_str
+from common.druck.escpos import tcp_send
 from datetime import datetime
 
 # ── Zeichensatz-Tabelle: Umlaute → CP437 ─────────────────────
@@ -157,13 +157,7 @@ def _sende_an_drucker(terminal_nr: int, daten: bytes):
         if not row:
             raise RuntimeError("Kein aktiver Drucker konfiguriert.")
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(10)
-    try:
-        sock.connect((row["ip_adresse"], row["port"]))
-        sock.sendall(daten)
-    finally:
-        sock.close()
+    tcp_send(row["ip_adresse"], row["port"], daten, timeout=10)
 
 
 def generiere_bon_bytes(
