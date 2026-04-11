@@ -8,6 +8,9 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Behoben
+- Kasse UI: Artikelschnellzugriff-Bereich auf 380 px erhöht – fünfte Reihe wird nicht mehr abgeschnitten ([HAB-327](/HAB/issues/HAB-327))
+- Kasse UI: Münz-/Schein-/Zahlenknöpfe im Kassiervorgang-Overlay sind jetzt quadratisch (`aspect-ratio: 1/1`); Zahlengröße auf 15 px angeglichen (wie Hauptbildschirm) ([HAB-327](/HAB/issues/HAB-327))
+- Kasse UI: Bonnummer bekommt eigene Zeile über den Parken/Geparkt-Buttons – kein Platzkonflikt mehr ([HAB-327](/HAB/issues/HAB-327))
 - Kasse: `_format_vlsnum()` Fallback erzeugt jetzt reines Zahlenformat (z.B. `018165`) statt `LS018165` – kompatibel mit CAO-VRENUM-Feld (VARCHAR ≤ 7) ([HAB-322](/HAB/issues/HAB-322))
 - Kasse: VRENUM/VLSNUM wird korrekt aus REGISTRY MAIN\NUMBERS mit STADIUM=121 gelesen ([HAB-240](/HAB/issues/HAB-240), [HAB-310](/HAB/issues/HAB-310))
 - Kasse: NULL/leer-Handling für BEST_CODE, BRUTTO_FLAG und Login-Namen (ERST_NAME/GEAEND_NAME) ([HAB-240](/HAB/issues/HAB-240))
