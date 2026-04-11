@@ -6,7 +6,7 @@
 {% block extra_style %}
 <style>
 .mgr-wrap {
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 24px 16px;
   overflow-y: auto;
@@ -167,6 +167,32 @@
   border-radius: 4px;
 }
 .tippbar:active { background: var(--creme-dunkel); }
+.transfer-dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 14px;
+}
+.transfer-dual > .transfer-spalte {
+  background: rgba(50,120,50,0.06);
+  border: 1px solid var(--gruen-hell);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.combined-book-bar {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(50,120,50,0.10);
+  border: 2px solid var(--gruen-hell);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.combined-book-bar .summary { font-size: 14px; }
+.combined-book-bar .summary strong { font-size: 16px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -327,46 +353,59 @@
         Transfers → Bank und → Tresor danach buchen.
       </div>
 
-      <!-- ③ Transfer → Bank -->
+      <!-- ③④ Transfer → Bank + Tresor (nebeneinander) -->
       <div class="ar-sep-line"></div>
-      <div class="ar-step-hdr">③ Transfer → Bank</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;">
-        <div>
-          <div class="denom-grp-hdr">Scheine an Bank</div>
-          <table class="denom-table"><tbody id="arBankSchBody"></tbody></table>
+      <div class="ar-step-hdr">③④ Transfers: Bank + Tresor</div>
+      <div class="transfer-dual">
+        <!-- Bank-Spalte -->
+        <div class="transfer-spalte">
+          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">🏦 Bank</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:start;">
+            <div>
+              <div class="denom-grp-hdr">Scheine</div>
+              <table class="denom-table"><tbody id="arBankSchBody"></tbody></table>
+            </div>
+            <div>
+              <div class="denom-grp-hdr">Münzen</div>
+              <table class="denom-table"><tbody id="arBankMnzBody"></tbody></table>
+            </div>
+          </div>
+          <div style="text-align:right; font-weight:700; font-size:14px; margin-top:8px;">
+            Bank: <span id="arTransfer">0,00 €</span>
+            &nbsp;<span id="arTransferVerbleib" class="hint-ok" style="font-size:12px;"></span>
+          </div>
         </div>
-        <div>
-          <div class="denom-grp-hdr">Münzen an Bank</div>
-          <table class="denom-table"><tbody id="arBankMnzBody"></tbody></table>
+        <!-- Tresor-Spalte -->
+        <div class="transfer-spalte">
+          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">🔒 Tresor (Nebenkasse)</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:start;">
+            <div>
+              <div class="denom-grp-hdr">Scheine</div>
+              <table class="denom-table"><tbody id="arTresorSchBody"></tbody></table>
+            </div>
+            <div>
+              <div class="denom-grp-hdr">Münzen</div>
+              <table class="denom-table"><tbody id="arTresorMnzBody"></tbody></table>
+            </div>
+          </div>
+          <div style="text-align:right; font-weight:700; font-size:14px; margin-top:8px;">
+            Tresor: <strong id="arTresor">0,00 €</strong>
+          </div>
         </div>
       </div>
-      <div style="text-align:right; font-weight:700; font-size:14px; margin:8px 0 8px;">
-        Transfer: <span id="arTransfer">0,00 €</span>
-        &nbsp;<span id="arTransferVerbleib" class="hint-ok" style="font-size:12px;"></span>
-      </div>
-      <button type="button" id="arBtnBank" class="btn btn-neutral btn-sm"
-              style="opacity:0.35; pointer-events:none;"
-              onclick="arNavigiereBank()">🏦 Transfer → Bank buchen</button>
 
-      <!-- ④ Transfer → Tresor -->
-      <div class="ar-sep-line"></div>
-      <div class="ar-step-hdr">④ Transfer → Tresor (Nebenkasse)</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px; align-items:start;">
-        <div>
-          <div class="denom-grp-hdr">Scheine → Tresor</div>
-          <table class="denom-table"><tbody id="arTresorSchBody"></tbody></table>
+      <!-- Ein-Klick-Buchung -->
+      <div class="combined-book-bar" id="arCombinedBar" style="opacity:0.35; pointer-events:none;">
+        <div class="summary">
+          Bank: <strong id="arCombSumBank">0,00 €</strong> &nbsp;+&nbsp;
+          Tresor: <strong id="arCombSumTresor">0,00 €</strong>
         </div>
-        <div>
-          <div class="denom-grp-hdr">Münzen → Tresor</div>
-          <table class="denom-table"><tbody id="arTresorMnzBody"></tbody></table>
-        </div>
+        <button type="button" id="arBtnCombined" class="btn btn-primary"
+                style="min-height:52px; font-size:15px; white-space:nowrap;"
+                onclick="arBucheBeideTransfers()">
+          ✅ Beide Transfers buchen
+        </button>
       </div>
-      <div style="text-align:right; font-weight:700; font-size:14px; margin-bottom:8px;">
-        Tresor-Betrag: <strong id="arTresor">0,00 €</strong>
-      </div>
-      <button type="button" id="arBtnTresor" class="btn btn-neutral btn-sm"
-              style="opacity:0.35; pointer-events:none;"
-              onclick="arNavigiereTresor()">🔒 Transfer → Tresor buchen</button>
     </div>
 
     <div class="action-grid">
@@ -689,14 +728,7 @@ function arUpdateUI() {
   } else if (vEl) {
     vEl.textContent = '';
   }
-  const bankBtn = document.getElementById('arBtnBank');
-  if (bankBtn) {
-    const aktiv = arTransferCent > 0 && arGesamtCent > 0;
-    bankBtn.style.opacity      = aktiv ? '1' : '0.35';
-    bankBtn.style.pointerEvents = aktiv ? '' : 'none';
-  }
-
-  // ④ Tresor-Stückelung (Kassensturz − Bank)
+  // ③④ Combined bar + Tresor
   const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
   document.getElementById('arTresor').textContent = arEuro(tresorCent);
   // Scheine-Spalte
@@ -715,12 +747,17 @@ function arUpdateUI() {
     const te = document.getElementById('arTrT_' + d.val);
     if (te) te.textContent = arEuro(cnt * d.val);
   });
-  const tresorBtn = document.getElementById('arBtnTresor');
-  if (tresorBtn) {
-    const aktiv = tresorCent > 0;
-    tresorBtn.style.opacity      = aktiv ? '1' : '0.35';
-    tresorBtn.style.pointerEvents = aktiv ? '' : 'none';
+  // Combined booking bar
+  const combBar = document.getElementById('arCombinedBar');
+  if (combBar) {
+    const aktiv = arGesamtCent > 0 && (arTransferCent > 0 || tresorCent > 0);
+    combBar.style.opacity      = aktiv ? '1' : '0.35';
+    combBar.style.pointerEvents = aktiv ? '' : 'none';
   }
+  const combBank  = document.getElementById('arCombSumBank');
+  const combTres  = document.getElementById('arCombSumTresor');
+  if (combBank)  combBank.textContent  = arEuro(arTransferCent);
+  if (combTres)  combTres.textContent  = arEuro(tresorCent);
 }
 
 function arSetBtn(id, aktiv, href) {
@@ -807,37 +844,112 @@ async function arSpeichereKassensturz() {
   });
 }
 
-// ── Navigation Bank: Stückelung speichern, dann navigieren ─────
+// ── Gegenkonten aus Terminal-Konfiguration ────────────────────
+const KONTO_BANK  = {{ info.konto_bank|tojson }};
+const KONTO_NEBEN = {{ info.konto_nebenkasse|tojson }};
+
+// ── Ein-Klick-Buchung: Beide Transfers direkt buchen ─────────
+async function arBucheBeideTransfers() {
+  if (arGesamtCent <= 0) return;
+  const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
+  if (arTransferCent <= 0 && tresorCent <= 0) return;
+
+  const btn = document.getElementById('arBtnCombined');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Wird gebucht…'; }
+
+  try {
+    // 1. Stückelung Bank speichern
+    if (arTransferCent > 0) {
+      const bankBestand = {};
+      AR_ALLE.forEach(d => { const n = arBankGetCount(d.val); if (n > 0) bankBestand[d.val] = n; });
+      await api('POST', '/api/zaehlung', {
+        typ: 'TRANSFER_BANK', bestand: bankBestand, betrag_cent: arTransferCent
+      });
+    }
+
+    // 2. Stückelung Tresor speichern
+    if (tresorCent > 0) {
+      const tresorBestand = {};
+      AR_ALLE.forEach(d => {
+        const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
+        if (cnt > 0) tresorBestand[d.val] = cnt;
+      });
+      await api('POST', '/api/zaehlung', {
+        typ: 'TRESOR', bestand: tresorBestand, betrag_cent: tresorCent
+      });
+    }
+
+    // 3. Transfer → Bank buchen
+    if (arTransferCent > 0) {
+      const rBank = await api('POST', '/api/kassenbuch', {
+        typ: 'TRANSFER_KASSE_BANK',
+        betrag_cent: arTransferCent,
+        gegenkonto: KONTO_BANK,
+        buchungstext: 'Transfer Kasse → Bank'
+      });
+      if (!rBank.ok) {
+        toast(rBank.fehler || 'Fehler bei Bank-Transfer', 'err');
+        return;
+      }
+    }
+
+    // 4. Transfer → Tresor buchen
+    if (tresorCent > 0) {
+      const rTresor = await api('POST', '/api/kassenbuch', {
+        typ: 'TRANSFER_KASSE_NEBEN',
+        betrag_cent: tresorCent,
+        gegenkonto: KONTO_NEBEN,
+        buchungstext: 'Transfer Kasse → Nebenkasse'
+      });
+      if (!rTresor.ok) {
+        toast(rTresor.fehler || 'Fehler bei Tresor-Transfer', 'err');
+        return;
+      }
+    }
+
+    const teile = [];
+    if (arTransferCent > 0) teile.push('Bank ' + arEuro(arTransferCent));
+    if (tresorCent > 0)     teile.push('Tresor ' + arEuro(tresorCent));
+    toast('Gebucht: ' + teile.join(' + '), 'ok');
+
+    // Lock UI
+    arLockKassensturz();
+    arLockBank();
+    const combBar = document.getElementById('arCombinedBar');
+    if (combBar) { combBar.style.opacity = '0.35'; combBar.style.pointerEvents = 'none'; }
+    if (btn) { btn.disabled = true; btn.textContent = '✅ Transfers gebucht'; }
+
+    // Saldo aktualisieren
+    setTimeout(() => location.reload(), 1200);
+
+  } catch (e) {
+    toast('Fehler: ' + (e.message || e), 'err');
+  } finally {
+    if (btn && !btn.disabled) { btn.disabled = false; btn.textContent = '✅ Beide Transfers buchen'; }
+  }
+}
+
+// ── Fallback: Einzeln navigieren (für Sonderfälle) ────────────
 async function arNavigiereBank() {
   if (arTransferCent <= 0 || arGesamtCent <= 0) return;
-
-  // Stückelung Bank speichern
   const bankBestand = {};
   AR_ALLE.forEach(d => { const n = arBankGetCount(d.val); if (n > 0) bankBestand[d.val] = n; });
   await api('POST', '/api/zaehlung', {
     typ: 'TRANSFER_BANK', bestand: bankBestand, betrag_cent: arTransferCent
   });
-
-  // Stückelung Tresor = Kassensturz − Bank speichern
   const tresorBestand = {};
   const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
-  AR_SCHEINE.forEach(d => {
-    const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
-    if (cnt > 0) tresorBestand[d.val] = cnt;
-  });
-  AR_MUENZEN.forEach(d => {
+  AR_ALLE.forEach(d => {
     const cnt = Math.max(0, arGetCount(d.val) - arBankGetCount(d.val));
     if (cnt > 0) tresorBestand[d.val] = cnt;
   });
   await api('POST', '/api/zaehlung', {
     typ: 'TRESOR', bestand: tresorBestand, betrag_cent: tresorCent
   });
-
   location.href = '/kasse/kassenbuch/buchung?typ=TRANSFER_KASSE_BANK&betrag=' + arTransferCent
                 + '&weiter=' + encodeURIComponent('/kasse/manager?nach_bank=1');
 }
 
-// ── Navigation Tresor ──────────────────────────────────────────
 async function arNavigiereTresor() {
   const tresorCent = Math.max(0, arGesamtCent - arTransferCent);
   if (tresorCent <= 0) return;
@@ -1020,6 +1132,11 @@ async function arInitTable() {
       }
     } catch(e) {}
     arLockBank();
+    // Combined bar sperren (Transfers bereits gebucht)
+    const combBar = document.getElementById('arCombinedBar');
+    if (combBar) { combBar.style.opacity = '0.35'; combBar.style.pointerEvents = 'none'; }
+    const combBtn = document.getElementById('arBtnCombined');
+    if (combBtn) { combBtn.disabled = true; combBtn.textContent = '✅ Transfers gebucht'; }
   } else {
     arBerechneBankEmpfehlung();
     arTransferCent = AR_ALLE.reduce((s,d) => s + arBankGetCount(d.val)*d.val, 0);
