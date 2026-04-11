@@ -1,19 +1,18 @@
 """
 Bäckerei Kiosk – EAN-13 Barcode-Generierung
-Inhouse-EAN-13 Format: XX AAAAZ PPPPPZ
+Inhouse-EAN-13 Format: XX AAAA PPPPPPZ
 
-XX    = Bereichscode "21" (fest)
-AAAA  = Artikelnummer Sammelartikel "Backwaren" (4-stellig, aus CAO)
-Z     = Prüfziffer des Artikelteils (Stellen 1–7)
-PPPPP = Gesamtpreis in Cent, 5-stellig (00250 = 2,50 EUR)
-Z     = EAN-13-Prüfziffer (Stelle 13, errechnet)
+XX     = Bereichscode "21" (fest)
+AAAA   = Artikelnummer Sammelartikel "Backwaren" (4-stellig, aus CAO)
+PPPPPP = Gesamtpreis in Cent, 6-stellig (002500 = 25,00 EUR; max. 999999 = 9999,99 EUR)
+Z      = EAN-13-Prüfziffer (Stelle 13, errechnet)
 
-Beispiel: Sammelartikel 0042, Preis 3,80 EUR
-  Artikelteil: 21 0042 → Prüfziffer berechnen → 2100421
-  Preisteil:   00380
-  EAN-Kern:    210042100380
+Beispiel: Sammelartikel 7408, Preis 3,80 EUR
+  Artikelteil: 21 7408 (6 Stellen)
+  Preisteil:   000380
+  EAN-Kern:    217408000380
   EAN-Prüfz.:  berechnen
-  Ergebnis:    2100421003805  (13 Stellen)
+  Ergebnis:    2174080003803  (13 Stellen)
 """
 
 import config
@@ -56,26 +55,23 @@ def generiere_ean(gesamtbetrag_cent: int) -> str:
         gesamtbetrag_cent: Gesamtpreis des Warenkorbs in Cent (z. B. 380)
 
     Returns:
-        13-stelliger EAN-13-String (z. B. "2100421003805")
+        13-stelliger EAN-13-String (z. B. "2174080003803")
 
     Raises:
-        ValueError: Wenn Betrag > 99999 Cent (999,99 EUR) oder negativ.
+        ValueError: Wenn Betrag > 999999 Cent (9999,99 EUR) oder negativ.
     """
     if gesamtbetrag_cent < 0:
         raise ValueError("Gesamtbetrag darf nicht negativ sein.")
-    if gesamtbetrag_cent > 99999:
+    if gesamtbetrag_cent > 999999:
         raise ValueError(
-            f"Gesamtbetrag {gesamtbetrag_cent} Cent übersteigt EAN-Maximum (99999 = 999,99 EUR)."
+            f"Gesamtbetrag {gesamtbetrag_cent} Cent übersteigt EAN-Maximum (999999 = 9999,99 EUR)."
         )
 
     bereich      = config.EAN_BEREICH                          # "21"
-    sammel_nr    = config.EAN_SAMMELARTIKEL.zfill(4)[:4]       # z. B. "0042"
-    artikelbasis = bereich + sammel_nr                          # 6 Stellen
+    sammel_nr    = config.EAN_SAMMELARTIKEL.zfill(4)[:4]       # z. B. "7408"
+    artikelteil  = bereich + sammel_nr                         # 6 Stellen
 
-    artikel_pruefz = _artikelteil_pruefziffer(artikelbasis)    # 7. Stelle
-    artikelteil    = artikelbasis + str(artikel_pruefz)        # 7 Stellen
-
-    preis_str    = f"{gesamtbetrag_cent:05d}"                  # 5 Stellen
+    preis_str    = f"{gesamtbetrag_cent:06d}"                  # 6 Stellen
     ean_basis    = artikelteil + preis_str                     # 12 Stellen
 
     ean_pruefz   = _ean13_pruefziffer(ean_basis)               # 13. Stelle
@@ -97,7 +93,7 @@ if __name__ == "__main__":
     print(f"  Bereich:       {config.EAN_BEREICH}")
     print(f"  Sammelartikel: {config.EAN_SAMMELARTIKEL}")
 
-    testfaelle = [250, 380, 1490, 9999, 99999]
+    testfaelle = [250, 380, 1490, 9999, 99999, 999999]
     for cent in testfaelle:
         ean = generiere_ean(cent)
         ok  = validiere_ean(ean)

@@ -591,14 +591,19 @@ def api_vorgang_suche():
     terminal_nr = _eff_terminal_nr()
 
     with get_db() as cur:
-        bedingungen = ["v.TERMINAL_NR = %s", "DATE(v.BON_DATUM) BETWEEN %s AND %s",
-                       "v.STATUS IN ('ABGESCHLOSSEN','STORNIERT')"]
+        # Datum-Filter auf ABSCHLUSS_DATUM (Zahlungszeitpunkt), nicht BON_DATUM (Erstellzeit).
+        # Fallback auf BON_DATUM für Altdaten ohne ABSCHLUSS_DATUM.
+        bedingungen = [
+            "v.TERMINAL_NR = %s",
+            "DATE(COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM)) BETWEEN %s AND %s",
+            "v.STATUS IN ('ABGESCHLOSSEN','STORNIERT')",
+        ]
         params = [terminal_nr, datum_von, datum_bis]
         if bon_nr:
             bedingungen.append("v.BON_NR = %s")
             params.append(int(bon_nr))
         cur.execute(
-            f"SELECT v.ID, v.BON_NR, v.BON_DATUM, v.BETRAG_BRUTTO, v.IST_TRAINING, "
+            f"SELECT v.ID, v.BON_NR, v.BON_DATUM, v.ABSCHLUSS_DATUM, v.BETRAG_BRUTTO, v.IST_TRAINING, "
             f"       v.STATUS, v.STORNO_VON_ID, "
             f"       (SELECT BON_NR FROM XT_KASSE_VORGAENGE "
             f"        WHERE ID = v.STORNO_VON_ID) AS STORNO_VON_BON_NR, "
@@ -611,7 +616,8 @@ def api_vorgang_suche():
             f"          AND ta.ZEITPUNKT >= COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) "
             f"        ORDER BY ta.ZEITPUNKT ASC LIMIT 1) AS Z_BON_NR "
             f"FROM XT_KASSE_VORGAENGE v "
-            f"WHERE {' AND '.join(bedingungen)} ORDER BY v.BON_DATUM DESC LIMIT 100",
+            f"WHERE {' AND '.join(bedingungen)} "
+            f"ORDER BY COALESCE(v.ABSCHLUSS_DATUM, v.BON_DATUM) DESC LIMIT 100",
             params
         )
         rows = cur.fetchall()
@@ -1163,7 +1169,9 @@ def api_zu_lieferschein(vid):
     if not adressen_id:
         return jsonify({'ok': False, 'fehler': 'Keine Kundenadresse angegeben'}), 400
     ma    = _mitarbeiter()
-    name  = f"{ma.get('VNAME', '')} {ma.get('NAME', '')}".strip()
+    _vname = (ma.get('VNAME') or '').strip()
+    _nname = (ma.get('NAME') or '').strip()
+    name  = f"{_vname} {_nname}".strip() or 'Kasse'
     ma_id = int(ma.get('MA_ID') or -1)
     try:
         result = kl.lieferschein_zu_journal(

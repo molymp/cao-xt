@@ -7,7 +7,14 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben
+- Kasse: VRENUM/VLSNUM wird korrekt aus REGISTRY MAIN\NUMBERS mit STADIUM=121 gelesen ([HAB-240](/HAB/issues/HAB-240), [HAB-310](/HAB/issues/HAB-310))
+- Kasse: NULL/leer-Handling für BEST_CODE, BRUTTO_FLAG und Login-Namen (ERST_NAME/GEAEND_NAME) ([HAB-240](/HAB/issues/HAB-240))
+- Kasse: FOLGENR=REC_ID und KM_STAND=-1 korrekt initialisiert; SOLL_SKONTO_TAGE aus lieferschein_zu_journal entfernt ([HAB-240](/HAB/issues/HAB-240))
+- Kasse: JOURNAL-Eintragsformat an CAO-Kasse-Standard angepasst; `_format_vlsnum()` mit `max_len`/`no_pad` erweitert ([HAB-240](/HAB/issues/HAB-240))
+
 ### Geändert
+- Kasse Journal: Zeitstempel und Datumsfilter verwenden `ABSCHLUSS_DATUM` (Zahlungszeitpunkt) statt `BON_DATUM`; Fallback auf `BON_DATUM` für Altdaten ([HAB-311](/HAB/issues/HAB-311))
 - WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
 
 ### Hinzugefügt
@@ -17,6 +24,8 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - Commit-ID-Anzeige: In allen drei Apps (Kasse, Kiosk, WaWi) wird der aktuelle Git-Commit-Hash oben links als kleiner orangener Hinweis angezeigt (position:fixed, kein Layout-Einfluss) ([HAB-244](/HAB/issues/HAB-244))
 - Verbindliche Merge-Pflicht: Sofort-Merge nach Board-Freigabe, 48h-Limit für offene Branches, Rebase-Strategie für Parallelarbeit ([HAB-267](/HAB/issues/HAB-267))
 - `.githooks/pre-push`: Versionierter Git-Hook mit Paperclip-Approval-Pflicht für `master`/`main` Pushes ([HAB-242](/HAB/issues/HAB-242))
+- CI-Pipeline: GitHub Actions Workflow (`.github/workflows/tests.yml`) mit separaten Jobs für kasse-app und wawi-app ([HAB-201](/HAB/issues/HAB-201))
+- wawi-app: Erste Testdatei `wawi-app/tests/test_vk_berechnen.py` (10 Tests, Coverage-Baseline 48%) für `vk_berechnen()` und `preis_setzen()` in `modules/wawi/models.py` ([HAB-201](/HAB/issues/HAB-201))
 - `deploy-review.sh`: Script zum atomaren Deployment von Feature-Branches in den Review-Worktree inkl. automatischem WaWi-Server-Neustart ([HAB-194](/HAB/issues/HAB-194))
 - `deploy-review.sh`: Robusteres Port-Handling (SIGTERM + PID-Datei) ([HAB-194](/HAB/issues/HAB-194))
 - Neue Flask-App `wawi-app` auf Port 5003 mit Dashboard (CFO-Kennzahlen), Sidebar-Navigation und WaWi-Blueprint-Integration ([HAB-131](/HAB/issues/HAB-131))
