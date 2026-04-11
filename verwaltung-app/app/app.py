@@ -15,7 +15,7 @@ import sys
 import logging
 import config
 import db as db_modul
-from db import get_db, get_db_transaction, test_verbindung
+from db import get_db, get_db_transaction, test_verbindung, reset_pool
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -197,6 +197,9 @@ def db_config_save():
         with open(config.INI_PATH, 'w') as f:
             cfg.write(f)
         log.info("caoxt.ini aktualisiert durch %s", session.get('login_name'))
+        # In-Memory-Config und DB-Pool mit neuen Werten neu laden
+        config.reload_db_config()
+        reset_pool()
         return jsonify(ok=True, msg='Konfiguration gespeichert.')
     except Exception as e:
         log.error("caoxt.ini schreiben fehlgeschlagen: %s", e)

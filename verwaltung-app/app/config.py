@@ -18,6 +18,17 @@ DB_NAME     = _cfg['name']
 DB_USER     = _cfg['user']
 DB_PASSWORD = _cfg['password']
 
+
+def reload_db_config():
+    """Liest DB-Werte erneut aus caoxt.ini / Env-Vars und aktualisiert Modul-Globals."""
+    _this = sys.modules[__name__]
+    fresh = load_db_config("VERWALTUNG")
+    _this.DB_HOST     = fresh['host']
+    _this.DB_PORT     = fresh['port']
+    _this.DB_NAME     = fresh['name']
+    _this.DB_USER     = fresh['user']
+    _this.DB_PASSWORD = fresh['password']
+
 PORT       = int(os.environ.get('VERWALTUNG_PORT', '5004'))
 HOST       = os.environ.get('VERWALTUNG_HOST', '0.0.0.0')
 SECRET_KEY = os.environ.get('VERWALTUNG_SECRET_KEY', 'bitte-in-produktion-aendern')

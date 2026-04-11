@@ -79,6 +79,13 @@ def get_db_transaction():
         conn.close()
 
 
+def reset_pool():
+    """Verwirft den Connection-Pool, damit neue config-Werte genutzt werden."""
+    global _pool
+    with _pool_lock:
+        _pool = None
+
+
 def test_verbindung() -> bool:
     try:
         with get_db() as cur:
