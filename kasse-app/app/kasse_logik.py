@@ -1102,6 +1102,32 @@ def artikel_nach_warengruppe(wg_id: int | None, limit: int = 1000) -> list:
 # Kunden (ADRESSEN read-only)
 # ─────────────────────────────────────────────────────────────
 
+def kunde_per_karte(guid: str) -> dict | None:
+    """Kundenkarte per Barcode-Scan auflösen (KARTEN TYP='K' → ADRESSEN).
+
+    Args:
+        guid: Gescannter Barcode-Wert (KARTEN.GUID).
+
+    Returns:
+        dict mit REC_ID, KUNNUM1, NAME1, NAME2, ORT, PR_EBENE,
+        KUN_ZAHLART, ZAHLART_NAME oder None.
+    """
+    if not guid:
+        return None
+    with get_db() as cur:
+        cur.execute(
+            """SELECT a.REC_ID, a.KUNNUM1, a.NAME1, a.NAME2, a.ORT,
+                      a.PR_EBENE, a.KUN_ZAHLART,
+                      za.NAME AS ZAHLART_NAME
+               FROM KARTEN k
+               JOIN ADRESSEN a ON a.REC_ID = k.ADR_ID
+               LEFT JOIN ZAHLUNGSARTEN za ON za.REC_ID = a.KUN_ZAHLART
+               WHERE k.GUID = %s AND k.TYP = 'K'""",
+            (guid,)
+        )
+        return cur.fetchone()
+
+
 def kunden_suchen(suchtext: str, limit: int = 20) -> list:
     pat = f"%{suchtext.strip()}%"
     with get_db() as cur:

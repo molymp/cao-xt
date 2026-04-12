@@ -1981,6 +1981,12 @@ async function scanEingabeVerarbeiten(code) {
   if (r.ok) {
     const art = await r.json();
     if (art) {
+      // Kundenkarte erkannt → Kunde automatisch zuweisen
+      if (art.typ === 'kundenkarte') {
+        await kundeWaehlen(art.id, art.name, art.pr_ebene,
+                           art.kunnum, art.ort, art.zahlart_name, art.kun_zahlart);
+        return;
+      }
       if (art.sonder_ean) {
         await _sonderEanVerarbeiten(art, menge);
         return;
