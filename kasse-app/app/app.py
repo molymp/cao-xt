@@ -268,6 +268,20 @@ def login_post():
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
 
 
+@app.post('/login/karte')
+def login_karte():
+    """Login per Mitarbeiter-Karte (Barcode-Scan)."""
+    guid = request.form.get('guid', '').strip()
+    if not guid:
+        return render_template('login.html', fehler='Kein Barcode erkannt.')
+    ma = kl.mitarbeiter_login_karte(guid)
+    if ma:
+        login_user(ma)
+        return redirect(url_for('kasse'))
+    return render_template('login.html',
+                           fehler='Karte nicht erkannt oder keine Mitarbeiterkarte.')
+
+
 @app.get('/logout')
 def logout():
     logout_user()
