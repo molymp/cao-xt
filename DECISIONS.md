@@ -127,6 +127,23 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-12 Prod/Training/Sandbox-Trennung: Separate Datenbanken + XT_ENVIRONMENT-Flag (HAB-350)
+
+- **Problem:** Die Kasse schreibt Buchungsdaten (JOURNAL, JOURNALPOS etc.) in die CAO-Faktura-DB. Im Trainings- und Sandbox-Betrieb müssen Testbuchungen sauber von Produktivdaten getrennt sein – andernfalls riskieren wir gefälschte Journaldaten, falsche Kassenbücher und einen KassenSichV/GoBD-Verstoß.
+- **Entscheidung:** **Option A (Separate Datenbanken)** mit einem gemeinsamen Umgebungs-Flag:
+  1. `xt_environment` in `caoxt.ini [Umgebung]` (Werte: `production` | `training` | `sandbox`). Überschreibbar per `XT_ENVIRONMENT` Env-Var.
+  2. `production` → nutzt immer `db_name` direkt.
+  3. `training` → nutzt `db_name_training` (caoxt.ini) oder `<db_name>_training` als Auto-Suffix.
+  4. `sandbox` → nutzt `db_name_sandbox` (caoxt.ini) oder `<db_name>_sandbox` als Auto-Suffix.
+  5. Expliziter `DB_NAME` / `<APP>_DB_NAME` Env-Var überschreibt immer (maximale Flexibilität).
+  6. Neue Funktion `load_environment()` in `common/config.py`. Alle vier App-Configs exponieren `XT_ENVIRONMENT`.
+- **Begründung:** Getrennte Datenbanken sind die einzige Lösung mit totaler Isolation: ein Bug kann keine Testdaten in die Produktiv-DB schreiben. Der gemeinsame `xt_environment`-Eintrag in `caoxt.ini` macht die Umgebung für jeden Prozess auf dem System sichtbar und konsistent. Die Auto-Suffix-Logik vereinfacht das Setup: für eine einfache Trainingsumgebung reicht es, `xt_environment=training` zu setzen, ohne eine zweite `db_name_training`-Zeile zu brauchen.
+- **Alternativen:** (a) Option B (Flag-Spalte in Buchungstabellen) – abgelehnt: Produktiv-DB enthält weiterhin Testdaten, KassenSichV-Konformität unklar. (b) Nur Env-Var ohne ini-Eintrag – abgelehnt: Umgebung wäre nicht persistent konfigurierbar, kein Installations-Wizard-Support.
+- **Konsequenzen:** AP 4 (Installationsroutine / Setup-Wizard) muss `xt_environment` beim ersten Start in `caoxt.ini` schreiben. Für Training/Sandbox muss die DB-Init-Routine eine eigene leere Datenbank anlegen. Die Kiosk-App-DB (`Backwaren`) ist produktionsneutral und von dieser Trennung nicht betroffen (sie enthält keine Buchungsdaten).
+- **Referenz:** [HAB-350](/HAB/issues/HAB-350)
+
+---
+
 ## 2026-04-12 Common-Bereich / Shared Modules Package (HAB-332)
 
 - **Problem:** DB-Verbindung, Config-Laden, Auth-Middleware und Druck-Logik waren dreifach dupliziert (kasse-app, kiosk-app, wawi-app). Änderungen mussten in drei Apps parallel gepflegt werden.
