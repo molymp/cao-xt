@@ -148,8 +148,8 @@ def start_app(name: str, *, print_fn=print) -> bool:
     finally:
         log_file.close()
 
-    # Warten bis Port erreichbar (max. 15 s)
-    for _ in range(15):
+    # Warten bis Port erreichbar (max. 45 s – Kasse braucht DB-Pool-Init)
+    for _ in range(45):
         time.sleep(1)
         if _is_port_listening(port):
             pids = _load_pids()

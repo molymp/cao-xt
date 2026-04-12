@@ -106,8 +106,8 @@ start_app() {
     nohup python3 app.py > "$LOG" 2>&1 &
     NEW_PID=$!
 
-    # Auf Server-Start warten (max 15 Sekunden)
-    for i in $(seq 1 15); do
+    # Auf Server-Start warten (max 45 Sekunden – Kasse braucht DB-Pool-Init)
+    for i in $(seq 1 45); do
         sleep 1
         if lsof -ti :"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
             echo "   ✅ $NAME gestartet (PID $NEW_PID)"

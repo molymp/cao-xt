@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "release_date": "2026-04-12",
+  "changelog_summary": "Installationsroutine und Update-Mechanismus (HAB-355, HAB-356)",
+  "impact": {
+    "db_migration_required": false,
+    "requirements_changed": false,
+    "restart_required": true,
+    "breaking_change": false
+  }
+}
