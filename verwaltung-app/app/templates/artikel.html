@@ -3,12 +3,75 @@
 
 {% block extra_style %}
 <style>
+/* ── Kiosk-Farbschema Override (HAB-363) ─────────────────── */
+:root {
+    --bg-dunkel:     #f7f3ea;
+    --bg-mitte:      #1a4010;
+    --bg-hell:       #ece3cc;
+    --bg-karte:      #ffffff;
+    --akzent:        #1a4010;
+    --akzent-hell:   #2e6e1a;
+    --text-hell:     #142808;
+    --text-mitte:    #2e4a1a;
+    --text-dim:      #5a7a3a;
+    --border:        #d4e8c2;
+    --border-hell:   #a8b890;
+    --gruen:         #2e7a2e;
+    --gruen-hell:    #4a9428;
+    --rot:           #b83030;
+    --gold:          #c8780a;
+    --gold-hell:     #e8970e;
+    --schatten:      0 2px 12px rgba(26,64,16,0.13);
+    --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
+}
+/* Navbar */
+.navbar { box-shadow: 0 2px 16px rgba(26,64,16,0.2); }
+.navbar .nav-btn { background: rgba(255,255,255,0.15); color: #d4e8c2; border-color: rgba(255,255,255,0.2); }
+.navbar .nav-btn:hover { background: rgba(46,110,26,0.4); color: #fff; }
+.nav-btn-switch { border-color: rgba(200,120,10,0.5); color: var(--gold-hell); }
+.nav-btn-switch:hover { background: rgba(200,120,10,0.25); }
+.nav-btn-logout:hover { background: rgba(192,64,64,0.3); }
+.nav-btn-app-aktiv { border: 2px solid #4a9428 !important; color: #d4e8c2; background: rgba(74,148,40,0.25); }
+.navbar .logo-name { color: #f7f3ea; }
+.navbar .logo-sub { color: #a8b890; }
+/* Sidebar */
+.sidebar { background: var(--bg-mitte); border-right: 1px solid rgba(74,148,40,0.3); }
+.sidebar-section-title { color: #a8b890; }
+.sidebar-item { color: #d4e8c2; }
+.sidebar-item:hover { background: rgba(74,148,40,0.3); color: #fff; }
+.sidebar-item.aktiv { background: rgba(74,148,40,0.35); color: #fff; font-weight: 700; }
+.sidebar-divider { border-top-color: rgba(74,148,40,0.25); }
+/* DB-Badge */
+.db-badge.ok { background: rgba(46,122,46,0.3); color: #4a9428; }
+.db-badge.err { background: rgba(184,48,48,0.2); color: #e06060; }
+/* Uhrzeit */
+.navbar-uhrzeit .uhr-zeit { color: #f7f3ea; }
+.navbar-uhrzeit .uhr-datum { color: #a8b890; }
+.navbar-uhrzeit .uhr-user { color: var(--gold-hell); }
+/* Toast */
+#toast { background: var(--gruen); }
+/* Alerts */
+.alert-error { background: rgba(184,48,48,0.1); border-color: var(--rot); color: #b83030; }
+.alert-success { background: rgba(46,122,46,0.1); border-color: var(--gruen); color: var(--gruen); }
+.alert-warn { background: rgba(200,120,10,0.1); border-color: var(--gold); color: #a06000; }
+/* Buttons */
+.btn-primary { background: var(--akzent); color: white; }
+.btn-primary:hover { background: var(--akzent-hell); }
+.btn-neutral { background: var(--bg-hell); color: var(--text-mitte); border: 1px solid var(--border); }
+.btn-neutral:hover { background: var(--border); color: var(--text-hell); }
+/* Forms */
+.form-control { background: #fff; color: var(--text-hell); border-color: var(--border); }
+.form-control:focus { border-color: var(--akzent); }
+/* Scrollbar */
+::-webkit-scrollbar-thumb { background: var(--border-hell); }
+
+/* ── Seiten-Styles ───────────────────────────────────────── */
 .seiten-inhalt { padding: 0; }
 .seiten-kopf { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
-.seiten-kopf h1 { font-size: 2rem; }
+.seiten-kopf h1 { font-size: 2rem; color: var(--akzent); }
 
 .hinweis-box {
-    background: rgba(58,124,189,0.1); border-left: 4px solid var(--akzent);
+    background: rgba(26,64,16,0.06); border-left: 4px solid var(--akzent);
     border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
     padding: 12px 18px; margin-bottom: 24px; font-size: 0.875rem; color: var(--text-mitte);
 }
@@ -17,30 +80,30 @@
 
 .verwaltung-tabelle { width: 100%; border-collapse: collapse; background: var(--bg-karte); border-radius: var(--radius); overflow: hidden; box-shadow: var(--schatten); border: 1px solid var(--border); }
 .verwaltung-tabelle th {
-    background: var(--bg-mitte); color: var(--text-dim);
+    background: var(--bg-mitte); color: #d4e8c2;
     padding: 12px 14px; text-align: left; font-size: 0.78rem; font-weight: 800;
     text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
     user-select: none; font-family: 'Nunito', sans-serif;
-    border-bottom: 2px solid var(--border);
+    border-bottom: 2px solid rgba(74,148,40,0.3);
 }
 .verwaltung-tabelle th.sortierbar { cursor: pointer; transition: background 0.15s; }
-.verwaltung-tabelle th.sortierbar:hover { background: var(--bg-hell); color: var(--akzent-hell); }
+.verwaltung-tabelle th.sortierbar:hover { background: var(--akzent-hell); color: #fff; }
 .verwaltung-tabelle th .sort-pfeil { display: inline-block; margin-left: 5px; opacity: 0.4; font-style: normal; }
 .verwaltung-tabelle th.sort-asc .sort-pfeil,
 .verwaltung-tabelle th.sort-desc .sort-pfeil { opacity: 1; }
 
 .verwaltung-tabelle td { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.875rem; vertical-align: middle; color: var(--text-hell); }
 .verwaltung-tabelle tr:last-child td { border-bottom: none; }
-.verwaltung-tabelle tr:hover td { background: rgba(58,124,189,0.06); }
+.verwaltung-tabelle tr:hover td { background: rgba(26,64,16,0.05); }
 
 .verwaltung-tabelle select {
     font-family: 'Nunito', sans-serif; font-size: 0.85rem; font-weight: 600;
     border: 1px solid var(--border); border-radius: var(--radius-klein);
-    padding: 6px 10px; background: var(--bg-dunkel); color: var(--text-hell);
+    padding: 6px 10px; background: #fff; color: var(--text-hell);
     cursor: pointer; transition: border-color 0.15s, background 0.15s;
 }
 .verwaltung-tabelle select:focus { outline: none; border-color: var(--akzent); background: var(--bg-hell); }
-.verwaltung-tabelle select.gespeichert { border-color: var(--gruen); background: rgba(46,158,90,0.15); }
+.verwaltung-tabelle select.gespeichert { border-color: var(--gruen); background: rgba(46,122,46,0.1); }
 
 .wochentage-gruppe { display: flex; gap: 4px; flex-wrap: nowrap; }
 .wochentage-gruppe label {
@@ -48,12 +111,12 @@
     gap: 2px; cursor: pointer; font-size: 0.72rem; font-weight: 700; color: var(--text-dim);
 }
 .wochentage-gruppe input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--akzent); }
-.wochentage-gruppe input[type="checkbox"]:checked + span { color: var(--akzent-hell); }
+.wochentage-gruppe input[type="checkbox"]:checked + span { color: var(--akzent); }
 
 .aktiv-toggle { display: flex; gap: 3px; }
 .aktiv-btn {
     padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px;
-    background: var(--bg-dunkel); color: var(--text-dim); font-size: 0.75rem; font-weight: 700;
+    background: #fff; color: var(--text-dim); font-size: 0.75rem; font-weight: 700;
     cursor: pointer; transition: all 0.15s; font-family: 'Nunito', sans-serif; line-height: 1;
 }
 .aktiv-btn:hover { background: var(--bg-hell); }
@@ -68,23 +131,23 @@
     border: 1.5px solid var(--border); cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
 }
-.bild-vorschau:hover { transform: scale(1.8); box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 10; position: relative; }
+.bild-vorschau:hover { transform: scale(1.8); box-shadow: 0 4px 16px rgba(26,64,16,0.25); z-index: 10; position: relative; }
 .bild-platzhalter {
     width: 48px; height: 48px; border-radius: 6px;
     border: 2px dashed var(--border-hell); display: inline-flex;
     align-items: center; justify-content: center; font-size: 1.2rem;
     color: var(--text-dim); cursor: pointer; transition: border-color 0.15s;
 }
-.bild-platzhalter:hover { border-color: var(--akzent-hell); color: var(--akzent-hell); }
+.bild-platzhalter:hover { border-color: var(--akzent); color: var(--akzent); }
 .bild-aktionen { display: flex; gap: 3px; justify-content: center; margin-top: 3px; }
 .btn-bild {
     padding: 2px 6px; border: none; border-radius: 4px; font-size: 0.7rem;
     cursor: pointer; font-family: 'Nunito', sans-serif; font-weight: 700;
     transition: background 0.15s;
 }
-.btn-bild-upload { background: rgba(58,124,189,0.2); color: var(--akzent-hell); }
+.btn-bild-upload { background: rgba(26,64,16,0.12); color: var(--akzent); }
 .btn-bild-upload:hover { background: var(--akzent); color: white; }
-.btn-bild-loeschen { background: rgba(192,64,64,0.2); color: #f08080; }
+.btn-bild-loeschen { background: rgba(184,48,48,0.12); color: #b83030; }
 .btn-bild-loeschen:hover { background: var(--rot); color: white; }
 .bild-upload-input { display: none; }
 
@@ -99,15 +162,15 @@
 }
 .btn-aendern:hover { background: var(--akzent-hell); }
 
-.badge-fehlt { background: rgba(192,64,64,0.2); color: #f08080; padding: 3px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
-.badge-ok { background: rgba(46,158,90,0.2); color: var(--gruen-hell); padding: 3px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
-.preis-zelle { font-family: 'Lobster', cursive; font-size: 1rem; color: var(--gold-hell); white-space: nowrap; }
+.badge-fehlt { background: rgba(184,48,48,0.12); color: #b83030; padding: 3px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+.badge-ok { background: rgba(46,122,46,0.12); color: var(--gruen); padding: 3px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+.preis-zelle { font-family: 'Lobster', cursive; font-size: 1rem; color: var(--gold); white-space: nowrap; }
 .artnum-zelle { font-size: 0.78rem; color: var(--text-dim); font-family: monospace; }
 
 /* Overlay */
 .overlay-hintergrund {
     display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.65); z-index: 2000;
+    background: rgba(0,0,0,0.45); z-index: 2000;
     align-items: center; justify-content: center;
 }
 .overlay-box {
@@ -120,12 +183,12 @@
     from { opacity: 0; transform: scale(0.95) translateY(-10px); }
     to   { opacity: 1; transform: scale(1) translateY(0); }
 }
-.overlay-titel { font-family: 'Lobster', cursive; font-size: 1.4rem; color: var(--akzent-hell); margin-bottom: 4px; }
+.overlay-titel { font-family: 'Lobster', cursive; font-size: 1.4rem; color: var(--akzent); margin-bottom: 4px; }
 .overlay-artikelname { font-size: 0.875rem; color: var(--text-dim); margin-bottom: 20px; font-style: italic; }
 .overlay-textarea {
     width: 100%; min-height: 120px; font-family: 'Nunito', sans-serif; font-size: 0.95rem;
     border: 1.5px solid var(--border); border-radius: var(--radius-klein);
-    padding: 12px 14px; color: var(--text-hell); background: var(--bg-dunkel); resize: vertical;
+    padding: 12px 14px; color: var(--text-hell); background: #fff; resize: vertical;
     transition: border-color 0.15s; display: block;
 }
 .overlay-textarea:focus { outline: none; border-color: var(--akzent); }
