@@ -362,10 +362,150 @@ def api_tse_list():
 
 # ── Phase E: Backwaren/Artikel-Verwaltung ───────────────────────
 
+# Produktbilder-Verzeichnis: standardmäßig im kiosk-app/app/produktbilder/.
+# Beide Apps (Kiosk zur Anzeige, Verwaltung zum Verwalten) greifen auf dasselbe Verzeichnis zu.
+PRODUKTBILDER_DIR = os.environ.get('PRODUKTBILDER_DIR') or os.path.join(
+    BASE_DIR, '..', '..', 'kiosk-app', 'app', 'produktbilder')
+PRODUKTBILDER_DIR = os.path.abspath(PRODUKTBILDER_DIR)
+ERLAUBTE_BILD_ENDUNGEN = {"jpg", "jpeg", "png", "webp"}
+MAX_BILD_GROESSE = 5 * 1024 * 1024  # 5 MB
+
+
+def _cent_zu_euro_str(cent: int) -> str:
+    """Hilfsfunktion für Template-Formatierung."""
+    return f"{cent / 100:.2f} €"
+
+
 @app.route('/artikel')
 @_login_required
 def artikel():
-    return render_template('artikel.html')
+    with get_db() as cur:
+        cur.execute("SELECT * FROM XT_KIOSK_V_ARTIKEL_VERWALTUNG")
+        artikel_liste = cur.fetchall()
+        cur.execute("SELECT * FROM XT_KIOSK_KATEGORIEN ORDER BY sort_order")
+        kategorien = cur.fetchall()
+    return render_template(
+        'artikel.html',
+        artikel=artikel_liste,
+        kategorien=kategorien,
+        cent_zu_euro=_cent_zu_euro_str,
+    )
+
+
+@app.route('/artikel/<int:artikel_id>', methods=['POST'])
+@_login_required
+def artikel_speichern(artikel_id):
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify(ok=False, msg='Keine Daten empfangen'), 400
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT id FROM XT_KIOSK_PRODUKTE WHERE id=%s", (artikel_id,))
+            exists = cur.fetchone()
+            if exists:
+                cur.execute(
+                    """UPDATE XT_KIOSK_PRODUKTE
+                       SET kategorie_id=%s, einheit=%s, wochentage=%s,
+                           zutaten=%s, aktiv=%s, hinweis=%s
+                       WHERE id=%s""",
+                    (data.get("kategorie_id"), data.get("einheit", "Stck."),
+                     data.get("wochentage", ""), data.get("zutaten"),
+                     data.get("aktiv", 1), data.get("hinweis"), artikel_id))
+            else:
+                cur.execute(
+                    """INSERT INTO XT_KIOSK_PRODUKTE
+                       (id, kategorie_id, einheit, wochentage, zutaten, aktiv, hinweis)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (artikel_id, data.get("kategorie_id"), data.get("einheit", "Stck."),
+                     data.get("wochentage", ""), data.get("zutaten"),
+                     data.get("aktiv", 1), data.get("hinweis")))
+    except Exception as e:
+        log.error("artikel_speichern ID=%s: %s", artikel_id, e)
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True)
+
+
+@app.route('/artikel/<int:artikel_id>/bild', methods=['POST'])
+@_login_required
+def artikel_bild_hochladen(artikel_id):
+    """Bild für einen Artikel hochladen."""
+    datei = request.files.get('bild')
+    if not datei or not datei.filename:
+        return jsonify(ok=False, msg='Keine Datei ausgewählt'), 400
+    endung = datei.filename.rsplit('.', 1)[-1].lower() if '.' in datei.filename else ''
+    if endung not in ERLAUBTE_BILD_ENDUNGEN:
+        return jsonify(ok=False, msg=f"Nur {', '.join(sorted(ERLAUBTE_BILD_ENDUNGEN))} erlaubt"), 400
+    datei.seek(0, 2)
+    if datei.tell() > MAX_BILD_GROESSE:
+        return jsonify(ok=False, msg='Datei zu groß (max. 5 MB)'), 400
+    datei.seek(0)
+
+    os.makedirs(PRODUKTBILDER_DIR, exist_ok=True)
+    for alt_endung in ERLAUBTE_BILD_ENDUNGEN:
+        alt_pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{alt_endung}")
+        if os.path.exists(alt_pfad):
+            os.remove(alt_pfad)
+
+    dateiname = f"{artikel_id}.{endung}"
+    datei.save(os.path.join(PRODUKTBILDER_DIR, dateiname))
+
+    bild_url_pfad = f"/produktbilder/{dateiname}"
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT id FROM XT_KIOSK_PRODUKTE WHERE id=%s", (artikel_id,))
+            if cur.fetchone():
+                cur.execute("UPDATE XT_KIOSK_PRODUKTE SET bild_pfad=%s WHERE id=%s",
+                            (bild_url_pfad, artikel_id))
+            else:
+                cur.execute("INSERT INTO XT_KIOSK_PRODUKTE (id, bild_pfad, aktiv) VALUES (%s, %s, 1)",
+                            (artikel_id, bild_url_pfad))
+    except Exception as e:
+        log.error("Bild-DB-Update ID=%s: %s", artikel_id, e)
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, bild_url=bild_url_pfad)
+
+
+@app.route('/artikel/<int:artikel_id>/bild', methods=['DELETE'])
+@_login_required
+def artikel_bild_loeschen(artikel_id):
+    """Bild eines Artikels löschen."""
+    geloescht = False
+    for endung in ERLAUBTE_BILD_ENDUNGEN:
+        pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{endung}")
+        if os.path.exists(pfad):
+            os.remove(pfad)
+            geloescht = True
+    try:
+        with get_db() as cur:
+            cur.execute("UPDATE XT_KIOSK_PRODUKTE SET bild_pfad=NULL WHERE id=%s", (artikel_id,))
+    except Exception as e:
+        log.error("Bild-löschen DB ID=%s: %s", artikel_id, e)
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, geloescht=geloescht)
+
+
+@app.route('/artikel/bereinigen', methods=['POST'])
+@_login_required
+def artikel_bereinigen():
+    """Verwaiste Kiosk-Produkte (ohne CAO-Artikel) entfernen."""
+    with get_db() as cur:
+        cur.execute("SELECT id FROM XT_KIOSK_V_VERWAISTE")
+        ids = [r['id'] for r in cur.fetchall()]
+        geloescht = 0
+        for pid in ids:
+            try:
+                cur.execute("DELETE FROM XT_KIOSK_PRODUKTE WHERE id=%s", (pid,))
+                geloescht += 1
+            except Exception:
+                pass
+    return jsonify(ok=True, geloescht=geloescht)
+
+
+@app.route('/produktbilder/<path:dateiname>')
+def produktbild(dateiname):
+    """Liefert Produktbilder (für Vorschau in der Verwaltung)."""
+    from flask import send_from_directory
+    return send_from_directory(PRODUKTBILDER_DIR, dateiname)
 
 
 # ── App starten ──────────────────────────────────────────────────

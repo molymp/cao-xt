@@ -143,15 +143,15 @@ def _sende_an_drucker(terminal_nr: int, daten: bytes):
     with get_db() as cursor:
         cursor.execute(
             """SELECT d.ip_adresse, d.port
-               FROM terminal_drucker td
-               JOIN drucker d ON d.id = td.drucker_id
+               FROM XT_KIOSK_TERMINAL_DRUCKER td
+               JOIN XT_KIOSK_DRUCKER d ON d.id = td.drucker_id
                WHERE td.terminal_nr = %s AND d.aktiv = 1""",
             (terminal_nr,)
         )
         row = cursor.fetchone()
         if not row:
             cursor.execute(
-                "SELECT ip_adresse, port FROM drucker WHERE standard=1 AND aktiv=1 LIMIT 1"
+                "SELECT ip_adresse, port FROM XT_KIOSK_DRUCKER WHERE standard=1 AND aktiv=1 LIMIT 1"
             )
             row = cursor.fetchone()
         if not row:
@@ -493,15 +493,15 @@ def test_drucker(terminal_nr: int = None) -> bool:
     with get_db() as cursor:
         cursor.execute(
             """SELECT d.ip_adresse, d.port
-               FROM terminal_drucker td
-               JOIN drucker d ON d.id = td.drucker_id
+               FROM XT_KIOSK_TERMINAL_DRUCKER td
+               JOIN XT_KIOSK_DRUCKER d ON d.id = td.drucker_id
                WHERE td.terminal_nr = %s AND d.aktiv = 1""",
             (nr,)
         )
         row = cursor.fetchone()
         if not row:
             cursor.execute(
-                "SELECT ip_adresse, port FROM drucker WHERE standard=1 AND aktiv=1 LIMIT 1"
+                "SELECT ip_adresse, port FROM XT_KIOSK_DRUCKER WHERE standard=1 AND aktiv=1 LIMIT 1"
             )
             row = cursor.fetchone()
     if not row:

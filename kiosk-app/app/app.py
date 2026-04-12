@@ -166,7 +166,7 @@ def bild_url(produkt_id: int) -> str | None:
     return _bild_cache.get(produkt_id)
 
 
-# Produkt-Cache: v_kiosk_produkte ist teuer (Cross-DB-Join über WAN).
+# Produkt-Cache: XT_KIOSK_V_PRODUKTE ist teuer (Cross-DB-Join über WAN).
 # 30 Sekunden TTL – reicht für den Kiosk-Betrieb.
 _produkt_cache: list | None = None
 _produkt_cache_ablauf: float = 0.0
@@ -179,7 +179,7 @@ def _produkte_laden() -> list:
     if _produkt_cache is not None and jetzt < _produkt_cache_ablauf:
         return _produkt_cache
     with get_db() as cursor:
-        cursor.execute("SELECT * FROM v_kiosk_produkte")
+        cursor.execute("SELECT * FROM XT_KIOSK_V_PRODUKTE")
         rows = cursor.fetchall()
     _produkt_cache = rows
     _produkt_cache_ablauf = jetzt + PRODUKT_CACHE_TTL
@@ -204,7 +204,7 @@ def produktbild(dateiname):
 def aktueller_warenkorb_id():
     with get_db() as cursor:
         cursor.execute(
-            "SELECT id FROM warenkoerbe WHERE status='offen' AND gesperrt_von=%s",
+            "SELECT id FROM XT_KIOSK_WARENKOERBE WHERE status='offen' AND gesperrt_von=%s",
             (get_terminal_nr(),)
         )
         row = cursor.fetchone()
@@ -215,7 +215,7 @@ def neuer_warenkorb():
     with get_db() as cursor:
         tnr = get_terminal_nr()
         cursor.execute(
-            """INSERT INTO warenkoerbe
+            """INSERT INTO XT_KIOSK_WARENKOERBE
                (status, gesamtbetrag_cent, gesperrt_von, gesperrt_am, erstellt_von)
                VALUES ('offen', 0, %s, NOW(), %s)""",
             (tnr, tnr)
@@ -225,10 +225,10 @@ def neuer_warenkorb():
 
 def gesamtbetrag_aktualisieren(cursor, warenkorb_id):
     cursor.execute(
-        """UPDATE warenkoerbe
+        """UPDATE XT_KIOSK_WARENKOERBE
            SET gesamtbetrag_cent = (
                SELECT COALESCE(SUM(zeilen_betrag_cent), 0)
-               FROM warenkorb_positionen WHERE warenkorb_id = %s
+               FROM XT_KIOSK_WARENKORB_POS WHERE warenkorb_id = %s
            ),
            geaendert_am = NOW()
            WHERE id = %s""",
@@ -285,10 +285,10 @@ def index():
 
     # Warenkorb + Positionen in einer Verbindung holen
     with get_db() as cursor:
-        cursor.execute("SELECT * FROM warenkoerbe WHERE id=%s", (wk_id,))
+        cursor.execute("SELECT * FROM XT_KIOSK_WARENKOERBE WHERE id=%s", (wk_id,))
         warenkorb = cursor.fetchone()
         cursor.execute(
-            "SELECT * FROM warenkorb_positionen WHERE warenkorb_id=%s ORDER BY id",
+            "SELECT * FROM XT_KIOSK_WARENKORB_POS WHERE warenkorb_id=%s ORDER BY id",
             (wk_id,)
         )
         positionen = cursor.fetchall()
@@ -314,14 +314,14 @@ def warenkorb_neu():
 
 @_login_required
 @app.route("/warenkorb/<int:wk_id>/positionen")
-def warenkorb_positionen(wk_id):
+def XT_KIOSK_WARENKORB_POS(wk_id):
     with get_db() as cursor:
         cursor.execute(
-            "SELECT * FROM warenkorb_positionen WHERE warenkorb_id=%s ORDER BY id",
+            "SELECT * FROM XT_KIOSK_WARENKORB_POS WHERE warenkorb_id=%s ORDER BY id",
             (wk_id,)
         )
         positionen = cursor.fetchall()
-        cursor.execute("SELECT gesamtbetrag_cent FROM warenkoerbe WHERE id=%s", (wk_id,))
+        cursor.execute("SELECT gesamtbetrag_cent FROM XT_KIOSK_WARENKOERBE WHERE id=%s", (wk_id,))
         wk = cursor.fetchone()
     return jsonify({
         "ok": True,
@@ -336,7 +336,7 @@ def position_hinzufuegen(wk_id):
     produkt_id = request.get_json(force=True).get("produkt_id")
     with get_db() as cursor:
         cursor.execute(
-            "SELECT id, name, preis_cent FROM v_kiosk_produkte WHERE id=%s",
+            "SELECT id, name, preis_cent FROM XT_KIOSK_V_PRODUKTE WHERE id=%s",
             (produkt_id,)
         )
         produkt = cursor.fetchone()
@@ -345,13 +345,13 @@ def position_hinzufuegen(wk_id):
 
         # Sicherstellen dass ein produkte-Eintrag existiert (FK-Constraint).
         cursor.execute(
-            """INSERT IGNORE INTO produkte (id, kategorie_id, einheit, wochentage, aktiv)
+            """INSERT IGNORE INTO XT_KIOSK_PRODUKTE (id, kategorie_id, einheit, wochentage, aktiv)
                VALUES (%s, NULL, 'Stck.', '', 1)""",
             (produkt_id,)
         )
 
         cursor.execute(
-            "SELECT id, menge FROM warenkorb_positionen WHERE warenkorb_id=%s AND produkt_id=%s",
+            "SELECT id, menge FROM XT_KIOSK_WARENKORB_POS WHERE warenkorb_id=%s AND produkt_id=%s",
             (wk_id, produkt_id)
         )
         pos = cursor.fetchone()
@@ -359,12 +359,12 @@ def position_hinzufuegen(wk_id):
         if pos:
             neue_menge = pos["menge"] + 1
             cursor.execute(
-                "UPDATE warenkorb_positionen SET menge=%s, zeilen_betrag_cent=%s WHERE id=%s",
+                "UPDATE XT_KIOSK_WARENKORB_POS SET menge=%s, zeilen_betrag_cent=%s WHERE id=%s",
                 (neue_menge, neue_menge * produkt["preis_cent"], pos["id"])
             )
         else:
             cursor.execute(
-                """INSERT INTO warenkorb_positionen
+                """INSERT INTO XT_KIOSK_WARENKORB_POS
                    (warenkorb_id, produkt_id, name_snapshot,
                     preis_snapshot_cent, menge, zeilen_betrag_cent)
                    VALUES (%s, %s, %s, %s, 1, %s)""",
@@ -373,7 +373,7 @@ def position_hinzufuegen(wk_id):
             )
 
         gesamtbetrag_aktualisieren(cursor, wk_id)
-        cursor.execute("SELECT gesamtbetrag_cent FROM warenkoerbe WHERE id=%s", (wk_id,))
+        cursor.execute("SELECT gesamtbetrag_cent FROM XT_KIOSK_WARENKOERBE WHERE id=%s", (wk_id,))
         wk = cursor.fetchone()
 
     return jsonify({"ok": True, "gesamtbetrag_cent": wk["gesamtbetrag_cent"]})
@@ -386,18 +386,18 @@ def menge_setzen(wk_id, pos_id):
     with get_db() as cursor:
         if menge <= 0:
             cursor.execute(
-                "DELETE FROM warenkorb_positionen WHERE id=%s AND warenkorb_id=%s",
+                "DELETE FROM XT_KIOSK_WARENKORB_POS WHERE id=%s AND warenkorb_id=%s",
                 (pos_id, wk_id)
             )
         else:
             cursor.execute(
-                """UPDATE warenkorb_positionen
+                """UPDATE XT_KIOSK_WARENKORB_POS
                    SET menge=%s, zeilen_betrag_cent=%s * preis_snapshot_cent
                    WHERE id=%s AND warenkorb_id=%s""",
                 (menge, menge, pos_id, wk_id)
             )
         gesamtbetrag_aktualisieren(cursor, wk_id)
-        cursor.execute("SELECT gesamtbetrag_cent FROM warenkoerbe WHERE id=%s", (wk_id,))
+        cursor.execute("SELECT gesamtbetrag_cent FROM XT_KIOSK_WARENKOERBE WHERE id=%s", (wk_id,))
         wk = cursor.fetchone()
     return jsonify({"ok": True, "gesamtbetrag_cent": wk["gesamtbetrag_cent"]})
 
@@ -407,11 +407,11 @@ def menge_setzen(wk_id, pos_id):
 def position_loeschen(wk_id, pos_id):
     with get_db() as cursor:
         cursor.execute(
-            "DELETE FROM warenkorb_positionen WHERE id=%s AND warenkorb_id=%s",
+            "DELETE FROM XT_KIOSK_WARENKORB_POS WHERE id=%s AND warenkorb_id=%s",
             (pos_id, wk_id)
         )
         gesamtbetrag_aktualisieren(cursor, wk_id)
-        cursor.execute("SELECT gesamtbetrag_cent FROM warenkoerbe WHERE id=%s", (wk_id,))
+        cursor.execute("SELECT gesamtbetrag_cent FROM XT_KIOSK_WARENKOERBE WHERE id=%s", (wk_id,))
         wk = cursor.fetchone()
     return jsonify({"ok": True, "gesamtbetrag_cent": wk["gesamtbetrag_cent"]})
 
@@ -421,7 +421,7 @@ def position_loeschen(wk_id, pos_id):
 def parken(wk_id):
     with get_db() as cursor:
         cursor.execute(
-            """UPDATE warenkoerbe SET status='geparkt', gesperrt_von=NULL,
+            """UPDATE XT_KIOSK_WARENKOERBE SET status='geparkt', gesperrt_von=NULL,
                gesperrt_am=NULL, geaendert_am=NOW()
                WHERE id=%s AND gesperrt_von=%s""",
             (wk_id, get_terminal_nr())
@@ -434,7 +434,7 @@ def parken(wk_id):
 def abbrechen(wk_id):
     with get_db() as cursor:
         cursor.execute(
-            """UPDATE warenkoerbe SET status='abgebrochen', gesperrt_von=NULL,
+            """UPDATE XT_KIOSK_WARENKOERBE SET status='abgebrochen', gesperrt_von=NULL,
                gesperrt_am=NULL, geaendert_am=NOW()
                WHERE id=%s AND gesperrt_von=%s""",
             (wk_id, get_terminal_nr())
@@ -447,7 +447,7 @@ def abbrechen(wk_id):
 def buchen(wk_id):
     with get_db() as cursor:
         cursor.execute(
-            "SELECT * FROM warenkoerbe WHERE id=%s AND gesperrt_von=%s",
+            "SELECT * FROM XT_KIOSK_WARENKOERBE WHERE id=%s AND gesperrt_von=%s",
             (wk_id, get_terminal_nr())
         )
         warenkorb = cursor.fetchone()
@@ -457,7 +457,7 @@ def buchen(wk_id):
             return jsonify({"ok": False, "fehler": "Warenkorb ist leer"}), 400
 
         cursor.execute(
-            "SELECT * FROM warenkorb_positionen WHERE warenkorb_id=%s ORDER BY id",
+            "SELECT * FROM XT_KIOSK_WARENKORB_POS WHERE warenkorb_id=%s ORDER BY id",
             (wk_id,)
         )
         positionen = cursor.fetchall()
@@ -486,7 +486,7 @@ def buchen(wk_id):
     try:
         with get_db_transaction() as cursor:
             cursor.execute(
-                """INSERT INTO journal_warenkoerbe
+                """INSERT INTO XT_KIOSK_JOURNAL
                    (warenkorb_id, terminal_nr, erstellt_am, gebucht_am,
                     gesamtbetrag_cent, ean_barcode, bon_text, bon_data, status)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'gebucht')""",
@@ -497,7 +497,7 @@ def buchen(wk_id):
 
             for pos in positionen:
                 cursor.execute(
-                    """INSERT INTO journal_positionen
+                    """INSERT INTO XT_KIOSK_JOURNAL_POS
                        (journal_id, produkt_id, name_snapshot,
                         preis_snapshot_cent, menge, zeilen_betrag_cent)
                        VALUES (%s, %s, %s, %s, %s, %s)""",
@@ -506,7 +506,7 @@ def buchen(wk_id):
                 )
 
             cursor.execute(
-                """UPDATE warenkoerbe SET status='abgebrochen', gesperrt_von=NULL,
+                """UPDATE XT_KIOSK_WARENKOERBE SET status='abgebrochen', gesperrt_von=NULL,
                    gesperrt_am=NULL, geaendert_am=NOW() WHERE id=%s""",
                 (wk_id,)
             )
@@ -533,7 +533,7 @@ def buchen(wk_id):
 @app.route("/offen")
 def offene_warenkoerbe():
     with get_db() as cursor:
-        cursor.execute("SELECT * FROM v_offene_warenkoerbe")
+        cursor.execute("SELECT * FROM XT_KIOSK_V_OFFENE_WK")
         koerbe = cursor.fetchall()
     return render_template(
         "offen.html", koerbe=koerbe,
@@ -546,13 +546,13 @@ def offene_warenkoerbe():
 def uebernehmen(wk_id):
     with get_db() as cursor:
         cursor.execute(
-            """UPDATE warenkoerbe SET status='abgebrochen',
+            """UPDATE XT_KIOSK_WARENKOERBE SET status='abgebrochen',
                gesperrt_von=NULL, gesperrt_am=NULL
                WHERE gesperrt_von=%s AND status='offen' AND gesamtbetrag_cent=0""",
             (get_terminal_nr(),)
         )
         cursor.execute(
-            """UPDATE warenkoerbe SET status='offen', gesperrt_von=%s,
+            """UPDATE XT_KIOSK_WARENKOERBE SET status='offen', gesperrt_von=%s,
                gesperrt_am=NOW(), geaendert_am=NOW(), erstellt_von=%s
                WHERE id=%s AND status='geparkt'""",
             (get_terminal_nr(), get_terminal_nr(), wk_id)
@@ -566,9 +566,9 @@ def uebernehmen(wk_id):
 @app.route("/journal")
 def journal():
     with get_db() as cursor:
-        cursor.execute("SELECT COUNT(*) AS n FROM v_journal_uebersicht")
+        cursor.execute("SELECT COUNT(*) AS n FROM XT_KIOSK_V_JOURNAL")
         gesamt = cursor.fetchone()["n"]
-        cursor.execute("SELECT * FROM v_journal_uebersicht LIMIT %s", (100,))
+        cursor.execute("SELECT * FROM XT_KIOSK_V_JOURNAL LIMIT %s", (100,))
         eintraege = cursor.fetchall()
     return render_template(
         "journal.html", eintraege=eintraege, gesamt=gesamt,
@@ -585,7 +585,7 @@ def journal_mehr():
     limit  = int(request.args.get("limit", 100))
     with get_db() as cursor:
         cursor.execute(
-            "SELECT * FROM v_journal_uebersicht LIMIT %s OFFSET %s",
+            "SELECT * FROM XT_KIOSK_V_JOURNAL LIMIT %s OFFSET %s",
             (limit, offset)
         )
         eintraege = cursor.fetchall()
@@ -602,10 +602,10 @@ def journal_mehr():
 
 @_login_required
 @app.route("/journal/<int:journal_id>/positionen")
-def journal_positionen(journal_id):
+def XT_KIOSK_JOURNAL_POS(journal_id):
     with get_db() as cursor:
         cursor.execute(
-            "SELECT * FROM journal_positionen WHERE journal_id=%s ORDER BY id",
+            "SELECT * FROM XT_KIOSK_JOURNAL_POS WHERE journal_id=%s ORDER BY id",
             (journal_id,)
         )
         positionen = cursor.fetchall()
@@ -617,7 +617,7 @@ def journal_positionen(journal_id):
 def journal_bon_data(journal_id):
     with get_db() as cursor:
         cursor.execute(
-            "SELECT bon_data FROM journal_warenkoerbe WHERE id=%s", (journal_id,)
+            "SELECT bon_data FROM XT_KIOSK_JOURNAL WHERE id=%s", (journal_id,)
         )
         row = cursor.fetchone()
     if not row:
@@ -632,12 +632,12 @@ def journal_bon_data(journal_id):
 @app.route("/journal/<int:journal_id>/nachdruck", methods=["POST"])
 def nachdruck(journal_id):
     with get_db() as cursor:
-        cursor.execute("SELECT * FROM journal_warenkoerbe WHERE id=%s", (journal_id,))
+        cursor.execute("SELECT * FROM XT_KIOSK_JOURNAL WHERE id=%s", (journal_id,))
         eintrag = cursor.fetchone()
         if not eintrag:
             return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
         cursor.execute(
-            "SELECT * FROM journal_positionen WHERE journal_id=%s ORDER BY id",
+            "SELECT * FROM XT_KIOSK_JOURNAL_POS WHERE journal_id=%s ORDER BY id",
             (journal_id,)
         )
         positionen = cursor.fetchall()
@@ -656,182 +656,11 @@ def nachdruck(journal_id):
 def stornieren(journal_id):
     with get_db() as cursor:
         cursor.execute(
-            """UPDATE journal_warenkoerbe SET status='storniert', storniert_am=NOW()
+            """UPDATE XT_KIOSK_JOURNAL SET status='storniert', storniert_am=NOW()
                WHERE id=%s AND status='gebucht'""",
             (journal_id,)
         )
     return jsonify({"ok": True})
-
-
-# ── Admin: Artikelverwaltung ──────────────────────────────────
-
-@_login_required
-@app.route("/admin/artikel")
-def admin_artikel():
-    with get_db() as cursor:
-        cursor.execute("SELECT * FROM v_artikel_verwaltung")
-        artikel = cursor.fetchall()
-        cursor.execute("SELECT * FROM kategorien ORDER BY sort_order")
-        kategorien = cursor.fetchall()
-    return render_template(
-        "admin_artikel.html",
-        artikel=artikel,
-        kategorien=kategorien,
-        cent_zu_euro=cent_zu_euro_str,
-        terminal_nr=get_terminal_nr(),
-    )
-
-
-@_login_required
-@app.route("/admin/artikel/<int:artikel_id>", methods=["POST"])
-def admin_artikel_speichern(artikel_id):
-    data = request.get_json(force=True, silent=True)
-    if not data:
-        return jsonify({"ok": False, "fehler": "Keine Daten empfangen"}), 400
-
-    kategorie_id = data.get("kategorie_id")
-    wochentage   = data.get("wochentage", "")
-
-    try:
-        with get_db() as cursor:
-            cursor.execute("SELECT id FROM produkte WHERE id=%s", (artikel_id,))
-            exists = cursor.fetchone()
-
-            if exists:
-                cursor.execute(
-                    """UPDATE produkte
-                       SET kategorie_id=%s, einheit=%s, wochentage=%s,
-                           zutaten=%s, aktiv=%s, hinweis=%s
-                       WHERE id=%s""",
-                    (kategorie_id, data.get("einheit", "Stck."), wochentage,
-                     data.get("zutaten"), data.get("aktiv", 1),
-                     data.get("hinweis"), artikel_id)
-                )
-            else:
-                cursor.execute(
-                    """INSERT INTO produkte
-                       (id, kategorie_id, einheit, wochentage, zutaten, aktiv, hinweis)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (artikel_id, kategorie_id, data.get("einheit", "Stck."),
-                     wochentage, data.get("zutaten"),
-                     data.get("aktiv", 1), data.get("hinweis"))
-                )
-    except Exception as e:
-        app.logger.error(f"admin_artikel_speichern ID={artikel_id}: {e}")
-        return jsonify({"ok": False, "fehler": str(e)}), 500
-
-    # Produkt-Cache leeren damit Änderungen sofort sichtbar sind
-    produkt_cache_leeren()
-    return jsonify({"ok": True})
-
-
-# ── Admin: Bilderverwaltung (HAB-341) ─────────────────────────
-
-ERLAUBTE_BILD_ENDUNGEN = {"jpg", "jpeg", "png", "webp"}
-MAX_BILD_GROESSE = 5 * 1024 * 1024  # 5 MB
-
-
-@_login_required
-@app.route("/admin/artikel/<int:artikel_id>/bild", methods=["POST"])
-def admin_bild_hochladen(artikel_id):
-    """Bild für einen Artikel hochladen. Ersetzt ein vorhandenes Bild."""
-    datei = request.files.get("bild")
-    if not datei or not datei.filename:
-        return jsonify({"ok": False, "fehler": "Keine Datei ausgewählt"}), 400
-
-    # Dateiendung prüfen
-    endung = datei.filename.rsplit(".", 1)[-1].lower() if "." in datei.filename else ""
-    if endung not in ERLAUBTE_BILD_ENDUNGEN:
-        return jsonify({"ok": False, "fehler": f"Nur {', '.join(sorted(ERLAUBTE_BILD_ENDUNGEN))} erlaubt"}), 400
-
-    # Größe prüfen
-    datei.seek(0, 2)
-    groesse = datei.tell()
-    datei.seek(0)
-    if groesse > MAX_BILD_GROESSE:
-        return jsonify({"ok": False, "fehler": "Datei zu groß (max. 5 MB)"}), 400
-
-    # Verzeichnis sicherstellen
-    os.makedirs(PRODUKTBILDER_DIR, exist_ok=True)
-
-    # Vorhandene Bilder für diesen Artikel löschen (verschiedene Endungen)
-    for alt_endung in ERLAUBTE_BILD_ENDUNGEN:
-        alt_pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{alt_endung}")
-        if os.path.exists(alt_pfad):
-            os.remove(alt_pfad)
-
-    # Neues Bild speichern
-    dateiname = f"{artikel_id}.{endung}"
-    ziel_pfad = os.path.join(PRODUKTBILDER_DIR, dateiname)
-    datei.save(ziel_pfad)
-
-    # bild_pfad in DB aktualisieren
-    bild_url_pfad = f"/produktbilder/{dateiname}"
-    try:
-        with get_db() as cursor:
-            cursor.execute("SELECT id FROM produkte WHERE id=%s", (artikel_id,))
-            if cursor.fetchone():
-                cursor.execute("UPDATE produkte SET bild_pfad=%s WHERE id=%s",
-                               (bild_url_pfad, artikel_id))
-            else:
-                cursor.execute(
-                    "INSERT INTO produkte (id, bild_pfad, aktiv) VALUES (%s, %s, 1)",
-                    (artikel_id, bild_url_pfad))
-    except Exception as e:
-        app.logger.error(f"Bild-DB-Update ID={artikel_id}: {e}")
-        return jsonify({"ok": False, "fehler": str(e)}), 500
-
-    # Caches invalidieren
-    global _bild_cache_gebaut
-    _bild_cache_gebaut = False
-    produkt_cache_leeren()
-
-    return jsonify({"ok": True, "bild_url": bild_url_pfad})
-
-
-@_login_required
-@app.route("/admin/artikel/<int:artikel_id>/bild", methods=["DELETE"])
-def admin_bild_loeschen(artikel_id):
-    """Bild eines Artikels löschen."""
-    # Dateien entfernen
-    geloescht = False
-    for endung in ERLAUBTE_BILD_ENDUNGEN:
-        pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{endung}")
-        if os.path.exists(pfad):
-            os.remove(pfad)
-            geloescht = True
-
-    # bild_pfad in DB leeren
-    try:
-        with get_db() as cursor:
-            cursor.execute("UPDATE produkte SET bild_pfad=NULL WHERE id=%s", (artikel_id,))
-    except Exception as e:
-        app.logger.error(f"Bild-löschen DB ID={artikel_id}: {e}")
-        return jsonify({"ok": False, "fehler": str(e)}), 500
-
-    # Caches invalidieren
-    global _bild_cache_gebaut
-    _bild_cache_gebaut = False
-    produkt_cache_leeren()
-
-    return jsonify({"ok": True, "geloescht": geloescht})
-
-
-@_login_required
-@app.route("/admin/bereinigen", methods=["POST"])
-def admin_bereinigen():
-    with get_db() as cursor:
-        cursor.execute("SELECT id FROM v_verwaiste_produkte")
-        ids = [r["id"] for r in cursor.fetchall()]
-        geloescht = 0
-        for pid in ids:
-            try:
-                cursor.execute("DELETE FROM produkte WHERE id=%s", (pid,))
-                geloescht += 1
-            except Exception:
-                pass
-    produkt_cache_leeren()
-    return jsonify({"ok": True, "geloescht": geloescht})
 
 
 # ── Mittagstisch ──────────────────────────────────────────────
@@ -913,8 +742,8 @@ def bestellungen_view():
                       GROUP_CONCAT(CONCAT(bp.menge,'x ',bp.name_snapshot)
                                    ORDER BY bp.id SEPARATOR ', ') AS artikel_kurz,
                       COUNT(bp.id) AS pos_anzahl
-               FROM bestellungen b
-               LEFT JOIN bestell_positionen bp ON bp.bestell_id = b.id
+               FROM XT_KIOSK_BESTELLUNGEN b
+               LEFT JOIN XT_KIOSK_BESTELL_POS bp ON bp.bestell_id = b.id
                WHERE """ + _HEUTE_SQL + """
                GROUP BY b.id
                ORDER BY b.abhol_uhrzeit IS NULL, b.abhol_uhrzeit, b.id""",
@@ -926,8 +755,8 @@ def bestellungen_view():
             """SELECT b.*,
                       GROUP_CONCAT(CONCAT(bp.menge,'x ',bp.name_snapshot)
                                    ORDER BY bp.id SEPARATOR ', ') AS artikel_kurz
-               FROM bestellungen b
-               LEFT JOIN bestell_positionen bp ON bp.bestell_id = b.id
+               FROM XT_KIOSK_BESTELLUNGEN b
+               LEFT JOIN XT_KIOSK_BESTELL_POS bp ON bp.bestell_id = b.id
                WHERE b.status != 'storniert'
                GROUP BY b.id
                ORDER BY b.erstellt_am DESC"""
@@ -953,12 +782,12 @@ def bestellung_neu_view():
 @app.route("/bestellungen/<int:bestell_id>")
 def bestellung_detail_view(bestell_id):
     with get_db() as cursor:
-        cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+        cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
         bestellung = cursor.fetchone()
         if not bestellung:
             return "Bestellung nicht gefunden", 404
         cursor.execute(
-            "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+            "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
             (bestell_id,)
         )
         positionen = cursor.fetchall()
@@ -976,7 +805,7 @@ def api_bestellungen_badge():
     wt = _heute_wochentag()
     with get_db() as cursor:
         cursor.execute(
-            "SELECT COUNT(*) AS n FROM bestellungen b WHERE " + _BADGE_SQL,
+            "SELECT COUNT(*) AS n FROM XT_KIOSK_BESTELLUNGEN b WHERE " + _BADGE_SQL,
             {"wt": wt}
         )
         row = cursor.fetchone()
@@ -987,7 +816,7 @@ def api_bestellungen_badge():
 @app.route("/api/offen/badge")
 def api_offen_badge():
     with get_db() as cursor:
-        cursor.execute("SELECT COUNT(*) AS n FROM warenkoerbe WHERE status='geparkt'")
+        cursor.execute("SELECT COUNT(*) AS n FROM XT_KIOSK_WARENKOERBE WHERE status='geparkt'")
         row = cursor.fetchone()
     return jsonify({"ok": True, "anzahl": row["n"]})
 
@@ -1001,7 +830,7 @@ def api_bestellungen_produkte():
             cursor.execute(
                 """SELECT id, name, preis_cent, einheit, wochentage,
                           kategorie_name, COALESCE(kategorie_sort, 999) AS kategorie_sort
-                   FROM v_kiosk_produkte
+                   FROM XT_KIOSK_V_PRODUKTE
                    WHERE aktiv > 0
                      AND (wochentage = '' OR FIND_IN_SET(%s, wochentage) > 0)
                    ORDER BY kategorie_sort, name""",
@@ -1011,7 +840,7 @@ def api_bestellungen_produkte():
             cursor.execute(
                 """SELECT id, name, preis_cent, einheit, wochentage,
                           kategorie_name, COALESCE(kategorie_sort, 999) AS kategorie_sort
-                   FROM v_kiosk_produkte
+                   FROM XT_KIOSK_V_PRODUKTE
                    WHERE aktiv > 0
                    ORDER BY kategorie_sort, name"""
             )
@@ -1036,7 +865,7 @@ def api_kontakte():
     try:
         with get_db() as cursor:
             cursor.execute(
-                """SELECT name, telefon FROM kontakte
+                """SELECT name, telefon FROM XT_KIOSK_KONTAKTE
                    WHERE name LIKE %s OR telefon LIKE %s
                    ORDER BY name
                    LIMIT 10""",
@@ -1051,11 +880,11 @@ def api_kontakte():
 def _hole_oder_erstelle_kontakt(cursor, name: str, telefon: str) -> int:
     """Sucht einen Kontakt (name, telefon) oder legt ihn neu an. Gibt kontakt_id zurück."""
     tel = (telefon or "").strip()
-    cursor.execute("SELECT id FROM kontakte WHERE name=%s AND telefon=%s", (name, tel))
+    cursor.execute("SELECT id FROM XT_KIOSK_KONTAKTE WHERE name=%s AND telefon=%s", (name, tel))
     row = cursor.fetchone()
     if row:
         return row["id"]
-    cursor.execute("INSERT INTO kontakte (name, telefon) VALUES (%s, %s)", (name, tel))
+    cursor.execute("INSERT INTO XT_KIOSK_KONTAKTE (name, telefon) VALUES (%s, %s)", (name, tel))
     return cursor.lastrowid
 
 
@@ -1091,7 +920,7 @@ def api_bestellung_neu():
     try:
         with get_db_transaction() as cursor:
             cursor.execute(
-                """INSERT INTO bestellungen
+                """INSERT INTO XT_KIOSK_BESTELLUNGEN
                        (bestell_nr, name, telefon, typ, abhol_datum, wochentag,
                         start_datum, end_datum, abhol_uhrzeit, notiz, kanal,
                         zahlungsart, ean_barcode)
@@ -1114,12 +943,12 @@ def api_bestellung_neu():
             bestell_nr = f"B-{jetzt.year}-{bestell_id:04d}"
             kontakt_id = _hole_oder_erstelle_kontakt(cursor, name, data.get("telefon") or "")
             cursor.execute(
-                "UPDATE bestellungen SET bestell_nr=%s, kontakt_id=%s WHERE id=%s",
+                "UPDATE XT_KIOSK_BESTELLUNGEN SET bestell_nr=%s, kontakt_id=%s WHERE id=%s",
                 (bestell_nr, kontakt_id, bestell_id),
             )
             for pos in positionen:
                 cursor.execute(
-                    """INSERT INTO bestell_positionen
+                    """INSERT INTO XT_KIOSK_BESTELL_POS
                            (bestell_id, produkt_id, name_snapshot, preis_cent, menge)
                        VALUES (%s, %s, %s, %s, %s)""",
                     (bestell_id, pos["produkt_id"], pos["name"],
@@ -1156,7 +985,7 @@ def api_bestellung_neu():
             # bon_data immer speichern (auch bei Druckfehler → Nachdruck möglich)
             with get_db() as cursor:
                 cursor.execute(
-                    "UPDATE bestellungen SET bon_data=%s WHERE id=%s",
+                    "UPDATE XT_KIOSK_BESTELLUNGEN SET bon_data=%s WHERE id=%s",
                     (bon_bytes, bestell_id),
                 )
         except Exception as e:
@@ -1205,12 +1034,12 @@ def api_bestellung_speichern(bestell_id):
     try:
         with get_db_transaction() as cursor:
             # ── Alten Zustand vor dem Speichern lesen ──────────────
-            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
             alt_bestellung = cursor.fetchone()
             if not alt_bestellung:
                 return jsonify({"ok": False, "fehler": "Bestellung nicht gefunden"}), 404
             cursor.execute(
-                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
                 (bestell_id,),
             )
             alt_pos = cursor.fetchall()
@@ -1227,7 +1056,7 @@ def api_bestellung_speichern(bestell_id):
 
             kontakt_id = _hole_oder_erstelle_kontakt(cursor, name, data.get("telefon") or "")
             cursor.execute(
-                """UPDATE bestellungen
+                """UPDATE XT_KIOSK_BESTELLUNGEN
                    SET name=%s, telefon=%s, kontakt_id=%s, typ=%s, abhol_datum=%s,
                        wochentag=%s, start_datum=%s, end_datum=%s, abhol_uhrzeit=%s,
                        notiz=%s, ean_barcode=%s
@@ -1248,11 +1077,11 @@ def api_bestellung_speichern(bestell_id):
                 ),
             )
             cursor.execute(
-                "DELETE FROM bestell_positionen WHERE bestell_id=%s", (bestell_id,)
+                "DELETE FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s", (bestell_id,)
             )
             for pos in positionen:
                 cursor.execute(
-                    """INSERT INTO bestell_positionen
+                    """INSERT INTO XT_KIOSK_BESTELL_POS
                            (bestell_id, produkt_id, name_snapshot, preis_cent, menge)
                        VALUES (%s, %s, %s, %s, %s)""",
                     (bestell_id, pos["produkt_id"], pos["name"],
@@ -1260,10 +1089,10 @@ def api_bestellung_speichern(bestell_id):
                 )
 
             # Neuen Zustand für den Bon laden
-            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
             neu_bestellung = cursor.fetchone()
             cursor.execute(
-                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
                 (bestell_id,),
             )
             neu_pos_rows = cursor.fetchall()
@@ -1335,17 +1164,17 @@ def api_bestellung_stornieren(bestell_id):
     terminal_nr = get_terminal_nr()
     try:
         with get_db() as cursor:
-            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
             b_row = cursor.fetchone()
             if not b_row:
                 return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
             cursor.execute(
-                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
                 (bestell_id,),
             )
             pos_rows = cursor.fetchall()
             cursor.execute(
-                "UPDATE bestellungen SET status='storniert' WHERE id=%s AND status != 'storniert'",
+                "UPDATE XT_KIOSK_BESTELLUNGEN SET status='storniert' WHERE id=%s AND status != 'storniert'",
                 (bestell_id,),
             )
     except Exception as e:
@@ -1385,7 +1214,7 @@ def api_bestellung_pausieren(bestell_id):
 
     try:
         with get_db() as cursor:
-            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
             row = cursor.fetchone()
             if not row:
                 return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
@@ -1395,19 +1224,19 @@ def api_bestellung_pausieren(bestell_id):
             if wochen == 0:
                 neu_pausiert = 0 if row["pausiert"] else 1
                 cursor.execute(
-                    "UPDATE bestellungen SET pausiert=%s, pause_bis=NULL WHERE id=%s",
+                    "UPDATE XT_KIOSK_BESTELLUNGEN SET pausiert=%s, pause_bis=NULL WHERE id=%s",
                     (neu_pausiert, bestell_id),
                 )
                 pb = None
                 pause_text = "Pausiert (unbefristet)" if neu_pausiert else None
             else:
                 cursor.execute(
-                    """UPDATE bestellungen
+                    """UPDATE XT_KIOSK_BESTELLUNGEN
                        SET pausiert=1, pause_bis=DATE_ADD(CURDATE(), INTERVAL %s WEEK)
                        WHERE id=%s""",
                     (wochen, bestell_id),
                 )
-                cursor.execute("SELECT pause_bis FROM bestellungen WHERE id=%s", (bestell_id,))
+                cursor.execute("SELECT pause_bis FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
                 r = cursor.fetchone()
                 pb = r["pause_bis"].strftime('%d.%m.%Y') if r and r["pause_bis"] else None
                 pause_text = f"Pausiert bis {pb}" if pb else "Pausiert"
@@ -1416,11 +1245,11 @@ def api_bestellung_pausieren(bestell_id):
             # Bon drucken (nur beim Pausieren, nicht beim Fortsetzen)
             if pause_text:
                 cursor.execute(
-                    "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                    "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
                     (bestell_id,)
                 )
                 pos_rows = cursor.fetchall()
-                cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+                cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
                 b_row = cursor.fetchone()
                 try:
                     druck.drucke_pickliste(
@@ -1451,12 +1280,12 @@ def api_bestellungen_drucken():
 
     with get_db() as cursor:
         for bid in ids:
-            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bid,))
+            cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bid,))
             b_row = cursor.fetchone()
             if not b_row or b_row["status"] == "storniert":
                 continue
             cursor.execute(
-                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
                 (bid,)
             )
             pos_rows = cursor.fetchall()
@@ -1470,12 +1299,12 @@ def api_bestellungen_drucken():
                 )
                 if b_row["typ"] == "einmalig" and b_row["status"] == "offen":
                     cursor.execute(
-                        "UPDATE bestellungen SET status='gedruckt', gedruckt_datum=CURDATE() WHERE id=%s",
+                        "UPDATE XT_KIOSK_BESTELLUNGEN SET status='gedruckt', gedruckt_datum=CURDATE() WHERE id=%s",
                         (bid,)
                     )
                 else:
                     cursor.execute(
-                        "UPDATE bestellungen SET gedruckt_datum=CURDATE() WHERE id=%s",
+                        "UPDATE XT_KIOSK_BESTELLUNGEN SET gedruckt_datum=CURDATE() WHERE id=%s",
                         (bid,)
                     )
                 gedruckt += 1
@@ -1502,12 +1331,12 @@ def api_bestellung_nachdruck(bestell_id):
 
     try:
         with get_db() as cursor:
-            cursor.execute("SELECT * FROM bestellungen WHERE id=%s", (bestell_id,))
+            cursor.execute("SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s", (bestell_id,))
             b_row = cursor.fetchone()
             if not b_row:
                 return jsonify({"ok": False, "fehler": "Nicht gefunden"}), 404
             cursor.execute(
-                "SELECT * FROM bestell_positionen WHERE bestell_id=%s ORDER BY id",
+                "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
                 (bestell_id,)
             )
             pos_rows = cursor.fetchall()

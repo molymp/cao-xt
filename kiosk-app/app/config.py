@@ -14,8 +14,7 @@ from common.config import load_db_config, load_environment
 
 # ── Datenbank ─────────────────────────────────────────────────
 # Host/Port/User/Password aus caoxt.ini (gleicher MySQL-Server wie CAO Faktura).
-# DB_NAME NICHT aus caoxt.ini: Kiosk nutzt eigene Datenbank 'Backwaren',
-# die von der CAO-Faktura-DB (db_name in caoxt.ini) abweicht.
+# DB_NAME aus caoxt.ini (gleiche DB wie CAO-Faktura: cao_XT_DEV in Dev, cao_2018_001 in Prod).
 # Überschreiben via Env-Var KIOSK_DB_NAME oder config_local.py.
 _cfg        = load_db_config("KIOSK")
 XT_ENVIRONMENT = load_environment()
@@ -23,7 +22,7 @@ DB_HOST     = _cfg['host']
 DB_PORT     = _cfg['port']
 DB_USER     = _cfg['user']
 DB_PASSWORD = _cfg['password']
-DB_NAME     = os.environ.get('KIOSK_DB_NAME') or 'Backwaren'
+DB_NAME     = os.environ.get('KIOSK_DB_NAME') or _cfg['name']
 
 # ── Terminal ──────────────────────────────────────────────────
 # Einstellige Zahl 1–9, pro Gerät einmalig vergeben.

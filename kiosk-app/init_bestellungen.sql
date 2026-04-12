@@ -1,9 +1,8 @@
 -- Bestellungs-Modul – Migration für bestehende Installationen
--- Einmalig ausführen: mysql -h <DB_HOST> -P <DB_PORT> -u <DB_USER> -p<DB_PASSWORD> Backwaren < init_bestellungen.sql
+-- Einmalig ausführen gegen die konfigurierte CAO-Hauptdatenbank.
+-- Tabellen liegen in derselben DB wie alle XT_KIOSK_*-Tabellen.
 
-USE Backwaren;
-
-CREATE TABLE IF NOT EXISTS bestellungen (
+CREATE TABLE IF NOT EXISTS XT_KIOSK_BESTELLUNGEN (
     id              INT          NOT NULL AUTO_INCREMENT,
     bestell_nr      VARCHAR(20)  NOT NULL DEFAULT '',
     name            VARCHAR(100) NOT NULL,
@@ -23,13 +22,17 @@ CREATE TABLE IF NOT EXISTS bestellungen (
     bon_data        LONGBLOB     DEFAULT NULL,
     erstellt_am     DATETIME     NOT NULL DEFAULT NOW(),
     geaendert_am    DATETIME     DEFAULT NULL ON UPDATE NOW(),
+    kontakt_id      INT          DEFAULT NULL,
+    pausiert        TINYINT(1)   NOT NULL DEFAULT 0,
+    pause_bis       DATE         DEFAULT NULL,
     PRIMARY KEY (id),
     INDEX idx_abhol_datum (abhol_datum),
     INDEX idx_wochentag (wochentag),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_pausiert (pausiert)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS bestell_positionen (
+CREATE TABLE IF NOT EXISTS XT_KIOSK_BESTELL_POS (
     id              INT          NOT NULL AUTO_INCREMENT,
     bestell_id      INT          NOT NULL,
     produkt_id      INT          NOT NULL,
@@ -37,48 +40,39 @@ CREATE TABLE IF NOT EXISTS bestell_positionen (
     preis_cent      INT          NOT NULL,
     menge           INT          NOT NULL DEFAULT 1,
     PRIMARY KEY (id),
-    CONSTRAINT fk_bp_bestellung FOREIGN KEY (bestell_id) REFERENCES bestellungen(id) ON DELETE CASCADE,
-    INDEX idx_bp_bestell_id (bestell_id)
+    CONSTRAINT fk_kiosk_bp_bestellung FOREIGN KEY (bestell_id) REFERENCES XT_KIOSK_BESTELLUNGEN(id) ON DELETE CASCADE,
+    INDEX idx_kiosk_bp_bestell_id (bestell_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Falls Tabelle bereits ohne neue Spalten existiert (idempotent):
-ALTER TABLE bestellungen
-    ADD COLUMN IF NOT EXISTS zahlungsart  ENUM('sofort','abholung') NOT NULL DEFAULT 'abholung' AFTER notiz,
-    ADD COLUMN IF NOT EXISTS ean_barcode  VARCHAR(13)  DEFAULT NULL AFTER zahlungsart,
-    ADD COLUMN IF NOT EXISTS bon_data     LONGBLOB     DEFAULT NULL AFTER ean_barcode,
-    ADD COLUMN IF NOT EXISTS pausiert     TINYINT(1)   NOT NULL DEFAULT 0 AFTER end_datum,
-    ADD COLUMN IF NOT EXISTS pause_bis    DATE         DEFAULT NULL AFTER pausiert,
-    ADD COLUMN IF NOT EXISTS kontakt_id   INT          DEFAULT NULL AFTER telefon,
-    ADD INDEX IF NOT EXISTS idx_pausiert (pausiert);
-
 -- Kontakte-Tabelle (überlebt Aufräumen der Bestellungen)
-CREATE TABLE IF NOT EXISTS kontakte (
+CREATE TABLE IF NOT EXISTS XT_KIOSK_KONTAKTE (
     id          INT          NOT NULL AUTO_INCREMENT,
     name        VARCHAR(100) NOT NULL,
     telefon     VARCHAR(30)  NOT NULL DEFAULT '',
     erstellt_am DATETIME     NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_kontakt (name, telefon)
+    UNIQUE KEY uq_kiosk_kontakt (name, telefon)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- FK nur anlegen wenn noch nicht vorhanden
 SET @fk_exists = (
     SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
     WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME   = 'bestellungen'
-      AND CONSTRAINT_NAME = 'fk_bestellung_kontakt'
+      AND TABLE_NAME   = 'XT_KIOSK_BESTELLUNGEN'
+      AND CONSTRAINT_NAME = 'fk_kiosk_bestellung_kontakt'
 );
 SET @sql = IF(@fk_exists = 0,
-    'ALTER TABLE bestellungen ADD CONSTRAINT fk_bestellung_kontakt
-     FOREIGN KEY (kontakt_id) REFERENCES kontakte(id) ON DELETE SET NULL ON UPDATE CASCADE',
+    'ALTER TABLE XT_KIOSK_BESTELLUNGEN ADD CONSTRAINT fk_kiosk_bestellung_kontakt
+     FOREIGN KEY (kontakt_id) REFERENCES XT_KIOSK_KONTAKTE(id) ON DELETE SET NULL ON UPDATE CASCADE',
     'SELECT 1'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Bestehende Kontaktdaten migrieren
-INSERT IGNORE INTO kontakte (name, telefon)
-    SELECT DISTINCT name, COALESCE(telefon, '') FROM bestellungen;
-UPDATE bestellungen b
-    JOIN kontakte k ON k.name = b.name AND k.telefon = COALESCE(b.telefon, '')
+-- Bestehende Kontaktdaten migrieren (idempotent)
+INSERT IGNORE INTO XT_KIOSK_KONTAKTE (name, telefon)
+    SELECT DISTINCT name, COALESCE(telefon, '') FROM XT_KIOSK_BESTELLUNGEN
+    WHERE kontakt_id IS NULL AND name != '';
+UPDATE XT_KIOSK_BESTELLUNGEN b
+    JOIN XT_KIOSK_KONTAKTE k ON k.name = b.name AND k.telefon = COALESCE(b.telefon, '')
     SET b.kontakt_id = k.id
     WHERE b.kontakt_id IS NULL;

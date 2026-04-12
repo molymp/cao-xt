@@ -1,22 +1,18 @@
 -- ============================================================
--- Bäckerei Kiosk – Datenbankschema
--- Datenbank: MariaDB (gleicher Server wie CAO-Kassendatenbank)
--- Unsere DB:  Backwaren  /  CAO-DB: cao_2018_001
+-- Bäckerei Kiosk – Datenbankschema (XT_KIOSK_*)
+-- Die Tabellen liegen in der CAO-Hauptdatenbank (db_name aus caoxt.ini).
+-- Kein separates CREATE DATABASE / USE – die Verbindung erfolgt direkt
+-- auf die konfigurierte Datenbank.
 -- Erstellt:   22.03.2026
 -- Geändert:   22.03.2026 – produkte.kategorie_id nullable
 --             22.03.2026 – REC_ID statt ARTNUM als Join-Schlüssel
 --             22.03.2026 – v_kiosk_produkte: LEFT JOIN, aktiv > 0 reicht
 --                          (Artikel ohne Kategorie erscheinen als '– Sonstige –')
+--             12.04.2026 – Migration: Backwaren.* → XT_KIOSK_* in Haupt-DB
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS Backwaren
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-USE Backwaren;
-
--- T0: drucker
-CREATE TABLE drucker (
+-- T0: XT_KIOSK_DRUCKER
+CREATE TABLE IF NOT EXISTS XT_KIOSK_DRUCKER (
     id           INT          NOT NULL AUTO_INCREMENT,
     name         VARCHAR(100) NOT NULL,
     ip_adresse   VARCHAR(45)  NOT NULL,
@@ -26,23 +22,23 @@ CREATE TABLE drucker (
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T0b: terminal_drucker
-CREATE TABLE terminal_drucker (
+-- T0b: XT_KIOSK_TERMINAL_DRUCKER
+CREATE TABLE IF NOT EXISTS XT_KIOSK_TERMINAL_DRUCKER (
     terminal_nr  TINYINT NOT NULL,
     drucker_id   INT     NOT NULL,
     PRIMARY KEY (terminal_nr),
-    CONSTRAINT fk_td_drucker FOREIGN KEY (drucker_id) REFERENCES drucker (id)
+    CONSTRAINT fk_kiosk_td_drucker FOREIGN KEY (drucker_id) REFERENCES XT_KIOSK_DRUCKER (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T1: kategorien
-CREATE TABLE kategorien (
+-- T1: XT_KIOSK_KATEGORIEN
+CREATE TABLE IF NOT EXISTS XT_KIOSK_KATEGORIEN (
     id         INT          NOT NULL AUTO_INCREMENT,
     name       VARCHAR(100) NOT NULL,
     sort_order INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO kategorien (id, name, sort_order) VALUES
+INSERT IGNORE INTO XT_KIOSK_KATEGORIEN (id, name, sort_order) VALUES
     (1, 'Brot',                   10),
     (2, 'Semmeln',                20),
     (3, 'Baguette / Sonstiges',   30),
@@ -50,9 +46,9 @@ INSERT INTO kategorien (id, name, sort_order) VALUES
     (5, 'Süßes – Kuchen/Torten',  50),
     (6, 'Süßes – Gebäck',         60);
 
--- T2: produkte
--- id = REC_ID aus cao_2018_001.ARTIKEL (int, immer vorhanden)
-CREATE TABLE produkte (
+-- T2: XT_KIOSK_PRODUKTE
+-- id = REC_ID aus ARTIKEL (int, immer vorhanden)
+CREATE TABLE IF NOT EXISTS XT_KIOSK_PRODUKTE (
     id           INT          NOT NULL,
     kategorie_id INT          NULL,
     bild_pfad    VARCHAR(500),
@@ -62,13 +58,13 @@ CREATE TABLE produkte (
     aktiv        TINYINT      NOT NULL DEFAULT 1,
     hinweis      VARCHAR(200),
     PRIMARY KEY (id),
-    CONSTRAINT fk_produkte_kategorie
-        FOREIGN KEY (kategorie_id) REFERENCES kategorien (id)
+    CONSTRAINT fk_kiosk_produkte_kategorie
+        FOREIGN KEY (kategorie_id) REFERENCES XT_KIOSK_KATEGORIEN (id)
         ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T3: warenkoerbe
-CREATE TABLE warenkoerbe (
+-- T3: XT_KIOSK_WARENKOERBE
+CREATE TABLE IF NOT EXISTS XT_KIOSK_WARENKOERBE (
     id                INT      NOT NULL AUTO_INCREMENT,
     erstellt_am       DATETIME NOT NULL DEFAULT NOW(),
     geaendert_am      DATETIME,
@@ -80,8 +76,8 @@ CREATE TABLE warenkoerbe (
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T4: warenkorb_positionen
-CREATE TABLE warenkorb_positionen (
+-- T4: XT_KIOSK_WARENKORB_POS
+CREATE TABLE IF NOT EXISTS XT_KIOSK_WARENKORB_POS (
     id                   INT          NOT NULL AUTO_INCREMENT,
     warenkorb_id         INT          NOT NULL,
     produkt_id           INT          NOT NULL,
@@ -90,12 +86,12 @@ CREATE TABLE warenkorb_positionen (
     menge                INT          NOT NULL DEFAULT 1,
     zeilen_betrag_cent   INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    CONSTRAINT fk_wp_warenkorb FOREIGN KEY (warenkorb_id) REFERENCES warenkoerbe (id),
-    CONSTRAINT fk_wp_produkt   FOREIGN KEY (produkt_id)   REFERENCES produkte (id)
+    CONSTRAINT fk_kiosk_wp_warenkorb FOREIGN KEY (warenkorb_id) REFERENCES XT_KIOSK_WARENKOERBE (id),
+    CONSTRAINT fk_kiosk_wp_produkt   FOREIGN KEY (produkt_id)   REFERENCES XT_KIOSK_PRODUKTE (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T5: journal_warenkoerbe
-CREATE TABLE journal_warenkoerbe (
+-- T5: XT_KIOSK_JOURNAL
+CREATE TABLE IF NOT EXISTS XT_KIOSK_JOURNAL (
     id                INT         NOT NULL AUTO_INCREMENT,
     warenkorb_id      INT         NOT NULL,
     terminal_nr       TINYINT     NOT NULL,
@@ -110,8 +106,8 @@ CREATE TABLE journal_warenkoerbe (
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T6: journal_positionen
-CREATE TABLE journal_positionen (
+-- T6: XT_KIOSK_JOURNAL_POS
+CREATE TABLE IF NOT EXISTS XT_KIOSK_JOURNAL_POS (
     id                   INT          NOT NULL AUTO_INCREMENT,
     journal_id           INT          NOT NULL,
     produkt_id           INT          NOT NULL,
@@ -120,90 +116,11 @@ CREATE TABLE journal_positionen (
     menge                INT          NOT NULL,
     zeilen_betrag_cent   INT          NOT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_jp_journal FOREIGN KEY (journal_id) REFERENCES journal_warenkoerbe (id)
+    CONSTRAINT fk_kiosk_jp_journal FOREIGN KEY (journal_id) REFERENCES XT_KIOSK_JOURNAL (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================
--- Views
--- ============================================================
-
--- Admin-Verwaltung
-CREATE OR REPLACE VIEW v_artikel_verwaltung AS
-    SELECT
-        a.REC_ID                                    AS id,
-        a.ARTNUM                                    AS artnum,
-        a.KURZNAME                                  AS name,
-        ROUND(a.VK5B * 100)                         AS preis_cent,
-        COALESCE(p.kategorie_id, 0)                 AS kategorie_id,
-        COALESCE(k.name, '– nicht zugeordnet –')    AS kategorie_name,
-        COALESCE(p.einheit,    'Stck.')              AS einheit,
-        COALESCE(p.wochentage, '')                  AS wochentage,
-        p.zutaten,
-        COALESCE(p.aktiv, 1)                        AS aktiv,
-        p.hinweis,
-        p.bild_pfad,
-        CASE WHEN p.id IS NULL THEN 'fehlt' ELSE 'vorhanden' END AS kiosk_eintrag
-    FROM cao_2018_001.ARTIKEL a
-    LEFT JOIN Backwaren.produkte p   ON p.id = a.REC_ID
-    LEFT JOIN Backwaren.kategorien k ON k.id = p.kategorie_id
-    WHERE a.WARENGRUPPE = '101'
-    ORDER BY COALESCE(k.sort_order, 999), a.KURZNAME;
-
--- Kiosk-Hauptansicht: alle aktiven Artikel inkl. ohne Kategorie
--- LEFT JOIN → kategorie_id NULL erlaubt → Fallback '– Sonstige –', sort 999
-CREATE OR REPLACE VIEW v_kiosk_produkte AS
-    SELECT
-        a.REC_ID                                    AS id,
-        a.ARTNUM                                    AS artnum,
-        a.KURZNAME                                  AS name,
-        ROUND(a.VK5B * 100)                         AS preis_cent,
-        p.kategorie_id,
-        COALESCE(k.name, '– Sonstige –')            AS kategorie_name,
-        COALESCE(k.sort_order, 999)                 AS kategorie_sort,
-        p.einheit,
-        COALESCE(p.wochentage, '')                  AS wochentage,
-        p.zutaten,
-        p.aktiv,
-        p.hinweis,
-        p.bild_pfad
-    FROM cao_2018_001.ARTIKEL a
-    JOIN Backwaren.produkte p     ON p.id = a.REC_ID
-    LEFT JOIN Backwaren.kategorien k ON k.id = p.kategorie_id
-    WHERE a.WARENGRUPPE = '101'
-      AND p.aktiv > 0
-    ORDER BY COALESCE(k.sort_order, 999), a.KURZNAME;
-
--- Verwaiste produkte-Einträge
-CREATE OR REPLACE VIEW v_verwaiste_produkte AS
-    SELECT p.id, p.kategorie_id, p.aktiv, p.hinweis
-    FROM Backwaren.produkte p
-    LEFT JOIN cao_2018_001.ARTIKEL a ON a.REC_ID = p.id
-    WHERE a.REC_ID IS NULL;
-
--- Parkierte Warenkörbe
-CREATE OR REPLACE VIEW v_offene_warenkoerbe AS
-    SELECT w.id, w.erstellt_am, w.geaendert_am, w.gesamtbetrag_cent,
-           w.erstellt_von,
-           COUNT(p.id) AS anzahl_positionen
-    FROM warenkoerbe w
-    LEFT JOIN warenkorb_positionen p ON p.warenkorb_id = w.id
-    WHERE w.status = 'geparkt'
-    GROUP BY w.id, w.erstellt_am, w.geaendert_am, w.gesamtbetrag_cent, w.erstellt_von
-    ORDER BY w.geaendert_am DESC;
-
--- Journal-Übersicht
-CREATE OR REPLACE VIEW v_journal_uebersicht AS
-    SELECT j.id, j.warenkorb_id, j.terminal_nr, j.gebucht_am,
-           j.gesamtbetrag_cent, j.ean_barcode, j.status, j.storniert_am,
-           COUNT(p.id) AS anzahl_positionen
-    FROM journal_warenkoerbe j
-    LEFT JOIN journal_positionen p ON p.journal_id = j.id
-    GROUP BY j.id, j.warenkorb_id, j.terminal_nr, j.gebucht_am,
-             j.gesamtbetrag_cent, j.ean_barcode, j.status, j.storniert_am
-    ORDER BY j.gebucht_am DESC;
-
--- T7: bestellungen
-CREATE TABLE bestellungen (
+-- T7: XT_KIOSK_BESTELLUNGEN
+CREATE TABLE IF NOT EXISTS XT_KIOSK_BESTELLUNGEN (
     id              INT          NOT NULL AUTO_INCREMENT,
     bestell_nr      VARCHAR(20)  NOT NULL DEFAULT '',
     name            VARCHAR(100) NOT NULL,
@@ -223,14 +140,18 @@ CREATE TABLE bestellungen (
     bon_data        LONGBLOB     DEFAULT NULL,
     erstellt_am     DATETIME     NOT NULL DEFAULT NOW(),
     geaendert_am    DATETIME     DEFAULT NULL ON UPDATE NOW(),
+    kontakt_id      INT          DEFAULT NULL,
+    pausiert        TINYINT(1)   NOT NULL DEFAULT 0,
+    pause_bis       DATE         DEFAULT NULL,
     PRIMARY KEY (id),
     INDEX idx_abhol_datum (abhol_datum),
     INDEX idx_wochentag (wochentag),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_pausiert (pausiert)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- T8: bestell_positionen
-CREATE TABLE bestell_positionen (
+-- T8: XT_KIOSK_BESTELL_POS
+CREATE TABLE IF NOT EXISTS XT_KIOSK_BESTELL_POS (
     id              INT          NOT NULL AUTO_INCREMENT,
     bestell_id      INT          NOT NULL,
     produkt_id      INT          NOT NULL,
@@ -238,6 +159,108 @@ CREATE TABLE bestell_positionen (
     preis_cent      INT          NOT NULL,
     menge           INT          NOT NULL DEFAULT 1,
     PRIMARY KEY (id),
-    CONSTRAINT fk_bp_bestellung FOREIGN KEY (bestell_id) REFERENCES bestellungen(id) ON DELETE CASCADE,
-    INDEX idx_bp_bestell_id (bestell_id)
+    CONSTRAINT fk_kiosk_bp_bestellung FOREIGN KEY (bestell_id) REFERENCES XT_KIOSK_BESTELLUNGEN(id) ON DELETE CASCADE,
+    INDEX idx_kiosk_bp_bestell_id (bestell_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T9: XT_KIOSK_KONTAKTE
+CREATE TABLE IF NOT EXISTS XT_KIOSK_KONTAKTE (
+    id          INT          NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(100) NOT NULL,
+    telefon     VARCHAR(30)  NOT NULL DEFAULT '',
+    erstellt_am DATETIME     NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_kiosk_kontakt (name, telefon)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- FK bestellungen → kontakte
+SET @fk_exists = (
+    SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'XT_KIOSK_BESTELLUNGEN'
+      AND CONSTRAINT_NAME = 'fk_kiosk_bestellung_kontakt'
+);
+SET @sql = IF(@fk_exists = 0,
+    'ALTER TABLE XT_KIOSK_BESTELLUNGEN ADD CONSTRAINT fk_kiosk_bestellung_kontakt
+     FOREIGN KEY (kontakt_id) REFERENCES XT_KIOSK_KONTAKTE(id) ON DELETE SET NULL ON UPDATE CASCADE',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- Views (alle in derselben DB – kein Cross-DB-Prefix nötig)
+-- ============================================================
+
+-- Admin-Verwaltung
+CREATE OR REPLACE VIEW XT_KIOSK_V_ARTIKEL_VERWALTUNG AS
+    SELECT
+        a.REC_ID                                    AS id,
+        a.ARTNUM                                    AS artnum,
+        a.KURZNAME                                  AS name,
+        ROUND(a.VK5B * 100)                         AS preis_cent,
+        COALESCE(p.kategorie_id, 0)                 AS kategorie_id,
+        COALESCE(k.name, '– nicht zugeordnet –')    AS kategorie_name,
+        COALESCE(p.einheit,    'Stck.')              AS einheit,
+        COALESCE(p.wochentage, '')                  AS wochentage,
+        p.zutaten,
+        COALESCE(p.aktiv, 1)                        AS aktiv,
+        p.hinweis,
+        p.bild_pfad,
+        CASE WHEN p.id IS NULL THEN 'fehlt' ELSE 'vorhanden' END AS kiosk_eintrag
+    FROM ARTIKEL a
+    LEFT JOIN XT_KIOSK_PRODUKTE p   ON p.id = a.REC_ID
+    LEFT JOIN XT_KIOSK_KATEGORIEN k ON k.id = p.kategorie_id
+    WHERE a.WARENGRUPPE = '101'
+    ORDER BY COALESCE(k.sort_order, 999), a.KURZNAME;
+
+-- Kiosk-Hauptansicht
+CREATE OR REPLACE VIEW XT_KIOSK_V_PRODUKTE AS
+    SELECT
+        a.REC_ID                                    AS id,
+        a.ARTNUM                                    AS artnum,
+        a.KURZNAME                                  AS name,
+        ROUND(a.VK5B * 100)                         AS preis_cent,
+        p.kategorie_id,
+        COALESCE(k.name, '– Sonstige –')            AS kategorie_name,
+        COALESCE(k.sort_order, 999)                 AS kategorie_sort,
+        p.einheit,
+        COALESCE(p.wochentage, '')                  AS wochentage,
+        p.zutaten,
+        p.aktiv,
+        p.hinweis,
+        p.bild_pfad
+    FROM ARTIKEL a
+    JOIN XT_KIOSK_PRODUKTE p     ON p.id = a.REC_ID
+    LEFT JOIN XT_KIOSK_KATEGORIEN k ON k.id = p.kategorie_id
+    WHERE a.WARENGRUPPE = '101'
+      AND p.aktiv > 0
+    ORDER BY COALESCE(k.sort_order, 999), a.KURZNAME;
+
+-- Verwaiste Produkte-Einträge
+CREATE OR REPLACE VIEW XT_KIOSK_V_VERWAISTE AS
+    SELECT p.id, p.kategorie_id, p.aktiv, p.hinweis
+    FROM XT_KIOSK_PRODUKTE p
+    LEFT JOIN ARTIKEL a ON a.REC_ID = p.id
+    WHERE a.REC_ID IS NULL;
+
+-- Parkierte Warenkörbe
+CREATE OR REPLACE VIEW XT_KIOSK_V_OFFENE_WK AS
+    SELECT w.id, w.erstellt_am, w.geaendert_am, w.gesamtbetrag_cent,
+           w.erstellt_von,
+           COUNT(p.id) AS anzahl_positionen
+    FROM XT_KIOSK_WARENKOERBE w
+    LEFT JOIN XT_KIOSK_WARENKORB_POS p ON p.warenkorb_id = w.id
+    WHERE w.status = 'geparkt'
+    GROUP BY w.id, w.erstellt_am, w.geaendert_am, w.gesamtbetrag_cent, w.erstellt_von
+    ORDER BY w.geaendert_am DESC;
+
+-- Journal-Übersicht
+CREATE OR REPLACE VIEW XT_KIOSK_V_JOURNAL AS
+    SELECT j.id, j.warenkorb_id, j.terminal_nr, j.gebucht_am,
+           j.gesamtbetrag_cent, j.ean_barcode, j.status, j.storniert_am,
+           COUNT(p.id) AS anzahl_positionen
+    FROM XT_KIOSK_JOURNAL j
+    LEFT JOIN XT_KIOSK_JOURNAL_POS p ON p.journal_id = j.id
+    GROUP BY j.id, j.warenkorb_id, j.terminal_nr, j.gebucht_am,
+             j.gesamtbetrag_cent, j.ean_barcode, j.status, j.storniert_am
+    ORDER BY j.gebucht_am DESC;
