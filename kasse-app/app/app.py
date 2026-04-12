@@ -692,6 +692,20 @@ def api_artikel_barcode(barcode):
     sonder = kl.ean_sonder_erkennen(barcode)
     if sonder:
         return jsonify(sonder)
+    # 3. Kundenkarte (KARTEN TYP='K')
+    kunde = kl.kunde_per_karte(barcode)
+    if kunde:
+        return jsonify({
+            'typ': 'kundenkarte',
+            'id': kunde['REC_ID'],
+            'kunnum': kunde['KUNNUM1'] or '',
+            'name': kunde['NAME1'] or '',
+            'name2': kunde['NAME2'] or '',
+            'ort': kunde['ORT'] or '',
+            'pr_ebene': kunde['PR_EBENE'] if kunde['PR_EBENE'] else 5,
+            'kun_zahlart': kunde['KUN_ZAHLART'] or '',
+            'zahlart_name': kunde['ZAHLART_NAME'] or '',
+        })
     return jsonify(None), 404
 
 
