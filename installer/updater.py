@@ -90,7 +90,14 @@ def _semver_tuple(v: str) -> tuple[int, ...]:
         return (0, 0, 0)
 
 
-def check_for_updates(branch: str = 'master') -> dict:
+def _current_branch() -> str:
+    """Gibt den aktuellen Git-Branch zurück (Fallback: 'master')."""
+    r = _git('rev-parse', '--abbrev-ref', 'HEAD')
+    b = r.stdout.strip() if r.returncode == 0 else ''
+    return b if b and b != 'HEAD' else 'master'
+
+
+def check_for_updates(branch: str = '') -> dict:
     """
     Prüft, ob ein Update verfügbar ist.
 
@@ -111,6 +118,10 @@ def check_for_updates(branch: str = 'master') -> dict:
         'impact': {},
         'error': None,
     }
+
+    # Aktuellen Branch ermitteln wenn nicht explizit angegeben
+    if not branch:
+        branch = _current_branch()
 
     # Lokale Version
     local = load_local_version()
@@ -293,7 +304,7 @@ def main() -> int:
     )
     parser.add_argument('--check',  action='store_true', help='Nur auf Updates prüfen')
     parser.add_argument('--update', action='store_true', help='Update sofort durchführen')
-    parser.add_argument('--branch', default='master',   help='Remote-Branch (Standard: master)')
+    parser.add_argument('--branch', default='',   help='Remote-Branch (Standard: aktueller Branch)')
     args = parser.parse_args()
 
     print()

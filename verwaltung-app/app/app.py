@@ -543,8 +543,14 @@ def api_update_status():
     local_data = _load_json(version_file)
     local_v = local_data.get('version', 'unbekannt') if local_data else 'unbekannt'
 
+    # Aktuellen Branch ermitteln (Fallback: master)
+    branch_r = _git('rev-parse', '--abbrev-ref', 'HEAD')
+    branch = branch_r.stdout.strip() if branch_r.returncode == 0 else 'master'
+    if not branch or branch == 'HEAD':
+        branch = 'master'
+
     # git fetch
-    fetch = _git('fetch', 'origin', 'master')
+    fetch = _git('fetch', 'origin', branch)
     if fetch.returncode != 0:
         return jsonify({
             'error': f"git fetch fehlgeschlagen: {fetch.stderr.strip()}",
@@ -552,7 +558,7 @@ def api_update_status():
         }), 200
 
     # Remote VERSION.json
-    show = _git('show', 'origin/master:VERSION.json')
+    show = _git('show', f'origin/{branch}:VERSION.json')
     if show.returncode != 0:
         return jsonify({
             'error': 'VERSION.json auf Remote nicht lesbar',
