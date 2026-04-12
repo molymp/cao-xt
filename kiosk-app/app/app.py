@@ -15,6 +15,7 @@ import config
 import db
 from db import get_db, get_db_transaction, cent_zu_euro_str
 from common.auth import login_required as _login_required, login_user, logout_user
+from functools import wraps
 import ean as ean_modul
 import druck
 import mittagstisch as mt
@@ -26,22 +27,26 @@ app.secret_key = config.SECRET_KEY
 @app.context_processor
 def _inject_globals():
     """Stellt terminal_nr und update_verfuegbar in allen Templates bereit."""
+    tnr = get_terminal_nr()
     return {
-        "terminal_nr":      get_terminal_nr(),
-        "update_verfuegbar": _update_status["verfuegbar"],
-        "firma_name":        config.FIRMA_NAME,
-        "db_name":           config.DB_NAME,
-        "ma_login_name":     session.get('login_name', ''),
-        "kasse_url":         config.KASSE_URL or (
-                                 f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
-                                 if config.KASSE_PORT else ''),
-        "wawi_url":          config.WAWI_URL or (
-                                 f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
-                                 if config.WAWI_PORT else ''),
-        "verwaltung_url":    config.VERWALTUNG_URL or (
-                                 f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
-                                 if config.VERWALTUNG_PORT else ''),
-        "git_commit_short":  GIT_COMMIT_SHORT,
+        "terminal_nr":        tnr,
+        "ist_kundenterminal": (tnr == 9),
+        "kunden_name":        session.get('kunden_name', ''),
+        "kunde_eingeloggt":   bool(session.get('kunden_kontakt_id')),
+        "update_verfuegbar":  _update_status["verfuegbar"],
+        "firma_name":         config.FIRMA_NAME,
+        "db_name":            config.DB_NAME,
+        "ma_login_name":      session.get('login_name', ''),
+        "kasse_url":          config.KASSE_URL or (
+                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
+                                  if config.KASSE_PORT else ''),
+        "wawi_url":           config.WAWI_URL or (
+                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
+                                  if config.WAWI_PORT else ''),
+        "verwaltung_url":     config.VERWALTUNG_URL or (
+                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
+                                  if config.VERWALTUNG_PORT else ''),
+        "git_commit_short":   GIT_COMMIT_SHORT,
     }
 
 
@@ -261,11 +266,328 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ── Terminal 9: Kundenterminal ──────────────────────────────────
+
+def ist_kundenterminal() -> bool:
+    """Prüft ob das aktuelle Terminal ein Kundenterminal (Terminal 9) ist."""
+    return get_terminal_nr() == 9
+
+
+def _kunde_eingeloggt() -> bool:
+    """Prüft ob ein Kunde per Kundenkarte eingeloggt ist."""
+    return bool(session.get('kunden_kontakt_id'))
+
+
+def _kunden_kontakt_id() -> int | None:
+    """Gibt die kontakt_id des eingeloggten Kunden zurück."""
+    return session.get('kunden_kontakt_id')
+
+
+def _kunden_session_required(f):
+    """Decorator: erfordert Kunden-Session auf Terminal 9."""
+    @wraps(f)
+    def _wrapper(*args, **kwargs):
+        if ist_kundenterminal() and not _kunde_eingeloggt():
+            return redirect(url_for('kunden_scan'))
+        return f(*args, **kwargs)
+    return _wrapper
+
+
+def _kunde_per_karte(guid: str) -> dict | None:
+    """Löst eine Kundenkarte (KARTEN.TYP='K') auf.
+
+    Returns:
+        dict mit id (ADRESSEN.REC_ID), kunnum, name, telefon oder None.
+    """
+    with get_db() as cur:
+        cur.execute(
+            """SELECT a.REC_ID AS id, a.KUNNUM1 AS kunnum,
+                      CONCAT(IFNULL(a.NAME1,''), ' ', IFNULL(a.NAME2,'')) AS name,
+                      IFNULL(a.TELEFON1, '') AS telefon
+               FROM KARTEN k
+               JOIN ADRESSEN a ON a.REC_ID = k.ADR_ID
+               WHERE k.GUID = %s AND k.TYP = 'K'""",
+            (guid,)
+        )
+        return cur.fetchone()
+
+
+def _kontakt_fuer_kunde(adr_id: int, name: str, telefon: str) -> int:
+    """Findet oder erstellt einen XT_KIOSK_KONTAKTE-Eintrag für einen CAO-Kunden.
+
+    Sucht zuerst nach adr_id-Verknüpfung, dann nach Name/Telefon.
+    """
+    with get_db() as cur:
+        # Erst nach adr_id suchen
+        cur.execute("SELECT id FROM XT_KIOSK_KONTAKTE WHERE adr_id=%s", (adr_id,))
+        row = cur.fetchone()
+        if row:
+            return row["id"]
+        # Dann nach Name/Telefon
+        tel = (telefon or "").strip()
+        name_clean = name.strip()
+        cur.execute(
+            "SELECT id FROM XT_KIOSK_KONTAKTE WHERE name=%s AND telefon=%s",
+            (name_clean, tel)
+        )
+        row = cur.fetchone()
+        if row:
+            # adr_id nachpflegen
+            cur.execute(
+                "UPDATE XT_KIOSK_KONTAKTE SET adr_id=%s WHERE id=%s",
+                (adr_id, row["id"])
+            )
+            return row["id"]
+        # Neu anlegen
+        cur.execute(
+            "INSERT INTO XT_KIOSK_KONTAKTE (name, telefon, adr_id) VALUES (%s, %s, %s)",
+            (name_clean, tel, adr_id)
+        )
+        return cur.lastrowid
+
+
+@_login_required
+@app.route("/kunden-scan")
+def kunden_scan():
+    """Karten-Scan-Screen für Terminal 9 (Kundenterminal)."""
+    if not ist_kundenterminal():
+        return redirect(url_for('index'))
+    return render_template("kunden_scan.html")
+
+
+@_login_required
+@app.route("/api/kundenkarte/scan", methods=["POST"])
+def api_kundenkarte_scan():
+    """Löst einen Kundenkarten-Barcode auf und startet die Kunden-Session."""
+    data = request.get_json(force=True) or {}
+    barcode = (data.get("barcode") or "").strip()
+    if not barcode:
+        return jsonify({"ok": False, "fehler": "Kein Barcode gescannt"})
+
+    kunde = _kunde_per_karte(barcode)
+    if not kunde:
+        return jsonify({"ok": False, "fehler": "Kundenkarte nicht erkannt"})
+
+    kontakt_id = _kontakt_fuer_kunde(
+        kunde["id"], kunde["name"], kunde["telefon"]
+    )
+    session['kunden_kontakt_id'] = kontakt_id
+    session['kunden_name'] = kunde["name"].strip()
+    session['kunden_adr_id'] = kunde["id"]
+
+    return jsonify({
+        "ok": True,
+        "name": kunde["name"].strip(),
+        "kontakt_id": kontakt_id,
+    })
+
+
+@_login_required
+@app.route("/kunden-abmelden")
+def kunden_abmelden():
+    """Beendet die Kunden-Session (nicht den Mitarbeiter-Login)."""
+    session.pop('kunden_kontakt_id', None)
+    session.pop('kunden_name', None)
+    session.pop('kunden_adr_id', None)
+    return redirect(url_for('kunden_scan'))
+
+
+# ── Meine Bestellungen (Terminal 9 – Kunden-Selbstbedienung) ──
+
+@_login_required
+@app.route("/meine-bestellungen")
+def meine_bestellungen_view():
+    """Kunden-Bestellungsübersicht (nur eigene, gefiltert nach kontakt_id)."""
+    if not ist_kundenterminal():
+        return redirect(url_for('bestellungen_view'))
+    if not _kunde_eingeloggt():
+        return redirect(url_for('kunden_scan'))
+
+    kontakt_id = _kunden_kontakt_id()
+    with get_db() as cursor:
+        cursor.execute(
+            """SELECT b.*,
+                      GROUP_CONCAT(CONCAT(bp.menge,'x ',bp.name_snapshot)
+                                   ORDER BY bp.id SEPARATOR ', ') AS artikel_kurz,
+                      COUNT(bp.id) AS pos_anzahl
+               FROM XT_KIOSK_BESTELLUNGEN b
+               LEFT JOIN XT_KIOSK_BESTELL_POS bp ON bp.bestell_id = b.id
+               WHERE b.kontakt_id = %s AND b.status != 'storniert'
+               GROUP BY b.id
+               ORDER BY b.erstellt_am DESC""",
+            (kontakt_id,)
+        )
+        bestellungen = cursor.fetchall()
+
+    return render_template(
+        "meine_bestellungen.html",
+        bestellungen=bestellungen,
+        kunden_name=session.get('kunden_name', ''),
+        terminal_nr=get_terminal_nr(),
+    )
+
+
+@_login_required
+@app.route("/meine-bestellungen/neu")
+def meine_bestellung_neu_view():
+    """Neue Bestellung anlegen (Terminal 9 – Kunden-Selbstbedienung)."""
+    if not ist_kundenterminal() or not _kunde_eingeloggt():
+        return redirect(url_for('kunden_scan'))
+    return render_template(
+        "meine_bestellung_neu.html",
+        kunden_name=session.get('kunden_name', ''),
+        terminal_nr=get_terminal_nr(),
+    )
+
+
+@_login_required
+@app.route("/meine-bestellungen/<int:bestell_id>")
+def meine_bestellung_detail_view(bestell_id):
+    """Bestelldetail (Terminal 9 – nur eigene Bestellungen)."""
+    if not ist_kundenterminal() or not _kunde_eingeloggt():
+        return redirect(url_for('kunden_scan'))
+
+    kontakt_id = _kunden_kontakt_id()
+    with get_db() as cursor:
+        cursor.execute(
+            "SELECT * FROM XT_KIOSK_BESTELLUNGEN WHERE id=%s AND kontakt_id=%s",
+            (bestell_id, kontakt_id)
+        )
+        bestellung = cursor.fetchone()
+        if not bestellung:
+            return "Bestellung nicht gefunden", 404
+        cursor.execute(
+            "SELECT * FROM XT_KIOSK_BESTELL_POS WHERE bestell_id=%s ORDER BY id",
+            (bestell_id,)
+        )
+        positionen = cursor.fetchall()
+
+    return render_template(
+        "meine_bestellung_detail.html",
+        bestellung=bestellung,
+        positionen=positionen,
+        kunden_name=session.get('kunden_name', ''),
+        terminal_nr=get_terminal_nr(),
+    )
+
+
+@_login_required
+@app.route("/api/meine-bestellungen/neu", methods=["POST"])
+def api_meine_bestellung_neu():
+    """Neue Bestellung anlegen (Terminal 9 – Kunden-Selbstbedienung).
+
+    Name/Telefon kommen aus der Kunden-Session.
+    Zahlungsart ist immer 'abholung' (Kunde kann nicht 'sofort' zahlen am Terminal).
+    """
+    if not ist_kundenterminal() or not _kunde_eingeloggt():
+        return jsonify({"ok": False, "fehler": "Nicht angemeldet"}), 401
+
+    kontakt_id = _kunden_kontakt_id()
+    data = request.get_json(force=True)
+    positionen = data.get("positionen", [])
+    if not positionen:
+        return jsonify({"ok": False, "fehler": "Mindestens ein Artikel erforderlich"})
+
+    typ = data.get("typ", "einmalig")
+    if typ == "einmalig" and not data.get("abhol_datum"):
+        return jsonify({"ok": False, "fehler": "Abholdatum fehlt"})
+    if typ == "wiederkehrend" and not data.get("wochentag"):
+        return jsonify({"ok": False, "fehler": "Wochentag fehlt"})
+
+    kunden_name = session.get('kunden_name', '')
+    with get_db() as cur:
+        cur.execute("SELECT telefon FROM XT_KIOSK_KONTAKTE WHERE id=%s", (kontakt_id,))
+        k_row = cur.fetchone()
+    telefon = k_row["telefon"] if k_row else ""
+
+    total_cent = sum(int(p["menge"]) * int(p["preis_cent"]) for p in positionen)
+    try:
+        ean_code = ean_modul.generiere_ean(total_cent)
+    except ValueError as e:
+        return jsonify({"ok": False, "fehler": str(e)})
+
+    jetzt = datetime.now()
+
+    try:
+        with get_db_transaction() as cursor:
+            cursor.execute(
+                """INSERT INTO XT_KIOSK_BESTELLUNGEN
+                       (bestell_nr, name, telefon, typ, abhol_datum, wochentag,
+                        start_datum, end_datum, abhol_uhrzeit, notiz, kanal,
+                        zahlungsart, ean_barcode, kontakt_id)
+                   VALUES ('', %s, %s, %s, %s, %s, %s, %s, %s, %s, 'terminal', 'abholung', %s, %s)""",
+                (
+                    kunden_name, telefon, typ,
+                    data.get("abhol_datum") or None,
+                    data.get("wochentag") or None,
+                    data.get("start_datum") or None,
+                    data.get("end_datum") or None,
+                    data.get("abhol_uhrzeit") or None,
+                    data.get("notiz") or None,
+                    ean_code, kontakt_id,
+                ),
+            )
+            bestell_id = cursor.lastrowid
+            bestell_nr = f"B-{jetzt.year}-{bestell_id:04d}"
+            cursor.execute(
+                "UPDATE XT_KIOSK_BESTELLUNGEN SET bestell_nr=%s WHERE id=%s",
+                (bestell_nr, bestell_id),
+            )
+            for pos in positionen:
+                cursor.execute(
+                    """INSERT INTO XT_KIOSK_BESTELL_POS
+                           (bestell_id, produkt_id, name_snapshot, preis_cent, menge)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (bestell_id, pos["produkt_id"], pos["name"],
+                     pos["preis_cent"], pos["menge"]),
+                )
+    except Exception as e:
+        app.logger.error(f"Kunden-Bestellung neu: {e}")
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    return jsonify({
+        "ok": True, "id": bestell_id, "bestell_nr": bestell_nr,
+    })
+
+
+@_login_required
+@app.route("/api/meine-bestellungen/<int:bestell_id>/stornieren", methods=["POST"])
+def api_meine_bestellung_stornieren(bestell_id):
+    """Kunden-Storno (Terminal 9 – nur eigene Bestellungen)."""
+    if not ist_kundenterminal() or not _kunde_eingeloggt():
+        return jsonify({"ok": False, "fehler": "Nicht angemeldet"}), 401
+
+    kontakt_id = _kunden_kontakt_id()
+    try:
+        with get_db() as cursor:
+            cursor.execute(
+                """SELECT id FROM XT_KIOSK_BESTELLUNGEN
+                   WHERE id=%s AND kontakt_id=%s AND status != 'storniert'""",
+                (bestell_id, kontakt_id)
+            )
+            if not cursor.fetchone():
+                return jsonify({"ok": False, "fehler": "Nicht gefunden oder keine Berechtigung"}), 404
+            cursor.execute(
+                "UPDATE XT_KIOSK_BESTELLUNGEN SET status='storniert' WHERE id=%s",
+                (bestell_id,),
+            )
+    except Exception as e:
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    return jsonify({"ok": True})
+
+
 # ── Kiosk-Hauptansicht ────────────────────────────────────────
 
 @app.route("/")
 @_login_required
 def index():
+    # Terminal 9 (Kundenterminal) → Kunden-Scan / Meine Bestellungen
+    if ist_kundenterminal():
+        if _kunde_eingeloggt():
+            return redirect(url_for('meine_bestellungen_view'))
+        return redirect(url_for('kunden_scan'))
+
     wk_id = aktueller_warenkorb_id()
     if not wk_id:
         wk_id = neuer_warenkorb()
