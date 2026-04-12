@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Terminals{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:24px;">💻 Terminal-Verwaltung</h1>
+
+<div class="card">
+  <table class="tbl" id="termTbl">
+    <thead>
+      <tr>
+        <th>Nr.</th>
+        <th>Bezeichnung</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody id="termBody"></tbody>
+  </table>
+  <div id="leer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+    Keine Terminals gefunden. Tabelle XT_KASSE_TERMINALS ist leer oder nicht vorhanden.
+  </div>
+</div>
+{% endblock %}
+{% block extra_script %}
+<script>
+let terminals = [];
+
+async function load() {
+  const r = await api('GET', '/api/terminals');
+  if (!r.ok) {
+    document.getElementById('leer').classList.remove('hidden');
+    document.getElementById('leer').textContent = 'Fehler: ' + r.msg;
+    return;
+  }
+  terminals = r.terminals;
+  render();
+}
+
+function render() {
+  const body = document.getElementById('termBody');
+  const leer = document.getElementById('leer');
+  if (!terminals.length) {
+    body.innerHTML = '';
+    leer.classList.remove('hidden');
+    return;
+  }
+  leer.classList.add('hidden');
+  body.innerHTML = terminals.map(t => `
+    <tr>
+      <td><strong>${t.TERMINAL_NR}</strong></td>
+      <td>
+        <input class="form-control" style="max-width:300px;display:inline-block;"
+               id="bez-${t.TERMINAL_NR}" value="${t.BEZEICHNUNG || ''}">
+      </td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="saveTerminal(${t.TERMINAL_NR})">💾 Speichern</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function saveTerminal(nr) {
+  const bez = document.getElementById('bez-' + nr).value.trim();
+  const r = await api('PUT', '/api/terminals/' + nr, { bezeichnung: bez });
+  toast(r.msg, r.ok ? 'ok' : 'err');
+}
+
+load();
+</script>
+{% endblock %}

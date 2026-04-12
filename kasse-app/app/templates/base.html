@@ -434,6 +434,9 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% else %}
   <span class="nav-btn nav-btn-app-inaktiv">📦 WaWi</span>
   {% endif %}
+  {% if verwaltung_url %}
+  <a href="{{ verwaltung_url }}" class="nav-btn nav-btn-switch">⚙️ Verwaltung</a>
+  {% endif %}
   <div style="flex:1"></div>
   {% block nav_extra %}{% endblock %}
   {% if update_verfuegbar %}

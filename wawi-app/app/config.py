@@ -25,8 +25,10 @@ DEBUG      = os.environ.get('WAWI_DEBUG', 'false').lower() == 'true'
 
 KASSE_URL  = os.environ.get('KASSE_URL', '')
 KASSE_PORT = int(os.environ.get('KASSE_PORT', '5002'))
-KIOSK_URL  = os.environ.get('KIOSK_URL', '')
-KIOSK_PORT = int(os.environ.get('KIOSK_PORT', '5001'))
+KIOSK_URL       = os.environ.get('KIOSK_URL', '')
+KIOSK_PORT      = int(os.environ.get('KIOSK_PORT', '5001'))
+VERWALTUNG_URL  = os.environ.get('VERWALTUNG_URL', '')
+VERWALTUNG_PORT = int(os.environ.get('VERWALTUNG_PORT', '5004'))
 
 FIRMA_NAME = os.environ.get('FIRMA_NAME', 'Habacher Dorfladen')
 

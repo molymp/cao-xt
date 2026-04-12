@@ -78,11 +78,15 @@ def _inject_globals():
     kiosk_url = config.KIOSK_URL or (
         f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
         if config.KIOSK_PORT else '')
+    verwaltung_url = config.VERWALTUNG_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
+        if config.VERWALTUNG_PORT else '')
     return {
-        "firma_name":    config.FIRMA_NAME,
-        "kasse_url":     kasse_url,
-        "kiosk_url":     kiosk_url,
-        "db_ok":         test_verbindung(),
+        "firma_name":      config.FIRMA_NAME,
+        "kasse_url":       kasse_url,
+        "kiosk_url":       kiosk_url,
+        "verwaltung_url":  verwaltung_url,
+        "db_ok":           test_verbindung(),
         "current_user":  {
             "ma_id":      session.get('ma_id'),
             "login_name": session.get('login_name'),
