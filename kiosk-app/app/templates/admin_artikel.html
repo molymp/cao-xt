@@ -60,6 +60,33 @@
 .aktiv-btn.gewaehlt-2 { background: var(--gold); color: white; border-color: var(--gold); }
 .aktiv-btn.gewaehlt-0 { background: var(--grau-mitte); color: white; border-color: var(--grau-mitte); }
 
+/* Bild-Spalte */
+.bild-zelle { text-align: center; min-width: 70px; }
+.bild-vorschau {
+    width: 48px; height: 48px; object-fit: cover; border-radius: 6px;
+    border: 1.5px solid var(--creme-dunkel); cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.bild-vorschau:hover { transform: scale(1.8); box-shadow: 0 4px 16px rgba(0,0,0,0.25); z-index: 10; position: relative; }
+.bild-platzhalter {
+    width: 48px; height: 48px; border-radius: 6px;
+    border: 2px dashed var(--creme-dunkel); display: inline-flex;
+    align-items: center; justify-content: center; font-size: 1.2rem;
+    color: var(--grau-mitte); cursor: pointer; transition: border-color 0.15s;
+}
+.bild-platzhalter:hover { border-color: var(--gruen-hell); color: var(--gruen-hell); }
+.bild-aktionen { display: flex; gap: 3px; justify-content: center; margin-top: 3px; }
+.btn-bild {
+    padding: 2px 6px; border: none; border-radius: 4px; font-size: 0.7rem;
+    cursor: pointer; font-family: 'Nunito', sans-serif; font-weight: 700;
+    transition: background 0.15s;
+}
+.btn-bild-upload { background: var(--gruen-blass); color: var(--gruen-dunkel); }
+.btn-bild-upload:hover { background: var(--gruen-hell); color: white; }
+.btn-bild-loeschen { background: #fde8e8; color: var(--rot); }
+.btn-bild-loeschen:hover { background: var(--rot); color: white; }
+.bild-upload-input { display: none; }
+
 .zutaten-zelle { display: flex; align-items: center; gap: 8px; min-width: 160px; }
 .zutaten-text { flex: 1; font-size: 0.8rem; color: var(--text-hell); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
 .zutaten-text.leer { color: var(--creme-warm); }
@@ -163,13 +190,14 @@
                 <th class="sortierbar" data-col="0" onclick="sortiere(0)">ID <span class="sort-pfeil">↕</span></th>
                 <th class="sortierbar" data-col="1" onclick="sortiere(1)">Art.-Nr. <span class="sort-pfeil">↕</span></th>
                 <th class="sortierbar" data-col="2" onclick="sortiere(2)">Name (CAO) <span class="sort-pfeil">↕</span></th>
-                <th class="sortierbar" data-col="3" onclick="sortiere(3)">Preis <span class="sort-pfeil">↕</span></th>
-                <th class="sortierbar" data-col="4" onclick="sortiere(4)">Kategorie <span class="sort-pfeil">↕</span></th>
+                <th>Bild</th>
+                <th class="sortierbar" data-col="4" onclick="sortiere(4)">Preis <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="5" onclick="sortiere(5)">Kategorie <span class="sort-pfeil">↕</span></th>
                 <th>Einheit</th>
                 <th>Wochentage</th>
                 <th>Zutaten</th>
-                <th class="sortierbar" data-col="8" onclick="sortiere(8)">Status <span class="sort-pfeil">↕</span></th>
-                <th class="sortierbar" data-col="9" onclick="sortiere(9)">Eintrag <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="9" onclick="sortiere(9)">Status <span class="sort-pfeil">↕</span></th>
+                <th class="sortierbar" data-col="10" onclick="sortiere(10)">Eintrag <span class="sort-pfeil">↕</span></th>
             </tr>
         </thead>
         <tbody id="artikel-tbody">
@@ -178,6 +206,23 @@
                 <td data-sort="{{ a.id }}"><code>{{ a.id }}</code></td>
                 <td data-sort="{{ a.artnum or '' }}" class="artnum-zelle">{{ a.artnum or '–' }}</td>
                 <td data-sort="{{ a.name }}"><strong>{{ a.name }}</strong></td>
+                <td class="bild-zelle" id="bild-zelle-{{ a.id }}">
+                    {% if a.bild_pfad %}
+                    <img src="{{ a.bild_pfad }}?t={{ range(100000)|random }}" alt="" class="bild-vorschau"
+                         onclick="document.getElementById('bild-input-{{ a.id }}').click()">
+                    <div class="bild-aktionen">
+                        <button type="button" class="btn-bild btn-bild-upload"
+                                onclick="document.getElementById('bild-input-{{ a.id }}').click()">Tausch</button>
+                        <button type="button" class="btn-bild btn-bild-loeschen"
+                                onclick="bildLoeschen({{ a.id }})">&#x2715;</button>
+                    </div>
+                    {% else %}
+                    <div class="bild-platzhalter" onclick="document.getElementById('bild-input-{{ a.id }}').click()"
+                         title="Bild hochladen">+</div>
+                    {% endif %}
+                    <input type="file" id="bild-input-{{ a.id }}" class="bild-upload-input"
+                           accept=".jpg,.jpeg,.png,.webp" onchange="bildHochladen({{ a.id }}, this)">
+                </td>
                 <td data-sort="{{ a.preis_cent }}" class="preis-zelle">{{ cent_zu_euro(a.preis_cent) }}</td>
                 <td data-sort="{{ a.kategorie_name }}">
                     <select id="kat-{{ a.id }}" onchange="autoSpeichern({{ a.id }}, this)">
@@ -410,6 +455,74 @@ async function bereinigen() {
         if (res) {
             zeigToast(`✓ ${res.geloescht} verwaiste Einträge gelöscht`);
             if (res.geloescht > 0) setTimeout(() => location.reload(), 1000);
+        }
+    }, 'Löschen');
+}
+
+// ── Bilderverwaltung (HAB-341) ──────────────────────────────
+async function bildHochladen(artikelId, inputEl) {
+    const datei = inputEl.files[0];
+    if (!datei) return;
+
+    if (datei.size > 5 * 1024 * 1024) {
+        zeigToast('Datei zu groß (max. 5 MB)', 3000);
+        inputEl.value = '';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('bild', datei);
+
+    try {
+        const resp = await fetch(`/admin/artikel/${artikelId}/bild`, {
+            method: 'POST',
+            body: formData
+        });
+        const res = await resp.json();
+        if (res.ok) {
+            // Zelle mit neuem Bild aktualisieren
+            const zelle = document.getElementById(`bild-zelle-${artikelId}`);
+            const t = Date.now();
+            zelle.innerHTML = `
+                <img src="${res.bild_url}?t=${t}" alt="" class="bild-vorschau"
+                     onclick="document.getElementById('bild-input-${artikelId}').click()">
+                <div class="bild-aktionen">
+                    <button type="button" class="btn-bild btn-bild-upload"
+                            onclick="document.getElementById('bild-input-${artikelId}').click()">Tausch</button>
+                    <button type="button" class="btn-bild btn-bild-loeschen"
+                            onclick="bildLoeschen(${artikelId})">&#x2715;</button>
+                </div>
+                <input type="file" id="bild-input-${artikelId}" class="bild-upload-input"
+                       accept=".jpg,.jpeg,.png,.webp" onchange="bildHochladen(${artikelId}, this)">`;
+            zeigToast('Bild gespeichert');
+            aktualisiereEintragBadge(artikelId);
+        } else {
+            zeigToast(res.fehler || 'Fehler beim Hochladen', 3000);
+        }
+    } catch (e) {
+        zeigToast('Netzwerkfehler beim Hochladen', 3000);
+    }
+    inputEl.value = '';
+}
+
+async function bildLoeschen(artikelId) {
+    zeigeBestaetigung('Bild löschen?', async () => {
+        try {
+            const resp = await fetch(`/admin/artikel/${artikelId}/bild`, { method: 'DELETE' });
+            const res = await resp.json();
+            if (res.ok) {
+                const zelle = document.getElementById(`bild-zelle-${artikelId}`);
+                zelle.innerHTML = `
+                    <div class="bild-platzhalter" onclick="document.getElementById('bild-input-${artikelId}').click()"
+                         title="Bild hochladen">+</div>
+                    <input type="file" id="bild-input-${artikelId}" class="bild-upload-input"
+                           accept=".jpg,.jpeg,.png,.webp" onchange="bildHochladen(${artikelId}, this)">`;
+                zeigToast('Bild gelöscht');
+            } else {
+                zeigToast(res.fehler || 'Fehler beim Löschen', 3000);
+            }
+        } catch (e) {
+            zeigToast('Netzwerkfehler beim Löschen', 3000);
         }
     }, 'Löschen');
 }

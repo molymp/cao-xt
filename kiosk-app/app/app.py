@@ -725,6 +725,98 @@ def admin_artikel_speichern(artikel_id):
     return jsonify({"ok": True})
 
 
+# ── Admin: Bilderverwaltung (HAB-341) ─────────────────────────
+
+ERLAUBTE_BILD_ENDUNGEN = {"jpg", "jpeg", "png", "webp"}
+MAX_BILD_GROESSE = 5 * 1024 * 1024  # 5 MB
+
+
+@_login_required
+@app.route("/admin/artikel/<int:artikel_id>/bild", methods=["POST"])
+def admin_bild_hochladen(artikel_id):
+    """Bild für einen Artikel hochladen. Ersetzt ein vorhandenes Bild."""
+    datei = request.files.get("bild")
+    if not datei or not datei.filename:
+        return jsonify({"ok": False, "fehler": "Keine Datei ausgewählt"}), 400
+
+    # Dateiendung prüfen
+    endung = datei.filename.rsplit(".", 1)[-1].lower() if "." in datei.filename else ""
+    if endung not in ERLAUBTE_BILD_ENDUNGEN:
+        return jsonify({"ok": False, "fehler": f"Nur {', '.join(sorted(ERLAUBTE_BILD_ENDUNGEN))} erlaubt"}), 400
+
+    # Größe prüfen
+    datei.seek(0, 2)
+    groesse = datei.tell()
+    datei.seek(0)
+    if groesse > MAX_BILD_GROESSE:
+        return jsonify({"ok": False, "fehler": "Datei zu groß (max. 5 MB)"}), 400
+
+    # Verzeichnis sicherstellen
+    os.makedirs(PRODUKTBILDER_DIR, exist_ok=True)
+
+    # Vorhandene Bilder für diesen Artikel löschen (verschiedene Endungen)
+    for alt_endung in ERLAUBTE_BILD_ENDUNGEN:
+        alt_pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{alt_endung}")
+        if os.path.exists(alt_pfad):
+            os.remove(alt_pfad)
+
+    # Neues Bild speichern
+    dateiname = f"{artikel_id}.{endung}"
+    ziel_pfad = os.path.join(PRODUKTBILDER_DIR, dateiname)
+    datei.save(ziel_pfad)
+
+    # bild_pfad in DB aktualisieren
+    bild_url_pfad = f"/produktbilder/{dateiname}"
+    try:
+        with get_db() as cursor:
+            cursor.execute("SELECT id FROM produkte WHERE id=%s", (artikel_id,))
+            if cursor.fetchone():
+                cursor.execute("UPDATE produkte SET bild_pfad=%s WHERE id=%s",
+                               (bild_url_pfad, artikel_id))
+            else:
+                cursor.execute(
+                    "INSERT INTO produkte (id, bild_pfad, aktiv) VALUES (%s, %s, 1)",
+                    (artikel_id, bild_url_pfad))
+    except Exception as e:
+        app.logger.error(f"Bild-DB-Update ID={artikel_id}: {e}")
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    # Caches invalidieren
+    global _bild_cache_gebaut
+    _bild_cache_gebaut = False
+    produkt_cache_leeren()
+
+    return jsonify({"ok": True, "bild_url": bild_url_pfad})
+
+
+@_login_required
+@app.route("/admin/artikel/<int:artikel_id>/bild", methods=["DELETE"])
+def admin_bild_loeschen(artikel_id):
+    """Bild eines Artikels löschen."""
+    # Dateien entfernen
+    geloescht = False
+    for endung in ERLAUBTE_BILD_ENDUNGEN:
+        pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{endung}")
+        if os.path.exists(pfad):
+            os.remove(pfad)
+            geloescht = True
+
+    # bild_pfad in DB leeren
+    try:
+        with get_db() as cursor:
+            cursor.execute("UPDATE produkte SET bild_pfad=NULL WHERE id=%s", (artikel_id,))
+    except Exception as e:
+        app.logger.error(f"Bild-löschen DB ID={artikel_id}: {e}")
+        return jsonify({"ok": False, "fehler": str(e)}), 500
+
+    # Caches invalidieren
+    global _bild_cache_gebaut
+    _bild_cache_gebaut = False
+    produkt_cache_leeren()
+
+    return jsonify({"ok": True, "geloescht": geloescht})
+
+
 @_login_required
 @app.route("/admin/bereinigen", methods=["POST"])
 def admin_bereinigen():
