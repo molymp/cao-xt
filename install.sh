@@ -73,7 +73,20 @@ fi
 # Abhängigkeiten installieren
 echo "  Installiere Abhängigkeiten …"
 "$VENV_DIR/bin/pip3" install --quiet --upgrade pip
-"$VENV_DIR/bin/pip3" install --quiet -r "$SCRIPT_DIR/installer/requirements.txt"
+
+# Installer-Abhängigkeiten (inkl. cryptography)
+# Hinweis: Auf älteren Linux-Systemen ohne Rust-Toolchain kann cryptography
+# beim Build fehlschlagen. In diesem Fall:
+#   .venv/bin/pip3 install "cryptography==3.3.2"
+# und danach install.sh erneut ausführen.
+if ! "$VENV_DIR/bin/pip3" install --quiet -r "$SCRIPT_DIR/installer/requirements.txt"; then
+    warn "Abhängigkeiten-Installation fehlgeschlagen."
+    warn "Falls 'cryptography' der Grund ist (kein Rust installiert):"
+    warn "  .venv/bin/pip3 install 'cryptography==3.3.2'"
+    warn "Dann install.sh erneut starten."
+    exit 1
+fi
+ok "Installer-Abhängigkeiten"
 
 # Abhängigkeiten aller Apps
 for APP_REQ in "$SCRIPT_DIR"/*/app/requirements.txt; do

@@ -3,3 +3,7 @@
 # (oder wird von install.sh automatisch eingerichtet)
 
 mysql-connector-python>=8.0
+# cryptography wird von mysql-connector-python benötigt.
+# Auf älteren Linux-Systemen ohne Rust schlägt der Build neuerer Versionen fehl;
+# in diesem Fall bitte manuell pinnen: cryptography==3.3.2
+cryptography>=3.3
