@@ -18,6 +18,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - Kasse: JOURNAL-Eintragsformat an CAO-Kasse-Standard angepasst; `_format_vlsnum()` mit `max_len`/`no_pad` erweitert ([HAB-240](/HAB/issues/HAB-240))
 
 ### Geändert
+- Kasse Manager: Vollständiges UI-Redesign – Touch-Targets ≥ 52 px, Tab-Bar ohne Kassenbuch-Dominanz, Morgenroutine/Abendroutine inline, Journal mit Volltextsuche und Scroll, Kasse-Button in Navbar navigiert zur Startseite, Bon-Details ohne Seitenreload, „Nachdruck" statt „Nochmal", „Positionen in neuen Bon kopieren" statt „Kopieren" ([HAB-353](/HAB/issues/HAB-353))
 - Kasse Journal: Zeitstempel und Datumsfilter verwenden `ABSCHLUSS_DATUM` (Zahlungszeitpunkt) statt `BON_DATUM`; Fallback auf `BON_DATUM` für Altdaten ([HAB-311](/HAB/issues/HAB-311))
 - WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
 

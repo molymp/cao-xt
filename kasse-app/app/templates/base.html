@@ -428,7 +428,7 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% else %}
   <span class="nav-btn nav-btn-app-inaktiv">🖥️ Kiosk</span>
   {% endif %}
-  <span class="nav-btn nav-btn-app-aktiv">🛒 Kasse</span>
+  <a href="/kasse" class="nav-btn nav-btn-app-aktiv">🛒 Kasse</a>
   {% if wawi_url %}
   <a href="{{ wawi_url }}" class="nav-btn nav-btn-switch">📦 WaWi</a>
   {% else %}

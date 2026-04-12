@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Manager{% endblock %}
 {% block nav_extra %}
-<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
 {% endblock %}
 {% block extra_style %}
 <style>
@@ -20,7 +19,8 @@
   flex-wrap: wrap;
 }
 .tab-btn {
-  padding: 9px 18px;
+  padding: 14px 18px;
+  min-height: 52px;
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
@@ -82,6 +82,7 @@
   gap: 10px;
   margin-bottom: 20px;
 }
+.action-grid .btn { min-height: 52px; }
 .eintrag-zeile {
   display: flex;
   justify-content: space-between;
@@ -117,16 +118,19 @@
 .ar-schritt.aktiv    { background: var(--gruen-hell); color: white; }
 .ar-schritt.erledigt { background: rgba(52,211,153,0.22); color: var(--gruen-dunkel); }
 .ar-sep { color: var(--text-dim); font-size: 12px; }
-.denom-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-.denom-table td { padding: 3px 4px; vertical-align: middle; }
+.denom-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+.denom-table td { padding: 4px 4px; vertical-align: middle; }
 .denom-grp-hdr {
   font-size: 11px; font-weight: 800; color: var(--text-dim);
   letter-spacing: 0.06em; text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: 6px; margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--creme-dunkel);
 }
+.denom-grp-hdr:first-child { border-top: none; margin-top: 0; padding-top: 0; }
 .denom-table .val-col { text-align: right; font-size: 13px; min-width: 68px; }
 .denom-btn {
-  width: 42px; height: 42px; border-radius: 8px;
+  width: 52px; height: 52px; border-radius: 8px;
   border: 1px solid var(--creme-dunkel);
   background: white; font-size: 22px; line-height: 1; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
@@ -201,10 +205,10 @@
 
   <div class="tab-bar">
     <button class="tab-btn aktiv" onclick="tab('uebersicht',this)">Übersicht</button>
-    <button class="tab-btn"       onclick="tab('kassenbuch',this)">📒 Kassenbuch</button>
     <button class="tab-btn"       onclick="tab('xbon',this)">X-Bon</button>
     <button class="tab-btn"       onclick="tab('zbon',this)">Z-Bon</button>
     <button class="tab-btn"       onclick="tab('kassensturz',this)">Kassensturz</button>
+    <button class="tab-btn" style="opacity:0.6;" onclick="tab('kassenbuch',this)">📒 Kassenbuch</button>
   </div>
 
   <!-- ── Tab: Übersicht ──────────────────────────────────── -->
@@ -243,22 +247,39 @@
         Gestern in den Tresor: <strong>{{ "%.2f"|format(info.letzter_transfer_neben/100) }} €</strong>.
         Stückelung bei Bedarf anpassen.
       </p>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; margin-bottom:10px;">
+      <div style="display:grid; grid-template-columns:2fr 1fr; gap:20px; align-items:start; margin-bottom:10px;">
+        <!-- Transfer-Zählbrett -->
         <div>
-          <div class="denom-grp-hdr">Scheine</div>
-          <table class="denom-table"><tbody id="tsScheineBody">
-            <tr><td colspan="5" style="color:var(--text-dim);font-size:13px;padding:6px 0;">Wird geladen…</td></tr>
-          </tbody></table>
+          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">Entnehme aus Tresor:</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;">
+            <div>
+              <div class="denom-grp-hdr">Scheine</div>
+              <table class="denom-table"><tbody id="tsScheineBody">
+                <tr><td colspan="5" style="color:var(--text-dim);font-size:13px;padding:6px 0;">Wird geladen…</td></tr>
+              </tbody></table>
+            </div>
+            <div>
+              <div class="denom-grp-hdr">Münzen</div>
+              <table class="denom-table"><tbody id="tsMuenzenBody"></tbody></table>
+            </div>
+          </div>
+          <div style="text-align:right; font-weight:700; font-size:15px;">
+            Transfer: <span id="tsGesamt" style="font-family:'Lobster',Georgia,serif; font-size:22px; color:var(--gold);">
+              {{ "%.2f"|format(info.letzter_transfer_neben/100) }} €
+            </span>
+          </div>
         </div>
-        <div>
-          <div class="denom-grp-hdr">Münzen</div>
-          <table class="denom-table"><tbody id="tsMuenzenBody"></tbody></table>
+        <!-- Tresor-Restbestand -->
+        <div style="background:rgba(0,0,0,0.03); border:1px solid var(--creme-dunkel); border-radius:10px; padding:12px;">
+          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">Verbleibt im Tresor:</div>
+          <div id="tsRestListe" style="font-size:13px; color:var(--text-mitte);">
+            <div style="color:var(--text-dim); font-size:12px;">Wird berechnet…</div>
+          </div>
+          <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--creme-dunkel);
+                      font-weight:700; font-size:15px; text-align:right;">
+            Rest: <span id="tsRestGesamt" style="font-family:'Lobster',Georgia,serif; font-size:20px; color:var(--text-mitte);">–</span>
+          </div>
         </div>
-      </div>
-      <div style="text-align:right; font-weight:700; font-size:15px; margin-bottom:12px;">
-        Transfer: <span id="tsGesamt" style="font-family:'Lobster',Georgia,serif; font-size:22px; color:var(--gold);">
-          {{ "%.2f"|format(info.letzter_transfer_neben/100) }} €
-        </span>
       </div>
       <button type="button" id="tsBtnTransfer" class="btn btn-warning btn-sm" onclick="tsNavigiere()">
         ✅ Transfer → Kasse buchen
@@ -279,78 +300,153 @@
         <span class="ar-schritt aktiv" id="arSt4">④ Tresor</span>
       </div>
 
-      <!-- ① Kassensturz -->
-      <div class="ar-step-hdr">① Kassensturz</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;">
-        <div>
-          <div class="denom-grp-hdr">Scheine</div>
-          <table class="denom-table"><tbody id="arScheineBody"></tbody></table>
-        </div>
-        <div>
-          <div class="denom-grp-hdr">Münzen</div>
-          <table class="denom-table"><tbody id="arMuenzenBody"></tbody></table>
-        </div>
-      </div>
-      <div style="text-align:right; font-size:14px; font-weight:700; margin-top:8px;">
-        Ist-Bestand: <span id="arGesamt">0,00 €</span>
-      </div>
+      <!-- ①② Kassensturz + Z-Bon (nebeneinander) -->
+      <div class="ar-step-hdr">① Kassensturz &amp; ② Z-Bon</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
 
-      <!-- ② Z-Bon -->
-      <div class="ar-sep-line"></div>
-      <div class="ar-step-hdr">② Z-Bon / Tagesabschluss</div>
-      <div style="margin-bottom:12px;">
-        <div class="ar-zbon-zeile">
-          <span class="lbl">Soll laut System</span>
-          <span class="val">{{ "%.2f"|format(info.saldo_haupt/100) }} €</span>
-        </div>
-        <div class="ar-zbon-zeile">
-          <span class="lbl">Ist (gezählt)</span>
-          <span class="val" id="arZIst">–</span>
-        </div>
-        <div class="ar-zbon-zeile">
-          <span class="lbl">Differenz</span>
-          <span class="val" id="arZDiff">–</span>
-        </div>
-      </div>
-
-      <!-- Differenz-Hinweis (nur bei Abweichung) -->
-      <div id="arDiffBox" style="display:none; background:rgba(180,40,40,0.06);
-           border:1px solid var(--rot); border-radius:8px; padding:12px; margin-bottom:12px;">
-        <div id="arDiffHint" style="font-size:13px; font-weight:700; color:var(--rot); margin-bottom:8px;"></div>
-        <details style="margin-bottom:10px;">
-          <summary style="font-size:13px; cursor:pointer; color:var(--gruen-dunkel);
-                          font-weight:700; list-style:none;">ℹ️ Was tun bei einer Differenz?</summary>
-          <div style="font-size:13px; color:var(--text-mitte); margin-top:8px; line-height:1.7; padding-left:4px;">
-            <strong>1. Fehler suchen:</strong><br>
-            &bull; Beleg vergessen? &bull; Falsch herausgegeben?<br>
-            &bull; Zählfehler? &bull; Wechselgeld falsch?<br><br>
-            <strong>2. Differenz dokumentieren</strong> – immer schriftlich, auch kleine Beträge.
+        <!-- Linke Spalte: Kassensturz Zählbrett + Differenz -->
+        <div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start;">
+            <div>
+              <div class="denom-grp-hdr">Scheine</div>
+              <table class="denom-table"><tbody id="arScheineBody"></tbody></table>
+            </div>
+            <div>
+              <div class="denom-grp-hdr">Münzen</div>
+              <table class="denom-table"><tbody id="arMuenzenBody"></tbody></table>
+            </div>
           </div>
-        </details>
-        <label style="font-size:12px; font-weight:700; color:var(--text-dim);
-                      text-transform:uppercase; display:block; margin-bottom:4px;">
-          ⌨️ Grund der Differenz
-        </label>
-        <textarea id="arDiffNotiz" class="form-control" rows="3"
-                  placeholder="Hier tippen …"
-                  inputmode="text"
-                  autocomplete="off"
-                  style="resize:none; margin-bottom:8px; font-size:16px;
-                         border:2px solid var(--gruen-hell); border-radius:8px;
-                         padding:10px; touch-action:manipulation;"
-                  ontouchstart="this.focus()"
-                  onclick="this.focus()"></textarea>
-        <button type="button" class="btn btn-warning btn-sm" onclick="arDiffBuchen()">
-          ⚖ Differenz buchen
-        </button>
-      </div>
+          <div style="text-align:right; font-size:14px; font-weight:700; margin-top:8px;">
+            Ist-Bestand: <span id="arGesamt">0,00 €</span>
+          </div>
 
-      <a href="/kasse/tagesabschluss" class="btn btn-primary" style="width:100%;">
-        📋 Z-Bon erstellen →
-      </a>
-      <div style="font-size:12px; color:var(--text-dim); margin-top:5px; margin-bottom:4px;">
-        Nach dem Z-Bon startet der neue Kassentag sofort.
-        Transfers → Bank und → Tresor danach buchen.
+          <!-- Soll / Ist / Diff -->
+          <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--creme-dunkel);">
+            <div class="ar-zbon-zeile">
+              <span class="lbl">Soll laut System</span>
+              <span class="val">{{ "%.2f"|format(info.saldo_haupt/100) }} €</span>
+            </div>
+            <div class="ar-zbon-zeile">
+              <span class="lbl">Ist (gezählt)</span>
+              <span class="val" id="arZIst">–</span>
+            </div>
+            <div class="ar-zbon-zeile">
+              <span class="lbl">Differenz</span>
+              <span class="val" id="arZDiff">–</span>
+            </div>
+          </div>
+
+          <!-- Differenz-Hinweis (nur bei Abweichung) -->
+          <div id="arDiffBox" style="display:none; background:rgba(180,40,40,0.06);
+               border:1px solid var(--rot); border-radius:8px; padding:12px; margin-top:12px;">
+            <div id="arDiffHint" style="font-size:13px; font-weight:700; color:var(--rot); margin-bottom:8px;"></div>
+            <details style="margin-bottom:10px;">
+              <summary style="font-size:13px; cursor:pointer; color:var(--gruen-dunkel);
+                              font-weight:700; list-style:none;">ℹ️ Was tun bei einer Differenz?</summary>
+              <div style="font-size:13px; color:var(--text-mitte); margin-top:8px; line-height:1.7; padding-left:4px;">
+                <strong>1. Fehler suchen:</strong><br>
+                &bull; Beleg vergessen? &bull; Falsch herausgegeben?<br>
+                &bull; Zählfehler? &bull; Wechselgeld falsch?<br><br>
+                <strong>2. Differenz dokumentieren</strong> – immer schriftlich, auch kleine Beträge.
+              </div>
+            </details>
+            <label style="font-size:12px; font-weight:700; color:var(--text-dim);
+                          text-transform:uppercase; display:block; margin-bottom:4px;">
+              ⌨️ Grund der Differenz
+            </label>
+            <textarea id="arDiffNotiz" class="form-control" rows="3"
+                      placeholder="Hier tippen …"
+                      inputmode="text"
+                      autocomplete="off"
+                      style="resize:none; margin-bottom:8px; font-size:16px;
+                             border:2px solid var(--gruen-hell); border-radius:8px;
+                             padding:10px; touch-action:manipulation;"
+                      ontouchstart="this.focus()"
+                      onclick="this.focus()"></textarea>
+            <button type="button" class="btn btn-warning btn-sm" onclick="arDiffBuchen()">
+              ⚖ Differenz buchen
+            </button>
+          </div>
+        </div>
+
+        <!-- Rechte Spalte: Z-Bon / Tagesabschluss inline -->
+        <div style="background:rgba(0,0,0,0.03); border:1px solid var(--creme-dunkel);
+                    border-radius:8px; padding:16px;">
+          <div style="font-weight:700; font-size:15px; margin-bottom:12px;">📋 Z-Bon / Tagesabschluss</div>
+
+          <div class="alert alert-warn" style="margin-bottom:12px; font-size:13px; padding:10px 12px;">
+            ⚠️ Der Z-Bon schließt den Tag ab. Nicht rückgängig machbar.
+          </div>
+
+          <!-- Tagesdaten -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+            <div>
+              <div style="color:var(--text-dim); font-size:12px;">Belege</div>
+              <div id="arZBelege" style="font-family:'Lobster',Georgia,serif; font-size:28px; color:var(--gruen-dunkel);">{{ xbon.anzahl_belege }}</div>
+            </div>
+            <div>
+              <div style="color:var(--text-dim); font-size:12px;">Umsatz brutto</div>
+              <div id="arZUmsatz" style="font-family:'Lobster',Georgia,serif; font-size:28px; color:var(--gold);">{{ "%.2f"|format(xbon.umsatz_brutto/100) }} €</div>
+            </div>
+          </div>
+
+          <!-- Zahlarten -->
+          <div style="font-size:13px; margin-bottom:10px; border-top:1px solid var(--border); padding-top:8px;">
+            <div style="display:flex; justify-content:space-between; padding:4px 0;">
+              <span>Bar</span><span id="arZBar">{{ "%.2f"|format(xbon.umsatz_bar/100) }} €</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:4px 0;">
+              <span>Unbar / Karte</span><span id="arZEc">{{ "%.2f"|format(xbon.umsatz_ec/100) }} €</span>
+            </div>
+          </div>
+
+          <!-- Kassenbuch-Zusammenfassung -->
+          <div style="font-size:13px; border-top:1px solid var(--border); padding-top:8px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; padding:3px 0;">
+              <span>Anfangsbestand</span><span id="arZAnfang">{{ "%.2f"|format(xbon.kassenbestand_anfang/100) }} €</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:3px 0; color:var(--gruen-dunkel);">
+              <span>+ Tagesumsatz Bar</span><span id="arZBarUmsatz">{{ "%.2f"|format(xbon.umsatz_bar/100) }} €</span>
+            </div>
+            {% if xbon.einlagen %}
+            <div style="display:flex; justify-content:space-between; padding:3px 0;">
+              <span>+ Einlagen</span><span>{{ "%.2f"|format(xbon.einlagen/100) }} €</span>
+            </div>
+            {% endif %}
+            {% if xbon.entnahmen %}
+            <div style="display:flex; justify-content:space-between; padding:3px 0;">
+              <span>− Entnahmen</span><span>{{ "%.2f"|format(xbon.entnahmen/100) }} €</span>
+            </div>
+            {% endif %}
+            <div style="display:flex; justify-content:space-between; padding:6px 0; font-weight:700;
+                        font-family:'Lobster',Georgia,serif; font-size:18px; color:var(--gold);
+                        border-top:1px solid var(--border); margin-top:4px;">
+              <span>Kassenstand Ende</span>
+              <span id="arZEnde">{{ "%.2f"|format(xbon.kassenbestand_ende/100) }} €</span>
+            </div>
+          </div>
+
+          {% if ec_modus == 'zvt' and ec_tagesabschluss != 'manuell' %}
+          <!-- EC-Terminal Tagesabschluss -->
+          <div style="border-top:1px solid var(--border); padding-top:10px; margin-bottom:12px;">
+            <div style="font-weight:700; font-size:13px; margin-bottom:6px;">💳 EC-Terminal Abschluss</div>
+            <div id="arEcTaStatus" style="margin-bottom:8px;"></div>
+            <button class="btn btn-neutral btn-sm" id="arBtnEcTa" onclick="arEcTagesabschluss()" style="min-height:48px;">
+              🖨️ EC-Abschluss starten
+            </button>
+          </div>
+          {% endif %}
+
+          <!-- Aktionszeile -->
+          <button class="btn btn-danger" id="arBtnZBon" onclick="arTagesabschluss()" style="width:100%; min-height:52px;">
+            ✓ Tagesabschluss durchführen
+          </button>
+          <div id="arZErgebnis" style="margin-top:10px; display:none;"></div>
+          <div style="font-size:12px; color:var(--text-dim); margin-top:5px;">
+            Nach dem Z-Bon startet der neue Kassentag sofort.
+            Transfers → Bank und → Tresor danach buchen.
+          </div>
+        </div>
       </div>
 
       <!-- ③④ Transfer → Bank + Tresor (nebeneinander) -->
@@ -465,7 +561,7 @@
     <p style="font-size:14px; color:var(--text-mitte); margin-bottom:16px;">
       Der Tagesabschluss (Z-Bon) erstellt eine unwiderrufliche Abschlussbuchung und signiert den Abschluss per TSE.
     </p>
-    <a href="/kasse/tagesabschluss" class="btn btn-primary">📋 Tagesabschluss durchführen →</a>
+    <button class="btn btn-primary" onclick="tab('workflows', document.querySelector('[onclick*=workflows]'))">📋 Zur Abendroutine →</button>
   </div>
 
   <!-- ── Tab: Kassensturz ────────────────────────────────── -->
@@ -844,6 +940,80 @@ async function arSpeichereKassensturz() {
   });
 }
 
+// ── Inline-Tagesabschluss (Z-Bon) ────────────────────────────
+async function arTagesabschluss() {
+  const btn = document.getElementById('arBtnZBon');
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird erstellt…';
+  const r = await api('POST', '/api/tagesabschluss');
+  const el = document.getElementById('arZErgebnis');
+  el.style.display = 'block';
+  if (r.ok) {
+    const fmt = v => (v / 100).toFixed(2) + ' €';
+    document.getElementById('arZBelege').textContent = r.anzahl_belege;
+    document.getElementById('arZUmsatz').textContent = fmt(r.umsatz_brutto);
+    document.getElementById('arZBar').textContent = fmt(r.umsatz_bar);
+    document.getElementById('arZEc').textContent = fmt(r.umsatz_ec);
+    document.getElementById('arZAnfang').textContent = fmt(r.kassenbestand_anfang);
+    document.getElementById('arZBarUmsatz').textContent = fmt(r.umsatz_bar);
+    document.getElementById('arZEnde').textContent = fmt(r.kassenbestand_ende);
+    btn.style.display = 'none';
+    el.innerHTML = `
+      <div class="alert alert-success" style="margin:0;">
+        ✓ Z-Bon Nr. ${r.z_nr} erstellt und gedruckt.
+        ${r.warnung ? '<br>⚠️ ' + r.warnung : ''}
+      </div>
+      <button class="btn btn-neutral btn-sm" style="margin-top:8px; min-height:48px;"
+              onclick="arNochmalDrucken(${r.ta_id})">🖨️ Z-Bon nochmal drucken</button>`;
+    // Schritt ② als erledigt markieren
+    const st2 = document.getElementById('arSt2');
+    if (st2) { st2.classList.remove('aktiv'); st2.classList.add('erledigt'); }
+  } else {
+    el.innerHTML = `<div class="alert alert-error" style="margin:0;">Fehler: ${r.fehler}</div>`;
+    btn.disabled = false;
+    btn.textContent = '✓ Tagesabschluss durchführen';
+  }
+}
+
+async function arNochmalDrucken(taId) {
+  const r = await api('POST', `/api/tagesabschluss/${taId}/drucken`);
+  toast(r.ok ? 'Z-Bon wird gedruckt' : ('Druckfehler: ' + r.fehler), r.ok ? 'ok' : 'err');
+}
+
+{% if ec_modus == 'zvt' and ec_tagesabschluss != 'manuell' %}
+const AR_EC_APP_SUMME = {{ xbon.umsatz_ec }};
+async function arEcTagesabschluss() {
+  const btn = document.getElementById('arBtnEcTa');
+  const el  = document.getElementById('arEcTaStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Terminal …';
+  el.innerHTML = '<span style="color:var(--text-dim); font-size:13px;">Warte auf Terminal …</span>';
+  const r = await api('POST', '/api/ec/tagesabschluss');
+  btn.disabled = false;
+  btn.textContent = '🖨️ EC-Abschluss starten';
+  if (!r.ok) {
+    el.innerHTML = `<div class="alert alert-error" style="margin:0; font-size:13px;">
+      ✗ ${r.fehler || 'Fehler'}${r.offline ? ' – Terminal nicht erreichbar' : ''}</div>`;
+    return;
+  }
+  let html = `<div class="alert alert-success" style="margin:0; font-size:13px;">✓ EC-Abschluss durchgeführt.</div>`;
+  {% if ec_tagesabschluss == 'auto_vergleich' %}
+  if (r.totals) {
+    const tc = r.totals.gesamt_cent, diff = tc - AR_EC_APP_SUMME;
+    const fmt = v => (v/100).toFixed(2).replace('.',',')+' €';
+    const ok = diff === 0;
+    html += `<div style="font-size:13px; margin-top:6px; padding:8px;
+      background:${ok?'rgba(52,211,153,0.08)':'rgba(255,80,80,0.1)'};
+      border:1px solid ${ok?'var(--gruen-hell)':'#f08080'}; border-radius:6px;">
+      Terminal: ${fmt(tc)} (${r.totals.anzahl}) · App: ${fmt(AR_EC_APP_SUMME)}
+      · <b style="color:${ok?'var(--gruen-dunkel)':'var(--rot)'}">${ok?'✓ passt':fmt(Math.abs(diff))+' Differenz'}</b></div>`;
+  }
+  {% endif %}
+  el.innerHTML = html;
+  btn.style.display = 'none';
+}
+{% endif %}
+
 // ── Gegenkonten aus Terminal-Konfiguration ────────────────────
 const KONTO_BANK  = {{ info.konto_bank|tojson }};
 const KONTO_NEBEN = {{ info.konto_nebenkasse|tojson }};
@@ -958,6 +1128,7 @@ async function arNavigiereTresor() {
 
 // ── Tagesstart: Tresor → Kasse ────────────────────────────────
 let tsGesamtCent = {{ info.letzter_transfer_neben or 0 }};
+let tsTresorBestand = {};  // Original-Tresorbestand vor Entnahme
 
 function tsGetCount(val) {
   const el = document.getElementById('ts_' + val);
@@ -988,6 +1159,29 @@ function tsRecalc() {
     btn.style.opacity      = tsGesamtCent > 0 ? '1' : '0.35';
     btn.style.pointerEvents = tsGesamtCent > 0 ? '' : 'none';
   }
+  // Tresor-Rest berechnen
+  tsUpdateRest();
+}
+function tsUpdateRest() {
+  const liste = document.getElementById('tsRestListe');
+  const gesamt = document.getElementById('tsRestGesamt');
+  if (!liste) return;
+  let restCent = 0;
+  let html = '';
+  AR_ALLE.forEach(d => {
+    const orig = tsTresorBestand[d.val] || 0;
+    const entnommen = tsGetCount(d.val);
+    const rest = Math.max(0, orig - entnommen);
+    if (rest > 0) {
+      html += `<div style="display:flex; justify-content:space-between; padding:2px 0;">
+        <span>${rest} × ${d.lbl}</span>
+        <span style="font-weight:600;">${arEuro(rest * d.val)}</span>
+      </div>`;
+      restCent += rest * d.val;
+    }
+  });
+  liste.innerHTML = html || '<div style="color:var(--text-dim);">Tresor leer</div>';
+  if (gesamt) gesamt.textContent = arEuro(restCent);
 }
 function tsNavigiere() {
   if (tsGesamtCent <= 0) return;
@@ -1037,6 +1231,7 @@ async function ladeTresorBestand() {
       }
     }
   } catch(e) {}
+  tsTresorBestand = bestand;
   tsFillTable('tsScheineBody', AR_SCHEINE, bestand);
   tsFillTable('tsMuenzenBody', AR_MUENZEN, bestand);
   tsRecalc();
