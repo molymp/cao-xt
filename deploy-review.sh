@@ -3,21 +3,27 @@
 # deploy-review.sh – Review-Umgebung aktualisieren
 #
 # Setzt cao-xt-review auf den aktuellen Stand eines Branches
-# und startet den WaWi-Server neu.
+# und startet alle vier Apps neu:
+#   Kiosk  → Port 5001
+#   Kasse  → Port 5002
+#   WaWi   → Port 5003
+#   Verw.  → Port 5004
 #
 # Usage:
 #   ./deploy-review.sh                     # aktueller Branch von cao-xt
 #   ./deploy-review.sh cto/hab-194         # bestimmter Branch
 #   ./deploy-review.sh claude/hab-139-fix  # Feature-Branch des Flask-Agenten
 #
-# Referenz: HAB-194
+# Hinweis: Jede App braucht eine config_local.py im jeweiligen
+# app/-Verzeichnis (nicht in Git). Fehlende Dateien werden
+# vor dem Start gemeldet.
+#
+# Referenz: HAB-194, HAB-345
 # ============================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REVIEW="$SCRIPT_DIR/../cao-xt-review"
-WAWI_APP="$REVIEW/wawi-app/app"
-WAWI_PORT=5003
 
 # ── Branch/Commit bestimmen ───────────────────────────────────
 SOURCE_BRANCH="${1:-$(git -C "$SCRIPT_DIR" branch --show-current)}"
@@ -46,48 +52,101 @@ git -C "$REVIEW" reset --hard "$COMMIT"
 echo "✅ Worktree ist jetzt auf: $(git -C "$REVIEW" rev-parse --short HEAD)"
 echo ""
 
-# ── WaWi-Server neu starten ──────────────────────────────────
-echo "🔄 WaWi-Server auf Port $WAWI_PORT neu starten..."
+# ── Deployment-Marker schreiben ──────────────────────────────
+DEPLOYED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+cat > "$REVIEW/.deployed" <<EOF
+branch=$SOURCE_BRANCH
+commit=$COMMIT
+short=$SHORT
+deployed_at=$DEPLOYED_AT
+EOF
 
-# Nur den LISTENING-Prozess auf dem Port beenden (keine Client-Verbindungen)
-LISTEN_PID=$(lsof -ti :"$WAWI_PORT" -sTCP:LISTEN 2>/dev/null || true)
-if [ -n "$LISTEN_PID" ]; then
-    kill -TERM "$LISTEN_PID" 2>/dev/null || true
-    echo "   Alter Prozess ($LISTEN_PID) beendet – warte auf Port-Freigabe..."
-    # Warten bis Port frei ist (max 10 Sekunden)
-    for i in $(seq 1 10); do
-        sleep 1
-        STILL_UP=$(lsof -ti :"$WAWI_PORT" -sTCP:LISTEN 2>/dev/null || true)
-        if [ -z "$STILL_UP" ]; then
-            break
-        fi
-    done
-fi
-
-# Neuen Prozess starten
-LOG="/tmp/wawi-review.log"
-cd "$WAWI_APP"
-nohup python3 app.py > "$LOG" 2>&1 &
-NEW_PID=$!
-
-# Warten bis der Server tatsächlich lauscht (max 15 Sekunden)
-echo "   Warte auf Server-Start..."
-for i in $(seq 1 15); do
-    sleep 1
-    if lsof -ti :"$WAWI_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-        echo "✅ WaWi-Server gestartet (PID $NEW_PID)"
-        break
-    fi
-    if ! kill -0 "$NEW_PID" 2>/dev/null; then
-        echo "⚠️  Server-Prozess abgestürzt – Log prüfen: $LOG"
-        tail -20 "$LOG"
-        exit 1
+# ── Konfigurationsdateien prüfen ─────────────────────────────
+echo "🔍 Konfiguration prüfen..."
+MISSING_CONFIGS=()
+for APP_DIR in kiosk-app kasse-app wawi-app verwaltung-app; do
+    CFG="$REVIEW/$APP_DIR/app/config_local.py"
+    if [ ! -f "$CFG" ]; then
+        MISSING_CONFIGS+=("$APP_DIR")
+        echo "   ⚠️  Fehlende config_local.py: $APP_DIR/app/"
     fi
 done
+if [ ${#MISSING_CONFIGS[@]} -gt 0 ]; then
+    echo ""
+    echo "   Tipp: config_local.py.example als Vorlage nutzen:"
+    for APP_DIR in "${MISSING_CONFIGS[@]}"; do
+        echo "     cp $REVIEW/$APP_DIR/app/config_local.py.example \\"
+        echo "        $REVIEW/$APP_DIR/app/config_local.py"
+    done
+    echo ""
+fi
+
+# ── Hilfsfunktion: App starten ───────────────────────────────
+start_app() {
+    local NAME="$1"
+    local APP_DIR="$2"
+    local PORT="$3"
+    local LOG="$4"
+
+    echo "🔄 $NAME (Port $PORT) neu starten..."
+
+    # Laufenden Prozess auf diesem Port beenden
+    LISTEN_PID=$(lsof -ti :"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+    if [ -n "$LISTEN_PID" ]; then
+        kill -TERM "$LISTEN_PID" 2>/dev/null || true
+        for i in $(seq 1 10); do
+            sleep 1
+            STILL_UP=$(lsof -ti :"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+            [ -z "$STILL_UP" ] && break
+        done
+    fi
+
+    # App starten
+    cd "$APP_DIR"
+    nohup python3 app.py > "$LOG" 2>&1 &
+    NEW_PID=$!
+
+    # Auf Server-Start warten (max 15 Sekunden)
+    for i in $(seq 1 15); do
+        sleep 1
+        if lsof -ti :"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+            echo "   ✅ $NAME gestartet (PID $NEW_PID)"
+            return 0
+        fi
+        if ! kill -0 "$NEW_PID" 2>/dev/null; then
+            echo "   ⚠️  $NAME abgestürzt – Log prüfen: $LOG"
+            tail -20 "$LOG"
+            return 1
+        fi
+    done
+    # Letzter Check: Port könnte durch Reloader erst jetzt bereit sein
+    if lsof -ti :"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "   ✅ $NAME gestartet (nach Timeout-Wartezeit)"
+        return 0
+    fi
+    echo "   ⚠️  $NAME nicht gestartet (Timeout) – Log: $LOG"
+    return 0  # Kein hard exit – andere Apps weiter starten
+}
+
+# ── Alle vier Apps starten ───────────────────────────────────
+echo ""
+start_app "Kiosk"      "$REVIEW/kiosk-app/app"      5001 "/tmp/kiosk-review.log"
+start_app "Kasse"      "$REVIEW/kasse-app/app"      5002 "/tmp/kasse-review.log"
+start_app "WaWi"       "$REVIEW/wawi-app/app"       5003 "/tmp/wawi-review.log"
+start_app "Verwaltung" "$REVIEW/verwaltung-app/app" 5004 "/tmp/verwaltung-review.log"
 
 echo ""
 echo "══════════════════════════════════════════════════════════"
-echo "  WaWi-App (Review): http://localhost:$WAWI_PORT"
-echo "  Log:               $LOG"
+echo "  Worktree: $REVIEW"
+echo "  Kiosk:    http://localhost:5001"
+echo "  Kasse:    http://localhost:5002"
+echo "  WaWi:     http://localhost:5003"
+echo "  Verw.:    http://localhost:5004"
+echo ""
+echo "  Logs:"
+echo "    /tmp/kiosk-review.log"
+echo "    /tmp/kasse-review.log"
+echo "    /tmp/wawi-review.log"
+echo "    /tmp/verwaltung-review.log"
 echo "══════════════════════════════════════════════════════════"
 echo ""

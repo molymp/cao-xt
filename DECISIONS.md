@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-12 deploy-review.sh startet alle vier Apps; ein gemeinsamer Review-Worktree (HAB-345)
+
+- **Problem:** `deploy-review.sh` startete nur die WaWi-App (Port 5003). Das Board kann nicht alle vier Apps (Kiosk 5001, Kasse 5002, WaWi 5003, Verwaltung 5004) testen. Außerdem fehlte `config_local.py` für die Verwaltungs-App im Review-Worktree. Gemeldet via [HAB-341](/HAB/issues/HAB-341).
+- **Entscheidung:** `deploy-review.sh` startet jetzt alle vier Apps in einem einzigen Review-Worktree (`cao-xt-review`). Race Conditions bei simultanen Deployments werden durch Prozessregeln verhindert: nur der CTO ruft `deploy-review.sh` auf.
+- **Begründung:** Ein Worktree entspricht dem Board-Workflow (alle Apps unter bekannten Ports). Race Conditions sind bei zwei Agenten durch klare Prozessregeln beherrschbar.
+- **Alternativen:** (a) Separate Worktrees je Agent (vom Board abgelehnt – Board will eine einheitliche Test-URL), (b) Lock-Datei-Mechanismus (unnötiger Overhead bei 2 Agenten).
+- **Konsequenzen:** `deploy-review.sh` startet/stoppt jetzt alle 4 Prozesse. Board testet immer unter localhost:5001–5004. `config_local.py` für Verwaltung im Review-Worktree angelegt (manuell, da gitignored).
+- **Referenz:** [HAB-345](/HAB/issues/HAB-345)
+
 ## 2026-04-12 Verwaltungs-App als eigenständige Flask-App (Port 5004) (HAB-330)
 
 - **Problem:** Admin-Funktionen (DB-Konfiguration, Drucker, Terminals, TSE) wurden bisher nicht zentral verwaltet. Konfigurationsänderungen erforderten direkten Dateizugriff.
