@@ -22,6 +22,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
 
 ### Hinzugefügt
+- Entwicklungsinfrastruktur: `deploy-review.sh` unterstützt jetzt benannte Review-Slots (`--slot default|cto`); CTO-Slot nutzt eigenen Worktree `cao-xt-review-cto` auf Port 5013 – keine gegenseitigen Überschreibungen bei paralleler Entwicklung mehr ([HAB-345](/HAB/issues/HAB-345))
 - Verwaltungs-App (Port 5004): Neue Admin-App mit DB-Konfiguration, Bondrucker-Verwaltung (CRUD), Terminal-Verwaltung, TSE-Geräte-Konfiguration und Login-Schutz ([HAB-330](/HAB/issues/HAB-330), [HAB-335](/HAB/issues/HAB-335))
 - Common-Bereich / Shared Modules: Neues `common/`-Package mit gemeinsamer DB-, Config-, Auth- und Druck-Logik; alle drei Apps (Kasse, Kiosk, WaWi) migriert ([HAB-332](/HAB/issues/HAB-332))
 - WaWi Preispflege: On-Screen-Numpad für Touch-Eingabe ([HAB-332](/HAB/issues/HAB-332))

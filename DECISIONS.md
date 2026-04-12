@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-12 Parallele Review-Slots statt gemeinsamen Review-Worktree (HAB-345)
+
+- **Problem:** Ein einziger Review-Worktree (`cao-xt-review`) wurde von mehreren Agenten (Claude Agent und CTO) gleichzeitig via `deploy-review.sh` beschrieben. Simultane Deployments überschrieben sich gegenseitig – das Board testete undefinierten Stand. Gemeldet via [HAB-341](/HAB/issues/HAB-341).
+- **Entscheidung:** Jeder Agent bekommt einen eigenen benannten Review-Slot (git-Worktree + eigener Port): Claude-Agent → Slot `default` (Port 5003), CTO → Slot `cto` (Port 5013). `deploy-review.sh` erkennt den Slot automatisch anhand des Branch-Prefixes.
+- **Begründung:** Kein Koordinationsaufwand, keine Race Conditions, sofort parallel testbar, deterministisch.
+- **Alternativen:** (a) Branch-Queue mit Sperr-Mechanismus (zu viel Overhead), (b) Serielle Review-Zuweisung durch CTO-Koordination (Bottleneck), (c) Einzelner Worktree mit Lock-Datei (fehleranfällig bei gleichzeitigem Zugriff).
+- **Konsequenzen:** Board testet CTO-Reviews auf Port 5013 statt 5003. AGENTS.md des CTO wurde aktualisiert. Zweiter Worktree `cao-xt-review-cto` wurde angelegt.
+- **Referenz:** [HAB-345](/HAB/issues/HAB-345)
+
 ## 2026-04-12 Verwaltungs-App als eigenständige Flask-App (Port 5004) (HAB-330)
 
 - **Problem:** Admin-Funktionen (DB-Konfiguration, Drucker, Terminals, TSE) wurden bisher nicht zentral verwaltet. Konfigurationsänderungen erforderten direkten Dateizugriff.
