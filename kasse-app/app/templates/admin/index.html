@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Admin{% endblock %}
 {% block nav_extra %}
-<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
+{% endblock %}
+{% block extra_style %}
+<style>
+.adm-actions .btn { min-height: 52px; display: flex; align-items: center; justify-content: center; }
+.adm-actions button.btn { min-height: 52px; }
+</style>
 {% endblock %}
 {% block content %}
 <div style="max-width:900px; margin:0 auto; padding:24px; overflow-y:auto; height:calc(100vh - 60px);">
@@ -48,7 +53,7 @@
     <span>🎓 Trainings-/Demo-Modus aktiv — Bons werden <u>nicht</u> steuerlich erfasst.</span>
     <form method="POST" action="/admin/terminal/trainings_modus" style="margin:0;">
       <input type="hidden" name="trainings_modus" value="0">
-      <button type="submit" class="btn btn-neutral" style="font-size:13px; padding:6px 14px;">
+      <button type="submit" class="btn btn-neutral" style="font-size:14px; padding:10px 18px; min-height:48px;">
         Deaktivieren
       </button>
     </form>
@@ -181,7 +186,7 @@
   {% endif %}
 
   <!-- Aktionen -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+  <div class="adm-actions" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
     <a href="/admin/terminal" class="btn btn-primary">⚙️ Terminal bearbeiten</a>
     <button class="btn btn-neutral" onclick="druckerTest()">🖨 Drucker testen</button>
     <a href="/admin/tse" class="btn btn-neutral">🔐 TSE-Verwaltung</a>

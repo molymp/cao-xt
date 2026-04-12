@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Manager{% endblock %}
 {% block nav_extra %}
-<a href="/kasse" class="nav-btn">🖥️ Kasse</a>
 {% endblock %}
 {% block extra_style %}
 <style>
@@ -20,7 +19,8 @@
   flex-wrap: wrap;
 }
 .tab-btn {
-  padding: 9px 18px;
+  padding: 14px 18px;
+  min-height: 52px;
   background: none;
   border: none;
   border-bottom: 3px solid transparent;
@@ -82,6 +82,7 @@
   gap: 10px;
   margin-bottom: 20px;
 }
+.action-grid .btn { min-height: 52px; }
 .eintrag-zeile {
   display: flex;
   justify-content: space-between;
@@ -126,7 +127,7 @@
 }
 .denom-table .val-col { text-align: right; font-size: 13px; min-width: 68px; }
 .denom-btn {
-  width: 42px; height: 42px; border-radius: 8px;
+  width: 52px; height: 52px; border-radius: 8px;
   border: 1px solid var(--creme-dunkel);
   background: white; font-size: 22px; line-height: 1; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
@@ -201,10 +202,10 @@
 
   <div class="tab-bar">
     <button class="tab-btn aktiv" onclick="tab('uebersicht',this)">Übersicht</button>
-    <button class="tab-btn"       onclick="tab('kassenbuch',this)">📒 Kassenbuch</button>
     <button class="tab-btn"       onclick="tab('xbon',this)">X-Bon</button>
     <button class="tab-btn"       onclick="tab('zbon',this)">Z-Bon</button>
     <button class="tab-btn"       onclick="tab('kassensturz',this)">Kassensturz</button>
+    <button class="tab-btn" style="opacity:0.6;" onclick="tab('kassenbuch',this)">📒 Kassenbuch</button>
   </div>
 
   <!-- ── Tab: Übersicht ──────────────────────────────────── -->
