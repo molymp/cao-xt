@@ -502,11 +502,12 @@ textarea.feld-input {
             <div class="feld-gruppe bedingt {% if bestellung.typ == 'einmalig' %}sichtbar{% endif %}"
                  id="gruppe-datum">
                 <label class="feld-label">Abholdatum <span class="pflicht">*</span></label>
-                <input type="date" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
+                <input type="text" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
                        id="inp-datum"
-                       value="{{ bestellung.abhol_datum.strftime('%Y-%m-%d') if bestellung.abhol_datum else '' }}"
-                       {% if gesperrt %}disabled{% endif %}
-                       onchange="datumOderWtGeaendert()">
+                       data-wert="{{ bestellung.abhol_datum.strftime('%Y-%m-%d') if bestellung.abhol_datum else '' }}"
+                       value="{{ bestellung.abhol_datum.strftime('%d.%m.%Y') if bestellung.abhol_datum else '' }}"
+                       placeholder="Datum wählen …" readonly
+                       {% if gesperrt %}disabled{% else %}onclick="oeffneDatumPicker('inp-datum', datumOderWtGeaendert, 'Abholdatum')"{% endif %}>
             </div>
 
             <!-- Wiederkehrend: Wochentag + Zeitraum -->
@@ -526,27 +527,33 @@ textarea.feld-input {
                 <div style="display:flex; gap:10px; margin-top:0.75rem;">
                     <div class="feld-gruppe" style="flex:1;">
                         <label class="feld-label">Ab Datum</label>
-                        <input type="date" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
+                        <input type="text" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
                                id="inp-start-datum"
-                               value="{{ bestellung.start_datum.strftime('%Y-%m-%d') if bestellung.start_datum else '' }}"
-                               {% if gesperrt %}disabled{% endif %}>
+                               data-wert="{{ bestellung.start_datum.strftime('%Y-%m-%d') if bestellung.start_datum else '' }}"
+                               value="{{ bestellung.start_datum.strftime('%d.%m.%Y') if bestellung.start_datum else '' }}"
+                               placeholder="optional" readonly
+                               {% if gesperrt %}disabled{% else %}onclick="oeffneDatumPicker('inp-start-datum', null, 'Ab Datum')"{% endif %}>
                     </div>
                     <div class="feld-gruppe" style="flex:1;">
                         <label class="feld-label">Bis Datum</label>
-                        <input type="date" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
+                        <input type="text" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
                                id="inp-end-datum"
-                               value="{{ bestellung.end_datum.strftime('%Y-%m-%d') if bestellung.end_datum else '' }}"
-                               {% if gesperrt %}disabled{% endif %}>
+                               data-wert="{{ bestellung.end_datum.strftime('%Y-%m-%d') if bestellung.end_datum else '' }}"
+                               value="{{ bestellung.end_datum.strftime('%d.%m.%Y') if bestellung.end_datum else '' }}"
+                               placeholder="optional" readonly
+                               {% if gesperrt %}disabled{% else %}onclick="oeffneDatumPicker('inp-end-datum', null, 'Bis Datum')"{% endif %}>
                     </div>
                 </div>
             </div>
 
             <div class="feld-gruppe">
                 <label class="feld-label">Abholzeit (optional)</label>
-                <input type="time" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
+                <input type="text" class="feld-input {% if gesperrt %}gesperrt{% endif %}"
                        id="inp-uhrzeit"
-                       value="{{ (bestellung.abhol_uhrzeit | string)[:5] if bestellung.abhol_uhrzeit is not none else '' }}"
-                       {% if gesperrt %}disabled{% endif %}>
+                       data-wert="{{ (bestellung.abhol_uhrzeit | string)[:5] if bestellung.abhol_uhrzeit is not none else '' }}"
+                       value="{% if bestellung.abhol_uhrzeit is not none %}{{ (bestellung.abhol_uhrzeit | string)[:5] }} Uhr{% endif %}"
+                       placeholder="Uhrzeit wählen …" readonly
+                       {% if gesperrt %}disabled{% else %}onclick="oeffneZeitPicker('inp-uhrzeit')"{% endif %}>
             </div>
 
             <div class="feld-gruppe">
@@ -597,6 +604,7 @@ textarea.feld-input {
                     ⏳ Lade Produkte …
                 </div>
             </div>
+            <div class="kat-filter-leiste" id="kat-filter-leiste" style="display:none;"></div>
             <div class="produkte-liste" id="produkte-liste">
                 <div class="warte-hinweis">⏳ Lade …</div>
             </div>
@@ -605,6 +613,8 @@ textarea.feld-input {
     </div>
 
 </div>
+
+{% include '_touch_picker.html' %}
 
 <!-- ── Bildschirmtastatur ── -->
 {% if not gesperrt %}
@@ -659,7 +669,7 @@ function setzeTyp(typ) {
     document.getElementById('gruppe-wiederkehrend').classList.toggle('sichtbar', typ === 'wiederkehrend');
     if (typ === 'einmalig') {
         gewaehlterWT = '';
-        const d = document.getElementById('inp-datum').value;
+        const d = getDatumWert('inp-datum');
         if (d) {
             const wts = ['So','Mo','Di','Mi','Do','Fr','Sa'];
             const wt = wts[new Date(d).getDay()];
@@ -675,9 +685,9 @@ function setzeTyp(typ) {
     pruefeFormular();
 }
 
-function datumOderWtGeaendert() {
+function datumOderWtGeaendert(isoStr) {
     if (GESPERRT) return;
-    const d = document.getElementById('inp-datum').value;
+    const d = isoStr !== undefined ? isoStr : getDatumWert('inp-datum');
     if (d) {
         const wts = ['So','Mo','Di','Mi','Do','Fr','Sa'];
         const wt = wts[new Date(d).getDay()];
@@ -739,14 +749,17 @@ async function ladeProdukteWennNoetig(wt) {
 
 function rendereProduktliste() {
     const liste = document.getElementById('produkte-liste');
-    if (!alleProdukte.length) {
+    rendereKategorieFilter(alleProdukte);
+
+    const sichtbar = gefilterteProdukte();
+    if (!sichtbar.length) {
         liste.innerHTML = '<div class="warte-hinweis">Keine Produkte für diesen Tag</div>';
         aktualisiereZusammenfassung();
         return;
     }
 
     const gruppen = {};
-    alleProdukte.forEach(p => {
+    sichtbar.forEach(p => {
         const kat = p.kategorie_name || '– Sonstige –';
         if (!gruppen[kat]) gruppen[kat] = [];
         gruppen[kat].push(p);
@@ -847,7 +860,7 @@ function pruefeFormular() {
     const hatArtikel = Object.keys(warenkorb).length > 0;
     let hatDatumOderWT = false;
     if (gewaehlterTyp === 'einmalig') {
-        hatDatumOderWT = !!document.getElementById('inp-datum').value;
+        hatDatumOderWT = !!getDatumWert('inp-datum');
     } else {
         hatDatumOderWT = !!gewaehlterWT;
     }
@@ -877,11 +890,11 @@ async function speichern() {
         name,
         telefon: document.getElementById('inp-telefon').value.trim() || null,
         typ: gewaehlterTyp,
-        abhol_datum: gewaehlterTyp === 'einmalig' ? (document.getElementById('inp-datum').value || null) : null,
+        abhol_datum: gewaehlterTyp === 'einmalig' ? (getDatumWert('inp-datum') || null) : null,
         wochentag: gewaehlterTyp === 'wiederkehrend' ? (gewaehlterWT || null) : null,
-        start_datum: document.getElementById('inp-start-datum')?.value || null,
-        end_datum: document.getElementById('inp-end-datum')?.value || null,
-        abhol_uhrzeit: document.getElementById('inp-uhrzeit').value || null,
+        start_datum: getDatumWert('inp-start-datum') || null,
+        end_datum: getDatumWert('inp-end-datum') || null,
+        abhol_uhrzeit: getZeitWert('inp-uhrzeit') || null,
         notiz: document.getElementById('inp-notiz').value.trim() || null,
         positionen,
     };
@@ -973,13 +986,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
         document.getElementById('inp-name').addEventListener('input', pruefeFormular);
-        document.getElementById('inp-datum').addEventListener('change', datumOderWtGeaendert);
     }
 
     // Produkte beim Laden sofort holen
     let initWT = gewaehlterWT;
     if (gewaehlterTyp === 'einmalig') {
-        const d = document.getElementById('inp-datum').value;
+        const d = getDatumWert('inp-datum');
         if (d) {
             const wts = ['So','Mo','Di','Mi','Do','Fr','Sa'];
             initWT = wts[new Date(d).getDay()];
