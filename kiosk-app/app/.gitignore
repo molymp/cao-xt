@@ -2,3 +2,5 @@ config_local.py
 *.json
 __pycache__/
 *.pyc
+produktbilder/*
+!produktbilder/.gitkeep
