@@ -20,6 +20,11 @@ import time
 # Repo-Root aus diesem Dateiverzeichnis ableiten
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
+# Venv-Python: Flask und alle App-Abhängigkeiten sind dort installiert.
+# Fallback auf sys.executable wenn kein venv vorhanden (z.B. CI).
+_VENV_PYTHON = os.path.join(_REPO_ROOT, '.venv', 'bin', 'python3')
+_APP_PYTHON  = _VENV_PYTHON if os.path.isfile(_VENV_PYTHON) else sys.executable
+
 PID_FILE = '/tmp/caoxt-pids.json'
 LOG_DIR  = '/tmp'
 
@@ -130,7 +135,7 @@ def start_app(name: str, *, print_fn=print) -> bool:
     log_file = open(log_path, 'a')
     try:
         proc = subprocess.Popen(
-            [sys.executable, 'app.py'],
+            [_APP_PYTHON, 'app.py'],
             cwd=app_dir,
             stdout=log_file,
             stderr=log_file,
