@@ -1,0 +1,5 @@
+# CAO-XT Installer – Python-Abhängigkeiten
+# Installation: pip3 install -r installer/requirements.txt --break-system-packages
+# (oder wird von install.sh automatisch eingerichtet)
+
+mysql-connector-python>=8.0

@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-12 Installationsroutine: Bash-Wrapper + Python-Kern + dorfkern-ctl (HAB-355)
+
+- **Problem:** Es gab keine standardisierte Möglichkeit, cao-xt frisch zu installieren oder alle Apps zentral zu steuern. Neue Installationen mussten manuell konfiguriert werden.
+- **Entscheidung:** Zweistufige Architektur: `install.sh` (Bash, prüft Systemvoraussetzungen, richtet venv ein) + `installer/install.py` (Python, interaktive Konfiguration, DB-Init, App-Start). `dorfkern-ctl` als tägliches Management-Script für start/stop/restart/status.
+- **Begründung:** Bash für Systemprüfung (venv, Python-Version, lsof), Python für komplexere Logik (DB-Verbindung, interaktive Prompts, Rollback). Trennung ermöglicht Tests der Python-Logik ohne Shell-Kontext.
+- **Alternativen:** (a) Nur Bash-Script (unhandliche DB-Logik in Bash), (b) Makefile (nicht überall verfügbar), (c) Docker (zu schwerer für Dorfladen-Kontext).
+- **Konsequenzen:** `install.sh` ist Einstiegspunkt für Neuinstallationen. `dorfkern-ctl` ersetzt manuelles Port-Management. PIDs werden in `/tmp/caoxt-pids.json` persistiert. Rollback stoppt bereits gestartete Apps in umgekehrter Reihenfolge bei Fehler.
+- **Referenz:** [HAB-355](/HAB/issues/HAB-355)
+
 ## 2026-04-12 deploy-review.sh startet alle vier Apps; ein gemeinsamer Review-Worktree (HAB-345)
 
 - **Problem:** `deploy-review.sh` startete nur die WaWi-App (Port 5003). Das Board kann nicht alle vier Apps (Kiosk 5001, Kasse 5002, WaWi 5003, Verwaltung 5004) testen. Außerdem fehlte `config_local.py` für die Verwaltungs-App im Review-Worktree. Gemeldet via [HAB-341](/HAB/issues/HAB-341).

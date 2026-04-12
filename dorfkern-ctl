@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""
+dorfkern-ctl – CAO-XT Service-Control
+
+Steuert alle vier Apps (install, start, stop, restart, status).
+
+Verwendung:
+  ./dorfkern-ctl install              # Interaktive Erstinstallation
+  ./dorfkern-ctl start [app ...]      # Alle oder bestimmte Apps starten
+  ./dorfkern-ctl stop  [app ...]      # Alle oder bestimmte Apps stoppen
+  ./dorfkern-ctl restart [app ...]    # Alle oder bestimmte Apps neu starten
+  ./dorfkern-ctl status               # Status aller Apps anzeigen
+
+  ./dorfkern-ctl start verwaltung     # Nur Verwaltungs-App starten
+  ./dorfkern-ctl restart kasse kiosk  # Kasse + Kiosk neu starten
+
+Referenz: HAB-355
+"""
+import os
+import subprocess
+import sys
+
+_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from installer.app_manager import (
+    APPS, START_ORDER,
+    start_app, stop_app, restart_app,
+    start_all, stop_all, print_status,
+)
+
+_COMMANDS = ('install', 'start', 'stop', 'restart', 'status')
+
+
+def _resolve_apps(args: list[str]) -> list[str]:
+    """Gibt die Liste der zu steuernden Apps zurück.
+    Unbekannte App-Namen erzeugen einen Fehler."""
+    if not args:
+        return list(START_ORDER)
+    unknown = [a for a in args if a not in APPS]
+    if unknown:
+        print(f"Unbekannte App(s): {', '.join(unknown)}")
+        print(f"Bekannte Apps: {', '.join(APPS.keys())}")
+        sys.exit(1)
+    return args
+
+
+def cmd_install() -> None:
+    """Startet die interaktive Installationsroutine."""
+    install_sh = os.path.join(_REPO_ROOT, 'install.sh')
+    if not os.path.isfile(install_sh):
+        print("install.sh nicht gefunden. Bitte Repo-Installation prüfen.")
+        sys.exit(1)
+    os.execv('/bin/bash', ['/bin/bash', install_sh])
+
+
+def cmd_start(app_names: list[str]) -> None:
+    print()
+    results = start_all(app_names)
+    print()
+    failed = [a for a, ok in results.items() if not ok]
+    if failed:
+        print(f"  ⚠  Fehler bei: {', '.join(failed)}")
+        sys.exit(1)
+
+
+def cmd_stop(app_names: list[str]) -> None:
+    print()
+    stop_all(app_names)
+    print()
+
+
+def cmd_restart(app_names: list[str]) -> None:
+    print()
+    for app in app_names:
+        restart_app(app)
+    print()
+
+
+def cmd_status() -> None:
+    print_status()
+
+
+def main() -> None:
+    if len(sys.argv) < 2 or sys.argv[1] not in _COMMANDS:
+        print(__doc__)
+        sys.exit(0 if len(sys.argv) < 2 else 1)
+
+    command = sys.argv[1]
+    rest = sys.argv[2:]
+
+    if command == 'install':
+        cmd_install()
+    elif command == 'status':
+        cmd_status()
+    elif command == 'start':
+        cmd_start(_resolve_apps(rest))
+    elif command == 'stop':
+        cmd_stop(_resolve_apps(rest))
+    elif command == 'restart':
+        cmd_restart(_resolve_apps(rest))
+
+
+if __name__ == '__main__':
+    main()
