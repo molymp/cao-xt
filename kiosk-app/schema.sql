@@ -168,9 +168,11 @@ CREATE TABLE IF NOT EXISTS XT_KIOSK_KONTAKTE (
     id          INT          NOT NULL AUTO_INCREMENT,
     name        VARCHAR(100) NOT NULL,
     telefon     VARCHAR(30)  NOT NULL DEFAULT '',
+    adr_id      INT          DEFAULT NULL,
     erstellt_am DATETIME     NOT NULL DEFAULT NOW(),
     PRIMARY KEY (id),
-    UNIQUE KEY uq_kiosk_kontakt (name, telefon)
+    UNIQUE KEY uq_kiosk_kontakt (name, telefon),
+    INDEX idx_kiosk_kontakt_adr (adr_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- FK bestellungen → kontakte
@@ -264,3 +266,20 @@ CREATE OR REPLACE VIEW XT_KIOSK_V_JOURNAL AS
     GROUP BY j.id, j.warenkorb_id, j.terminal_nr, j.gebucht_am,
              j.gesamtbetrag_cent, j.ean_barcode, j.status, j.storniert_am
     ORDER BY j.gebucht_am DESC;
+
+-- ============================================================
+-- Migrationen (idempotent – können mehrfach ausgeführt werden)
+-- ============================================================
+
+-- M1: adr_id zu XT_KIOSK_KONTAKTE (Verknüpfung mit CAO ADRESSEN)
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'XT_KIOSK_KONTAKTE'
+      AND COLUMN_NAME  = 'adr_id'
+);
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE XT_KIOSK_KONTAKTE ADD COLUMN adr_id INT DEFAULT NULL AFTER telefon, ADD INDEX idx_kiosk_kontakt_adr (adr_id)',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

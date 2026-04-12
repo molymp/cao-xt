@@ -1,0 +1,161 @@
+{% extends "kunden_base.html" %}
+{% block title %}Kundenkarte scannen{% endblock %}
+
+{% block extra_css %}
+<style>
+.scan-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: calc(100vh - 72px);
+    padding: 2rem;
+    text-align: center;
+}
+.scan-karte {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten-stark);
+    padding: 3rem 4rem;
+    max-width: 600px;
+    width: 100%;
+}
+.scan-icon {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    line-height: 1;
+}
+.scan-titel {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+.scan-beschreibung {
+    font-size: 1.15rem;
+    color: var(--text-mitte);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+.scan-eingabe {
+    width: 100%;
+    padding: 16px 20px;
+    font-size: 1.2rem;
+    border: 2px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    text-align: center;
+    background: var(--creme);
+    transition: border-color 0.15s, background 0.15s;
+}
+.scan-eingabe:focus {
+    outline: none;
+    border-color: var(--gruen-hell);
+    background: white;
+}
+.scan-fehler {
+    display: none;
+    margin-top: 1rem;
+    padding: 12px 20px;
+    background: #fde8e8;
+    color: var(--rot);
+    border-radius: var(--radius-klein);
+    font-weight: 700;
+    font-size: 1rem;
+}
+.scan-fehler.sichtbar { display: block; }
+.scan-warten {
+    display: none;
+    margin-top: 1rem;
+    color: var(--gruen-dunkel);
+    font-weight: 700;
+    font-size: 1rem;
+}
+.scan-warten.sichtbar { display: block; }
+.scan-hinweis {
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: var(--grau-mitte);
+}
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="scan-container">
+    <div class="scan-karte">
+        <div class="scan-icon">&#x1F4B3;</div>
+        <h1 class="scan-titel">Willkommen!</h1>
+        <p class="scan-beschreibung">
+            Bitte scannen Sie Ihre Kundenkarte,<br>
+            um Ihre Backwaren-Bestellungen zu verwalten.
+        </p>
+        <input type="text" class="scan-eingabe" id="barcode-eingabe"
+               placeholder="Kundenkarte scannen ..."
+               autocomplete="off" autofocus>
+        <div class="scan-fehler" id="scan-fehler"></div>
+        <div class="scan-warten" id="scan-warten">Wird geladen ...</div>
+        <p class="scan-hinweis">
+            Halten Sie Ihre Kundenkarte vor den Scanner.<br>
+            Der Barcode wird automatisch eingelesen.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const eingabe = document.getElementById('barcode-eingabe');
+    const fehler  = document.getElementById('scan-fehler');
+    const warten  = document.getElementById('scan-warten');
+    let verarbeitet = false;
+
+    // Barcode-Scanner sendet Zeichen + Enter
+    eingabe.addEventListener('keydown', async function(e) {
+        fehler.classList.remove('sichtbar');
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+
+        const barcode = eingabe.value.trim();
+        if (!barcode || verarbeitet) return;
+        verarbeitet = true;
+        warten.classList.add('sichtbar');
+
+        try {
+            const res = await fetch('/api/kundenkarte/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ barcode }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                window.location.href = '/meine-bestellungen';
+            } else {
+                fehler.textContent = data.fehler || 'Karte nicht erkannt';
+                fehler.classList.add('sichtbar');
+                eingabe.value = '';
+                eingabe.focus();
+                verarbeitet = false;
+            }
+        } catch (err) {
+            fehler.textContent = 'Verbindungsfehler – bitte erneut versuchen';
+            fehler.classList.add('sichtbar');
+            eingabe.value = '';
+            eingabe.focus();
+            verarbeitet = false;
+        }
+        warten.classList.remove('sichtbar');
+    });
+
+    // Eingabefeld immer fokussiert halten (Touch-Terminal ohne Tastatur)
+    document.addEventListener('click', function() {
+        eingabe.focus();
+    });
+
+    // Auto-Refokus nach 3 Sekunden Inaktivität
+    setInterval(function() {
+        if (document.activeElement !== eingabe) {
+            eingabe.focus();
+        }
+    }, 3000);
+})();
+</script>
+{% endblock %}
