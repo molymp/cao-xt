@@ -368,6 +368,119 @@ def artikel():
     return render_template('artikel.html')
 
 
+# ── System: Updates ──────────────────────────────────────────────
+
+@app.route('/system/updates')
+@_login_required
+def system_updates():
+    return render_template('system_updates.html')
+
+
+@app.route('/api/system/update-status')
+@_login_required
+def api_update_status():
+    """Prüft auf Updates (git fetch + VERSION.json-Vergleich)."""
+    import json as _json
+    import subprocess as _sp
+
+    repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
+    version_file = os.path.join(repo_root, 'VERSION.json')
+
+    def _git(*args):
+        return _sp.run(
+            ['git'] + list(args),
+            cwd=repo_root, capture_output=True, text=True, timeout=30
+        )
+
+    def _load_json(path):
+        try:
+            with open(path, encoding='utf-8') as fh:
+                return _json.load(fh)
+        except Exception:
+            return None
+
+    # Lokale Version
+    local_data = _load_json(version_file)
+    local_v = local_data.get('version', 'unbekannt') if local_data else 'unbekannt'
+
+    # git fetch
+    fetch = _git('fetch', 'origin', 'master')
+    if fetch.returncode != 0:
+        return jsonify({
+            'error': f"git fetch fehlgeschlagen: {fetch.stderr.strip()}",
+            'local_version': local_v,
+        }), 200
+
+    # Remote VERSION.json
+    show = _git('show', 'origin/master:VERSION.json')
+    if show.returncode != 0:
+        return jsonify({
+            'error': 'VERSION.json auf Remote nicht lesbar',
+            'local_version': local_v,
+        }), 200
+
+    try:
+        remote_data = _json.loads(show.stdout)
+    except _json.JSONDecodeError:
+        return jsonify({'error': 'VERSION.json ungültig', 'local_version': local_v}), 200
+
+    remote_v = remote_data.get('version', 'unbekannt')
+    impact   = remote_data.get('impact', {})
+    changelog = remote_data.get('changelog_summary', '')
+
+    # Versionsvergleich
+    def _sv(v):
+        try:
+            return tuple(int(x) for x in v.split('.'))
+        except ValueError:
+            return (0, 0, 0)
+
+    available = _sv(remote_v) > _sv(local_v)
+
+    # Neue Commits
+    commits = []
+    if available:
+        log_r = _git('log', '--oneline', 'HEAD..origin/master')
+        if log_r.returncode == 0:
+            commits = [l for l in log_r.stdout.splitlines() if l.strip()]
+
+    return jsonify({
+        'available': available,
+        'local_version': local_v,
+        'remote_version': remote_v,
+        'changelog_summary': changelog,
+        'commits': commits[:30],
+        'impact': impact,
+        'error': None,
+    })
+
+
+@app.route('/api/system/update', methods=['POST'])
+@_login_required
+def api_system_update():
+    """
+    Startet das Update im Hintergrund.
+    Das Script loggt nach /tmp/caoxt-update.log.
+    """
+    repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
+    venv_python = os.path.join(repo_root, '.venv', 'bin', 'python3')
+    if not os.path.exists(venv_python):
+        venv_python = sys.executable
+
+    try:
+        subprocess.Popen(
+            [venv_python, '-m', 'installer.updater', '--update'],
+            cwd=repo_root,
+            stdout=open('/tmp/caoxt-update.log', 'a'),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    return jsonify({'ok': True, 'log': '/tmp/caoxt-update.log'})
+
+
 # ── App starten ──────────────────────────────────────────────────
 
 if __name__ == '__main__':

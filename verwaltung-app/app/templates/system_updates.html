@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}System – Updates{% endblock %}
+
+{% block extra_style %}
+<style>
+.update-card {
+  max-width: 760px;
+}
+.version-row {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+.version-box {
+  flex: 1;
+  min-width: 180px;
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 16px 20px;
+}
+.version-box .vb-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.version-box .vb-val {
+  font-family: 'Lobster', Georgia, serif;
+  font-size: 28px;
+  color: var(--akzent-hell);
+}
+.version-box.neu .vb-val { color: var(--gruen-hell); }
+
+.impact-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.impact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.impact-badge.warn { background: rgba(200,120,10,0.2); color: var(--gold-hell); border: 1px solid rgba(200,120,10,0.4); }
+.impact-badge.info { background: rgba(58,124,189,0.15); color: var(--akzent-hell); border: 1px solid rgba(58,124,189,0.3); }
+.impact-badge.danger { background: rgba(192,64,64,0.15); color: #f08080; border: 1px solid rgba(192,64,64,0.35); }
+
+.commit-list {
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 10px 0;
+  margin-bottom: 24px;
+}
+.commit-list li {
+  padding: 5px 14px;
+  font-size: 13px;
+  font-family: monospace;
+  color: var(--text-mitte);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.commit-list li:last-child { border-bottom: none; }
+.commit-hash { color: var(--akzent-hell); margin-right: 8px; }
+
+#log-box {
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 12px;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text-mitte);
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: none;
+  margin-top: 16px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">⬆️ System-Updates</h1>
+<p style="color:var(--text-dim);margin-bottom:28px;font-size:14px;">
+  Prüft auf verfügbare Versionen via Git. Update wird aus der Verwaltungs-App heraus gestartet.
+</p>
+
+<div class="card update-card">
+
+  <!-- Status-Bereich -->
+  <div id="status-area">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button class="btn btn-neutral" id="btn-check" onclick="checkUpdates()">
+        🔍 Auf Updates prüfen
+      </button>
+      <span id="check-hint" style="font-size:13px;color:var(--text-dim);">
+        Verbindet sich mit dem Remote-Repository.
+      </span>
+    </div>
+
+    <!-- Ergebnis -->
+    <div id="result" style="display:none;">
+
+      <div class="version-row">
+        <div class="version-box">
+          <div class="vb-label">Installierte Version</div>
+          <div class="vb-val" id="local-v">–</div>
+        </div>
+        <div class="version-box" id="remote-box">
+          <div class="vb-label">Verfügbare Version</div>
+          <div class="vb-val" id="remote-v">–</div>
+        </div>
+      </div>
+
+      <!-- Impact-Badges -->
+      <div class="impact-list" id="impact-list"></div>
+
+      <!-- Changelog-Zusammenfassung -->
+      <p id="changelog-summary" style="font-size:14px;color:var(--text-mitte);margin-bottom:16px;display:none;"></p>
+
+      <!-- Commit-Liste -->
+      <div id="commits-area" style="display:none;">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:8px;">
+          Neue Commits
+        </div>
+        <ul class="commit-list" id="commit-list"></ul>
+      </div>
+
+      <!-- Aktuell-Meldung -->
+      <div id="up-to-date" class="alert alert-success" style="display:none;">
+        ✓ Das System ist aktuell.
+      </div>
+
+      <!-- Update-Button -->
+      <div id="update-action" style="display:none;">
+        <button class="btn btn-success" id="btn-update" onclick="startUpdate()">
+          ⬆️ Update jetzt installieren
+        </button>
+        <p style="margin-top:10px;font-size:12px;color:var(--text-dim);">
+          Alle Apps werden kurz gestoppt und neu gestartet. Fortschritt erscheint unten.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Fehler -->
+    <div id="error-box" class="alert alert-error" style="display:none;"></div>
+
+  </div>
+
+  <!-- Log-Ausgabe -->
+  <div id="log-box"></div>
+
+</div>
+
+<!-- Fallback-Hinweis -->
+<div class="card update-card" style="margin-top:20px;">
+  <h3 style="margin-bottom:10px;font-size:16px;">Konsolen-Fallback</h3>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">
+    Falls die Verwaltungs-App selbst defekt ist, kann das Update direkt über das Installationsscript gestartet werden:
+  </p>
+  <code style="display:block;background:var(--bg-dunkel);padding:10px 14px;border-radius:var(--radius-klein);font-size:13px;color:var(--akzent-hell);">
+    ./install.sh --update
+  </code>
+  <p style="font-size:12px;color:var(--text-dim);margin-top:8px;">
+    Das Script schreibt den Fortschritt nach <code>/tmp/caoxt-update.log</code>.
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _hasUpdate = false;
+
+async function checkUpdates() {
+  const btn = document.getElementById('btn-check');
+  const hint = document.getElementById('check-hint');
+  btn.disabled = true;
+  hint.textContent = 'Prüfe … (git fetch läuft)';
+
+  document.getElementById('result').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+
+  let data;
+  try {
+    const r = await fetch('/api/system/update-status');
+    data = await r.json();
+  } catch (e) {
+    showError('Verbindungsfehler: ' + e.message);
+    btn.disabled = false;
+    hint.textContent = '';
+    return;
+  }
+
+  btn.disabled = false;
+  hint.textContent = '';
+
+  if (data.error) {
+    showError(data.error);
+    return;
+  }
+
+  // Versionen anzeigen
+  document.getElementById('local-v').textContent = data.local_version || '?';
+  document.getElementById('remote-v').textContent = data.remote_version || '?';
+
+  const remoteBox = document.getElementById('remote-box');
+  remoteBox.classList.toggle('neu', data.available);
+
+  // Changelog
+  const cls = document.getElementById('changelog-summary');
+  if (data.changelog_summary) {
+    cls.textContent = data.changelog_summary;
+    cls.style.display = '';
+  } else {
+    cls.style.display = 'none';
+  }
+
+  // Impact-Badges
+  const il = document.getElementById('impact-list');
+  il.innerHTML = '';
+  if (data.available && data.impact) {
+    const badges = [];
+    if (data.impact.breaking_change)       badges.push(['danger', '⚠️ Breaking Change']);
+    if (data.impact.db_migration_required) badges.push(['warn',   '🗄️ DB-Migration']);
+    if (data.impact.requirements_changed)  badges.push(['info',   '📦 Neue Abhängigkeiten']);
+    if (data.impact.restart_required)      badges.push(['info',   '🔄 Neustart erforderlich']);
+    badges.forEach(([cls, label]) => {
+      const b = document.createElement('span');
+      b.className = `impact-badge ${cls}`;
+      b.textContent = label;
+      il.appendChild(b);
+    });
+  }
+
+  // Commits
+  const ca = document.getElementById('commits-area');
+  const cl = document.getElementById('commit-list');
+  if (data.available && data.commits && data.commits.length > 0) {
+    cl.innerHTML = '';
+    data.commits.forEach(c => {
+      const li = document.createElement('li');
+      const parts = c.match(/^([0-9a-f]+)\s+(.+)$/);
+      if (parts) {
+        li.innerHTML = `<span class="commit-hash">${parts[1]}</span>${_esc(parts[2])}`;
+      } else {
+        li.textContent = c;
+      }
+      cl.appendChild(li);
+    });
+    ca.style.display = '';
+  } else {
+    ca.style.display = 'none';
+  }
+
+  // Aktuell vs. Update verfügbar
+  _hasUpdate = data.available;
+  document.getElementById('up-to-date').style.display    = data.available ? 'none' : '';
+  document.getElementById('update-action').style.display = data.available ? ''     : 'none';
+
+  document.getElementById('result').style.display = '';
+}
+
+async function startUpdate() {
+  if (!_hasUpdate) return;
+  if (!confirm('Update jetzt starten?\n\nAlle Apps werden kurz gestoppt und neu gestartet.')) return;
+
+  const btn = document.getElementById('btn-update');
+  btn.disabled = true;
+  btn.textContent = '⏳ Update läuft …';
+
+  const logBox = document.getElementById('log-box');
+  logBox.style.display = '';
+  logBox.textContent = 'Update gestartet – bitte warten …\n';
+
+  let data;
+  try {
+    const r = await fetch('/api/system/update', { method: 'POST' });
+    data = await r.json();
+  } catch (e) {
+    logBox.textContent += '\nVerbindungsfehler: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '⬆️ Update jetzt installieren';
+    return;
+  }
+
+  if (!data.ok) {
+    logBox.textContent += '\nFehler: ' + (data.error || 'unbekannt');
+    btn.disabled = false;
+    btn.textContent = '⬆️ Update jetzt installieren';
+    return;
+  }
+
+  logBox.textContent += 'Fortschritt wird nach /tmp/caoxt-update.log geschrieben.\n';
+  logBox.textContent += 'Die Verwaltungs-App wird in Kürze neu starten – bitte Seite neu laden.\n';
+
+  // Seite nach 15 s neu laden
+  setTimeout(() => window.location.reload(), 15000);
+}
+
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  box.textContent = msg;
+  box.style.display = '';
+}
+
+function _esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

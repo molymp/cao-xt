@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# install.sh – CAO-XT Installationsroutine
+# install.sh – CAO-XT Installationsroutine & Update
 #
 # Prüft Systemvoraussetzungen, richtet ein virtuelles Python-
 # Environment ein und startet den interaktiven Installer.
@@ -8,8 +8,10 @@
 # Verwendung:
 #   ./install.sh                   # Interaktive Installation
 #   ./install.sh --non-interactive # Automatisch (aus Umgebung / INI)
+#   ./install.sh --update          # System updaten (Fallback)
+#   ./install.sh --check-update    # Nur auf Updates prüfen
 #
-# Referenz: HAB-355
+# Referenz: HAB-355, HAB-356
 # ============================================================
 set -euo pipefail
 
@@ -98,6 +100,25 @@ for APP_REQ in "$SCRIPT_DIR"/*/app/requirements.txt; do
 done
 
 echo ""
+
+# ── Update-Modus ──────────────────────────────────────────────
+# --update und --check-update werden an installer/updater.py weitergeleitet.
+# Alle anderen Argumente gehen an installer/install.py.
+for arg in "$@"; do
+    case "$arg" in
+        --update)
+            echo "─── Update-Modus ───────────────────────────────────────────"
+            echo ""
+            exec "$PYTHON" -m installer.updater --update
+            ;;
+        --check-update)
+            echo "─── Update-Prüfung ─────────────────────────────────────────"
+            echo ""
+            exec "$PYTHON" -m installer.updater --check
+            ;;
+    esac
+done
+
 echo "─── Installer starten ──────────────────────────────────────"
 echo ""
 

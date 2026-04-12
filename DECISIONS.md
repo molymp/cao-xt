@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-12 Update-Mechanismus: Git-basiert + VERSION.json (HAB-356)
+
+- **Problem:** Es gab keinen Mechanismus, um Anwender über neue Versionen zu informieren und Updates durchzuführen. Manuelle git-Befehle sind fehleranfällig und für Nicht-Techniker unzumutbar.
+- **Entscheidung:** Hybrider Ansatz: git-basierte Update-Erkennung (`git fetch` + Versionsvergleich via `VERSION.json`) + geführter Update-Ablauf in der Verwaltungs-App. `installer/updater.py` als CLI-Fallback, `install.sh --update` als letzter Rettungsanker bei defekter App.
+- **Begründung:** Kein externer Server nötig, CHANGELOG direkt aus dem Repo, Rollback via `git reset --hard` automatisch. Update nur auf manuelle Anfrage (kein Polling) – vermeidet Netzwerkprobleme bei Firewalls.
+- **Alternativen:** (a) Versionsdatei auf eigenem Server (Infrastrukturaufwand), (b) GitHub Releases API (GitHub-Abhängigkeit, Rate Limits), (c) Automatische tägliche Prüfung (Backlog-Item).
+- **Konsequenzen:** `VERSION.json` muss bei jedem Release gepflegt werden. Impact-Flags (`db_migration_required`, `requirements_changed`, `restart_required`, `breaking_change`) müssen korrekt gesetzt sein. Update-Log nach `/tmp/caoxt-update.log`.
+- **Referenz:** [HAB-356](/HAB/issues/HAB-356)
+
 ## 2026-04-12 Installationsroutine: Bash-Wrapper + Python-Kern + dorfkern-ctl (HAB-355)
 
 - **Problem:** Es gab keine standardisierte Möglichkeit, cao-xt frisch zu installieren oder alle Apps zentral zu steuern. Neue Installationen mussten manuell konfiguriert werden.
