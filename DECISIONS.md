@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-12 Verwaltungs-App als eigenständige Flask-App (Port 5004) (HAB-330)
+
+- **Problem:** Admin-Funktionen (DB-Konfiguration, Drucker, Terminals, TSE) wurden bisher nicht zentral verwaltet. Konfigurationsänderungen erforderten direkten Dateizugriff.
+- **Entscheidung:** Neue eigenständige Flask-App `verwaltung-app` auf Port 5004 nach dem Thin-Wrapper-Pattern der bestehenden Apps.
+- **Begründung:** Gleiche Architektur wie kasse-app/kiosk-app/wawi-app – geringer Lernaufwand, konsistente Deployment-Strategie, einfache Erweiterung.
+- **Alternativen:** (a) Admin-Bereich in bestehender WaWi-App integrieren (vermischt Verantwortlichkeiten), (b) Separates Admin-Framework (zu viel Overhead).
+- **Konsequenzen:** Vierter App-Prozess auf dem System. Login-Schutz ist obligatorisch, da Admin-Zugang kritische DB-Konfiguration enthält.
+- **Referenz:** [HAB-330](/HAB/issues/HAB-330), [HAB-335](/HAB/issues/HAB-335)
+
 ## 2026-04-06 Verbindliche Merge-Pflicht: Sofort-Merge nach Board-Freigabe (HAB-267)
 
 - **Problem:** Fix-Branches wurden implementiert und im Review-Worktree getestet, aber nie in `master` gemergt. Bereits gefixte Issues tauchten erneut auf, weil die Fixes zwar auf Branches existierten, aber nie in die Produktionsbasis landeten. Beispiel: `claude/hab-101-bon-timestamp` existierte Wochen ohne Merge. Das Board verlor das Vertrauen in die Stabilität des Systems.
