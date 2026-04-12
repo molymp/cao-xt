@@ -38,9 +38,6 @@ def _inject_globals():
         "wawi_url":          config.WAWI_URL or (
                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
                                  if config.WAWI_PORT else ''),
-        "verwaltung_url":    config.VERWALTUNG_URL or (
-                                 f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
-                                 if config.VERWALTUNG_PORT else ''),
         "git_commit_short":  GIT_COMMIT_SHORT,
     }
 
