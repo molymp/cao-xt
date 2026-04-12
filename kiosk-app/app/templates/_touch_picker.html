@@ -1,0 +1,565 @@
+{# ── Touch-optimierte Date/Time-Picker für Touchscreen-Kiosk ── #}
+
+<style>
+/* ── Picker-Overlay ── */
+.picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 9000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+}
+.picker-overlay.sichtbar { display: flex; }
+
+.picker-dialog {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    max-width: 420px;
+    width: 92vw;
+    overflow: hidden;
+    animation: picker-rein 0.2s ease-out;
+}
+@keyframes picker-rein {
+    from { transform: scale(0.9); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+}
+
+.picker-kopf {
+    background: var(--gruen-dunkel);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.picker-titel {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+.picker-schliessen {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 1.1rem;
+    width: 44px; height: 44px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+}
+.picker-schliessen:active { background: rgba(255,255,255,0.3); }
+
+/* ── Kalender ── */
+.kalender-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--creme-dunkel);
+}
+.kalender-nav-btn {
+    width: 52px; height: 52px;
+    border: none;
+    border-radius: 50%;
+    background: var(--creme);
+    font-size: 1.3rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+    -webkit-tap-highlight-color: transparent;
+}
+.kalender-nav-btn:active { background: var(--creme-warm); }
+.kalender-monat {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+}
+
+.kalender-kopfzeile {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 8px 12px 4px;
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-hell);
+}
+
+.kalender-gitter {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 4px 12px 12px;
+    gap: 4px;
+}
+.kalender-tag {
+    width: 100%;
+    aspect-ratio: 1;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--text-dunkel);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 44px;
+}
+.kalender-tag:active:not(:disabled):not(.leer) { background: var(--creme-warm); }
+.kalender-tag.heute {
+    border: 2px solid var(--gruen-hell);
+}
+.kalender-tag.gewaehlt {
+    background: var(--gruen-hell);
+    color: white;
+}
+.kalender-tag.leer {
+    visibility: hidden;
+    cursor: default;
+}
+.kalender-tag:disabled {
+    color: var(--grau-mitte);
+    cursor: default;
+    opacity: 0.4;
+}
+
+.kalender-fuss {
+    display: flex;
+    gap: 8px;
+    padding: 0 16px 16px;
+}
+.kalender-fuss .btn {
+    flex: 1;
+    padding: 14px 8px;
+    font-size: 1rem;
+}
+
+/* ── Zeit-Picker ── */
+.zeit-picker-inhalt {
+    padding: 20px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.zeit-spalte {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.zeit-hoch, .zeit-runter {
+    width: 72px; height: 56px;
+    border: none;
+    border-radius: 10px;
+    background: var(--creme);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Nunito', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+.zeit-hoch:active, .zeit-runter:active { background: var(--creme-warm); }
+.zeit-wert {
+    font-size: 2.8rem;
+    font-weight: 800;
+    color: var(--gruen-dunkel);
+    width: 72px;
+    text-align: center;
+    line-height: 1;
+    padding: 4px 0;
+}
+.zeit-trenner {
+    font-size: 2.8rem;
+    font-weight: 800;
+    color: var(--gruen-dunkel);
+    padding-top: 14px;
+}
+.zeit-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-hell);
+    margin-top: 4px;
+}
+
+.zeit-fuss {
+    display: flex;
+    gap: 8px;
+    padding: 0 16px 16px;
+}
+.zeit-fuss .btn {
+    flex: 1;
+    padding: 14px 8px;
+    font-size: 1rem;
+}
+
+/* ── Kategorie-Filter ── */
+.kat-filter-leiste {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--creme-dunkel);
+}
+.kat-filter-leiste::-webkit-scrollbar { display: none; }
+.kat-filter-btn {
+    padding: 8px 16px;
+    border: 2px solid var(--creme-dunkel);
+    border-radius: 20px;
+    background: var(--creme);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 40px;
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.15s;
+}
+.kat-filter-btn.aktiv {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    border-color: var(--gruen-dunkel);
+}
+.kat-filter-btn:active:not(.aktiv) { background: var(--creme-warm); }
+</style>
+
+<!-- ── Datum-Picker Overlay ── -->
+<div class="picker-overlay" id="datum-picker-overlay">
+    <div class="picker-dialog">
+        <div class="picker-kopf">
+            <span class="picker-titel" id="datum-picker-titel">Datum wählen</span>
+            <button class="picker-schliessen" onclick="schliessDatumPicker()">✕</button>
+        </div>
+        <div class="kalender-nav">
+            <button class="kalender-nav-btn" onclick="kalenderMonat(-1)">◀</button>
+            <span class="kalender-monat" id="kalender-monat"></span>
+            <button class="kalender-nav-btn" onclick="kalenderMonat(1)">▶</button>
+        </div>
+        <div class="kalender-kopfzeile">
+            <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
+            <span>Fr</span><span>Sa</span><span>So</span>
+        </div>
+        <div class="kalender-gitter" id="kalender-gitter"></div>
+        <div class="kalender-fuss">
+            <button class="btn btn-sekundaer" onclick="datumPickerHeute()">Heute</button>
+            <button class="btn btn-sekundaer" onclick="datumPickerLoeschen()">Löschen</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Zeit-Picker Overlay ── -->
+<div class="picker-overlay" id="zeit-picker-overlay">
+    <div class="picker-dialog">
+        <div class="picker-kopf">
+            <span class="picker-titel">Uhrzeit wählen</span>
+            <button class="picker-schliessen" onclick="schliessZeitPicker()">✕</button>
+        </div>
+        <div class="zeit-picker-inhalt">
+            <div class="zeit-spalte">
+                <button class="zeit-hoch" onclick="zeitAendern('h', 1)">▲</button>
+                <div class="zeit-wert" id="zeit-h">08</div>
+                <button class="zeit-runter" onclick="zeitAendern('h', -1)">▼</button>
+                <div class="zeit-label">Stunde</div>
+            </div>
+            <div class="zeit-trenner">:</div>
+            <div class="zeit-spalte">
+                <button class="zeit-hoch" onclick="zeitAendern('m', 5)">▲</button>
+                <div class="zeit-wert" id="zeit-m">00</div>
+                <button class="zeit-runter" onclick="zeitAendern('m', -5)">▼</button>
+                <div class="zeit-label">Minute</div>
+            </div>
+        </div>
+        <div class="zeit-fuss">
+            <button class="btn btn-sekundaer" onclick="zeitPickerLoeschen()">Löschen</button>
+            <button class="btn btn-primaer" onclick="zeitPickerUebernehmen()">Übernehmen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// DATUM-PICKER
+// ═══════════════════════════════════════════════════
+
+let _dpZielInput = null;
+let _dpCallback  = null;
+let _dpJahr  = 2026;
+let _dpMonat = 0; // 0-basiert
+
+const MONATE = ['Januar','Februar','März','April','Mai','Juni',
+                'Juli','August','September','Oktober','November','Dezember'];
+
+function oeffneDatumPicker(inputId, callback, titel) {
+    _dpZielInput = document.getElementById(inputId);
+    _dpCallback  = callback;
+    if (titel) document.getElementById('datum-picker-titel').textContent = titel;
+    else document.getElementById('datum-picker-titel').textContent = 'Datum wählen';
+
+    // Aktuelles Datum aus Input lesen oder heute
+    const val = _dpZielInput.dataset.wert || '';
+    if (val) {
+        const teile = val.split('-');
+        _dpJahr  = parseInt(teile[0]);
+        _dpMonat = parseInt(teile[1]) - 1;
+    } else {
+        const jetzt = new Date();
+        _dpJahr  = jetzt.getFullYear();
+        _dpMonat = jetzt.getMonth();
+    }
+
+    kalenderRendern();
+    document.getElementById('datum-picker-overlay').classList.add('sichtbar');
+}
+
+function schliessDatumPicker() {
+    document.getElementById('datum-picker-overlay').classList.remove('sichtbar');
+    _dpZielInput = null;
+    _dpCallback  = null;
+}
+
+function kalenderMonat(delta) {
+    _dpMonat += delta;
+    if (_dpMonat < 0)  { _dpMonat = 11; _dpJahr--; }
+    if (_dpMonat > 11) { _dpMonat = 0;  _dpJahr++; }
+    kalenderRendern();
+}
+
+function kalenderRendern() {
+    document.getElementById('kalender-monat').textContent = MONATE[_dpMonat] + ' ' + _dpJahr;
+
+    const gitter = document.getElementById('kalender-gitter');
+    gitter.innerHTML = '';
+
+    const ersterTag = new Date(_dpJahr, _dpMonat, 1);
+    // getDay(): 0=So, 1=Mo ... → wir wollen Mo=0
+    let startWT = ersterTag.getDay() - 1;
+    if (startWT < 0) startWT = 6;
+
+    const tagImMonat = new Date(_dpJahr, _dpMonat + 1, 0).getDate();
+
+    const heute = new Date();
+    const heuteStr = `${heute.getFullYear()}-${String(heute.getMonth()+1).padStart(2,'0')}-${String(heute.getDate()).padStart(2,'0')}`;
+    const gewStr = _dpZielInput ? (_dpZielInput.dataset.wert || '') : '';
+
+    // Leere Felder vor dem 1.
+    for (let i = 0; i < startWT; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'kalender-tag leer';
+        btn.disabled = true;
+        gitter.appendChild(btn);
+    }
+
+    for (let tag = 1; tag <= tagImMonat; tag++) {
+        const btn = document.createElement('button');
+        btn.className = 'kalender-tag';
+        btn.textContent = tag;
+
+        const datumStr = `${_dpJahr}-${String(_dpMonat+1).padStart(2,'0')}-${String(tag).padStart(2,'0')}`;
+        if (datumStr === heuteStr) btn.classList.add('heute');
+        if (datumStr === gewStr) btn.classList.add('gewaehlt');
+
+        btn.addEventListener('click', () => datumGewaehlt(datumStr));
+        gitter.appendChild(btn);
+    }
+}
+
+function datumGewaehlt(isoStr) {
+    if (_dpZielInput) {
+        _dpZielInput.dataset.wert = isoStr;
+        // Anzeige: DD.MM.YYYY
+        const teile = isoStr.split('-');
+        _dpZielInput.value = `${teile[2]}.${teile[1]}.${teile[0]}`;
+    }
+    if (_dpCallback) _dpCallback(isoStr);
+    schliessDatumPicker();
+}
+
+function datumPickerHeute() {
+    const h = new Date();
+    const isoStr = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`;
+    datumGewaehlt(isoStr);
+}
+
+function datumPickerLoeschen() {
+    if (_dpZielInput) {
+        _dpZielInput.dataset.wert = '';
+        _dpZielInput.value = '';
+    }
+    if (_dpCallback) _dpCallback('');
+    schliessDatumPicker();
+}
+
+// ═══════════════════════════════════════════════════
+// ZEIT-PICKER
+// ═══════════════════════════════════════════════════
+
+let _zpZielInput = null;
+let _zpCallback  = null;
+let _zpH = 8;
+let _zpM = 0;
+
+function oeffneZeitPicker(inputId, callback) {
+    _zpZielInput = document.getElementById(inputId);
+    _zpCallback  = callback;
+
+    const val = _zpZielInput.dataset.wert || '';
+    if (val && val.includes(':')) {
+        const teile = val.split(':');
+        _zpH = parseInt(teile[0]) || 0;
+        _zpM = parseInt(teile[1]) || 0;
+    } else {
+        _zpH = 8;
+        _zpM = 0;
+    }
+    // Minuten auf 5er-Schritte runden
+    _zpM = Math.round(_zpM / 5) * 5;
+    if (_zpM >= 60) _zpM = 55;
+
+    zeitAnzeigenAktualisieren();
+    document.getElementById('zeit-picker-overlay').classList.add('sichtbar');
+}
+
+function schliessZeitPicker() {
+    document.getElementById('zeit-picker-overlay').classList.remove('sichtbar');
+    _zpZielInput = null;
+    _zpCallback  = null;
+}
+
+function zeitAendern(teil, delta) {
+    if (teil === 'h') {
+        _zpH = (_zpH + delta + 24) % 24;
+    } else {
+        _zpM = (_zpM + delta + 60) % 60;
+    }
+    zeitAnzeigenAktualisieren();
+}
+
+function zeitAnzeigenAktualisieren() {
+    document.getElementById('zeit-h').textContent = String(_zpH).padStart(2, '0');
+    document.getElementById('zeit-m').textContent = String(_zpM).padStart(2, '0');
+}
+
+function zeitPickerUebernehmen() {
+    const wert = `${String(_zpH).padStart(2,'0')}:${String(_zpM).padStart(2,'0')}`;
+    if (_zpZielInput) {
+        _zpZielInput.dataset.wert = wert;
+        _zpZielInput.value = wert + ' Uhr';
+    }
+    if (_zpCallback) _zpCallback(wert);
+    schliessZeitPicker();
+}
+
+function zeitPickerLoeschen() {
+    if (_zpZielInput) {
+        _zpZielInput.dataset.wert = '';
+        _zpZielInput.value = '';
+    }
+    if (_zpCallback) _zpCallback('');
+    schliessZeitPicker();
+}
+
+// ═══════════════════════════════════════════════════
+// KATEGORIE-FILTER
+// ═══════════════════════════════════════════════════
+
+let _aktiveKategorie = null; // null = Alle
+
+function rendereKategorieFilter(produkte) {
+    const leiste = document.getElementById('kat-filter-leiste');
+    if (!leiste) return;
+
+    // Kategorien aus Produkten extrahieren
+    const katSet = new Set();
+    produkte.forEach(p => katSet.add(p.kategorie_name || '– Sonstige –'));
+    const kategorien = Array.from(katSet);
+
+    // Wenn <= 1 Kategorie: Filter ausblenden
+    if (kategorien.length <= 1) {
+        leiste.style.display = 'none';
+        _aktiveKategorie = null;
+        return;
+    }
+
+    leiste.style.display = 'flex';
+    let html = `<button class="kat-filter-btn ${_aktiveKategorie === null ? 'aktiv' : ''}"
+                        onclick="setzeKategorieFilter(null)">Alle</button>`;
+    kategorien.forEach(kat => {
+        const aktiv = _aktiveKategorie === kat ? 'aktiv' : '';
+        html += `<button class="kat-filter-btn ${aktiv}"
+                         onclick="setzeKategorieFilter('${escHtml(kat)}')">${escHtml(kat)}</button>`;
+    });
+    leiste.innerHTML = html;
+}
+
+function setzeKategorieFilter(kat) {
+    _aktiveKategorie = kat;
+    rendereKategorieFilter(alleProdukte);
+    rendereProduktliste();
+}
+
+function gefilterteProdukte() {
+    if (_aktiveKategorie === null) return alleProdukte;
+    return alleProdukte.filter(p =>
+        (p.kategorie_name || '– Sonstige –') === _aktiveKategorie
+    );
+}
+
+// ═══════════════════════════════════════════════════
+// HELFER: Datum-Input initialisieren
+// ═══════════════════════════════════════════════════
+
+function initDatumInput(inputId, isoWert) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    if (isoWert) {
+        el.dataset.wert = isoWert;
+        const teile = isoWert.split('-');
+        el.value = `${teile[2]}.${teile[1]}.${teile[0]}`;
+    } else {
+        el.dataset.wert = '';
+        el.value = '';
+    }
+}
+
+function initZeitInput(inputId, zeitWert) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    if (zeitWert) {
+        const kurz = zeitWert.substring(0, 5);
+        el.dataset.wert = kurz;
+        el.value = kurz + ' Uhr';
+    } else {
+        el.dataset.wert = '';
+        el.value = '';
+    }
+}
+
+function getDatumWert(inputId) {
+    const el = document.getElementById(inputId);
+    return el ? (el.dataset.wert || '') : '';
+}
+
+function getZeitWert(inputId) {
+    const el = document.getElementById(inputId);
+    return el ? (el.dataset.wert || '') : '';
+}
+</script>
