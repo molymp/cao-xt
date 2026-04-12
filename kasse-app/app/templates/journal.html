@@ -265,6 +265,9 @@ async function suchen() {
   const params = new URLSearchParams({ datum_von: von, datum_bis: bis });
   if (bonNr) params.set('bon_nr', bonNr);
 
+  // Cache leeren — DOM-Elemente werden neu gerendert
+  Object.keys(posCache).forEach(k => delete posCache[k]);
+
   const el = document.getElementById('ergebnisse');
   el.innerHTML = '<div style="color:var(--th);padding:16px;">Suche läuft…</div>';
 
@@ -335,8 +338,8 @@ async function suchen() {
           <td>${badge}${trainingBadge ? ' ' + trainingBadge : ''}</td>
           <td>${zBonZelle}</td>
           <td class="j-aktionen" onclick="event.stopPropagation()">
-            <button class="j-btn j-btn-neu" onclick="nachdrucken(${v.ID})">🖨️ Nochmal</button>
-            <button class="j-btn j-btn-neu" onclick="kopieren(${v.ID})">📋 Kopieren</button>
+            <button class="j-btn j-btn-neu" onclick="nachdrucken(${v.ID})">🖨️ Nachdruck</button>
+            <button class="j-btn j-btn-neu" onclick="kopieren(${v.ID})">📋 Pos. in neuen Bon</button>
             ${stornoBtn}
           </td>
         </tr>
