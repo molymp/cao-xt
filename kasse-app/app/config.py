@@ -11,9 +11,10 @@ if _REPO_ROOT not in sys.path:
 
 from common.config import load_db_config, load_environment
 
-_cfg        = load_db_config("KASSE")
-XT_ENVIRONMENT = load_environment()
-DB_HOST     = _cfg['host']
+_cfg             = load_db_config("KASSE")
+XT_ENVIRONMENT   = load_environment()
+TRAININGSMODUS   = (XT_ENVIRONMENT == 'training')
+DB_HOST          = _cfg['host']
 DB_PORT     = _cfg['port']
 DB_NAME     = _cfg['name']
 DB_USER     = _cfg['user']

@@ -127,19 +127,18 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
-## 2026-04-12 Prod/Training/Sandbox-Trennung: Separate Datenbanken + XT_ENVIRONMENT-Flag (HAB-350)
+## 2026-04-12 Kasse-Trainingsmodus: App-Flag statt separater Datenbank (HAB-350)
 
-- **Problem:** Die Kasse schreibt Buchungsdaten (JOURNAL, JOURNALPOS etc.) in die CAO-Faktura-DB. Im Trainings- und Sandbox-Betrieb müssen Testbuchungen sauber von Produktivdaten getrennt sein – andernfalls riskieren wir gefälschte Journaldaten, falsche Kassenbücher und einen KassenSichV/GoBD-Verstoß.
-- **Entscheidung:** **Option A (Separate Datenbanken)** mit einem gemeinsamen Umgebungs-Flag:
-  1. `xt_environment` in `caoxt.ini [Umgebung]` (Werte: `production` | `training` | `sandbox`). Überschreibbar per `XT_ENVIRONMENT` Env-Var.
-  2. `production` → nutzt immer `db_name` direkt.
-  3. `training` → nutzt `db_name_training` (caoxt.ini) oder `<db_name>_training` als Auto-Suffix.
-  4. `sandbox` → nutzt `db_name_sandbox` (caoxt.ini) oder `<db_name>_sandbox` als Auto-Suffix.
-  5. Expliziter `DB_NAME` / `<APP>_DB_NAME` Env-Var überschreibt immer (maximale Flexibilität).
-  6. Neue Funktion `load_environment()` in `common/config.py`. Alle vier App-Configs exponieren `XT_ENVIRONMENT`.
-- **Begründung:** Getrennte Datenbanken sind die einzige Lösung mit totaler Isolation: ein Bug kann keine Testdaten in die Produktiv-DB schreiben. Der gemeinsame `xt_environment`-Eintrag in `caoxt.ini` macht die Umgebung für jeden Prozess auf dem System sichtbar und konsistent. Die Auto-Suffix-Logik vereinfacht das Setup: für eine einfache Trainingsumgebung reicht es, `xt_environment=training` zu setzen, ohne eine zweite `db_name_training`-Zeile zu brauchen.
-- **Alternativen:** (a) Option B (Flag-Spalte in Buchungstabellen) – abgelehnt: Produktiv-DB enthält weiterhin Testdaten, KassenSichV-Konformität unklar. (b) Nur Env-Var ohne ini-Eintrag – abgelehnt: Umgebung wäre nicht persistent konfigurierbar, kein Installations-Wizard-Support.
-- **Konsequenzen:** AP 4 (Installationsroutine / Setup-Wizard) muss `xt_environment` beim ersten Start in `caoxt.ini` schreiben. Für Training/Sandbox muss die DB-Init-Routine eine eigene leere Datenbank anlegen. Die Kiosk-App-DB (`Backwaren`) ist produktionsneutral und von dieser Trennung nicht betroffen (sie enthält keine Buchungsdaten).
+- **Problem:** Kassenpersonal muss auf Basis echter Artikel- und Kundendaten die Kassenbedienung üben können. Im Trainingsmodus dürfen dabei keine echten, TSE-signierten und steuerrelevanten Buchungen entstehen. Alle anderen Apps (Kiosk, WaWi, Verwaltung) erzeugen ohnehin keine steuerrelevanten Buchungen.
+- **Entscheidung:** **Kasse-spezifischer Trainingsmodus** ohne Datenbankwechsel:
+  1. `xt_environment` in `caoxt.ini [Umgebung]` (Werte: `produktion` | `training`). Überschreibbar per `XT_ENVIRONMENT` Env-Var.
+  2. Alle Apps nutzen weiterhin **dieselbe Datenbank** – kein DB-Wechsel je Modus.
+  3. `common/config.py` stellt `load_environment()` bereit; Kasse-Config exponiert `TRAININGSMODUS = (XT_ENVIRONMENT == 'training')`.
+  4. Im Trainingsmodus: Kassiervorgang läuft vollständig durch (Artikelauswahl, Summenberechnung), aber **keine JOURNAL/JOURNALPOS-Inserts, keine TSE-Signierung**. Bon-Druck optional mit deutlichem „TRAINING"-Aufdruck.
+  5. AP 4 (Installationsroutine) schreibt `xt_environment` beim Setup-Wizard in `caoxt.ini`.
+- **Begründung:** Trainierende brauchen echte Artikel- und Kundendaten, keine leere Test-DB. Ein App-Flag in der Kasse löst das Problem ohne DB-Infrastruktur. TSE-Bypass ist im Trainingsmodus konform, da keine steuerrelevante Transaktion entsteht.
+- **Alternativen:** (a) Separate Trainingsdatenbank – abgelehnt: Echte Artikel-/Kundendaten nicht verfügbar, unnötiger Setup-Aufwand (Board-Entscheid). (b) Training-Flag-Spalte in JOURNAL – abgelehnt: Erfordert Schema-Migration, Testdaten in Produktiv-DB. (c) Fiskaly Sandbox-TSE immer – abgelehnt: Koppelt Trainingsmodus an externe TSE-Infrastruktur.
+- **Konsequenzen:** Flask-Entwickler implementiert `TRAININGSMODUS`-Logik in der Kasse (JOURNAL-Bypass, TSE-Bypass, UI-Banner „TRAININGSMODUS"). Verwaltungs-App kann `xt_environment` über das Einstellungs-UI umschalten (AP 4).
 - **Referenz:** [HAB-350](/HAB/issues/HAB-350)
 
 ---
