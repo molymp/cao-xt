@@ -119,8 +119,13 @@ start_app() {
             return 1
         fi
     done
+    # Letzter Check: Port könnte durch Reloader erst jetzt bereit sein
+    if lsof -ti :"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "   ✅ $NAME gestartet (nach Timeout-Wartezeit)"
+        return 0
+    fi
     echo "   ⚠️  $NAME nicht gestartet (Timeout) – Log: $LOG"
-    return 1
+    return 0  # Kein hard exit – andere Apps weiter starten
 }
 
 # ── Alle vier Apps starten ───────────────────────────────────
