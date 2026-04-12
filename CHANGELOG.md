@@ -22,6 +22,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - WaWi Preispflege: Artikelfilter erweitert – zeigt jetzt alle aktiven Artikel (Normal, Frei, Stückliste) statt nur Normalartikel; neue Typ-Spalte; Faktor zeigt „–" wenn VK5 oder EK = 0 ([HAB-293](/HAB/issues/HAB-293))
 
 ### Hinzugefügt
+- Installationsroutine: `install.sh` (Bash-Wrapper) + `installer/`-Paket mit `install.py`, `app_manager.py`, `db_init.py`; `dorfkern-ctl` für install/start/stop/restart/status aller vier Apps; CAO-DB-Erkennung über MITARBEITER-Tabelle; idempotente XT_*-Tabellen-Initialisierung; Umgebungs-Flag (produktion/training) in caoxt.ini ([HAB-355](/HAB/issues/HAB-355))
 - Kasse Trainingsmodus: `xt_environment`-Flag (`produktion`|`training`) in `caoxt.ini [Umgebung]`; `load_environment()` in `common/config.py`; Kasse-Config exponiert `TRAININGSMODUS`-Boolean – Grundlage für JOURNAL/TSE-Bypass im Trainingsmodus ([HAB-350](/HAB/issues/HAB-350))
 - Entwicklungsinfrastruktur: `deploy-review.sh` startet jetzt alle vier Apps (Kiosk 5001, Kasse 5002, WaWi 5003, Verwaltung 5004) im Review-Worktree; Konfigurationsprüfung und `.deployed`-Marker hinzugefügt ([HAB-345](/HAB/issues/HAB-345))
 - Verwaltungs-App (Port 5004): Neue Admin-App mit DB-Konfiguration, Bondrucker-Verwaltung (CRUD), Terminal-Verwaltung, TSE-Geräte-Konfiguration und Login-Schutz ([HAB-330](/HAB/issues/HAB-330), [HAB-335](/HAB/issues/HAB-335))
