@@ -10,7 +10,7 @@ _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from common.config import load_db_config
+from common.config import load_db_config, load_environment
 
 # ── Datenbank ─────────────────────────────────────────────────
 # Host/Port/User/Password aus caoxt.ini (gleicher MySQL-Server wie CAO Faktura).
@@ -18,6 +18,7 @@ from common.config import load_db_config
 # die von der CAO-Faktura-DB (db_name in caoxt.ini) abweicht.
 # Überschreiben via Env-Var KIOSK_DB_NAME oder config_local.py.
 _cfg        = load_db_config("KIOSK")
+XT_ENVIRONMENT = load_environment()
 DB_HOST     = _cfg['host']
 DB_PORT     = _cfg['port']
 DB_USER     = _cfg['user']

@@ -9,9 +9,10 @@ _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from common.config import load_db_config
+from common.config import load_db_config, load_environment
 
 _cfg        = load_db_config("VERWALTUNG")
+XT_ENVIRONMENT = load_environment()
 DB_HOST     = _cfg['host']
 DB_PORT     = _cfg['port']
 DB_NAME     = _cfg['name']
