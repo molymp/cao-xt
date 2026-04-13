@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-13 Terminal 9: Kunden-Selbstbedienung als Cookie-basierter Modus (HAB-360)
+
+- **Problem:** Kunden sollen eigenständig Backwarenbestellungen am Kiosk anlegen können, ohne Mitarbeiter-Daten oder fremde Bestellungen zu sehen.
+- **Entscheidung:** Terminal 9 = Kunden-Modus. Erkennung über `kiosk_terminal`-Cookie (1-9). Bei Terminal 9 wird nach Mitarbeiter-Login auf einen Kunden-Scan-Bildschirm umgeleitet. Kundenkarte (KARTEN.TYP='K') löst Kunden-Session aus. Eigenes Base-Template (`kunden_base.html`) mit vereinfachter Navigation. `XT_KIOSK_KONTAKTE.adr_id` verknüpft Kiosk-Kontakte mit CAO-ADRESSEN.
+- **Begründung:** Cookie-basierte Terminal-Erkennung (statt config.ini) erlaubt Wechsel ohne Neustart. Eigenes Base-Template vermeidet Zugriff auf Mitarbeiter-Funktionen. Terminal-Einstellung als eigene Seite im Kiosk-Menü (statt Verwaltungs-App), da Cookie auf gleicher Domain/Port gesetzt werden muss.
+- **Alternativen:** (a) Eigene Kunden-App auf separatem Port (Infrastrukturaufwand), (b) Terminal-Konfig in DB statt Cookie (siehe Backlog [HAB-367](/HAB/issues/HAB-367)), (c) URL-Parameter statt Cookie (nicht persistent).
+- **Konsequenzen:** DB-Migration M1 erforderlich (`adr_id` in `XT_KIOSK_KONTAKTE`). Kunden sehen nur eigene Bestellungen (Filter über `kontakt_id`). Login-Button auf Scan-Seite für Admin-Zugang. Bestellungen bearbeiten (Positionen ändern) steht noch aus.
+- **Referenz:** [HAB-360](/HAB/issues/HAB-360)
+
 ## 2026-04-12 Update-Mechanismus: Git-basiert + VERSION.json (HAB-356)
 
 - **Problem:** Es gab keinen Mechanismus, um Anwender über neue Versionen zu informieren und Updates durchzuführen. Manuelle git-Befehle sind fehleranfällig und für Nicht-Techniker unzumutbar.
