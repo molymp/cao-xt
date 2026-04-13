@@ -318,7 +318,7 @@ def _kunde_per_karte(guid: str) -> dict | None:
         cur.execute(
             """SELECT a.REC_ID AS id, a.KUNNUM1 AS kunnum,
                       CONCAT(IFNULL(a.NAME1,''), ' ', IFNULL(a.NAME2,'')) AS name,
-                      IFNULL(a.TELEFON1, '') AS telefon
+                      IFNULL(a.TELE1, '') AS telefon
                FROM KARTEN k
                JOIN ADRESSEN a ON a.REC_ID = k.ADR_ID
                WHERE k.GUID = %s AND k.TYP = 'K'""",
