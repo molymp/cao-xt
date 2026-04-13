@@ -9,6 +9,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Hinzugefügt
 - Verwaltungs-App: Neue Seite „Funktionen" – Feature-Toggles für Kiosk- und Kasse-Parken ein-/ausschalten; Deaktivierung nur möglich wenn kein Bon geparkt ist ([HAB-368](/HAB/issues/HAB-368))
+- Verwaltungs-App: Mitarbeiter-Handbuch mit Sidebar-Link, Bearbeitungsmodus und Bild-Upload – analog zu Kasse- und Kiosk-Handbuch ([HAB-368](/HAB/issues/HAB-368))
 - Kiosk Terminal 9: Kunden-Selbstbedienungsterminal für Backwarenbestellungen – Kundenkarten-Scan (KARTEN.TYP='K'), eigene Bestellungen anlegen/einsehen/stornieren, Touch-optimierte Oberfläche, Terminal-Einstellung als eigene Seite im Menü, Login-Button für Rückkehr zur Mitarbeiter-Ansicht ([HAB-360](/HAB/issues/HAB-360))
 - Alle Apps: Commit-ID auf allen Login-Seiten (Kiosk, Kasse, WaWi, Verwaltung) ([HAB-360](/HAB/issues/HAB-360))
 - Kasse: Kundenkarten-Scan – bei Scan einer Kundenkarte (KARTEN.TYP='K') wird der Kunde automatisch dem Vorgang zugewiesen; Name, Ort, Preisebene und Zahlart erscheinen sofort ([HAB-359](/HAB/issues/HAB-359))
