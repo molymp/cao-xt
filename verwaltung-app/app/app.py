@@ -3,9 +3,10 @@ CAO-XT Verwaltungs-App – Flask-Hauptanwendung
 Starten: cd verwaltung-app/app && python3 app.py
 """
 from flask import (Flask, render_template, request, jsonify,
-                   redirect, url_for, session)
+                   redirect, url_for, session, send_from_directory)
 from functools import wraps
 from datetime import datetime
+import base64
 import configparser
 import hashlib
 import os
@@ -27,6 +28,7 @@ app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_DOKU_DIR = os.path.join(BASE_DIR, 'doku')
 
 
 # ── DB-Migrationen ──────────────────────────────────────────────
@@ -596,6 +598,76 @@ def api_einstellung_setzen(schluessel: str):
         return jsonify(ok=True)
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
+
+
+# ── Handbuch ─────────────────────────────────────────────────────
+
+@app.get('/verwaltung/doku/<path:dateiname>')
+@_login_required
+def verwaltung_doku_datei(dateiname):
+    """Statische Dateien aus dem doku/-Verzeichnis (Bilder für Handbuch)."""
+    return send_from_directory(os.path.abspath(_DOKU_DIR), dateiname)
+
+
+@app.get('/verwaltung/handbuch')
+@_login_required
+def verwaltung_handbuch():
+    """Mitarbeiter-Handbuch – alle eingeloggten User dürfen lesen,
+    Administratoren dürfen bearbeiten."""
+    pfad = os.path.join(_DOKU_DIR, 'handbuch.html')
+    try:
+        with open(pfad, encoding='utf-8') as f:
+            html = f.read()
+    except FileNotFoundError:
+        return 'Handbuch nicht gefunden.', 404
+    ist_admin = bool(session.get('admin') or session.get('ma_id'))
+    inject = (f'<script id="hb-inject">'
+              f'window.HANDBUCH_ADMIN = {"true" if ist_admin else "false"};'
+              f'</script>\n')
+    html = html.replace('</head>', inject + '</head>', 1)
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@app.post('/verwaltung/handbuch/speichern')
+@_login_required
+def verwaltung_handbuch_speichern():
+    """Speichert das bearbeitete Handbuch. Backup der alten Version wird angelegt."""
+    data = request.get_json(force=True) or {}
+    html = data.get('html', '').strip()
+    if not html:
+        return jsonify({'ok': False, 'fehler': 'Kein Inhalt'}), 400
+    pfad   = os.path.join(_DOKU_DIR, 'handbuch.html')
+    backup = pfad + '.bak'
+    try:
+        if os.path.exists(pfad):
+            with open(pfad, 'rb') as f_in, open(backup, 'wb') as f_bak:
+                f_bak.write(f_in.read())
+        with open(pfad, 'w', encoding='utf-8') as f:
+            f.write(html)
+    except OSError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True})
+
+
+@app.post('/verwaltung/handbuch/upload')
+@_login_required
+def verwaltung_handbuch_upload():
+    """Speichert ein hochgeladenes Bild im doku/-Verzeichnis."""
+    data      = request.get_json(force=True) or {}
+    dateiname = os.path.basename(data.get('filename', ''))
+    b64data   = data.get('data', '')
+    if not dateiname or not b64data:
+        return jsonify({'ok': False, 'fehler': 'filename oder data fehlt'}), 400
+    if ',' in b64data:
+        b64data = b64data.split(',', 1)[1]
+    try:
+        bild_bytes = base64.b64decode(b64data)
+        ziel = os.path.join(_DOKU_DIR, dateiname)
+        with open(ziel, 'wb') as f:
+            f.write(bild_bytes)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True, 'filename': f'/verwaltung/doku/{dateiname}'})
 
 
 # ── System: Updates ──────────────────────────────────────────────

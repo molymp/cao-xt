@@ -24,6 +24,7 @@ Die Sidebar links gliedert sich in zwei Bereiche:
 | System   | **Updates**      | System-Updates prüfen und installieren       |
 | Daten    | Backwaren        | Artikel für den Kiosk verwalten              |
 | Daten    | **Funktionen**   | Feature-Toggles für Kiosk- und Kasse-App    |
+| Hilfe    | **Handbuch**     | Mitarbeiter-Handbuch (lesbar, bearbeitbar)   |
 
 ---
 
