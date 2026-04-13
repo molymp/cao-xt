@@ -93,7 +93,7 @@ def mitarbeiter_login_karte(guid: str) -> dict | None:
     """Login per Mitarbeiter-Karte (Barcode-Scan).
 
     Liest KARTEN.GUID, prueft TYP='M' (Mitarbeiter) und loest ueber
-    KARTEN.ADR_ID den zugehoerigen MITARBEITER auf.
+    KARTEN.ID den zugehoerigen MITARBEITER auf.
 
     Args:
         guid: Gescannter Barcode-Wert (KARTEN.GUID).
@@ -108,7 +108,7 @@ def mitarbeiter_login_karte(guid: str) -> dict | None:
         cur.execute(
             """SELECT m.MA_ID, m.LOGIN_NAME, m.VNAME, m.NAME
                FROM KARTEN k
-               JOIN MITARBEITER m ON m.MA_ID = k.ADR_ID
+               JOIN MITARBEITER m ON m.MA_ID = k.ID
                WHERE k.GUID = %s AND k.TYP = 'M'""",
             (guid,)
         )
