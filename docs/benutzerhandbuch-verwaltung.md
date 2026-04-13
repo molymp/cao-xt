@@ -1,6 +1,6 @@
 # Benutzerhandbuch – Verwaltungs-App
 
-**Version:** 1.0.0 | **Stand:** 2026-04-12 | **App:** Verwaltung (Port 5004)
+**Version:** 1.1.0 | **Stand:** 2026-04-13 | **App:** Verwaltung (Port 5004)
 
 ---
 
@@ -77,7 +77,14 @@ Das Script schreibt den Fortschritt nach `/tmp/caoxt-update.log`.
 
 ## Login
 
-Die Verwaltungs-App prüft Anmeldedaten gegen die `MITARBEITER`-Tabelle der CAO-Datenbank.
+Die Verwaltungs-App bietet zwei Anmeldearten:
+
+### Kartenlogin (Barcode-Scan)
+Standardmäßig ist der Tab **„Karte scannen"** aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten akzeptiert (KARTEN.TYP='M').
+
+### Passwort-Login mit Touch-Tastatur
+Tab **„Passwort"** wählen. Benutzername und Passwort eingeben – bei Bedarf über die eingeblendete Touch-Tastatur (QWERTZ-Layout). Shift (⇧) für Großbuchstaben, Backspace (⌫) zum Löschen, OK zum Absenden.
+
 Passwörter werden als MD5-Hash gespeichert (CAO-Standard).
 
 ---

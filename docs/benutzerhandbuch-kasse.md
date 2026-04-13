@@ -1,13 +1,25 @@
 # Benutzerhandbuch: Kasse-App
 
-**Version:** 0.2.0
-**Letzte Aktualisierung:** 2026-04-12
+**Version:** 0.3.0
+**Letzte Aktualisierung:** 2026-04-13
 
 ---
 
 ## Überblick
 
 Die Kasse-App (`kasse-app/`) ist die Kassierapplikation des Dorfladens Habach. Sie läuft auf einem Raspberry Pi und ermöglicht den Verkaufsprozess an der Kasse.
+
+---
+
+## Anmeldung
+
+Die Kasse-App bietet zwei Anmeldearten:
+
+### Kartenlogin (Barcode-Scan)
+Standardmäßig ist der Tab **„Karte scannen"** aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten akzeptiert (KARTEN.TYP='M').
+
+### Passwort-Login mit Touch-Tastatur
+Tab **„Passwort"** wählen. Benutzername und Passwort eingeben – bei Bedarf über die eingeblendete Touch-Tastatur (QWERTZ-Layout). Shift (⇧) für Großbuchstaben, Backspace (⌫) zum Löschen, OK zum Absenden.
 
 ---
 
