@@ -14,7 +14,8 @@ import time
 import config
 import db
 from db import get_db, get_db_transaction, cent_zu_euro_str
-from common.auth import login_required as _login_required, login_user, logout_user
+from common.auth import (login_required as _login_required, login_user,
+                         logout_user, mitarbeiter_login_karte)
 import ean as ean_modul
 import druck
 import mittagstisch as mt
@@ -253,6 +254,20 @@ def login_post():
         login_user(ma)
         return redirect(url_for('index'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
+
+
+@app.post('/login/karte')
+def login_karte():
+    """Login per Mitarbeiter-Karte (Barcode-Scan)."""
+    guid = request.form.get('guid', '').strip()
+    if not guid:
+        return render_template('login.html', fehler='Kein Barcode erkannt.')
+    ma = mitarbeiter_login_karte(guid)
+    if ma:
+        login_user(ma)
+        return redirect(url_for('index'))
+    return render_template('login.html',
+                           fehler='Karte nicht erkannt oder keine Mitarbeiterkarte.')
 
 
 @app.get('/logout')

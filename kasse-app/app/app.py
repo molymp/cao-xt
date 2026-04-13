@@ -17,7 +17,8 @@ import time
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
-from common.auth import login_required as _login_required, login_user, logout_user
+from common.auth import (login_required as _login_required, login_user,
+                         logout_user, mitarbeiter_login_karte)
 import kasse_logik as kl
 import druck
 import dsfinvk
@@ -274,7 +275,7 @@ def login_karte():
     guid = request.form.get('guid', '').strip()
     if not guid:
         return render_template('login.html', fehler='Kein Barcode erkannt.')
-    ma = kl.mitarbeiter_login_karte(guid)
+    ma = mitarbeiter_login_karte(guid)
     if ma:
         login_user(ma)
         return redirect(url_for('kasse'))
