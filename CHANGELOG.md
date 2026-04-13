@@ -8,6 +8,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Behoben
+- Verwaltungs-App: Bondrucker-Sidebar-Klick öffnet jetzt korrekt die Druckerliste statt sofort das Anlegen-Overlay – `display:none` als Initialzustand gesetzt, fehlende `.hidden`-CSS-Klasse in `base.html` ergänzt ([HAB-364](/HAB/issues/HAB-364))
 - Kasse UI: Artikelschnellzugriff-Bereich auf 380 px erhöht – fünfte Reihe wird nicht mehr abgeschnitten ([HAB-327](/HAB/issues/HAB-327))
 - Kasse UI: Münz-/Schein-/Zahlenknöpfe im Kassiervorgang-Overlay sind jetzt quadratisch (`aspect-ratio: 1/1`); Zahlengröße auf 15 px angeglichen (wie Hauptbildschirm) ([HAB-327](/HAB/issues/HAB-327))
 - Kasse UI: Bonnummer bekommt eigene Zeile über den Parken/Geparkt-Buttons – kein Platzkonflikt mehr ([HAB-327](/HAB/issues/HAB-327))
