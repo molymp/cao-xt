@@ -45,6 +45,8 @@ KASSE_URL  = os.environ.get('KASSE_URL',  '')   # oder z.B. http://192.168.1.x:5
 KASSE_PORT = int(os.environ.get('KASSE_PORT', '5002'))  # Fallback: gleicher Host, Port 5002
 WAWI_URL        = os.environ.get('WAWI_URL',  '')
 WAWI_PORT       = int(os.environ.get('WAWI_PORT',  '5003'))
+VERWALTUNG_URL  = os.environ.get('VERWALTUNG_URL', '')
+VERWALTUNG_PORT = int(os.environ.get('VERWALTUNG_PORT', '5004'))
 
 # ── Lokale Overrides (config_local.py, nicht in git) ──────────
 # Datei anlegen um die obigen Werte zu überschreiben, z.B.:
