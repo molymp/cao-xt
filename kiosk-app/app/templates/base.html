@@ -314,7 +314,9 @@
         {% else %}
         <span class="nav-app-inaktiv">📦 WaWi</span>
         {% endif %}
-        {# Verwaltung-App-Switch entfernt (HAB-361): zeigte auf nicht existierende App #}
+        {% if verwaltung_url %}
+        <a href="{{ verwaltung_url }}" class="nav-app-switch">⚙️ Verwaltung</a>
+        {% endif %}
     </div>
 
     <nav>
@@ -324,7 +326,7 @@
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
         <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
-        <a href="/admin/artikel" class="{% if '/admin' in request.path %}aktiv{% endif %}">⚙️ Verwaltung</a>
+        {# alter /admin/artikel-Link entfernt (HAB-361): Route nach Verwaltung-App migriert (HAB-354) #}
         {% if terminal_nr == 9 %}
         <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
         {% else %}
