@@ -1876,6 +1876,32 @@ def api_update_rollback(commit_hash):
     return jsonify({"ok": True, "ausgabe": ausgabe, "neustart": True})
 
 
+# ── Terminal-Einstellung ──────────────────────────────────────
+
+@_login_required
+@app.route("/terminal-einstellung")
+def terminal_einstellung():
+    return render_template("terminal_einstellung.html", terminal_nr=get_terminal_nr())
+
+
+@_login_required
+@app.route("/api/terminal-einstellung", methods=["POST"])
+def terminal_einstellung_setzen():
+    nr = request.json.get("nr") if request.is_json else None
+    try:
+        nr = int(nr)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Ungültige Terminal-Nr."}), 400
+    if nr < 1 or nr > 9:
+        return jsonify({"ok": False, "msg": "Terminal-Nr muss 1–9 sein."}), 400
+    resp = jsonify({"ok": True, "msg": f"Terminal {nr} gesetzt.", "nr": nr})
+    resp.set_cookie(
+        "kiosk_terminal", str(nr),
+        max_age=365 * 24 * 3600, path="/", samesite="Lax",
+    )
+    return resp
+
+
 # ── Systemstatus ──────────────────────────────────────────────
 
 @app.route("/status")
