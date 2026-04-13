@@ -7,6 +7,9 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Kasse: Kundenkarten-Scan – bei Scan einer Kundenkarte (KARTEN.TYP='K') wird der Kunde automatisch dem Vorgang zugewiesen; Name, Ort, Preisebene und Zahlart erscheinen sofort ([HAB-359](/HAB/issues/HAB-359))
+
 ### Geändert
 - Verwaltungs-App: Backwaren-Seite verwendet jetzt das Farbschema der Kiosk-App (creme/dunkelgrün/gold) – Navbar, Sidebar, Tabelle und Akzente angepasst; alle anderen Verwaltungsseiten behalten ihr dunkles Theme ([HAB-363](/HAB/issues/HAB-363))
 

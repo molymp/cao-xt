@@ -42,10 +42,23 @@ sudo systemctl start kasse-app
 | Funktion | Beschreibung |
 |----------|-------------|
 | Artikelsuche | Suche nach Artikeln via Barcode oder Name |
+| Kundenkarten-Scan | Kundenkarte scannen → Kunde wird automatisch zugewiesen |
 | Warenkorb | Artikel hinzufügen, entfernen, Menge ändern |
 | Bezahlvorgang | Bar- und Kartenzahlung |
 | Bon-Druck | Automatischer Bondruck nach Bezahlung |
 | Tagesabschluss | Kassenschluss und Tagesabrechnung |
+
+---
+
+## Kundenkarten-Scan
+
+Während des Kassiervorgangs kann eine **Kundenkarte** gescannt werden. Die Karte wird automatisch erkannt (Barcode beginnt mit „KK"), und der zugehörige Kunde wird dem Vorgang zugewiesen:
+
+- **Name und Ort** des Kunden erscheinen in der Kundenanzeige
+- **Kundenspezifische Preisebene** wird automatisch angewendet
+- **Zahlart** des Kunden wird übernommen (falls hinterlegt)
+
+Kundenkarten sind in der CAO-Datenbank als KARTEN mit TYP='K' gespeichert. Die Zuordnung zum Kunden erfolgt über KARTEN.ID → ADRESSEN.REC_ID.
 
 ---
 
