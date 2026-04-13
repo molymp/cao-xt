@@ -59,7 +59,7 @@ class TestMitarbeiterLoginKarte(unittest.TestCase):
         self.assertIn('KARTEN', sql)
         self.assertIn('MITARBEITER', sql)
         self.assertIn("TYP = 'M'", sql)
-        self.assertIn('ADR_ID', sql)
+        self.assertIn('k.ID', sql)
 
     @patch('common.db.get_db')
     def test_unbekannte_guid(self, mock_get_db):
