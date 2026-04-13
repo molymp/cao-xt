@@ -1,7 +1,7 @@
 # Benutzerhandbuch: Kiosk-App
 
-**Version:** 0.2.0
-**Letzte Aktualisierung:** 2026-04-04
+**Version:** 0.3.0
+**Letzte Aktualisierung:** 2026-04-13
 
 ---
 
@@ -13,7 +13,15 @@ Die Kiosk-App (`kiosk-app/`) ist die Self-Service-Informationsstation des Dorfla
 
 ## Anmeldung
 
-Beim Start der Kiosk-App erscheint ein Login-Formular. Hier mit Benutzername und Passwort anmelden (gleiche Zugangsdaten wie in Kasse und WaWi). Nach der Anmeldung zeigt die Navigationsleiste rechts oben den Anmeldenamen, die aktuelle Uhrzeit und das Datum.
+Die Kiosk-App bietet zwei Anmeldearten:
+
+### Kartenlogin (Barcode-Scan)
+Standardmäßig ist der Tab **„Karte scannen"** aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten akzeptiert (KARTEN.TYP='M').
+
+### Passwort-Login mit Touch-Tastatur
+Tab **„Passwort"** wählen. Benutzername und Passwort eingeben – bei Bedarf über die eingeblendete Touch-Tastatur (QWERTZ-Layout). Shift (⇧) für Großbuchstaben, Backspace (⌫) zum Löschen, OK zum Absenden.
+
+Nach der Anmeldung zeigt die Navigationsleiste rechts oben den Anmeldenamen, die aktuelle Uhrzeit und das Datum.
 
 Zum Abmelden: Schaltfläche **Abmelden** in der Navigationsleiste verwenden.
 

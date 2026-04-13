@@ -8,9 +8,19 @@ from mysql.connector import pooling
 from contextlib import contextmanager
 import threading
 import config
+from common.db import init_pool as _init_common_pool
 
 _pool = None
 _pool_lock = threading.Lock()
+
+# common.db initialisieren, damit common.auth.mitarbeiter_login_karte() funktioniert
+_init_common_pool("verwaltung_common_pool", db_config={
+    'host':     config.DB_HOST,
+    'port':     config.DB_PORT,
+    'name':     config.DB_NAME,
+    'user':     config.DB_USER,
+    'password': config.DB_PASSWORD,
+})
 
 
 def _get_pool():

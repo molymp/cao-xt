@@ -87,3 +87,29 @@ def mitarbeiter_login(login_name: str, passwort: str) -> dict | None:
             (login_name, pw_hash),
         )
         return cur.fetchone()
+
+
+def mitarbeiter_login_karte(guid: str) -> dict | None:
+    """Login per Mitarbeiter-Karte (Barcode-Scan).
+
+    Liest KARTEN.GUID, prueft TYP='M' (Mitarbeiter) und loest ueber
+    KARTEN.ID den zugehoerigen MITARBEITER auf.
+
+    Args:
+        guid: Gescannter Barcode-Wert (KARTEN.GUID).
+
+    Returns:
+        dict mit ``MA_ID``, ``LOGIN_NAME``, ``VNAME``, ``NAME`` oder ``None``.
+    """
+    if not guid:
+        return None
+    from common.db import get_db
+    with get_db() as cur:
+        cur.execute(
+            """SELECT m.MA_ID, m.LOGIN_NAME, m.VNAME, m.NAME
+               FROM KARTEN k
+               JOIN MITARBEITER m ON m.MA_ID = k.ID
+               WHERE k.GUID = %s AND k.TYP = 'M'""",
+            (guid,)
+        )
+        return cur.fetchone()

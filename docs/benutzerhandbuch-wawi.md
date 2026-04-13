@@ -1,7 +1,7 @@
 # Benutzerhandbuch – WaWi (Warenwirtschaft)
 
-**Version:** 0.4.0
-**Stand:** 2026-04-07
+**Version:** 0.5.0
+**Stand:** 2026-04-13
 **App:** `wawi-app` · Port 5003
 
 ---
@@ -14,7 +14,14 @@ Die WaWi-App ist das Warenwirtschafts-Modul des Dorfladens Habach. Sie läuft au
 
 ## Login
 
-Zugangsdaten sind identisch mit der Kassen-App (CAO-Mitarbeiterdaten).
+Die WaWi bietet zwei Anmeldearten:
+
+### Kartenlogin (Barcode-Scan)
+Standardmäßig ist der Tab **„Karte scannen"** aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten akzeptiert (KARTEN.TYP='M').
+
+### Passwort-Login mit Touch-Tastatur
+Tab **„Passwort"** wählen. Benutzername und Passwort eingeben – bei Bedarf über die eingeblendete Touch-Tastatur (QWERTZ-Layout). Shift (⇧) für Großbuchstaben, Backspace (⌫) zum Löschen, OK zum Absenden.
+
 Nach dem Login erscheint das Dashboard.
 
 ---

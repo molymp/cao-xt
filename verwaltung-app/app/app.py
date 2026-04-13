@@ -16,6 +16,7 @@ import logging
 import config
 import db as db_modul
 from db import get_db, get_db_transaction, test_verbindung, reset_pool
+from common.auth import mitarbeiter_login_karte
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -145,6 +146,23 @@ def login_post():
         session['ma_name']    = ma['NAME']
         return redirect(url_for('dashboard'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
+
+
+@app.post('/login/karte')
+def login_karte():
+    """Login per Mitarbeiter-Karte (Barcode-Scan)."""
+    guid = request.form.get('guid', '').strip()
+    if not guid:
+        return render_template('login.html', fehler='Kein Barcode erkannt.')
+    ma = mitarbeiter_login_karte(guid)
+    if ma:
+        session['ma_id']      = ma['MA_ID']
+        session['login_name'] = ma['LOGIN_NAME']
+        session['vname']      = ma['VNAME']
+        session['ma_name']    = ma['NAME']
+        return redirect(url_for('dashboard'))
+    return render_template('login.html',
+                           fehler='Karte nicht erkannt oder keine Mitarbeiterkarte.')
 
 
 @app.get('/logout')
