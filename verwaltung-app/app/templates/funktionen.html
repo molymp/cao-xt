@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Funktionen{% endblock %}
+
+{% block extra_style %}
+<style>
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.toggle-row:last-child { border-bottom: none; }
+.toggle-info { flex: 1; }
+.toggle-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-hell);
+  margin-bottom: 2px;
+}
+.toggle-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* Toggle-Schalter */
+.toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-left: 20px;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--bg-dunkel);
+  border: 2px solid var(--border);
+  border-radius: 28px;
+  transition: background 0.25s, border-color 0.25s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 2px;
+  top: 2px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  transition: transform 0.25s, background 0.25s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: rgba(46,158,90,0.25);
+  border-color: var(--gruen);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(24px);
+  background: var(--gruen-hell);
+}
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:8px;">🔧 Funktionen</h1>
+<p style="color:var(--text-dim);margin-bottom:24px;font-size:14px;">
+  Hier lassen sich einzelne Funktionen der Kiosk- und Kasse-App ein- oder ausschalten.
+</p>
+
+<div class="card" style="margin-bottom:24px;">
+  <h3 style="margin-bottom:4px;font-size:18px;">Kiosk-App</h3>
+  <div class="toggle-row" id="row-kiosk-parken">
+    <div class="toggle-info">
+      <div class="toggle-label">Beleg parken</div>
+      <div class="toggle-desc">Zeigt die Buttons "Parken" und "Geparkt" in der Kiosk-App an.</div>
+    </div>
+    <label class="toggle-switch">
+      <input type="checkbox" id="toggle-kiosk-parken"
+             onchange="toggleEinstellung('kiosk_parken_aktiv', this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:4px;font-size:18px;">Kasse-App</h3>
+  <div class="toggle-row" id="row-kasse-parken">
+    <div class="toggle-info">
+      <div class="toggle-label">Beleg parken</div>
+      <div class="toggle-desc">Zeigt die Buttons "Parken" und "Geparkt" in der Kasse-App an.</div>
+    </div>
+    <label class="toggle-switch">
+      <input type="checkbox" id="toggle-kasse-parken"
+             onchange="toggleEinstellung('kasse_parken_aktiv', this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const TOGGLE_MAP = {
+  'kiosk_parken_aktiv': 'toggle-kiosk-parken',
+  'kasse_parken_aktiv': 'toggle-kasse-parken',
+};
+
+async function ladeEinstellungen() {
+  const r = await api('GET', '/api/einstellungen');
+  if (!r.ok) { toast('Einstellungen konnten nicht geladen werden', 'err'); return; }
+  for (const [key, elId] of Object.entries(TOGGLE_MAP)) {
+    const el = document.getElementById(elId);
+    if (el && r.einstellungen[key]) {
+      el.checked = r.einstellungen[key].wert === '1';
+    }
+  }
+}
+
+async function toggleEinstellung(schluessel, aktiv) {
+  const el = document.getElementById(TOGGLE_MAP[schluessel]);
+  if (el) el.disabled = true;
+  const r = await api('PUT', '/api/einstellungen/' + schluessel, { wert: aktiv ? '1' : '0' });
+  if (r.ok) {
+    toast(aktiv ? 'Aktiviert' : 'Deaktiviert', 'ok');
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+    // Zurücksetzen bei Fehler
+    if (el) el.checked = !aktiv;
+  }
+  if (el) el.disabled = false;
+}
+
+ladeEinstellungen();
+</script>
+{% endblock %}

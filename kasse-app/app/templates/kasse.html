@@ -667,12 +667,14 @@
     <!-- Bon-Nr + Parken + Geparkt -->
     <div>
       <span class="wk-bon-nr" id="bonNrAnzeige" style="display:block; margin-bottom:4px;">–</span>
+      {% if parken_aktiv %}
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
         <button class="btn btn-neutral btn-sm" onclick="geparkteOverlayOeffnen()" id="btnGeparkt">
           📋 Geparkt<span class="geparkt-badge" id="geparkteAnzahl" style="display:none">0</span>
         </button>
       </div>
+      {% endif %}
     </div>
 
     <!-- Netto + MwSt-Aufschlüsselung -->
@@ -785,6 +787,7 @@
   </div>
 </div>
 
+{% if parken_aktiv %}
 <!-- ── Geparkte Bons Overlay ──────────────────────────────────── -->
 <div class="overlay hidden" id="geparkteOverlay">
   <div class="modal">
@@ -796,6 +799,7 @@
     <button class="btn btn-neutral btn-full" onclick="geparkteOverlaySchliessen()">Schließen</button>
   </div>
 </div>
+{% endif %}
 
 <!-- ── Mengen-Modal ──────────────────────────────────────────── -->
 <div class="overlay hidden" id="mengeOverlay">
@@ -1379,8 +1383,9 @@ async function entparken(vid) {
 }
 
 async function geparkteAktualisieren() {
-  const rows = await (await fetch('/api/geparkte')).json();
   const badge = document.getElementById('geparkteAnzahl');
+  if (!badge) return;  // Parken deaktiviert
+  const rows = await (await fetch('/api/geparkte')).json();
   badge.textContent = rows.length;
   badge.style.display = rows.length > 0 ? 'inline-block' : 'none';
   const liste = document.getElementById('geparkteOverlayListe');

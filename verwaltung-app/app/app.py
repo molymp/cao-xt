@@ -47,6 +47,24 @@ def _migrationen_ausfuehren():
                 )
             """)
             log.info("Migration: XT_DRUCKER_CONFIG geprüft/erstellt.")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_EINSTELLUNGEN (
+                    schluessel   VARCHAR(100) NOT NULL PRIMARY KEY,
+                    wert         VARCHAR(500) NOT NULL DEFAULT '',
+                    beschreibung VARCHAR(255),
+                    geaendert_am DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    geaendert_von VARCHAR(100)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Systemweite Einstellungen (key-value)'
+            """)
+            # Standardwerte für Parken-Schalter (INSERT IGNORE → nur beim ersten Mal)
+            cur.execute("""
+                INSERT IGNORE INTO XT_EINSTELLUNGEN (schluessel, wert, beschreibung)
+                VALUES
+                    ('kiosk_parken_aktiv', '1', 'Parken-Funktion in der Kiosk-App aktiv'),
+                    ('kasse_parken_aktiv', '1', 'Parken-Funktion in der Kasse-App aktiv')
+            """)
+            log.info("Migration: XT_EINSTELLUNGEN geprüft/erstellt.")
     except Exception as e:
         log.warning("Migration fehlgeschlagen (DB evtl. nicht erreichbar): %s", e)
 
@@ -524,6 +542,60 @@ def produktbild(dateiname):
     """Liefert Produktbilder (für Vorschau in der Verwaltung)."""
     from flask import send_from_directory
     return send_from_directory(PRODUKTBILDER_DIR, dateiname)
+
+
+# ── Phase F: Funktionen (Feature-Toggles) ─────────────────────────
+
+@app.route('/funktionen')
+@_login_required
+def funktionen():
+    return render_template('funktionen.html')
+
+
+@app.get('/api/einstellungen')
+@_login_required
+def api_einstellungen_list():
+    """Gibt alle Einstellungen als Dict zurück."""
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT schluessel, wert, beschreibung FROM XT_EINSTELLUNGEN")
+            rows = cur.fetchall()
+        return jsonify(ok=True, einstellungen={r['schluessel']: r for r in rows})
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.put('/api/einstellungen/<schluessel>')
+@_login_required
+def api_einstellung_setzen(schluessel: str):
+    """Setzt eine Einstellung. Body: { "wert": "1" }"""
+    d = request.get_json(force=True)
+    wert = str(d.get('wert', ''))
+    benutzer = session.get('login_name', '')
+    try:
+        with get_db() as cur:
+            # Validierung: Parken kann nur deaktiviert werden, wenn kein Bon geparkt ist
+            if schluessel == 'kiosk_parken_aktiv' and wert == '0':
+                cur.execute(
+                    "SELECT COUNT(*) AS n FROM XT_KIOSK_WARENKOERBE WHERE status='geparkt'"
+                )
+                if cur.fetchone()['n'] > 0:
+                    return jsonify(ok=False,
+                                   msg='Kann nicht deaktiviert werden: Es gibt noch geparkte Warenkörbe.'), 409
+            if schluessel == 'kasse_parken_aktiv' and wert == '0':
+                cur.execute(
+                    "SELECT COUNT(*) AS n FROM XT_KASSE_VORGAENGE WHERE STATUS='GEPARKT'"
+                )
+                if cur.fetchone()['n'] > 0:
+                    return jsonify(ok=False,
+                                   msg='Kann nicht deaktiviert werden: Es gibt noch geparkte Bons.'), 409
+            cur.execute(
+                "UPDATE XT_EINSTELLUNGEN SET wert=%s, geaendert_von=%s WHERE schluessel=%s",
+                (wert, benutzer, schluessel),
+            )
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
 
 
 # ── System: Updates ──────────────────────────────────────────────
