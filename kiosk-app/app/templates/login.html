@@ -14,7 +14,7 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
-  height: 100%; overflow: hidden;
+  height: 100%; overflow: auto;
   font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
   background: #1a4010;
   -webkit-tap-highlight-color: transparent;
@@ -23,7 +23,7 @@ html, body {
 .login-wrap {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  height: 100%; gap: 28px; padding: 24px;
+  min-height: 100%; gap: 28px; padding: 24px;
 }
 .login-logo {
   font-family: 'Lobster', Georgia, serif;
@@ -104,6 +104,27 @@ html, body {
 .scan-hint { font-size: 18px; color: #5a7a3a; font-weight: 600; text-align: center; }
 .scan-hint-sub { font-size: 13px; color: #8a9a7a; font-weight: 400; }
 #scan-input { position: absolute; left: -9999px; opacity: 0; width: 1px; height: 1px; }
+/* ── Touch-Tastatur ── */
+.touch-kb { margin-top: 18px; }
+.touch-kb .kb-row {
+  display: flex; justify-content: center; gap: 4px; margin-bottom: 4px;
+}
+.touch-kb .kb-key {
+  min-width: 34px; height: 44px; border: none; border-radius: 8px;
+  background: #e8e4d8; color: #1a4010; font-size: 18px; font-weight: 700;
+  font-family: 'Nunito', sans-serif; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-kb .kb-key:active { background: #c8d4b8; }
+.touch-kb .kb-key.kb-wide { min-width: 52px; font-size: 15px; }
+.touch-kb .kb-key.kb-space { flex: 1; max-width: 180px; }
+.touch-kb .kb-key.kb-enter {
+  min-width: 72px; background: #c8780a; color: white; font-size: 14px;
+}
+.touch-kb .kb-key.kb-enter:active { background: #e8970e; }
+.touch-kb .kb-key.kb-shift.active { background: #2e6e1a; color: white; }
 </style>
 </head>
 <body>
@@ -147,6 +168,62 @@ html, body {
         </div>
         <button class="btn-login" type="submit">Anmelden</button>
       </form>
+      <div class="touch-kb" id="touch-kb">
+        <div class="kb-row">
+          <button class="kb-key" type="button" data-key="1">1</button>
+          <button class="kb-key" type="button" data-key="2">2</button>
+          <button class="kb-key" type="button" data-key="3">3</button>
+          <button class="kb-key" type="button" data-key="4">4</button>
+          <button class="kb-key" type="button" data-key="5">5</button>
+          <button class="kb-key" type="button" data-key="6">6</button>
+          <button class="kb-key" type="button" data-key="7">7</button>
+          <button class="kb-key" type="button" data-key="8">8</button>
+          <button class="kb-key" type="button" data-key="9">9</button>
+          <button class="kb-key" type="button" data-key="0">0</button>
+        </div>
+        <div class="kb-row">
+          <button class="kb-key" type="button" data-key="q">q</button>
+          <button class="kb-key" type="button" data-key="w">w</button>
+          <button class="kb-key" type="button" data-key="e">e</button>
+          <button class="kb-key" type="button" data-key="r">r</button>
+          <button class="kb-key" type="button" data-key="t">t</button>
+          <button class="kb-key" type="button" data-key="z">z</button>
+          <button class="kb-key" type="button" data-key="u">u</button>
+          <button class="kb-key" type="button" data-key="i">i</button>
+          <button class="kb-key" type="button" data-key="o">o</button>
+          <button class="kb-key" type="button" data-key="p">p</button>
+        </div>
+        <div class="kb-row">
+          <button class="kb-key" type="button" data-key="a">a</button>
+          <button class="kb-key" type="button" data-key="s">s</button>
+          <button class="kb-key" type="button" data-key="d">d</button>
+          <button class="kb-key" type="button" data-key="f">f</button>
+          <button class="kb-key" type="button" data-key="g">g</button>
+          <button class="kb-key" type="button" data-key="h">h</button>
+          <button class="kb-key" type="button" data-key="j">j</button>
+          <button class="kb-key" type="button" data-key="k">k</button>
+          <button class="kb-key" type="button" data-key="l">l</button>
+        </div>
+        <div class="kb-row">
+          <button class="kb-key kb-wide kb-shift" type="button" data-action="shift">⇧</button>
+          <button class="kb-key" type="button" data-key="y">y</button>
+          <button class="kb-key" type="button" data-key="x">x</button>
+          <button class="kb-key" type="button" data-key="c">c</button>
+          <button class="kb-key" type="button" data-key="v">v</button>
+          <button class="kb-key" type="button" data-key="b">b</button>
+          <button class="kb-key" type="button" data-key="n">n</button>
+          <button class="kb-key" type="button" data-key="m">m</button>
+          <button class="kb-key kb-wide" type="button" data-action="backspace">⌫</button>
+        </div>
+        <div class="kb-row">
+          <button class="kb-key" type="button" data-key="@">@</button>
+          <button class="kb-key" type="button" data-key=".">.</button>
+          <button class="kb-key" type="button" data-key="-">-</button>
+          <button class="kb-key kb-space" type="button" data-key=" ">&nbsp;</button>
+          <button class="kb-key" type="button" data-key="_">_</button>
+          <button class="kb-key kb-enter" type="button" data-action="enter">OK</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -191,6 +268,62 @@ html, body {
     if (!document.getElementById('mode-karte').classList.contains('active')) return;
     if (document.activeElement === scanInput) return;
     if (e.key.length === 1 || e.key === 'Enter') scanInput.focus();
+  });
+
+  /* ── Touch-Tastatur ── */
+  var kb = document.getElementById('touch-kb');
+  var pwForm = document.querySelector('#mode-passwort form');
+  var pwInputs = pwForm.querySelectorAll('.form-control');
+  var shiftActive = false;
+  var shiftBtn = kb.querySelector('.kb-shift');
+  var lastFocusedInput = pwInputs[0];
+  pwInputs.forEach(function(inp) {
+    inp.addEventListener('focus', function() { lastFocusedInput = inp; });
+  });
+  kb.addEventListener('click', function(e) {
+    var btn = e.target.closest('.kb-key');
+    if (!btn) return;
+    e.preventDefault();
+    var action = btn.getAttribute('data-action');
+    var key = btn.getAttribute('data-key');
+    var target = lastFocusedInput || pwInputs[0];
+    if (action === 'shift') {
+      shiftActive = !shiftActive;
+      shiftBtn.classList.toggle('active', shiftActive);
+      kb.querySelectorAll('.kb-key[data-key]').forEach(function(k) {
+        var v = k.getAttribute('data-key');
+        if (/^[a-z]$/i.test(v)) k.textContent = shiftActive ? v.toUpperCase() : v.toLowerCase();
+      });
+      return;
+    }
+    if (action === 'backspace') {
+      var pos = target.selectionStart;
+      if (pos > 0) {
+        var val = target.value;
+        target.value = val.slice(0, pos - 1) + val.slice(pos);
+        target.selectionStart = target.selectionEnd = pos - 1;
+      }
+      target.focus();
+      return;
+    }
+    if (action === 'enter') { pwForm.submit(); return; }
+    if (key != null) {
+      var ch = key;
+      if (/^[a-z]$/.test(ch) && shiftActive) ch = ch.toUpperCase();
+      var pos = target.selectionStart;
+      var val = target.value;
+      target.value = val.slice(0, pos) + ch + val.slice(pos);
+      target.selectionStart = target.selectionEnd = pos + 1;
+      target.focus();
+      if (shiftActive) {
+        shiftActive = false;
+        shiftBtn.classList.remove('active');
+        kb.querySelectorAll('.kb-key[data-key]').forEach(function(k) {
+          var v = k.getAttribute('data-key');
+          if (/^[a-z]$/i.test(v)) k.textContent = v.toLowerCase();
+        });
+      }
+    }
   });
 })();
 </script>
