@@ -320,7 +320,7 @@ def _kunde_per_karte(guid: str) -> dict | None:
                       CONCAT(IFNULL(a.NAME1,''), ' ', IFNULL(a.NAME2,'')) AS name,
                       IFNULL(a.TELE1, '') AS telefon
                FROM KARTEN k
-               JOIN ADRESSEN a ON a.REC_ID = k.ADR_ID
+               JOIN ADRESSEN a ON a.REC_ID = k.ID
                WHERE k.GUID = %s AND k.TYP = 'K'""",
             (guid,)
         )
