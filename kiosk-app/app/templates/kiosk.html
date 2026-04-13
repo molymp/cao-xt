@@ -122,8 +122,9 @@
 .summe-betrag { font-family: 'Lobster', cursive; font-size: 2.2rem; color: var(--creme); }
 
 .warenkorb-aktionen { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 24px 16px; flex-shrink: 0; }
-/* Wenn Parken deaktiviert: nur 2 Spalten (Buchen + Abbrechen) */
-.warenkorb-aktionen.parken-aus { grid-template-columns: 1fr 1fr; }
+/* Wenn Parken deaktiviert: Buchen (breit) + Abbrechen nebeneinander */
+.warenkorb-aktionen.parken-aus { grid-template-columns: 2fr 1fr; }
+.warenkorb-aktionen.parken-aus .btn-buchen { grid-column: auto; }
 .btn-buchen {
     grid-column: 1 / -1; background: var(--akzent); color: white;
     padding: 18px; font-size: 1.1rem; border-radius: var(--radius); border: none; cursor: pointer;
