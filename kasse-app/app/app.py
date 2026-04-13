@@ -193,6 +193,19 @@ def _terminal_settings(terminal_nr: int) -> dict:
     }
 
 
+def _einstellung_lesen(cursor, schluessel: str, default: bool = True) -> bool:
+    """Liest einen booleschen Schalter aus XT_EINSTELLUNGEN."""
+    try:
+        cursor.execute(
+            "SELECT wert FROM XT_EINSTELLUNGEN WHERE schluessel=%s",
+            (schluessel,)
+        )
+        row = cursor.fetchone()
+        return row['wert'] == '1' if row else default
+    except Exception:
+        return default
+
+
 def _eff_terminal_nr() -> int:
     """Effektive Terminal-Nummer für DB-Operationen.
     Im Trainings-/Sandbox-Modus wird terminal_nr + 10000 verwendet,
@@ -306,11 +319,13 @@ def kasse():
         cur.execute("SELECT * FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
                     (config.TERMINAL_NR,))
         terminal = cur.fetchone() or {}
+        parken_aktiv = _einstellung_lesen(cur, 'kasse_parken_aktiv')
     return render_template('kasse.html',
                            geparkte_vorgaenge=geparkt,
                            mwst_saetze=mwst_saetze,
                            terminal=terminal,
-                           mitarbeiter=_mitarbeiter())
+                           mitarbeiter=_mitarbeiter(),
+                           parken_aktiv=parken_aktiv)
 
 
 # ── API: Vorgang ──────────────────────────────────────────────

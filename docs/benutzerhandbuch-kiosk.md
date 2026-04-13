@@ -57,11 +57,21 @@ Die Navigationsleiste am oberen Rand zeigt:
 | Funktion | Beschreibung |
 |----------|-------------|
 | Artikelauswahl | Anzeige und Auswahl aller verfügbaren Artikel |
-| Geparkt | Geparkte Warenkörbe einsehen und fortsetzen |
+| Geparkt | Geparkte Warenkörbe einsehen und fortsetzen (nur wenn Parken aktiviert) |
 | Journal | Buchungshistorie |
 | Verwaltung | Artikel- und Systemverwaltung |
 | Bestellungen | Bestelleingang und -verwaltung |
 | Mittagstisch | Mittagsangebote verwalten |
+
+### Parken ein-/ausschalten
+
+Die Parken-Funktion kann in der **Verwaltungs-App** unter **Funktionen** deaktiviert werden.
+Wenn deaktiviert:
+- Die Buttons „Parken" und „Geparkt" werden ausgeblendet
+- „Abbrechen" wandert neben „Buchen & Drucken" (breiteres Layout)
+- Die Seite muss nach der Änderung neu geladen werden (kein Live-Refresh)
+
+**Hinweis:** Deaktivierung ist nur möglich, wenn keine Warenkörbe geparkt sind.
 
 ---
 

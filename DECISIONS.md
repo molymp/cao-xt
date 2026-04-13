@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-13 Feature-Toggles via XT_EINSTELLUNGEN (HAB-368)
+
+- **Problem:** Die Parken-Funktion in Kiosk- und Kasse-App soll optional abschaltbar sein, ohne Code-Änderung oder Neustart.
+- **Entscheidung:** Neue Tabelle `XT_EINSTELLUNGEN` (Key-Value, systemweit) mit Auto-Migration beim Start der Verwaltungs-App. Schlüssel `kiosk_parken_aktiv` und `kasse_parken_aktiv` steuern die Sichtbarkeit der Parken-Buttons. Verwaltungs-App erhält eine „Funktionen"-Seite mit Toggle-Schaltern.
+- **Begründung:** Key-Value-Tabelle ist einfach erweiterbar für zukünftige Feature-Toggles. Validierung (kein Deaktivieren bei geparkten Bons) verhindert Datenverlust. Server-seitiges Rendering (`{% if parken_aktiv %}`) statt Client-Toggle, da kein WebSocket vorhanden – Seite muss nach Änderung neu geladen werden.
+- **Alternativen:** (a) Config-Datei statt DB (nicht zentral verwaltbar), (b) Client-seitiges Feature-Flag via API-Call bei jedem Seitenladen (mehr Requests, gleicher Effekt), (c) Funktion komplett entfernen statt Toggle (nicht gewünscht).
+- **Konsequenzen:** Kiosk/Kasse müssen nach Toggle-Änderung neu geladen werden (kein Live-Refresh). XT_EINSTELLUNGEN kann für weitere Feature-Toggles wiederverwendet werden. `_einstellung_lesen()` ist in Kiosk und Kasse dupliziert – bei Bedarf in `common/` auslagern.
+- **Referenz:** [HAB-368](/HAB/issues/HAB-368)
+
 ## 2026-04-13 Terminal 9: Kunden-Selbstbedienung als Cookie-basierter Modus (HAB-360)
 
 - **Problem:** Kunden sollen eigenständig Backwarenbestellungen am Kiosk anlegen können, ohne Mitarbeiter-Daten oder fremde Bestellungen zu sehen.

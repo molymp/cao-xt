@@ -50,6 +50,18 @@ sudo systemctl start kasse-app
 
 ---
 
+## Parken ein-/ausschalten
+
+Die Parken-Funktion kann in der **Verwaltungs-App** unter **Funktionen** deaktiviert werden.
+Wenn deaktiviert:
+- Die Buttons „Parken" und „Geparkt" werden ausgeblendet
+- Das Geparkte-Bons-Overlay ist nicht verfügbar
+- Die Seite muss nach der Änderung neu geladen werden (kein Live-Refresh)
+
+**Hinweis:** Deaktivierung ist nur möglich, wenn keine Bons geparkt sind.
+
+---
+
 ## Kundenkarten-Scan
 
 Während des Kassiervorgangs kann eine **Kundenkarte** gescannt werden. Die Karte wird automatisch erkannt (Barcode beginnt mit „KK"), und der zugehörige Kunde wird dem Vorgang zugewiesen:

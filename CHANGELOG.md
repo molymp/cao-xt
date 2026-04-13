@@ -8,11 +8,14 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- Verwaltungs-App: Neue Seite „Funktionen" – Feature-Toggles für Kiosk- und Kasse-Parken ein-/ausschalten; Deaktivierung nur möglich wenn kein Bon geparkt ist ([HAB-368](/HAB/issues/HAB-368))
 - Kiosk Terminal 9: Kunden-Selbstbedienungsterminal für Backwarenbestellungen – Kundenkarten-Scan (KARTEN.TYP='K'), eigene Bestellungen anlegen/einsehen/stornieren, Touch-optimierte Oberfläche, Terminal-Einstellung als eigene Seite im Menü, Login-Button für Rückkehr zur Mitarbeiter-Ansicht ([HAB-360](/HAB/issues/HAB-360))
 - Alle Apps: Commit-ID auf allen Login-Seiten (Kiosk, Kasse, WaWi, Verwaltung) ([HAB-360](/HAB/issues/HAB-360))
 - Kasse: Kundenkarten-Scan – bei Scan einer Kundenkarte (KARTEN.TYP='K') wird der Kunde automatisch dem Vorgang zugewiesen; Name, Ort, Preisebene und Zahlart erscheinen sofort ([HAB-359](/HAB/issues/HAB-359))
 
 ### Geändert
+- Kiosk-App: Layout wechselt zu 2-Spalten (Buchen & Drucken + Abbrechen) wenn Parken deaktiviert ist ([HAB-368](/HAB/issues/HAB-368))
+- Kasse-App: Parken/Geparkt-Buttons und Geparkte-Bons-Overlay werden ausgeblendet wenn Parken deaktiviert ist ([HAB-368](/HAB/issues/HAB-368))
 - Verwaltungs-App: Backwaren-Seite verwendet jetzt das Farbschema der Kiosk-App (creme/dunkelgrün/gold) – Navbar, Sidebar, Tabelle und Akzente angepasst; alle anderen Verwaltungsseiten behalten ihr dunkles Theme ([HAB-363](/HAB/issues/HAB-363))
 
 ### Behoben

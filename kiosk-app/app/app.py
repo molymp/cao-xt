@@ -129,6 +129,21 @@ def _pruefe_update_loop():
 threading.Thread(target=_pruefe_update_loop, daemon=True, name="update-checker").start()
 
 
+# ── Einstellungen (XT_EINSTELLUNGEN) ─────────────────────────
+
+def _einstellung_lesen(cursor, schluessel: str, default: bool = True) -> bool:
+    """Liest einen booleschen Schalter aus XT_EINSTELLUNGEN."""
+    try:
+        cursor.execute(
+            "SELECT wert FROM XT_EINSTELLUNGEN WHERE schluessel=%s",
+            (schluessel,)
+        )
+        row = cursor.fetchone()
+        return row['wert'] == '1' if row else default
+    except Exception:
+        return default
+
+
 # ── Terminal-Nr aus Cookie ───────────────────────────────────
 
 def get_terminal_nr() -> int:
@@ -632,7 +647,7 @@ def index():
         kategorien[k]["artikel"].append(artikel)
     kategorien_sorted = sorted(kategorien.items(), key=lambda x: x[1]["sort"])
 
-    # Warenkorb + Positionen in einer Verbindung holen
+    # Warenkorb + Positionen + Parken-Einstellung in einer Verbindung holen
     with get_db() as cursor:
         cursor.execute("SELECT * FROM XT_KIOSK_WARENKOERBE WHERE id=%s", (wk_id,))
         warenkorb = cursor.fetchone()
@@ -641,6 +656,7 @@ def index():
             (wk_id,)
         )
         positionen = cursor.fetchall()
+        parken_aktiv = _einstellung_lesen(cursor, 'kiosk_parken_aktiv')
 
     return render_template(
         "kiosk.html",
@@ -649,6 +665,7 @@ def index():
         positionen=positionen,
         cent_zu_euro=cent_zu_euro_str,
         terminal_nr=get_terminal_nr(),
+        parken_aktiv=parken_aktiv,
     )
 
 

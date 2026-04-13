@@ -1,6 +1,6 @@
 # Benutzerhandbuch – Verwaltungs-App
 
-**Version:** 1.1.0 | **Stand:** 2026-04-13 | **App:** Verwaltung (Port 5004)
+**Version:** 1.2.0 | **Stand:** 2026-04-13 | **App:** Verwaltung (Port 5004)
 
 ---
 
@@ -23,6 +23,7 @@ Die Sidebar links gliedert sich in zwei Bereiche:
 | System   | TSE-Geräte       | TSE-Geräte-Verbindungen einrichten           |
 | System   | **Updates**      | System-Updates prüfen und installieren       |
 | Daten    | Backwaren        | Artikel für den Kiosk verwalten              |
+| Daten    | **Funktionen**   | Feature-Toggles für Kiosk- und Kasse-App    |
 
 ---
 
@@ -72,6 +73,30 @@ kann das Update direkt über die Kommandozeile auf dem Server durchgeführt werd
 ```
 
 Das Script schreibt den Fortschritt nach `/tmp/caoxt-update.log`.
+
+---
+
+## Daten → Funktionen
+
+Die Funktionen-Seite ermöglicht das Ein- und Ausschalten einzelner Features in der Kiosk- und Kasse-App.
+
+### Verfügbare Schalter
+
+| Schalter | Wirkung |
+|----------|---------|
+| Kiosk – Beleg parken | Zeigt/versteckt die Buttons „Parken" und „Geparkt" in der Kiosk-App |
+| Kasse – Beleg parken | Zeigt/versteckt die Buttons „Parken" und „Geparkt" in der Kasse-App |
+
+### Bedienung
+
+1. **Toggle-Schalter** umlegen (grün = aktiv, grau = inaktiv)
+2. Bestätigung erscheint als Toast-Meldung
+3. **Kiosk-/Kasse-App im Browser neu laden** (F5 / Ctrl+F5) – die Änderung wird erst beim nächsten Seitenaufruf wirksam
+
+### Einschränkungen
+
+- **Deaktivierung blockiert**, wenn noch Bons/Warenkörbe geparkt sind (Fehlermeldung 409)
+- Zuerst alle geparkten Vorgänge abschließen oder entparken, dann deaktivieren
 
 ---
 
