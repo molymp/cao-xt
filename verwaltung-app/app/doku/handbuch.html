@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Habacher Dorfladen – Mitarbeiter-Handbuch Verwaltung</title>
+<style>
+/* ── Grundlayout ──────────────────────────────────────── */
+:root {
+  --gruen:      #2d5a27;
+  --gruen-hell: #4a8a3f;
+  --creme:      #faf7f2;
+  --creme-dark: #ede8df;
+  --text:       #1a1a1a;
+  --text-hell:  #555;
+  --blau:       #1e40af;
+  --gelb:       #854d0e;
+  --rot:        #991b1b;
+  --sidebar-w:  260px;
+  --radius:     10px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--creme); color: var(--text); line-height: 1.65; font-size: 15px; }
+
+/* ── Seitenstruktur ───────────────────────────────────── */
+.layout { display: flex; min-height: 100vh; }
+
+/* ── Sidebar ──────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--gruen); color: white;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; padding: 0 0 2rem;
+}
+.sidebar-logo {
+  background: rgba(0,0,0,0.25); padding: 1.4rem 1.2rem;
+  font-size: 1.05rem; font-weight: 700; line-height: 1.35;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.sidebar-logo small {
+  display: block; font-size: 0.75rem; font-weight: 400;
+  opacity: 0.75; margin-top: 2px;
+}
+.sidebar nav { padding: 0.5rem 0; }
+.nav-group-title {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: rgba(255,255,255,0.5);
+  padding: 1rem 1.2rem 0.3rem;
+}
+.sidebar nav a {
+  display: block; padding: 0.5rem 1.2rem 0.5rem 1.4rem;
+  color: rgba(255,255,255,0.85); text-decoration: none;
+  font-size: 0.88rem; border-left: 3px solid transparent; transition: all 0.15s;
+}
+.sidebar nav a:hover, .sidebar nav a.aktiv {
+  background: rgba(255,255,255,0.12); color: white; border-left-color: #8bc34a;
+}
+.sidebar nav a.kapitel { font-weight: 700; font-size: 0.92rem; padding-top: 0.65rem; }
+.sidebar nav a.unter   { padding-left: 2.2rem; }
+
+/* ── Hauptinhalt ──────────────────────────────────────── */
+.inhalt { flex: 1; padding: 2rem 2.5rem; max-width: 860px; overflow-x: hidden; }
+
+/* ── Titelseite ───────────────────────────────────────── */
+.titelseite {
+  background: linear-gradient(135deg, var(--gruen) 0%, var(--gruen-hell) 100%);
+  color: white; border-radius: var(--radius); padding: 2.5rem 2rem;
+  margin-bottom: 2.5rem; text-align: center;
+}
+.titelseite h1  { font-size: 2rem; margin-bottom: 0.4rem; }
+.titelseite .sub { font-size: 1.1rem; opacity: 0.85; margin-bottom: 1rem; }
+.version-info { display: flex; gap: 1.2rem; flex-wrap: wrap; justify-content: center;
+  font-size: 0.82rem; opacity: 0.75; }
+
+/* ── Kapitel-Elemente ─────────────────────────────────── */
+.abschnitt { margin-bottom: 2.5rem; }
+.kapitel-header {
+  display: flex; align-items: center; gap: 1.2rem;
+  background: linear-gradient(135deg, var(--gruen) 0%, var(--gruen-hell) 100%);
+  color: white; border-radius: var(--radius); padding: 1.2rem 1.5rem; margin-bottom: 1.5rem;
+}
+.kapitel-nr { font-size: 2.5rem; font-weight: 900; opacity: 0.35; line-height: 1; }
+.kapitel-header h1 { font-size: 1.5rem; margin-bottom: 0.15rem; }
+.untertitel { font-size: 0.85rem; opacity: 0.8; }
+
+h2 { font-size: 1.15rem; color: var(--gruen); margin: 1.6rem 0 0.6rem;
+  border-bottom: 2px solid var(--creme-dark); padding-bottom: 0.4rem; }
+h3 { font-size: 1rem; color: var(--text); margin: 1.2rem 0 0.5rem; font-weight: 700; }
+p  { margin-bottom: 0.8rem; }
+
+/* ── Schritt-für-Schritt ──────────────────────────────── */
+.schritte { list-style: none; padding: 0; margin: 0.8rem 0 1.2rem; }
+.schritte li {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: white; border: 1px solid var(--creme-dark);
+  border-radius: var(--radius); padding: 0.9rem 1rem; margin-bottom: 0.6rem;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+.schritt-nr {
+  background: var(--gruen); color: white; font-weight: 700; font-size: 0.85rem;
+  border-radius: 50%; width: 28px; height: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.schritt-text { flex: 1; line-height: 1.55; font-size: 0.92rem; }
+.schritt-text strong { display: block; margin-bottom: 0.15rem; }
+
+/* ── Hinweis-Boxen ────────────────────────────────────── */
+.hinweis, .achtung, .tipp {
+  border-radius: var(--radius); padding: 0.9rem 1rem;
+  margin: 0.8rem 0 1.2rem; font-size: 0.88rem;
+}
+.hinweis { background: #eff6ff; border-left: 4px solid #3b82f6; }
+.achtung { background: #fff7ed; border-left: 4px solid #f59e0b; }
+.tipp    { background: #f0fdf4; border-left: 4px solid var(--gruen-hell); }
+.hinweis-titel { font-weight: 700; margin-bottom: 0.3rem; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── UI-Elemente ──────────────────────────────────────── */
+.taste {
+  display: inline-block; background: var(--gruen); color: white;
+  font-weight: 700; font-size: 0.82rem; padding: 2px 10px;
+  border-radius: 5px; white-space: nowrap;
+}
+.taste.grau { background: #64748b; }
+
+/* ── Tabellen ─────────────────────────────────────────── */
+table {
+  width: 100%; border-collapse: collapse; font-size: 0.88rem;
+  margin: 0.8rem 0 1.2rem; background: white;
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+th { background: var(--gruen); color: white; padding: 9px 14px; text-align: left;
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--creme-dark); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--creme); }
+
+hr { border: none; border-top: 2px solid var(--creme-dark); margin: 2.5rem 0; }
+
+/* ── Edit-Toolbar ─────────────────────────────────────── */
+#edit-toolbar {
+  position: fixed; top: 12px; right: 16px; z-index: 9999;
+  background: white; border-radius: 10px; padding: 8px 12px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.18);
+  font-family: 'Segoe UI', Arial, sans-serif; font-size: 0.88rem;
+}
+#toolbar-ansicht, #toolbar-bearbeitung { display: flex; gap: 8px; align-items: center; }
+.tbtn { padding: 7px 15px; border: none; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; font-weight: 700; }
+.tbtn-zurueck    { background: #f1f5f9; color: var(--text); }
+.tbtn-zurueck:hover    { background: #e2e8f0; }
+.tbtn-bearbeiten { background: var(--gruen); color: white; }
+.tbtn-bearbeiten:hover { background: var(--gruen-hell); }
+.tbtn-speichern  { background: #2563eb; color: white; }
+.tbtn-speichern:hover  { background: #1d4ed8; }
+.tbtn-abbrechen  { background: #f1f5f9; color: var(--text); }
+.tbtn-abbrechen:hover  { background: var(--creme-dark); }
+.edit-badge { background: #fef9c3; color: #854d0e; font-weight: 700;
+  font-size: 0.78rem; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid #fde68a; white-space: nowrap; }
+
+body.edit-mode [contenteditable="true"] {
+  outline: 2px dashed #93c5fd; border-radius: 3px;
+  cursor: text; min-height: 1em; padding: 1px 3px;
+}
+body.edit-mode [contenteditable="true"]:hover { outline-color: #3b82f6; }
+body.edit-mode [contenteditable="true"]:focus {
+  outline: 2px solid #2563eb; background: rgba(37,99,235,0.04);
+}
+
+#edit-toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  padding: 10px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  pointer-events: none; transition: opacity 0.4s; opacity: 0;
+}
+
+@media print {
+  .sidebar { display: none; }
+  .inhalt { padding: 1rem; max-width: 100%; }
+  #edit-toolbar { display: none !important; }
+}
+
+html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const ADMIN = !!window.HANDBUCH_ADMIN;
+  if (ADMIN) {
+    const btn = document.getElementById('btn-bearbeiten');
+    if (btn) btn.style.display = '';
+  }
+
+  const abschnitte = document.querySelectorAll('[id]');
+  const links = document.querySelectorAll('.sidebar nav a[href^="#"]');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        links.forEach(a => {
+          a.classList.toggle('aktiv', a.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  abschnitte.forEach(el => observer.observe(el));
+});
+
+function zurueckZurApp() {
+  window.location.href = '/';
+}
+
+let editOriginal = '';
+function startEdit() {
+  editOriginal = document.body.innerHTML;
+  document.body.classList.add('edit-mode');
+  document.querySelectorAll(
+    '.inhalt h1, .inhalt h2, .inhalt h3, .inhalt p, ' +
+    '.schritt-text, .hinweis, .achtung, .tipp, .untertitel'
+  ).forEach(el => { el.setAttribute('contenteditable', 'true'); });
+  document.getElementById('toolbar-ansicht').style.display = 'none';
+  document.getElementById('toolbar-bearbeitung').style.display = 'flex';
+}
+
+function abbrechenEdit() {
+  document.body.innerHTML = editOriginal;
+  document.body.classList.remove('edit-mode');
+  document.getElementById('toolbar-ansicht').style.display = 'flex';
+  document.getElementById('toolbar-bearbeitung').style.display = 'none';
+}
+
+async function speichernHandbuch() {
+  const btn = document.getElementById('btn-speichern');
+  if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Speichert \u2026'; }
+  document.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  document.body.classList.remove('edit-mode');
+  const html = '<!DOCTYPE html>\n<html lang="de">' + document.documentElement.innerHTML + '</html>';
+  try {
+    const r = await fetch('/verwaltung/handbuch/speichern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html })
+    });
+    const data = await r.json();
+    zeigToast(data.ok ? '\u2713 Gespeichert' : ('Fehler: ' + data.fehler),
+              data.ok ? '#f0fdf4' : '#fef2f2',
+              data.ok ? '#14532d' : '#7f1d1d',
+              data.ok ? '#86efac' : '#fca5a5');
+    if (data.ok) {
+      document.getElementById('toolbar-ansicht').style.display = 'flex';
+      document.getElementById('toolbar-bearbeitung').style.display = 'none';
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '\ud83d\udcbe Speichern'; }
+    }
+  } catch(e) {
+    zeigToast('Netzwerkfehler: ' + e, '#fef2f2', '#7f1d1d', '#fca5a5');
+    if (btn) { btn.disabled = false; btn.textContent = '\ud83d\udcbe Speichern'; }
+  }
+}
+
+function zeigToast(msg, bg, col, border) {
+  const t = document.getElementById('edit-toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.background = bg; t.style.color = col;
+  t.style.border = '1px solid ' + border;
+  t.style.opacity = '1';
+  setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+function uploadScreenshot(inputEl, targetId, beschrId) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const dateiname = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const r = await fetch('/verwaltung/handbuch/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: dateiname, data: e.target.result })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const box = document.getElementById(targetId);
+      if (box) {
+        box.innerHTML = `<img src="${data.filename}" alt="${beschrId}">`;
+      }
+      zeigToast('\u2713 Bild hochgeladen', '#f0fdf4', '#14532d', '#86efac');
+    } else {
+      zeigToast('Fehler: ' + data.fehler, '#fef2f2', '#7f1d1d', '#fca5a5');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+</script>
+
+<!-- ── Toolbar ── -->
+<div id="edit-toolbar">
+  <div id="toolbar-ansicht" style="display:flex;">
+    <button class="tbtn tbtn-zurueck" onclick="zurueckZurApp()">← Verwaltung</button>
+    <button class="tbtn tbtn-bearbeiten" id="btn-bearbeiten" onclick="startEdit()" style="display:none;">✏️ Bearbeiten</button>
+  </div>
+  <div id="toolbar-bearbeitung" style="display:none;">
+    <button class="tbtn tbtn-zurueck" onclick="abbrechenEdit(); zurueckZurApp()">← Verwaltung</button>
+    <span class="edit-badge">● Bearbeitungsmodus</span>
+    <button class="tbtn tbtn-speichern" id="btn-speichern" onclick="speichernHandbuch()">💾 Speichern</button>
+    <button class="tbtn tbtn-abbrechen" onclick="abbrechenEdit()">✕ Abbrechen</button>
+  </div>
+</div>
+<div id="edit-toast"></div>
+
+<div class="layout">
+
+<!-- ══════════════════════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    🌾 Habacher Dorfladen
+    <small>Mitarbeiter-Handbuch Verwaltung</small>
+  </div>
+  <nav>
+    <div class="nav-group-title">Übersicht</div>
+    <a href="#start" class="kapitel">📋 Inhaltsverzeichnis</a>
+
+    <div class="nav-group-title">Kapitel 1</div>
+    <a href="#kap1" class="kapitel">🔑 Anmeldung</a>
+    <a href="#kap1-karte" class="unter">Kartenlogin</a>
+    <a href="#kap1-passwort" class="unter">Passwort-Login</a>
+
+    <div class="nav-group-title">Kapitel 2</div>
+    <a href="#kap2" class="kapitel">📊 Dashboard</a>
+
+    <div class="nav-group-title">Kapitel 3</div>
+    <a href="#kap3" class="kapitel">🗄️ Datenbank</a>
+
+    <div class="nav-group-title">Kapitel 4</div>
+    <a href="#kap4" class="kapitel">🖨️ Bondrucker</a>
+
+    <div class="nav-group-title">Kapitel 5</div>
+    <a href="#kap5" class="kapitel">💻 Terminals</a>
+
+    <div class="nav-group-title">Kapitel 6</div>
+    <a href="#kap6" class="kapitel">🔐 TSE-Geräte</a>
+
+    <div class="nav-group-title">Kapitel 7</div>
+    <a href="#kap7" class="kapitel">🥐 Backwaren</a>
+
+    <div class="nav-group-title">Kapitel 8</div>
+    <a href="#kap8" class="kapitel">🔧 Funktionen</a>
+    <a href="#kap8-parken" class="unter">Beleg parken</a>
+
+    <div class="nav-group-title">Kapitel 9</div>
+    <a href="#kap9" class="kapitel">⬆️ Updates</a>
+  </nav>
+</aside>
+
+<!-- ══════════════════════════════════════════════════════
+     INHALT
+══════════════════════════════════════════════════════ -->
+<main class="inhalt">
+
+<!-- ── Titelseite ── -->
+<section id="start" class="abschnitt">
+  <div class="titelseite">
+    <h1>Verwaltungs-App</h1>
+    <div class="sub">Mitarbeiter-Handbuch</div>
+    <div class="version-info">
+      <span>📍 Port 5004</span>
+      <span>📅 Stand: April 2026</span>
+    </div>
+  </div>
+
+  <p>Die Verwaltungs-App ist die zentrale Konfigurationsoberfläche für den Habacher Dorfladen.
+  Hier werden Datenbankverbindungen, Bondrucker, Terminals, TSE-Geräte, Backwarenartikel und
+  Feature-Einstellungen für alle Apps verwaltet.</p>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 1: Anmeldung ── -->
+<section id="kap1" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">1</div>
+    <div><h1>Anmeldung</h1><div class="untertitel">Login per Karte oder Passwort</div></div>
+  </div>
+
+  <h2 id="kap1-karte">Kartenlogin (Barcode-Scan)</h2>
+  <p>Standardmäßig ist der Tab <strong>„Karte scannen"</strong> aktiv. Mitarbeiterausweis vor den
+  Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten
+  akzeptiert (KARTEN.TYP='M').</p>
+
+  <h2 id="kap1-passwort">Passwort-Login mit Touch-Tastatur</h2>
+  <p>Tab <strong>„Passwort"</strong> wählen. Benutzername und Passwort eingeben – bei Bedarf
+  über die eingeblendete Touch-Tastatur (QWERTZ-Layout). Shift (⇧) für Großbuchstaben,
+  Backspace (⌫) zum Löschen, OK zum Absenden.</p>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 2: Dashboard ── -->
+<section id="kap2" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">2</div>
+    <div><h1>Dashboard</h1><div class="untertitel">Startseite nach der Anmeldung</div></div>
+  </div>
+
+  <p>Das Dashboard zeigt eine Übersicht der wichtigsten Verwaltungsbereiche als Kacheln:</p>
+  <table>
+    <tr><th>Kachel</th><th>Funktion</th></tr>
+    <tr><td>🗄️ Datenbank</td><td>DB-Verbindung konfigurieren und testen</td></tr>
+    <tr><td>🖨️ Bondrucker</td><td>Thermobondrucker verwalten</td></tr>
+    <tr><td>💻 Terminals</td><td>Terminal-Nummern konfigurieren</td></tr>
+    <tr><td>🔐 TSE-Geräte</td><td>TSE-Verbindungen einrichten</td></tr>
+    <tr><td>🥐 Backwaren</td><td>Artikel für den Kiosk verwalten</td></tr>
+    <tr><td>🔧 Funktionen</td><td>Feature-Toggles für Kiosk und Kasse</td></tr>
+  </table>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 3: Datenbank ── -->
+<section id="kap3" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">3</div>
+    <div><h1>Datenbank</h1><div class="untertitel">DB-Verbindung prüfen und konfigurieren</div></div>
+  </div>
+
+  <p>Zeigt die aktuelle Datenbankverbindung aus <code>caoxt.ini</code> an (Passwort ausgeblendet).
+  Über die Schaltfläche <strong>„Verbindung testen"</strong> wird ein Ping zur Datenbank durchgeführt.</p>
+
+  <div class="achtung">
+    <div class="hinweis-titel">⚠️ Achtung</div>
+    Änderungen an der DB-Konfiguration erfordern einen Neustart aller Apps.
+  </div>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 4: Bondrucker ── -->
+<section id="kap4" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">4</div>
+    <div><h1>Bondrucker</h1><div class="untertitel">Thermobondrucker verwalten</div></div>
+  </div>
+
+  <p>Hier werden die Bondrucker für die einzelnen Terminals konfiguriert:</p>
+  <ul class="schritte">
+    <li><div class="schritt-nr">1</div><div class="schritt-text"><strong>Drucker anlegen</strong>Terminal-Nr, IP-Adresse, Port und Bezeichnung eingeben.</div></li>
+    <li><div class="schritt-nr">2</div><div class="schritt-text"><strong>Verbindung testen</strong>Socket-Ping auf die angegebene IP/Port-Kombination.</div></li>
+    <li><div class="schritt-nr">3</div><div class="schritt-text"><strong>Drucker bearbeiten/löschen</strong>Bestehende Einträge können jederzeit geändert werden.</div></li>
+  </ul>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 5: Terminals ── -->
+<section id="kap5" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">5</div>
+    <div><h1>Terminals</h1><div class="untertitel">Terminal-Nummern konfigurieren</div></div>
+  </div>
+
+  <p>Übersicht und Bearbeitung der Terminal-Konfiguration in der Tabelle <code>XT_TERMINAL</code>.
+  Jedes Terminal hat eine eindeutige Nummer, die für Bondruck, TSE und Kassen-Zuordnung verwendet wird.</p>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 6: TSE-Geräte ── -->
+<section id="kap6" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">6</div>
+    <div><h1>TSE-Geräte</h1><div class="untertitel">Technische Sicherheitseinrichtung</div></div>
+  </div>
+
+  <p>Verwaltung der TSE-Geräteverbindungen. Die TSE ist gesetzlich vorgeschrieben und signiert
+  jeden Kassenvorgang kryptografisch.</p>
+
+  <div class="hinweis">
+    <div class="hinweis-titel">ℹ️ Hinweis</div>
+    TSE-Exporte und gesetzlich vorgeschriebene Informationen verbleiben in der Kasse-App.
+    Hier wird nur die Gerätekonfiguration verwaltet.
+  </div>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 7: Backwaren ── -->
+<section id="kap7" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">7</div>
+    <div><h1>Backwaren</h1><div class="untertitel">Artikel für den Kiosk verwalten</div></div>
+  </div>
+
+  <p>Artikelverwaltung für die Kiosk-App: Artikel anlegen, bearbeiten, Bilder hochladen und
+  Kategorien zuordnen. Änderungen werden sofort in der Kiosk-App sichtbar.</p>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 8: Funktionen ── -->
+<section id="kap8" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">8</div>
+    <div><h1>Funktionen</h1><div class="untertitel">Feature-Toggles für Kiosk und Kasse</div></div>
+  </div>
+
+  <p>Auf der Seite „Funktionen" können einzelne Features der Kiosk- und Kasse-App
+  ein- oder ausgeschaltet werden.</p>
+
+  <h2 id="kap8-parken">Beleg parken</h2>
+  <p>Die Parken-Funktion erlaubt es, einen laufenden Vorgang zwischenzuspeichern und später
+  fortzusetzen. Es gibt je einen Schalter für die Kiosk-App und die Kasse-App.</p>
+
+  <table>
+    <tr><th>Schalter</th><th>Wirkung</th></tr>
+    <tr><td>Kiosk – Beleg parken</td><td>Zeigt/versteckt „Parken" und „Geparkt" in der Kiosk-App</td></tr>
+    <tr><td>Kasse – Beleg parken</td><td>Zeigt/versteckt „Parken" und „Geparkt" in der Kasse-App</td></tr>
+  </table>
+
+  <h3>Bedienung</h3>
+  <ul class="schritte">
+    <li><div class="schritt-nr">1</div><div class="schritt-text"><strong>Toggle-Schalter umlegen</strong>Grün = aktiv, grau = inaktiv.</div></li>
+    <li><div class="schritt-nr">2</div><div class="schritt-text"><strong>Bestätigung abwarten</strong>Toast-Meldung zeigt Erfolg oder Fehler.</div></li>
+    <li><div class="schritt-nr">3</div><div class="schritt-text"><strong>Kiosk/Kasse neu laden</strong>Die Änderung wird erst beim nächsten Seitenaufruf wirksam (F5).</div></li>
+  </ul>
+
+  <div class="achtung">
+    <div class="hinweis-titel">⚠️ Einschränkung</div>
+    Deaktivierung ist nur möglich, wenn keine Bons/Warenkörbe geparkt sind.
+    Zuerst alle geparkten Vorgänge abschließen, dann deaktivieren.
+  </div>
+</section>
+
+<hr>
+
+<!-- ── Kapitel 9: Updates ── -->
+<section id="kap9" class="abschnitt">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">9</div>
+    <div><h1>Updates</h1><div class="untertitel">System-Updates prüfen und installieren</div></div>
+  </div>
+
+  <ul class="schritte">
+    <li><div class="schritt-nr">1</div><div class="schritt-text"><strong>„Auf Updates prüfen" klicken</strong>Vergleicht installierte mit verfügbarer Version.</div></li>
+    <li><div class="schritt-nr">2</div><div class="schritt-text"><strong>Ergebnis lesen</strong>Neue Version, Changelog und Impact-Hinweise werden angezeigt.</div></li>
+    <li><div class="schritt-nr">3</div><div class="schritt-text"><strong>„Update installieren" klicken</strong>Apps werden gestoppt, Update eingespielt, Apps neu gestartet.</div></li>
+  </ul>
+
+  <div class="tipp">
+    <div class="hinweis-titel">💡 Tipp</div>
+    Falls die App nicht erreichbar ist: <code>./install.sh --update</code> auf der Kommandozeile.
+  </div>
+</section>
+
+</main>
+</div>
+
+</body>
+</html>
