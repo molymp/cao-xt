@@ -146,6 +146,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+{% if git_commit_short %}<span style="position:fixed;top:2px;left:4px;font-size:9px;font-weight:700;color:#e8970e;font-family:monospace;pointer-events:none;z-index:9999;opacity:0.75;letter-spacing:0.02em;">{{ git_commit_short }}</span>{% endif %}
 
 <header>
     <a class="logo" href="/">
@@ -166,6 +167,10 @@
     <div class="kunden-info">
         <span class="kunden-name">{{ kunden_name }}</span>
         <a href="/kunden-abmelden" class="btn-abmelden">Abmelden</a>
+    </div>
+    {% else %}
+    <div style="margin-left:auto;">
+        <a href="/login" style="display:inline-flex;align-items:center;color:var(--creme-dunkel);text-decoration:none;padding:9px 15px;border-radius:var(--radius-klein);border:1px solid rgba(255,255,255,0.15);font-size:0.85rem;font-weight:700;transition:background 0.15s;">🔑 Login</a>
     </div>
     {% endif %}
 </header>
