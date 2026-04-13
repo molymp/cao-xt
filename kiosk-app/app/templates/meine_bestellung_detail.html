@@ -1,0 +1,241 @@
+{% extends "kunden_base.html" %}
+{% block title %}Bestellung {{ bestellung.bestell_nr }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt {
+    padding: 2rem;
+    max-width: 48rem;
+    margin: 0 auto;
+}
+.seiten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    gap: 12px;
+}
+.seiten-kopf h1 { font-size: 2rem; }
+
+.detail-karte {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.detail-feld {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--creme-dunkel);
+    font-size: 1rem;
+}
+.detail-feld:last-child { border-bottom: none; }
+.detail-label {
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.detail-wert { font-weight: 600; }
+
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+.badge-einmalig     { background: #dbeafe; color: #1e40af; }
+.badge-wiederkehrend{ background: #dcfce7; color: #166534; }
+.badge-offen        { background: #fef9c3; color: #854d0e; }
+.badge-gedruckt     { background: #f0f0f0; color: #666; }
+.badge-storniert    { background: #fee2e2; color: #991b1b; }
+
+/* Positionstabelle */
+.pos-tabelle {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+.pos-tabelle th {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.pos-tabelle td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--creme-dunkel);
+    font-size: 1rem;
+}
+.pos-tabelle tr:last-child td { border-bottom: none; }
+
+.gesamt-zeile {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--gruen-dunkel);
+}
+
+.aktions-leiste {
+    display: flex;
+    gap: 12px;
+    margin-top: 1.5rem;
+}
+.aktions-leiste .btn { min-height: 52px; }
+
+/* Bestaetigungs-Overlay */
+#bestaetigung-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(26,64,16,0.6); z-index: 9000;
+    align-items: center; justify-content: center;
+}
+.bestaetigung-box {
+    background: white; border-radius: var(--radius);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+    padding: 32px 36px; width: 100%; max-width: 420px;
+}
+.bestaetigung-text {
+    font-size: 1.1rem; color: var(--text-dunkel);
+    line-height: 1.6; margin-bottom: 28px;
+}
+.bestaetigung-aktionen {
+    display: flex; justify-content: flex-end; gap: 12px;
+}
+.bestaetigung-aktionen button {
+    padding: 14px 24px; border: none; border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700;
+    cursor: pointer; min-height: 52px;
+}
+#bestaetigung-nein { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+#bestaetigung-ja   { background: var(--rot); color: white; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+
+    <div class="seiten-kopf">
+        <h1>{{ bestellung.bestell_nr }}</h1>
+        <a href="/meine-bestellungen" class="btn btn-sekundaer btn-touch">Zurueck</a>
+    </div>
+
+    <div class="detail-karte">
+        <div class="detail-feld">
+            <span class="detail-label">Typ</span>
+            <span class="detail-wert">
+                <span class="badge badge-{{ bestellung.typ }}">
+                    {% if bestellung.typ == 'einmalig' %}Einmalig{% else %}Wiederkehrend{% endif %}
+                </span>
+            </span>
+        </div>
+        {% if bestellung.typ == 'einmalig' and bestellung.abhol_datum %}
+        <div class="detail-feld">
+            <span class="detail-label">Abholdatum</span>
+            <span class="detail-wert">{{ bestellung.abhol_datum.strftime('%d.%m.%Y') }}</span>
+        </div>
+        {% elif bestellung.typ == 'wiederkehrend' and bestellung.wochentag %}
+        <div class="detail-feld">
+            <span class="detail-label">Wochentag</span>
+            <span class="detail-wert">Jeden {{ bestellung.wochentag }}</span>
+        </div>
+        {% endif %}
+        {% if bestellung.abhol_uhrzeit %}
+        <div class="detail-feld">
+            <span class="detail-label">Abholzeit</span>
+            <span class="detail-wert">{{ (bestellung.abhol_uhrzeit | string)[:5] }} Uhr</span>
+        </div>
+        {% endif %}
+        <div class="detail-feld">
+            <span class="detail-label">Status</span>
+            <span class="detail-wert">
+                <span class="badge badge-{{ bestellung.status }}">{{ bestellung.status }}</span>
+                {% if bestellung.pausiert %}
+                <span class="badge" style="background:#fef9c3;color:#854d0e;">Pausiert</span>
+                {% endif %}
+            </span>
+        </div>
+        {% if bestellung.notiz %}
+        <div class="detail-feld">
+            <span class="detail-label">Notiz</span>
+            <span class="detail-wert">{{ bestellung.notiz }}</span>
+        </div>
+        {% endif %}
+
+        <table class="pos-tabelle">
+            <thead>
+                <tr>
+                    <th>Artikel</th>
+                    <th style="text-align:right;">Menge</th>
+                    <th style="text-align:right;">Preis</th>
+                    <th style="text-align:right;">Summe</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(gesamt=0) %}
+                {% for p in positionen %}
+                {% set zeile = p.menge * p.preis_cent %}
+                {% set ns.gesamt = ns.gesamt + zeile %}
+                <tr>
+                    <td>{{ p.name_snapshot }}</td>
+                    <td style="text-align:right;">{{ p.menge }}</td>
+                    <td style="text-align:right;">{{ '%.2f' | format(p.preis_cent / 100) | replace('.', ',') }} &euro;</td>
+                    <td style="text-align:right;">{{ '%.2f' | format(zeile / 100) | replace('.', ',') }} &euro;</td>
+                </tr>
+                {% endfor %}
+                <tr class="gesamt-zeile">
+                    <td colspan="3" style="text-align:right;">Gesamt</td>
+                    <td style="text-align:right;">{{ '%.2f' | format(ns.gesamt / 100) | replace('.', ',') }} &euro;</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {% if bestellung.status != 'storniert' %}
+    <div class="aktions-leiste">
+        <a href="/meine-bestellungen" class="btn btn-sekundaer btn-touch" style="flex:1; text-align:center;">Zurueck</a>
+        <button class="btn btn-gefaehrlich btn-touch" style="flex:1;"
+                onclick="stornieren()">Bestellung stornieren</button>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Bestaetigungs-Overlay -->
+<div id="bestaetigung-overlay">
+    <div class="bestaetigung-box">
+        <div class="bestaetigung-text" id="bestaetigung-text">
+            Bestellung {{ bestellung.bestell_nr }} wirklich stornieren?
+        </div>
+        <div class="bestaetigung-aktionen">
+            <button id="bestaetigung-nein" onclick="document.getElementById('bestaetigung-overlay').style.display='none'">Abbrechen</button>
+            <button id="bestaetigung-ja" onclick="doStornieren()">Ja, stornieren</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function stornieren() {
+    document.getElementById('bestaetigung-overlay').style.display = 'flex';
+}
+
+async function doStornieren() {
+    document.getElementById('bestaetigung-overlay').style.display = 'none';
+    const res = await apiFetch('/api/meine-bestellungen/{{ bestellung.id }}/stornieren', {
+        method: 'POST',
+    });
+    if (res) {
+        zeigToast('Bestellung storniert');
+        setTimeout(() => { window.location.href = '/meine-bestellungen'; }, 1200);
+    }
+}
+</script>
+{% endblock %}

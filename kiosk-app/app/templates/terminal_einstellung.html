@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Terminal-Einstellung{% endblock %}
+{% block inhalt %}
+<div style="max-width:520px; margin:40px auto; text-align:center;">
+    <h1 style="margin-bottom:12px;">🖥️ Terminal-Einstellung</h1>
+    <p style="color:var(--text-hell); margin-bottom:28px;">
+        Welches Terminal ist dieses Gerät? Die Einstellung wird im Browser gespeichert.
+    </p>
+
+    <div style="display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-bottom:32px;">
+        {% for nr in range(1, 10) %}
+        <button onclick="waehleTerminal({{ nr }})"
+                class="terminal-wahl-btn{% if terminal_nr == nr %} aktiv{% endif %}"
+                id="tw-{{ nr }}"
+                style="width:72px; height:72px; border-radius:16px;
+                       border:3px solid {% if terminal_nr == nr %}var(--gruen-dunkel){% else %}var(--creme-dunkel){% endif %};
+                       background:{% if terminal_nr == nr %}var(--gruen-hell){% else %}white{% endif %};
+                       font-size:1.5rem; font-weight:800; cursor:pointer;
+                       color:var(--gruen-dunkel); transition:all 0.15s;">
+            {{ nr }}
+        </button>
+        {% endfor %}
+    </div>
+
+    <div id="hinweis" style="display:none; background:var(--gruen-hell); border:2px solid var(--gruen-dunkel);
+                              border-radius:12px; padding:16px; margin-bottom:20px;">
+        <strong>✅ Terminal <span id="gewaehlte-nr"></span> gesetzt.</strong><br>
+        <span style="font-size:0.9rem; color:var(--text-hell);">Seite wird neu geladen …</span>
+    </div>
+
+    <p style="font-size:0.85rem; color:var(--text-dim);">
+        Terminal 9 = Kunden-Selbstbedienung (Backwaren)
+    </p>
+</div>
+{% endblock inhalt %}
+
+{% block extra_js %}
+<script>
+async function waehleTerminal(nr) {
+    // Cookie via Server setzen (zuverlässig + Response-Cookie)
+    const r = await apiFetch('/api/terminal-einstellung', {
+        method: 'POST', body: JSON.stringify({ nr: nr })
+    });
+    if (r && r.ok) {
+        // Auch Client-seitig setzen (sofort wirksam)
+        setzeTerminalNr(nr);
+
+        // UI-Feedback
+        document.querySelectorAll('.terminal-wahl-btn').forEach(btn => {
+            btn.style.border = '3px solid var(--creme-dunkel)';
+            btn.style.background = 'white';
+        });
+        const btn = document.getElementById('tw-' + nr);
+        btn.style.border = '3px solid var(--gruen-dunkel)';
+        btn.style.background = 'var(--gruen-hell)';
+
+        document.getElementById('gewaehlte-nr').textContent = nr;
+        document.getElementById('hinweis').style.display = 'block';
+
+        setTimeout(() => { window.location.href = '/'; }, 1200);
+    }
+}
+</script>
+{% endblock %}

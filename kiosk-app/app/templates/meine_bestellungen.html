@@ -1,0 +1,254 @@
+{% extends "kunden_base.html" %}
+{% block title %}Meine Bestellungen{% endblock %}
+
+{% block extra_css %}
+<style>
+.seiten-inhalt {
+    padding: 1.5rem 2rem;
+    max-width: 64rem;
+    margin: 0 auto;
+}
+.seiten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    gap: 12px;
+}
+.seiten-kopf h1 { font-size: 2rem; }
+
+/* Bestellkarten (Touch-freundlich) */
+.bestell-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.bestell-karte {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten);
+    padding: 1.2rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    transition: transform 0.1s, box-shadow 0.1s;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    min-height: 80px;
+}
+.bestell-karte:active { transform: scale(0.99); }
+.bestell-karte:hover { box-shadow: var(--schatten-stark); }
+
+.bestell-karte-info { flex: 1; min-width: 0; }
+.bestell-karte-nr {
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--gruen-dunkel);
+}
+.bestell-karte-artikel {
+    font-size: 0.9rem;
+    color: var(--text-hell);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+.bestell-karte-meta {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.badge-einmalig     { background: #dbeafe; color: #1e40af; }
+.badge-wiederkehrend{ background: #dcfce7; color: #166534; }
+.badge-offen        { background: #fef9c3; color: #854d0e; }
+.badge-gedruckt     { background: #f0f0f0; color: #666; }
+.badge-pausiert     { background: #fef9c3; color: #854d0e; }
+
+.bestell-karte-aktionen {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.btn-karte-aktion {
+    min-height: 48px;
+    min-width: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    border: none;
+    border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-karte-storno {
+    background: #fee2e2;
+    color: var(--rot);
+}
+.btn-karte-storno:hover { background: #fecaca; }
+
+.leer-hinweis {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: var(--grau-mitte);
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+.leer-hinweis .leer-icon {
+    font-size: 4rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+/* Bestätigungs-Overlay */
+#bestaetigung-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(26,64,16,0.6); z-index: 9000;
+    align-items: center; justify-content: center;
+}
+.bestaetigung-box {
+    background: white; border-radius: var(--radius);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+    padding: 32px 36px; width: 100%; max-width: 420px;
+}
+.bestaetigung-text {
+    font-size: 1.1rem; color: var(--text-dunkel);
+    line-height: 1.6; margin-bottom: 28px;
+}
+.bestaetigung-aktionen {
+    display: flex; justify-content: flex-end; gap: 12px;
+}
+.bestaetigung-aktionen button {
+    padding: 14px 24px; border: none; border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700;
+    cursor: pointer; min-height: 52px;
+}
+#bestaetigung-nein {
+    background: var(--creme-dunkel); color: var(--gruen-dunkel);
+}
+#bestaetigung-ja {
+    background: var(--rot); color: white;
+}
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="seiten-inhalt">
+
+    <div class="seiten-kopf">
+        <h1>Meine Bestellungen</h1>
+        <a href="/meine-bestellungen/neu" class="btn btn-primaer btn-touch">+ Neue Bestellung</a>
+    </div>
+
+    {% if bestellungen %}
+    <div class="bestell-liste">
+        {% for b in bestellungen %}
+        <div class="bestell-karte" id="karte-{{ b.id }}">
+            <a href="/meine-bestellungen/{{ b.id }}" class="bestell-karte-info" style="text-decoration:none; color:inherit;">
+                <div class="bestell-karte-nr">{{ b.bestell_nr or '#' ~ b.id }}</div>
+                <div class="bestell-karte-artikel" title="{{ b.artikel_kurz or '' }}">{{ b.artikel_kurz or 'Keine Artikel' }}</div>
+                <div class="bestell-karte-meta">
+                    <span class="badge badge-{{ b.typ }}">
+                        {% if b.typ == 'einmalig' %}Einmalig{% else %}Wiederkehrend{% endif %}
+                    </span>
+                    {% if b.typ == 'einmalig' and b.abhol_datum %}
+                        <span class="badge" style="background:var(--creme-dunkel);color:var(--text-mitte);">
+                            {{ b.abhol_datum.strftime('%d.%m.%Y') }}
+                        </span>
+                    {% elif b.typ == 'wiederkehrend' and b.wochentag %}
+                        <span class="badge" style="background:var(--creme-dunkel);color:var(--text-mitte);">
+                            Jeden {{ b.wochentag }}
+                        </span>
+                    {% endif %}
+                    {% if b.pausiert %}
+                        <span class="badge badge-pausiert">Pausiert</span>
+                    {% else %}
+                        <span class="badge badge-{{ b.status }}">{{ b.status }}</span>
+                    {% endif %}
+                </div>
+            </a>
+            <div class="bestell-karte-aktionen">
+                <button class="btn-karte-aktion btn-karte-storno"
+                        onclick="event.stopPropagation(); storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">
+                    Stornieren
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="leer-hinweis">
+        <span class="leer-icon">&#x1F956;</span>
+        Sie haben noch keine Bestellungen.<br>
+        Tippen Sie oben auf <strong>+ Neue Bestellung</strong>, um loszulegen.
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Bestätigungs-Overlay -->
+<div id="bestaetigung-overlay">
+    <div class="bestaetigung-box">
+        <div class="bestaetigung-text" id="bestaetigung-text"></div>
+        <div class="bestaetigung-aktionen">
+            <button id="bestaetigung-nein">Abbrechen</button>
+            <button id="bestaetigung-ja">Ja, stornieren</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function zeigeBestaetigung(text, beiJa) {
+    const overlay = document.getElementById('bestaetigung-overlay');
+    document.getElementById('bestaetigung-text').textContent = text;
+    overlay.style.display = 'flex';
+
+    function schliessen() {
+        overlay.style.display = 'none';
+        document.getElementById('bestaetigung-ja').removeEventListener('click', onJa);
+        document.getElementById('bestaetigung-nein').removeEventListener('click', onNein);
+    }
+    function onJa()   { schliessen(); beiJa(); }
+    function onNein() { schliessen(); }
+
+    document.getElementById('bestaetigung-ja').addEventListener('click', onJa);
+    document.getElementById('bestaetigung-nein').addEventListener('click', onNein);
+}
+
+document.getElementById('bestaetigung-overlay').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+
+function storniereBestellung(id, nr) {
+    zeigeBestaetigung(
+        'Bestellung ' + nr + ' wirklich stornieren?',
+        async () => {
+            const res = await apiFetch('/api/meine-bestellungen/' + id + '/stornieren', {
+                method: 'POST',
+            });
+            if (res) {
+                zeigToast('Bestellung storniert');
+                const karte = document.getElementById('karte-' + id);
+                if (karte) karte.remove();
+            }
+        }
+    );
+}
+</script>
+{% endblock %}

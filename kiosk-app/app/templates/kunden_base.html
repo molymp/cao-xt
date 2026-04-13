@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Habacher Dorfladen – Kiosk{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
+    <style>
+        :root {
+            --gruen-dunkel:  #1a4010;
+            --gruen-mitte:   #2e6e1a;
+            --gruen-hell:    #4a9428;
+            --gruen-blass:   #d4e8c2;
+            --gold:          #c8780a;
+            --gold-hell:     #e8970e;
+            --creme:         #f7f3ea;
+            --creme-dunkel:  #ece3cc;
+            --creme-warm:    #e5d9bc;
+            --text-dunkel:   #142808;
+            --text-mitte:    #2e4a1a;
+            --text-hell:     #5a7a3a;
+            --grau-hell:     #f0ece0;
+            --grau-mitte:    #a8b890;
+            --rot:           #b83030;
+            --gruen-status:  #2e7a2e;
+            --schatten:      0 2px 12px rgba(26,64,16,0.13);
+            --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
+            --radius:        12px;
+            --radius-klein:  8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+            background: var(--creme);
+            color: var(--text-dunkel);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Lobster', Georgia, serif;
+            color: var(--gruen-dunkel);
+            font-weight: 400;
+        }
+
+        header {
+            background: var(--gruen-dunkel);
+            color: var(--creme);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            height: 72px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 100;
+        }
+        header .logo {
+            display: flex; align-items: center; gap: 12px;
+            flex-shrink: 0; text-decoration: none;
+        }
+        header .logo img {
+            height: 52px; width: auto; object-fit: contain; border-radius: 6px;
+        }
+        header .logo-text {
+            font-family: 'Lobster', Georgia, serif;
+            font-size: 1.55rem; color: var(--creme); line-height: 1.1;
+        }
+        header .logo-text span {
+            display: block;
+            font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
+            font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em;
+            text-transform: uppercase; color: var(--gruen-blass); margin-top: 1px;
+        }
+        header nav { display: flex; gap: 4px; flex-wrap: nowrap; }
+        header nav a {
+            display: inline-flex; align-items: center;
+            color: var(--creme-dunkel); text-decoration: none;
+            padding: 9px 15px; border-radius: var(--radius-klein);
+            border: 1px solid rgba(255,255,255,0.15);
+            font-size: 0.88rem; font-weight: 700;
+            transition: background 0.15s, color 0.15s; white-space: nowrap;
+        }
+        header nav a:hover, header nav a.aktiv {
+            background: rgba(74,148,40,0.3); color: var(--gruen-blass);
+        }
+        .kunden-info {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .kunden-info .kunden-name {
+            font-size: 1rem; font-weight: 700; color: var(--gold-hell);
+        }
+        .kunden-info .btn-abmelden {
+            display: inline-flex; align-items: center;
+            font-size: 0.85rem; font-weight: 700;
+            color: #f0a0a0; text-decoration: none;
+            padding: 8px 14px; border-radius: var(--radius-klein);
+            border: 1px solid rgba(184,48,48,0.4);
+            transition: background 0.12s;
+        }
+        .kunden-info .btn-abmelden:hover { background: rgba(184,48,48,0.2); color: #fdd; }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 14px 24px; border: none; border-radius: var(--radius-klein);
+            font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: transform 0.1s, box-shadow 0.1s, background 0.15s;
+            -webkit-tap-highlight-color: transparent;
+            text-decoration: none;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primaer  { background: var(--gold); color: white; box-shadow: var(--schatten); }
+        .btn-primaer:hover { background: var(--gold-hell); }
+        .btn-sekundaer { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+        .btn-sekundaer:hover { background: var(--creme-warm); }
+        .btn-gefaehrlich { background: var(--rot); color: white; }
+        .btn-gruen { background: var(--gruen-hell); color: white; }
+        .btn-gross { padding: 18px 32px; font-size: 1.15rem; border-radius: var(--radius); }
+
+        /* Touch-optimierte Buttons */
+        .btn-touch {
+            min-height: 56px; min-width: 56px;
+            font-size: 1.1rem; padding: 16px 28px;
+        }
+
+        .meldung { padding: 14px 20px; border-radius: var(--radius-klein); margin-bottom: 16px; font-weight: 700; }
+        .meldung-fehler { background: #fde8e8; color: var(--rot); }
+        .meldung-erfolg { background: #e8f5e0; color: var(--gruen-status); }
+
+        #toast {
+            position: fixed; bottom: 32px; left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--gruen-dunkel); color: var(--creme);
+            padding: 14px 28px; border-radius: 40px; font-size: 1rem; font-weight: 700;
+            box-shadow: var(--schatten-stark); z-index: 9999;
+            transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none;
+        }
+        #toast.sichtbar { transform: translateX(-50%) translateY(0); }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+{% if git_commit_short %}<span style="position:fixed;top:2px;left:4px;font-size:9px;font-weight:700;color:#e8970e;font-family:monospace;pointer-events:none;z-index:9999;opacity:0.75;letter-spacing:0.02em;">{{ git_commit_short }}</span>{% endif %}
+
+<header>
+    <a class="logo" href="/">
+        <img src="https://lh3.googleusercontent.com/sitesv/APaQ0ST5e2HHwKUXVL9lYukdMz2aIj00PnIYyuWzkdc_IrAj5oz2TuK3dbRLaKgFXzAa7SzkUY7f0XtLrbGgiASbhPF__WWZIUchtZKcEJtxtQhGh7CmwAkzytJJXYvhY3T7GDkHyLCHqkRx_w6S9kN2EJRt6zqQR3DGWEEBzZ9JDh4jLd8JtBBD5ILf=w120"
+             alt="Habacher Dorfladen Logo"
+             onerror="this.style.display='none'">
+        <div class="logo-text">
+            {{ firma_name }}
+            <span>Backwaren-Bestellung</span>
+        </div>
+    </a>
+
+    {% if kunde_eingeloggt %}
+    <nav>
+        <a href="/meine-bestellungen" class="{% if '/meine-bestellungen' == request.path %}aktiv{% endif %}">Meine Bestellungen</a>
+        <a href="/meine-bestellungen/neu" class="{% if '/meine-bestellungen/neu' in request.path %}aktiv{% endif %}">+ Neue Bestellung</a>
+    </nav>
+    <div class="kunden-info">
+        <span class="kunden-name">{{ kunden_name }}</span>
+        <a href="/kunden-abmelden" class="btn-abmelden">Abmelden</a>
+    </div>
+    {% else %}
+    <div style="margin-left:auto;">
+        <a href="/login" style="display:inline-flex;align-items:center;color:var(--creme-dunkel);text-decoration:none;padding:9px 15px;border-radius:var(--radius-klein);border:1px solid rgba(255,255,255,0.15);font-size:0.85rem;font-weight:700;transition:background 0.15s;">🔑 Login</a>
+    </div>
+    {% endif %}
+</header>
+
+{% block inhalt %}{% endblock %}
+
+<div id="toast"></div>
+
+<script>
+function zeigToast(text, dauer = 2500) {
+    const t = document.getElementById('toast');
+    t.textContent = text;
+    t.classList.add('sichtbar');
+    setTimeout(() => t.classList.remove('sichtbar'), dauer);
+}
+
+async function apiFetch(url, optionen = {}) {
+    try {
+        const res = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...optionen
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            zeigToast(data.fehler || 'Fehler', 3000);
+            return null;
+        }
+        return data;
+    } catch (e) {
+        zeigToast('Verbindungsfehler', 3000);
+        return null;
+    }
+}
+</script>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>
