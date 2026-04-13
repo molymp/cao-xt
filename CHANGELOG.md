@@ -7,6 +7,9 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Geändert
+- Verwaltungs-App: Backwaren-Seite verwendet jetzt das Farbschema der Kiosk-App (creme/dunkelgrün/gold) – Navbar, Sidebar, Tabelle und Akzente angepasst; alle anderen Verwaltungsseiten behalten ihr dunkles Theme ([HAB-363](/HAB/issues/HAB-363))
+
 ### Behoben
 - Kiosk-App: Alter, ins Leere führender „⚙️ Verwaltung"-Sidebar-Link (→ `/admin/artikel`) entfernt; App-Switcher-Button zur Verwaltungs-App wiederhergestellt ([HAB-361](/HAB/issues/HAB-361))
 - Verwaltungs-App: Bondrucker-Sidebar-Klick öffnet jetzt korrekt die Druckerliste statt sofort das Anlegen-Overlay – `display:none` als Initialzustand gesetzt, fehlende `.hidden`-CSS-Klasse in `base.html` ergänzt ([HAB-364](/HAB/issues/HAB-364))
