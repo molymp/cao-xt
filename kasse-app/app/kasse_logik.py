@@ -1120,7 +1120,7 @@ def kunde_per_karte(guid: str) -> dict | None:
                       a.PR_EBENE, a.KUN_ZAHLART,
                       za.NAME AS ZAHLART_NAME
                FROM KARTEN k
-               JOIN ADRESSEN a ON a.REC_ID = k.ADR_ID
+               JOIN ADRESSEN a ON a.REC_ID = k.ID
                LEFT JOIN ZAHLUNGSARTEN za ON za.REC_ID = a.KUN_ZAHLART
                WHERE k.GUID = %s AND k.TYP = 'K'""",
             (guid,)

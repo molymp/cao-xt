@@ -123,15 +123,15 @@ class TestKundePerKarte(unittest.TestCase):
         self.assertIsNone(result['PR_EBENE'])
 
     @patch('kasse_logik.get_db')
-    def test_sql_joined_adressen_ueber_adr_id(self, mock_get_db):
-        """SQL muss KARTEN.ADR_ID mit ADRESSEN.REC_ID joinen."""
+    def test_sql_joined_adressen_ueber_karten_id(self, mock_get_db):
+        """SQL muss KARTEN.ID mit ADRESSEN.REC_ID joinen."""
         ctx, cur = self._mock_db(None)
         mock_get_db.return_value = ctx
 
         kasse_logik.kunde_per_karte('ANY-GUID')
 
         sql = cur.execute.call_args[0][0]
-        self.assertIn('ADR_ID', sql)
+        self.assertIn('k.ID', sql)
 
 
 if __name__ == '__main__':
