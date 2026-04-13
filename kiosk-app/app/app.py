@@ -249,6 +249,18 @@ def login():
     return render_template('login.html')
 
 
+def _login_erfolg_redirect():
+    """Redirect nach erfolgreichem Login. Auf Terminal 9 → Terminal auf 8 setzen."""
+    if ist_kundenterminal():
+        resp = redirect(url_for('index'))
+        resp.set_cookie(
+            "kiosk_terminal", "8",
+            max_age=365 * 24 * 3600, path="/", samesite="Lax",
+        )
+        return resp
+    return redirect(url_for('index'))
+
+
 @app.post('/login')
 def login_post():
     login_name = request.form.get('login_name', '').strip()
@@ -257,7 +269,7 @@ def login_post():
     ma = mitarbeiter_login(login_name, passwort)
     if ma:
         login_user(ma)
-        return redirect(url_for('index'))
+        return _login_erfolg_redirect()
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
 
 
@@ -270,7 +282,7 @@ def login_karte():
     ma = mitarbeiter_login_karte(guid)
     if ma:
         login_user(ma)
-        return redirect(url_for('index'))
+        return _login_erfolg_redirect()
     return render_template('login.html',
                            fehler='Karte nicht erkannt oder keine Mitarbeiterkarte.')
 
