@@ -13,7 +13,9 @@ import config
 import db as db_modul
 import berichte as bericht_modul
 from db import get_db, test_verbindung
-from common.auth import login_required as _login_required, mitarbeiter_login as _mitarbeiter_login
+from common.auth import (login_required as _login_required,
+                         mitarbeiter_login as _mitarbeiter_login,
+                         mitarbeiter_login_karte)
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -194,6 +196,22 @@ def login_post():
         session['mitarbeiter'] = ma['LOGIN_NAME']   # für WaWi-Blueprint
         return redirect(url_for('dashboard'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
+
+
+@app.post('/login/karte')
+def login_karte():
+    """Login per Mitarbeiter-Karte (Barcode-Scan)."""
+    from common.auth import login_user
+    guid = request.form.get('guid', '').strip()
+    if not guid:
+        return render_template('login.html', fehler='Kein Barcode erkannt.')
+    ma = mitarbeiter_login_karte(guid)
+    if ma:
+        login_user(ma)
+        session['mitarbeiter'] = ma['LOGIN_NAME']
+        return redirect(url_for('dashboard'))
+    return render_template('login.html',
+                           fehler='Karte nicht erkannt oder keine Mitarbeiterkarte.')
 
 
 @app.get('/logout')
