@@ -42,7 +42,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j1.KUN_NAME1, ' ', j1.VRENUM, ' 0%') AS Buchungstext,
+    CONCAT(j1.KUN_NAME1, ' ', j1.ORGNUM, ' 0%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j1
     LEFT OUTER JOIN ADRESSEN A ON j1.ADDR_ID = A.REC_ID
@@ -71,7 +71,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j2.KUN_NAME1, ' ', j2.VRENUM, ' 19%') AS Buchungstext,
+    CONCAT(j2.KUN_NAME1, ' ', j2.ORGNUM, ' 19%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j2
     LEFT OUTER JOIN ADRESSEN A ON j2.ADDR_ID = A.REC_ID
@@ -100,7 +100,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j3.KUN_NAME1, ' ', j3.VRENUM, ' 7%') AS Buchungstext,
+    CONCAT(j3.KUN_NAME1, ' ', j3.ORGNUM, ' 7%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j3
     LEFT OUTER JOIN ADRESSEN A ON j3.ADDR_ID = A.REC_ID
@@ -129,7 +129,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j4.KUN_NAME1, ' ', j4.VRENUM, ' 9%') AS Buchungstext,
+    CONCAT(j4.KUN_NAME1, ' ', j4.ORGNUM, ' 9%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j4
     LEFT OUTER JOIN ADRESSEN A ON j4.ADDR_ID = A.REC_ID
@@ -176,7 +176,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    LEFT(CONCAT(LEFT(A20.NAME1, 19), '* ', j20.VRENUM, ' ', COALESCE(jp20.BEZEICHNUNG, '')), 60) AS Buchungstext,
+    LEFT(CONCAT(LEFT(A20.NAME1, 19), '* ', j20.ORGNUM, ' ', COALESCE(jp20.BEZEICHNUNG, '')), 60) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNALPOS jp20
     LEFT OUTER JOIN JOURNAL j20 ON j20.REC_ID = jp20.JOURNAL_ID
@@ -240,7 +240,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j5.KUN_NAME1, ' ', j5.VRENUM, ' 0%') AS Buchungstext,
+    CONCAT(j5.KUN_NAME1, ' ', j5.ORGNUM, ' 0%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j5
 WHERE YEAR(j5.RDATUM) = {year}
@@ -267,7 +267,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j6.KUN_NAME1, ' ', j6.VRENUM, ' 19%') AS Buchungstext,
+    CONCAT(j6.KUN_NAME1, ' ', j6.ORGNUM, ' 19%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j6
 WHERE YEAR(j6.RDATUM) = {year}
@@ -294,7 +294,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT(j7.KUN_NAME1, ' ', j7.VRENUM, ' 7%') AS Buchungstext,
+    CONCAT(j7.KUN_NAME1, ' ', j7.ORGNUM, ' 7%') AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM JOURNAL j7
 WHERE YEAR(j7.RDATUM) = {year}
