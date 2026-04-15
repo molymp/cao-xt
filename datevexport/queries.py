@@ -216,7 +216,8 @@ SELECT 'EUR' AS Waehrungskennung,
 FROM ZAHLUNGEN z1
 WHERE YEAR(z1.DATUM) = {year}
     AND MONTH(z1.DATUM) = {month}
-    AND z1.QUELLE IN (5)"""
+    AND z1.QUELLE IN (5)
+    AND z1.STORNO = 0"""
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +330,8 @@ SELECT 'EUR' AS Waehrungskennung,
 FROM ZAHLUNGEN z2
 WHERE YEAR(z2.DATUM) = {year}
     AND MONTH(z2.DATUM) = {month}
-    AND z2.QUELLE IN (3)"""
+    AND z2.QUELLE IN (3)
+    AND z2.STORNO = 0"""
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +444,8 @@ SELECT 'EUR' AS Waehrungskennung,
 FROM ZAHLUNGEN z3
 WHERE YEAR(z3.DATUM) = {year}
     AND MONTH(z3.DATUM) = {month}
-    AND z3.QUELLE IN (99)"""
+    AND z3.QUELLE IN (99)
+    AND z3.STORNO = 0"""
 
 
 # ---------------------------------------------------------------------------

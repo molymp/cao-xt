@@ -1,0 +1,276 @@
+{% extends 'base.html' %}
+{% block title %}DATEV-Export{% endblock %}
+
+{% block extra_style %}
+<style>
+.datev-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.datev-header h1 { margin: 0; font-size: 28px; }
+
+/* Export-Formular */
+.export-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.export-form label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-hell);
+  display: block;
+  margin-bottom: 4px;
+}
+.export-form select,
+.export-form input[type="number"] {
+  padding: 8px 12px;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  font-size: 14px;
+  font-family: inherit;
+  background: white;
+  min-width: 90px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border: none;
+  border-radius: var(--radius-klein);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-gruen {
+  background: var(--gruen-mitte);
+  color: white;
+  box-shadow: 0 2px 8px rgba(46,110,26,0.2);
+}
+.btn-gruen:hover { background: var(--gruen-dunkel); }
+.btn-gold {
+  background: var(--gold);
+  color: white;
+  box-shadow: 0 2px 8px rgba(200,120,10,0.2);
+}
+.btn-gold:hover { background: #a86200; }
+.btn-klein {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+/* Meldungen */
+.meldung {
+  padding: 12px 16px;
+  border-radius: var(--radius-klein);
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.meldung-erfolg { background: #e8f5e0; border: 1px solid var(--gruen-hell); color: #1a5010; }
+.meldung-fehler { background: #fde8e8; border: 1px solid var(--rot); color: var(--rot); }
+.meldung-info   { background: #fef8e2; border: 1px solid var(--gold); color: #7a5a00; }
+
+/* Dateiliste */
+.datei-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.datei-tabelle th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--gruen-dunkel);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.datei-tabelle th:first-child { border-radius: var(--radius-klein) 0 0 0; }
+.datei-tabelle th:last-child  { border-radius: 0 var(--radius-klein) 0 0; }
+.datei-tabelle td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--creme-dunkel);
+}
+.datei-tabelle tr:hover td { background: var(--grau-hell); }
+.datei-tabelle .mono { font-family: 'Courier New', monospace; font-size: 13px; }
+
+/* Vorschau-Tabelle */
+.vorschau-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.vorschau-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 900px;
+}
+.vorschau-tabelle th {
+  background: var(--gruen-dunkel);
+  color: white;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+.vorschau-tabelle td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  white-space: nowrap;
+}
+.vorschau-tabelle tr:hover td { background: var(--grau-hell); }
+.vorschau-tabelle tr:nth-child(even) td { background: #fafaf5; }
+.vorschau-tabelle tr:nth-child(even):hover td { background: var(--grau-hell); }
+
+.vorschau-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vorschau-info .badge {
+  background: var(--gruen-blass);
+  color: var(--gruen-dunkel);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.section-title {
+  font-size: 20px;
+  margin: 28px 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--creme-dunkel);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="datev-header">
+  <h1>DATEV-Export</h1>
+</div>
+
+{# Meldungen #}
+{% if erfolg %}
+<div class="meldung meldung-erfolg">{{ erfolg }}</div>
+{% endif %}
+{% if fehler %}
+<div class="meldung meldung-fehler">{{ fehler }}</div>
+{% endif %}
+
+{# Export-Formular #}
+<div class="card" style="margin-bottom: 24px;">
+  <form method="post" action="{{ url_for('datev_generieren') }}" class="export-form">
+    <div>
+      <label for="monat">Monat</label>
+      <select name="monat" id="monat">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if m == monat %}selected{% endif %}>
+          {{ ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'][m-1] }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="jahr">Jahr</label>
+      <select name="jahr" id="jahr">
+        {% for j in range(jahr - 2, jahr + 1) %}
+        <option value="{{ j }}" {% if j == jahr %}selected{% endif %}>{{ j }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-gruen">Export generieren</button>
+  </form>
+</div>
+
+{# Vorschau #}
+{% if vorschau_spalten and vorschau_zeilen %}
+<h2 class="section-title">Vorschau: {{ vorschau_datei }}</h2>
+<div class="card">
+  <div class="vorschau-info">
+    <span class="badge">{{ vorschau_zeilen|length }} Buchungszeilen</span>
+    <a href="{{ url_for('datev_download', filename=vorschau_datei) }}"
+       class="btn btn-gold btn-klein">Herunterladen</a>
+  </div>
+  <div class="vorschau-wrap">
+    <table class="vorschau-tabelle">
+      <thead>
+        <tr>
+          <th>#</th>
+          {% for sp in vorschau_spalten %}
+          <th>{{ sp }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for zeile in vorschau_zeilen %}
+        <tr>
+          <td style="color:var(--grau-mitte);">{{ loop.index }}</td>
+          {% for sp in vorschau_spalten %}
+          <td>{{ zeile.get(sp, '') }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# Dateiliste #}
+<h2 class="section-title">Erstellte Export-Dateien</h2>
+<div class="card">
+  {% if dateien %}
+  <table class="datei-tabelle">
+    <thead>
+      <tr>
+        <th>Dateiname</th>
+        <th>Zeitraum</th>
+        <th>Erstellt</th>
+        <th>Größe</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in dateien %}
+      <tr>
+        <td class="mono">{{ d.filename }}</td>
+        <td>{% if d.month and d.year %}{{ '%02d'|format(d.month) }}/{{ d.year }}{% else %}-{% endif %}</td>
+        <td>{{ d.created }}</td>
+        <td>{{ d.size_kb }} KB</td>
+        <td>
+          <a href="{{ url_for('datev_vorschau', filename=d.filename) }}"
+             class="btn btn-gruen btn-klein">Vorschau</a>
+          <a href="{{ url_for('datev_download', filename=d.filename) }}"
+             class="btn btn-gold btn-klein">Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="meldung meldung-info">Noch keine Export-Dateien vorhanden. Verwenden Sie das Formular oben, um einen Export zu erstellen.</div>
+  {% endif %}
+</div>
+{% endblock %}

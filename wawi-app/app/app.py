@@ -14,6 +14,7 @@ import logging
 import config
 import db as db_modul
 import berichte as bericht_modul
+import datev as datev_modul
 from db import get_db, test_verbindung
 
 logging.basicConfig(level=logging.INFO,
@@ -586,6 +587,95 @@ def ec_umsaetze_export():
     return send_file(io.BytesIO(inhalt), mimetype='text/csv',
                      as_attachment=True,
                      download_name=f'ec_umsaetze_{von}_{bis}.csv')
+
+
+# ── DATEV-Export ──────────────────────────────────────────────
+
+@app.get('/wawi/datev-export')
+@_login_required
+def datev_seite():
+    """DATEV-Export: Hauptseite mit Formular und Dateiliste."""
+    heute = date.today()
+    # Standardmäßig den Vormonat vorschlagen
+    if heute.month == 1:
+        monat, jahr = 12, heute.year - 1
+    else:
+        monat, jahr = heute.month - 1, heute.year
+    dateien = datev_modul.datev_dateien_auflisten()
+    return render_template('datev_export.html',
+                           monat=monat, jahr=jahr,
+                           dateien=dateien,
+                           vorschau_spalten=None, vorschau_zeilen=None,
+                           vorschau_datei=None,
+                           erfolg=None, fehler=None)
+
+
+@app.post('/wawi/datev-export/generieren')
+@_login_required
+def datev_generieren():
+    """DATEV-Export auslösen und Ergebnis anzeigen."""
+    monat = int(request.form.get('monat', 0))
+    jahr  = int(request.form.get('jahr', 0))
+
+    filepath, anzahl, fehler_msg = datev_modul.datev_export_ausfuehren(jahr, monat)
+    dateien = datev_modul.datev_dateien_auflisten()
+
+    erfolg = None
+    fehler = None
+    vorschau_spalten = None
+    vorschau_zeilen = None
+    vorschau_datei = None
+
+    if filepath:
+        erfolg = f'Export erstellt: {filepath.name} ({anzahl} Buchungszeilen)'
+        # Direkt Vorschau der neuen Datei zeigen
+        vorschau_spalten, vorschau_zeilen, _ = datev_modul.datev_datei_lesen(filepath.name)
+        vorschau_datei = filepath.name
+    else:
+        fehler = fehler_msg
+
+    return render_template('datev_export.html',
+                           monat=monat, jahr=jahr,
+                           dateien=dateien,
+                           vorschau_spalten=vorschau_spalten,
+                           vorschau_zeilen=vorschau_zeilen,
+                           vorschau_datei=vorschau_datei,
+                           erfolg=erfolg, fehler=fehler)
+
+
+@app.get('/wawi/datev-export/vorschau/<filename>')
+@_login_required
+def datev_vorschau(filename):
+    """Tabellarische Vorschau einer DATEV-Export-Datei."""
+    spalten, zeilen, fehler_msg = datev_modul.datev_datei_lesen(filename)
+
+    heute = date.today()
+    if heute.month == 1:
+        monat, jahr = 12, heute.year - 1
+    else:
+        monat, jahr = heute.month - 1, heute.year
+    dateien = datev_modul.datev_dateien_auflisten()
+
+    return render_template('datev_export.html',
+                           monat=monat, jahr=jahr,
+                           dateien=dateien,
+                           vorschau_spalten=spalten if spalten else None,
+                           vorschau_zeilen=zeilen if zeilen else None,
+                           vorschau_datei=filename,
+                           erfolg=None,
+                           fehler=fehler_msg if fehler_msg else None)
+
+
+@app.get('/wawi/datev-export/download/<filename>')
+@_login_required
+def datev_download(filename):
+    """DATEV-Export-Datei herunterladen."""
+    filepath = datev_modul.datev_datei_pfad(filename)
+    if not filepath:
+        flash('Datei nicht gefunden.', 'error')
+        return redirect(url_for('datev_seite'))
+    return send_file(filepath, mimetype='text/csv',
+                     as_attachment=True, download_name=filename)
 
 
 # ── Start ────────────────────────────────────────────────────
