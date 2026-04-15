@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .queries import DATEV_COLUMNS
 
-ENCODING = 'utf-8-sig'  # UTF-8 mit BOM, damit Excel Umlaute korrekt erkennt
+ENCODING = 'utf-8'  # UTF-8 ohne BOM
 DELIMITER = '\t'
 
 
@@ -39,7 +39,7 @@ def write_csv(rows: list[dict], year: int, month: int, output_dir: str = 'export
             fieldnames=DATEV_COLUMNS,
             delimiter=DELIMITER,
             extrasaction='ignore',
-            lineterminator='\r\n',
+            lineterminator='\r',
         )
         writer.writeheader()
         writer.writerows(rows)
