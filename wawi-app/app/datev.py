@@ -26,7 +26,10 @@ if _REPO_ROOT not in sys.path:
 
 from datevexport.queries import build_full_query, DATEV_COLUMNS
 from datevexport.config import Kontenplan
-from datevexport.export import ENCODING, DELIMITER
+from datevexport.export import DELIMITER
+
+# UTF-8 ohne BOM, CR-Zeilenende (wie Original-Script)
+ENCODING = 'utf-8'
 
 # Verzeichnis für generierte Export-Dateien
 EXPORT_DIR = os.path.join(os.path.dirname(__file__), 'datev_exports')
@@ -89,7 +92,7 @@ def datev_export_ausfuehren(year: int, month: int) -> tuple[Path | None, int, st
             fieldnames=DATEV_COLUMNS,
             delimiter=DELIMITER,
             extrasaction='ignore',
-            lineterminator='\r\n',
+            lineterminator='\r',
         )
         writer.writeheader()
         writer.writerows(rows)
