@@ -463,7 +463,7 @@ a { text-decoration: none; color: inherit; }
           </div>
         </div>
 
-        <div class="sidebar-group" id="grp-buchhaltung">
+        <div class="sidebar-group {% if request.path.startswith('/wawi/datev-export') %}open{% endif %}" id="grp-buchhaltung">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-buchhaltung')">
             <span class="icon">📒</span> Buchhaltung
             <span class="toggle-arrow">▶</span>
@@ -484,7 +484,7 @@ a { text-decoration: none; color: inherit; }
             <a href="/coming-soon?modul=Lastschriften" class="sidebar-sub-item">
               <span class="sub-icon">📑</span> Lastschriften
             </a>
-            <a href="/coming-soon?modul=Datev-Export" class="sidebar-sub-item">
+            <a href="/wawi/datev-export" class="sidebar-sub-item {% if request.path.startswith('/wawi/datev-export') %}aktiv{% endif %}">
               <span class="sub-icon">📤</span> Datev-Export
             </a>
             <a href="/coming-soon?modul=Mahnungen" class="sidebar-sub-item">

@@ -8,6 +8,7 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- WaWi DATEV-Export: Neuer Menüpunkt unter Buchhaltung → Datev-Export (`/wawi/datev-export`) – Monat/Jahr wählen, Export generieren, tabellarische Vorschau, Dateiliste mit Download; Storno-Buchungen und Nullumsätze werden automatisch gefiltert; Tab-getrennte CSV (UTF-8, CR-Zeilenende) für direkten DATEV-Import ([HAB-372](/HAB/issues/HAB-372))
 - Verwaltungs-App: Neue Seite „Funktionen" – Feature-Toggles für Kiosk- und Kasse-Parken ein-/ausschalten; Deaktivierung nur möglich wenn kein Bon geparkt ist ([HAB-368](/HAB/issues/HAB-368))
 - Verwaltungs-App: Mitarbeiter-Handbuch mit Sidebar-Link, Bearbeitungsmodus und Bild-Upload – analog zu Kasse- und Kiosk-Handbuch ([HAB-368](/HAB/issues/HAB-368))
 - Kiosk Terminal 9: Kunden-Selbstbedienungsterminal für Backwarenbestellungen – Kundenkarten-Scan (KARTEN.TYP='K'), eigene Bestellungen anlegen/einsehen/stornieren, Touch-optimierte Oberfläche, Terminal-Einstellung als eigene Seite im Menü, Login-Button für Rückkehr zur Mitarbeiter-Ansicht ([HAB-360](/HAB/issues/HAB-360))

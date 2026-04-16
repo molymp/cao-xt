@@ -15,6 +15,15 @@ Dieses Dokument protokolliert alle wesentlichen technischen und architekturellen
 
 ---
 
+## 2026-04-16 DATEV-Export als WaWi-Modul statt eigenständigem Script (HAB-372)
+
+- **Problem:** Der DATEV-Export lief bisher als eigenständiges PHP-Script außerhalb der WaWi-App. Export-Dateien mussten manuell erzeugt und geprüft werden. Es gab keine Vorschau-Funktion und keine Integration in die App-Oberfläche.
+- **Entscheidung:** Das bestehende `datevexport/`-Python-Paket (Queries + Export-Logik) wird als Modul in die WaWi-App integriert. Neues `wawi-app/app/datev.py` importiert `datevexport.queries` und `datevexport.export` direkt. Neue Route `/wawi/datev-export` mit Formulargenerierung, Dateiliste, Vorschau und Download. Teile 8 und 9 verwenden die Tabelle `hibiscus.umsatz` (Hibiscus-Banking) statt `XT_KTOAUS`.
+- **Begründung:** Die Integration in die WaWi-App erlaubt allen berechtigten Mitarbeitern den Export über den Browser, ohne CLI-Zugang. Die Wiederverwendung des `datevexport/`-Pakets vermeidet Codeduplizierung. Die Migration auf `hibiscus.umsatz` spiegelt die aktuelle Produktionskonfiguration wider (PHP-Original verwendet ebenfalls Hibiscus).
+- **Alternativen:** (a) Eigenständige Flask-App für DATEV (unnötiger Overhead, fünfter Port), (b) CLI-Wrapper um das Python-Script (nicht browserbasiert, keine Vorschau), (c) Kopie der Queries in die WaWi-App (Duplizierung).
+- **Konsequenzen:** Der WaWi-DB-User benötigt Lesezugriff auf das `hibiscus`-Schema. Export-Dateien werden unter `wawi-app/app/datev_exports/` lokal gespeichert (gitignored). Das `datevexport/`-Paket bleibt als eigenständiges Modul im Repo-Root erhalten und kann weiterhin per CLI genutzt werden.
+- **Referenz:** [HAB-372](/HAB/issues/HAB-372)
+
 ## 2026-04-13 Feature-Toggles via XT_EINSTELLUNGEN (HAB-368)
 
 - **Problem:** Die Parken-Funktion in Kiosk- und Kasse-App soll optional abschaltbar sein, ohne Code-Änderung oder Neustart.
