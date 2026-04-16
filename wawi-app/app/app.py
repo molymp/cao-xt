@@ -2,8 +2,9 @@
 CAO-XT WaWi-App – Flask-Hauptanwendung
 Starten: cd wawi-app/app && python3 app.py
 """
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, send_from_directory
 from datetime import datetime, date
+import base64
 import io
 import os
 import subprocess
@@ -674,6 +675,79 @@ def datev_download(filename):
         return redirect(url_for('datev_seite'))
     return send_file(filepath, mimetype='text/csv',
                      as_attachment=True, download_name=filename)
+
+
+# ── Handbuch (Benutzerhandbuch) ──────────────────────────────
+
+_DOKU_DIR = os.path.join(os.path.dirname(__file__), 'doku')
+
+
+@app.get('/wawi/doku/<path:dateiname>')
+@_login_required
+def wawi_doku_datei(dateiname):
+    """Statische Dateien aus dem doku/-Verzeichnis (Bilder für Handbuch)."""
+    return send_from_directory(os.path.abspath(_DOKU_DIR), dateiname)
+
+
+@app.get('/wawi/handbuch')
+@_login_required
+def wawi_handbuch():
+    """Benutzerhandbuch – alle eingeloggten User dürfen lesen,
+    Administratoren (admin=True in Session) dürfen bearbeiten."""
+    pfad = os.path.join(_DOKU_DIR, 'handbuch.html')
+    try:
+        with open(pfad, encoding='utf-8') as f:
+            html = f.read()
+    except FileNotFoundError:
+        return 'Handbuch nicht gefunden.', 404
+    ist_admin = bool(session.get('admin') or session.get('ma_id'))
+    inject = (f'<script id="hb-inject">'
+              f'window.HANDBUCH_ADMIN = {"true" if ist_admin else "false"};'
+              f'</script>\n')
+    html = html.replace('</head>', inject + '</head>', 1)
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@app.post('/wawi/handbuch/speichern')
+@_login_required
+def wawi_handbuch_speichern():
+    """Speichert das bearbeitete Handbuch. Backup der alten Version wird angelegt."""
+    data = request.get_json(force=True) or {}
+    html = data.get('html', '').strip()
+    if not html:
+        return jsonify({'ok': False, 'fehler': 'Kein Inhalt'}), 400
+    pfad   = os.path.join(_DOKU_DIR, 'handbuch.html')
+    backup = pfad + '.bak'
+    try:
+        if os.path.exists(pfad):
+            with open(pfad, 'rb') as f_in, open(backup, 'wb') as f_bak:
+                f_bak.write(f_in.read())
+        with open(pfad, 'w', encoding='utf-8') as f:
+            f.write(html)
+    except OSError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True})
+
+
+@app.post('/wawi/handbuch/upload')
+@_login_required
+def wawi_handbuch_upload():
+    """Speichert ein hochgeladenes Bild im doku/-Verzeichnis."""
+    data      = request.get_json(force=True) or {}
+    dateiname = os.path.basename(data.get('filename', ''))
+    b64data   = data.get('data', '')
+    if not dateiname or not b64data:
+        return jsonify({'ok': False, 'fehler': 'filename oder data fehlt'}), 400
+    if ',' in b64data:
+        b64data = b64data.split(',', 1)[1]
+    try:
+        bild_bytes = base64.b64decode(b64data)
+        ziel = os.path.join(_DOKU_DIR, dateiname)
+        with open(ziel, 'wb') as f:
+            f.write(bild_bytes)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+    return jsonify({'ok': True, 'filename': f'/wawi/doku/{dateiname}'})
 
 
 # ── Start ────────────────────────────────────────────────────

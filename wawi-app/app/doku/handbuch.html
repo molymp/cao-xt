@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Habacher Dorfladen – Benutzerhandbuch WaWi</title>
+<style>
+/* ── Grundlayout ──────────────────────────────────────── */
+:root {
+  --gruen:      #2d5a27;
+  --gruen-hell: #4a8a3f;
+  --creme:      #faf7f2;
+  --creme-dark: #ede8df;
+  --text:       #1a1a1a;
+  --text-hell:  #555;
+  --blau:       #1e40af;
+  --gelb:       #854d0e;
+  --rot:        #991b1b;
+  --sidebar-w:  260px;
+  --radius:     10px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--creme); color: var(--text); line-height: 1.65; font-size: 15px; }
+
+/* ── Seitenstruktur ───────────────────────────────────── */
+.layout { display: flex; min-height: 100vh; }
+
+/* ── Sidebar ──────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--gruen); color: white;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; padding: 0 0 2rem;
+}
+.sidebar-logo {
+  background: rgba(0,0,0,0.25); padding: 1.4rem 1.2rem;
+  font-size: 1.05rem; font-weight: 700; line-height: 1.35;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.sidebar-logo small {
+  display: block; font-size: 0.75rem; font-weight: 400;
+  opacity: 0.75; margin-top: 2px;
+}
+.sidebar nav { padding: 0.5rem 0; }
+.nav-group-title {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: rgba(255,255,255,0.5);
+  padding: 1rem 1.2rem 0.3rem;
+}
+.sidebar nav a {
+  display: block; padding: 0.5rem 1.2rem 0.5rem 1.4rem;
+  color: rgba(255,255,255,0.85); text-decoration: none;
+  font-size: 0.88rem; border-left: 3px solid transparent; transition: all 0.15s;
+}
+.sidebar nav a:hover, .sidebar nav a.aktiv {
+  background: rgba(255,255,255,0.12); color: white; border-left-color: #8bc34a;
+}
+.sidebar nav a.kapitel { font-weight: 700; font-size: 0.92rem; padding-top: 0.65rem; }
+.sidebar nav a.unter   { padding-left: 2.2rem; }
+
+/* ── Hauptinhalt ──────────────────────────────────────── */
+.inhalt { flex: 1; padding: 2rem 2.5rem; max-width: 900px; overflow-x: hidden; }
+
+/* ── Titelseite ───────────────────────────────────────── */
+.titelseite {
+  background: linear-gradient(135deg, var(--gruen) 0%, var(--gruen-hell) 100%);
+  color: white; border-radius: var(--radius); padding: 2.5rem 2rem;
+  margin-bottom: 2.5rem; text-align: center;
+}
+.titelseite h1  { font-size: 2rem; margin-bottom: 0.4rem; }
+.titelseite .sub { font-size: 1.1rem; opacity: 0.85; margin-bottom: 1rem; }
+.version-info { display: flex; gap: 1.2rem; flex-wrap: wrap; justify-content: center;
+  font-size: 0.82rem; opacity: 0.75; }
+
+/* ── Kapitel-Elemente ─────────────────────────────────── */
+.abschnitt { margin-bottom: 2.5rem; }
+.kapitel-header {
+  display: flex; align-items: center; gap: 1.2rem;
+  background: linear-gradient(135deg, var(--gruen) 0%, var(--gruen-hell) 100%);
+  color: white; border-radius: var(--radius); padding: 1.2rem 1.5rem; margin-bottom: 1.5rem;
+}
+.kapitel-nr { font-size: 2.5rem; font-weight: 900; opacity: 0.35; line-height: 1; }
+.kapitel-header h1 { font-size: 1.5rem; margin-bottom: 0.15rem; }
+.untertitel { font-size: 0.85rem; opacity: 0.8; }
+
+h2 { font-size: 1.15rem; color: var(--gruen); margin: 1.6rem 0 0.6rem;
+  border-bottom: 2px solid var(--creme-dark); padding-bottom: 0.4rem; }
+h3 { font-size: 1rem; color: var(--text); margin: 1.2rem 0 0.5rem; font-weight: 700; }
+p  { margin-bottom: 0.8rem; }
+ul, ol { margin: 0.6rem 0 1rem 1.5rem; }
+li { margin-bottom: 0.3rem; }
+code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+
+/* ── Hinweis-Boxen ────────────────────────────────────── */
+.hinweis, .achtung, .tipp {
+  border-radius: var(--radius); padding: 0.9rem 1rem;
+  margin: 0.8rem 0 1.2rem; font-size: 0.88rem;
+}
+.hinweis { background: #eff6ff; border-left: 4px solid #3b82f6; }
+.achtung { background: #fff7ed; border-left: 4px solid #f59e0b; }
+.tipp    { background: #f0fdf4; border-left: 4px solid var(--gruen-hell); }
+.hinweis-titel { font-weight: 700; margin-bottom: 0.3rem; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── Schritt-für-Schritt ──────────────────────────────── */
+.schritte { list-style: none; padding: 0; margin: 0.8rem 0 1.2rem; }
+.schritte li {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: white; border: 1px solid var(--creme-dark);
+  border-radius: var(--radius); padding: 0.9rem 1rem; margin-bottom: 0.6rem;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+.schritt-nr {
+  background: var(--gruen); color: white; font-weight: 700; font-size: 0.85rem;
+  border-radius: 50%; width: 28px; height: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.schritt-text { flex: 1; line-height: 1.55; font-size: 0.92rem; }
+
+/* ── Tabellen ─────────────────────────────────────────── */
+table {
+  width: 100%; border-collapse: collapse; font-size: 0.88rem;
+  margin: 0.8rem 0 1.2rem; background: white;
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+th { background: var(--gruen); color: white; padding: 9px 14px; text-align: left;
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--creme-dark); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--creme); }
+
+/* ── Screenshot-Platzhalter ───────────────────────────── */
+.screenshot {
+  border: 2px dashed var(--creme-dark); border-radius: var(--radius);
+  background: #f8fafc; padding: 2rem 1.5rem; text-align: center;
+  margin: 1.2rem 0; color: #64748b; position: relative;
+}
+.screenshot .foto-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.screenshot .beschr { font-weight: 700; font-size: 0.95rem; color: #334155; margin-bottom: 0.3rem; }
+.screenshot .hinweis-text { font-size: 0.8rem; color: #94a3b8; }
+.screenshot img { max-width: 100%; border-radius: 8px; display: block; margin: 0 auto; }
+.upload-knopf-leiste { margin-top: 0.8rem; display: flex; gap: 8px;
+  justify-content: center; flex-wrap: wrap; }
+.upload-knopf {
+  padding: 7px 16px; background: var(--gruen); color: white;
+  border: none; border-radius: 6px; cursor: pointer;
+  font-size: 0.85rem; font-weight: 700; font-family: 'Segoe UI', Arial, sans-serif;
+}
+.upload-knopf:hover { background: var(--gruen-hell); }
+.upload-knopf:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Abschnitt-Trenner ────────────────────────────────── */
+hr { border: none; border-top: 2px solid var(--creme-dark); margin: 2.5rem 0; }
+
+/* ── UI-Elemente ──────────────────────────────────────── */
+.taste {
+  display: inline-block; background: var(--gruen); color: white;
+  font-weight: 700; font-size: 0.82rem; padding: 2px 10px;
+  border-radius: 5px; white-space: nowrap;
+}
+.taste.grau { background: #64748b; }
+
+/* ── Farb-Badges ─────────────────────────────────────── */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 0.82rem; font-weight: 700; }
+.badge-rot   { background: #fef2f2; color: var(--rot); border: 1px solid #fecaca; }
+.badge-gelb  { background: #fefce8; color: var(--gelb); border: 1px solid #fde68a; }
+.badge-gruen { background: #f0fdf4; color: var(--gruen); border: 1px solid #bbf7d0; }
+
+/* ── Edit-Toolbar ─────────────────────────────────────── */
+#edit-toolbar {
+  position: fixed; top: 12px; right: 16px; z-index: 9999;
+  background: white; border-radius: 10px; padding: 8px 12px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.18);
+  font-family: 'Segoe UI', Arial, sans-serif; font-size: 0.88rem;
+}
+#toolbar-ansicht, #toolbar-bearbeitung { display: flex; gap: 8px; align-items: center; }
+.tbtn { padding: 7px 15px; border: none; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; font-weight: 700; }
+.tbtn-zurueck    { background: #f1f5f9; color: var(--text); }
+.tbtn-zurueck:hover    { background: #e2e8f0; }
+.tbtn-bearbeiten { background: var(--gruen); color: white; }
+.tbtn-bearbeiten:hover { background: var(--gruen-hell); }
+.tbtn-speichern  { background: #2563eb; color: white; }
+.tbtn-speichern:hover  { background: #1d4ed8; }
+.tbtn-abbrechen  { background: #f1f5f9; color: var(--text); }
+.tbtn-abbrechen:hover  { background: var(--creme-dark); }
+.edit-badge { background: #fef9c3; color: #854d0e; font-weight: 700;
+  font-size: 0.78rem; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid #fde68a; white-space: nowrap; }
+
+/* Edit-Modus */
+body.edit-mode [contenteditable="true"] {
+  outline: 2px dashed #93c5fd; border-radius: 3px;
+  cursor: text; min-height: 1em; padding: 1px 3px;
+}
+body.edit-mode [contenteditable="true"]:hover { outline-color: #3b82f6; }
+body.edit-mode [contenteditable="true"]:focus {
+  outline: 2px solid #2563eb; background: rgba(37,99,235,0.04);
+}
+
+/* ── Toast ────────────────────────────────────────────── */
+#edit-toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  padding: 10px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 700;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  pointer-events: none; transition: opacity 0.4s; opacity: 0;
+}
+
+/* ── Druck ────────────────────────────────────────────── */
+@media print {
+  .sidebar { display: none; }
+  .inhalt { padding: 1rem; max-width: 100%; }
+  #edit-toolbar { display: none !important; }
+  h2, h3 { page-break-after: avoid; }
+}
+
+html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Admin-Flag aus Injektion
+  const ADMIN = !!window.HANDBUCH_ADMIN;
+  if (ADMIN) {
+    const btn = document.getElementById('btn-bearbeiten');
+    if (btn) btn.style.display = '';
+  }
+
+  // Aktive Sidebar-Links bei Scroll
+  const abschnitte = document.querySelectorAll('[id]');
+  const links = document.querySelectorAll('.sidebar nav a[href^="#"]');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        links.forEach(a => {
+          a.classList.toggle('aktiv', a.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  abschnitte.forEach(el => observer.observe(el));
+});
+
+// ── Navigation ──────────────────────────────────────────────
+function zurueckZurApp() {
+  window.location.href = '/';
+}
+
+// ── Edit-Modus ───────────────────────────────────────────────
+let editOriginal = '';
+function startEdit() {
+  editOriginal = document.body.innerHTML;
+  document.body.classList.add('edit-mode');
+  document.querySelectorAll(
+    '.inhalt h1, .inhalt h2, .inhalt h3, .inhalt p, ' +
+    '.schritt-text, .hinweis, .achtung, .tipp, td'
+  ).forEach(el => { el.setAttribute('contenteditable', 'true'); });
+  document.getElementById('toolbar-ansicht').style.display = 'none';
+  document.getElementById('toolbar-bearbeitung').style.display = 'flex';
+}
+
+function abbrechenEdit() {
+  document.body.innerHTML = editOriginal;
+  document.body.classList.remove('edit-mode');
+  document.getElementById('toolbar-ansicht').style.display = 'flex';
+  document.getElementById('toolbar-bearbeitung').style.display = 'none';
+}
+
+async function speichernHandbuch() {
+  const btn = document.getElementById('btn-speichern');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Speichert …'; }
+  document.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  document.body.classList.remove('edit-mode');
+  const html = '<!DOCTYPE html>\n<html lang="de">' + document.documentElement.innerHTML + '</html>';
+  try {
+    const r = await fetch('/wawi/handbuch/speichern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html })
+    });
+    const data = await r.json();
+    zeigToast(data.ok ? '✓ Gespeichert' : ('Fehler: ' + data.fehler),
+              data.ok ? '#f0fdf4' : '#fef2f2',
+              data.ok ? '#14532d' : '#7f1d1d',
+              data.ok ? '#86efac' : '#fca5a5');
+    if (data.ok) {
+      document.getElementById('toolbar-ansicht').style.display = 'flex';
+      document.getElementById('toolbar-bearbeitung').style.display = 'none';
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Speichern'; }
+    }
+  } catch(e) {
+    zeigToast('Netzwerkfehler: ' + e, '#fef2f2', '#7f1d1d', '#fca5a5');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Speichern'; }
+  }
+}
+
+function zeigToast(msg, bg, col, border) {
+  const t = document.getElementById('edit-toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.background = bg; t.style.color = col;
+  t.style.border = '1px solid ' + border;
+  t.style.opacity = '1';
+  setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// ── Bild-Upload ──────────────────────────────────────────────
+function uploadScreenshot(inputEl, targetId, beschrId) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const dateiname = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const r = await fetch('/wawi/handbuch/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: dateiname, data: e.target.result })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const box = document.getElementById(targetId);
+      if (box) {
+        box.innerHTML = '<img src="' + data.filename + '" alt="' + beschrId + '">';
+      }
+      zeigToast('✓ Bild hochgeladen', '#f0fdf4', '#14532d', '#86efac');
+    } else {
+      zeigToast('Fehler: ' + data.fehler, '#fef2f2', '#7f1d1d', '#fca5a5');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+</script>
+
+<!-- ── Toolbar ── -->
+<div id="edit-toolbar">
+  <div id="toolbar-ansicht" style="display:flex;">
+    <button class="tbtn tbtn-zurueck" onclick="zurueckZurApp()">← WaWi</button>
+    <button class="tbtn tbtn-bearbeiten" id="btn-bearbeiten" onclick="startEdit()" style="display:none;">✏️ Bearbeiten</button>
+  </div>
+  <div id="toolbar-bearbeitung" style="display:none;">
+    <button class="tbtn tbtn-zurueck" onclick="abbrechenEdit(); zurueckZurApp()">← WaWi</button>
+    <span class="edit-badge">● Bearbeitungsmodus</span>
+    <button class="tbtn tbtn-speichern" id="btn-speichern" onclick="speichernHandbuch()">💾 Speichern</button>
+    <button class="tbtn tbtn-abbrechen" onclick="abbrechenEdit()">✕ Abbrechen</button>
+  </div>
+</div>
+<div id="edit-toast"></div>
+
+<div class="layout">
+
+<!-- ══════════════════════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    📦 Habacher Dorfladen
+    <small>Benutzerhandbuch WaWi</small>
+  </div>
+  <nav>
+    <a href="#uebersicht" class="kapitel">Übersicht</a>
+    <a href="#login" class="kapitel">Login</a>
+    <a href="#login-karte" class="unter">Kartenlogin</a>
+    <a href="#login-passwort" class="unter">Passwort-Login</a>
+    <a href="#navigation" class="kapitel">Sidebar-Navigation</a>
+    <a href="#preispflege" class="kapitel">Preispflege</a>
+    <a href="#preispflege-spalten" class="unter">Spalten</a>
+    <a href="#preispflege-filter" class="unter">Filtern</a>
+    <a href="#preispflege-edit" class="unter">VK5 bearbeiten</a>
+    <a href="#preispflege-farben" class="unter">Farbkennzeichnung</a>
+    <a href="#datev" class="kapitel">DATEV-Export</a>
+    <a href="#datev-ausfuehren" class="unter">Export auslösen</a>
+    <a href="#datev-dateien" class="unter">Dateiliste</a>
+    <a href="#datev-vorschau" class="unter">Vorschau</a>
+    <a href="#datev-aufbau" class="unter">Aufbau der Datei</a>
+    <a href="#datev-buchungsteile" class="unter">Buchungsteile</a>
+    <a href="#datev-filter" class="unter">Filterung</a>
+    <a href="#datev-quellen" class="unter">Datenquellen</a>
+    <a href="#artikel" class="kapitel">Artikel-Suche</a>
+    <a href="#reporting" class="kapitel">Reporting</a>
+    <a href="#cfo-berichte" class="kapitel">CFO-Berichte</a>
+    <a href="#cfo-liste" class="unter">Verfügbare Berichte</a>
+    <a href="#cfo-filter" class="unter">Zeitraumfilter</a>
+    <a href="#cfo-export" class="unter">CSV-Export</a>
+  </nav>
+</aside>
+
+<!-- ══════════════════════════════════════════════════════
+     INHALT
+══════════════════════════════════════════════════════ -->
+<div class="inhalt">
+
+<!-- ── Titelseite ── -->
+<div class="titelseite" id="uebersicht">
+  <h1>Benutzerhandbuch WaWi</h1>
+  <div class="sub">Warenwirtschaft – Habacher Dorfladen</div>
+  <div class="version-info">
+    <span>Version 0.5.0</span>
+    <span>Stand: 16.04.2026</span>
+    <span>App: wawi-app · Port 5003</span>
+  </div>
+</div>
+
+<p>Die WaWi-App ist das Warenwirtschafts-Modul des Dorfladens Habach. Sie läuft auf Port 5003 und ist über die Navbar (Schaltfläche „📦 WaWi") aus Kasse und Kiosk erreichbar.</p>
+
+<hr>
+
+<!-- ══════ LOGIN ══════ -->
+<div class="abschnitt" id="login">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">1</div>
+    <div><h1>Login</h1><div class="untertitel">Anmeldung an der WaWi-App</div></div>
+  </div>
+
+  <p>Die WaWi bietet zwei Anmeldearten:</p>
+
+  <h2 id="login-karte">Kartenlogin (Barcode-Scan)</h2>
+  <p>Standardmäßig ist der Tab <strong>„Karte scannen"</strong> aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten akzeptiert (KARTEN.TYP='M').</p>
+
+  <h2 id="login-passwort">Passwort-Login mit Touch-Tastatur</h2>
+  <p>Tab <strong>„Passwort"</strong> wählen. Benutzername und Passwort eingeben – bei Bedarf über die eingeblendete Touch-Tastatur (QWERTZ-Layout). <span class="taste">⇧</span> für Großbuchstaben, <span class="taste grau">⌫</span> für Löschen, <span class="taste">OK</span> zum Absenden.</p>
+  <p>Nach dem Login erscheint das Dashboard.</p>
+</div>
+
+<hr>
+
+<!-- ══════ NAVIGATION ══════ -->
+<div class="abschnitt" id="navigation">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">2</div>
+    <div><h1>Sidebar-Navigation</h1><div class="untertitel">Aufbau der Seitenleiste</div></div>
+  </div>
+
+  <table>
+    <thead><tr><th>Bereich</th><th>Seite</th><th>Beschreibung</th></tr></thead>
+    <tbody>
+      <tr><td>Dashboard</td><td><code>/</code></td><td>Tageseinnahmen, Monatsumsatz, offene Vorgänge</td></tr>
+      <tr><td>Stammdaten → Artikel</td><td><code>/wawi</code></td><td>Artikelsuche &amp; Detailansicht</td></tr>
+      <tr><td>Stammdaten → Preispflege</td><td><code>/wawi/preispflege</code></td><td>EK / VK5 / Faktor aller aktiven Artikel (N/F/S)</td></tr>
+      <tr><td>Buchhaltung → Datev-Export</td><td><code>/wawi/datev-export</code></td><td>DATEV-Buchungsstapel erzeugen, herunterladen und prüfen</td></tr>
+      <tr><td>Weitere → Reporting</td><td><code>/reporting</code></td><td>CFO-Reports: MwSt, Warengruppen-Umsatz</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<hr>
+
+<!-- ══════ PREISPFLEGE ══════ -->
+<div class="abschnitt" id="preispflege">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">3</div>
+    <div><h1>Preispflege</h1><div class="untertitel">EK / VK5 / Marge aller aktiven Artikel</div></div>
+  </div>
+
+  <p>Unter <strong>Stammdaten → Preispflege</strong> werden alle aktiven Artikel angezeigt – Normal (N), Freie (F) und Stückliste (S). Gelöschte und VK-gesperrte Artikel werden ausgeschlossen.</p>
+
+  <h2 id="preispflege-spalten">Spalten</h2>
+  <table>
+    <thead><tr><th>Spalte</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td>Art-Nr.</td><td>CAO-Artikelnummer</td></tr>
+      <tr><td>Typ</td><td>Artikeltyp: N (Normal), F (Frei), S (Stückliste)</td></tr>
+      <tr><td>Bezeichnung</td><td>Kassenname des Artikels</td></tr>
+      <tr><td>Warengruppe</td><td>Zugeordnete Warengruppe</td></tr>
+      <tr><td>EK (€)</td><td>Einkaufspreis aus CAO-Stammdaten</td></tr>
+      <tr><td>VK5 Brutto (€)</td><td>Barverkaufspreis inkl. MwSt – <strong>inline editierbar</strong></td></tr>
+      <tr><td>Marge %</td><td>Berechnete Bruttomarge: (VK5_netto − EK) / VK5_netto × 100</td></tr>
+      <tr><td>MwSt %</td><td>MwSt-Satz je CAO-Steuercode (0 / 7 / 7,8 / 19 %)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="preispflege-filter">Filtern nach Warengruppe</h2>
+  <p>Dropdown oben links → gewünschte Warengruppe wählen → Tabelle lädt automatisch neu.</p>
+
+  <h2>Sortierung</h2>
+  <p>Klick auf Spaltenüberschrift sortiert die Tabelle. Standard: <strong>Marge aufsteigend</strong> (niedrigste Marge zuerst).</p>
+
+  <h2 id="preispflege-edit">VK5 inline bearbeiten</h2>
+  <ol class="schritte">
+    <li><div class="schritt-nr">1</div><div class="schritt-text">Auf den VK5-Wert klicken → Eingabefeld erscheint.</div></li>
+    <li><div class="schritt-nr">2</div><div class="schritt-text">Neuen Brutto-Preis (€) eingeben – Komma oder Punkt als Dezimaltrenner.</div></li>
+    <li><div class="schritt-nr">3</div><div class="schritt-text"><span class="taste">Enter</span> zum Speichern oder <span class="taste grau">Escape</span> zum Abbrechen.</div></li>
+    <li><div class="schritt-nr">4</div><div class="schritt-text">Der neue VK5 wird sofort in der CAO-Datenbank (<code>ARTIKEL.VK5B</code>) gespeichert.</div></li>
+    <li><div class="schritt-nr">5</div><div class="schritt-text">Marge-Badge und Zeilenfarbe aktualisieren sich ohne Seitenreload.</div></li>
+  </ol>
+
+  <h2 id="preispflege-farben">Farbliche Kennzeichnung</h2>
+  <table>
+    <thead><tr><th>Farbe</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-rot">Rot</span></td><td>Marge &lt; 10 % – Handlungsbedarf</td></tr>
+      <tr><td><span class="badge badge-gelb">Gelb</span></td><td>Marge 10–20 % – Beobachten</td></tr>
+      <tr><td><span class="badge badge-gruen">Grün</span></td><td>Marge ≥ 20 % – Gut</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<hr>
+
+<!-- ══════ DATEV-EXPORT ══════ -->
+<div class="abschnitt" id="datev">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">4</div>
+    <div><h1>DATEV-Export</h1><div class="untertitel">Buchungsstapel für DATEV erzeugen und prüfen</div></div>
+  </div>
+
+  <p>Erreichbar über Sidebar → <strong>Buchhaltung → Datev-Export</strong> oder direkt unter <code>/wawi/datev-export</code>.</p>
+  <p>Erzeugt einen DATEV-kompatiblen Buchungsstapel (CSV) aus den CAO-Faktura-Daten für einen gewählten Monat. Die Datei kann direkt in DATEV importiert werden.</p>
+
+  <h2 id="datev-ausfuehren">Export auslösen</h2>
+  <ol class="schritte">
+    <li><div class="schritt-nr">1</div><div class="schritt-text"><strong>Monat</strong> und <strong>Jahr</strong> über die Dropdowns auswählen.</div></li>
+    <li><div class="schritt-nr">2</div><div class="schritt-text"><span class="taste">Export generieren</span> klicken.</div></li>
+    <li><div class="schritt-nr">3</div><div class="schritt-text">Bei Erfolg: Vorschau-Tabelle wird angezeigt. Die Datei erscheint in der Dateiliste unten.</div></li>
+    <li><div class="schritt-nr">4</div><div class="schritt-text">Bei Fehler (z. B. keine Buchungen im Zeitraum): Fehlermeldung in Rot.</div></li>
+  </ol>
+
+  <h2 id="datev-dateien">Dateiliste</h2>
+  <p>Alle erzeugten Export-Dateien werden unterhalb des Formulars aufgelistet:</p>
+  <table>
+    <thead><tr><th>Spalte</th><th>Bedeutung</th></tr></thead>
+    <tbody>
+      <tr><td>Dateiname</td><td><code>habadola2datev_YYYY-MM_as-of_TIMESTAMP.csv</code></td></tr>
+      <tr><td>Zeitraum</td><td>Exportierter Monat/Jahr</td></tr>
+      <tr><td>Erstellt</td><td>Erzeugungszeitpunkt</td></tr>
+      <tr><td>Größe</td><td>Dateigröße in KB</td></tr>
+      <tr><td>Aktionen</td><td><strong>Vorschau</strong> (tabellarische Ansicht) und <strong>Download</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="datev-vorschau">Tabellarische Vorschau</h2>
+  <p>Klick auf <strong>Vorschau</strong> zeigt den Inhalt der Export-Datei als scrollbare Tabelle an. So lassen sich die Buchungen vor dem DATEV-Import kontrollieren.</p>
+
+  <h2 id="datev-aufbau">Aufbau der Export-Datei</h2>
+  <p>Die CSV-Datei ist <strong>Tab-getrennt</strong>, <strong>UTF-8</strong> kodiert (ohne BOM) und verwendet <strong>CR</strong> (<code>\r</code>) als Zeilenende.</p>
+
+  <h3>Spalten</h3>
+  <table>
+    <thead><tr><th>Spalte</th><th>Beschreibung</th></tr></thead>
+    <tbody>
+      <tr><td>Waehrungskennung</td><td>Immer <code>EUR</code></td></tr>
+      <tr><td>SollHabenKennzeichen</td><td><code>S</code> (Soll) oder <code>H</code> (Haben)</td></tr>
+      <tr><td>Umsatz</td><td>Betrag mit Komma als Dezimaltrenner (z. B. <code>123,45</code>)</td></tr>
+      <tr><td>BUSchluessel</td><td>DATEV-Buchungsschlüssel (leer bei Automatikkonten)</td></tr>
+      <tr><td>Gegenkonto</td><td>FiBu-Gegenkonto</td></tr>
+      <tr><td>Belegfeld1</td><td>Belegnummer (VRENUM, BELEGNUM o. Ä.)</td></tr>
+      <tr><td>Belegfeld2</td><td>(leer)</td></tr>
+      <tr><td>Datum</td><td>Buchungsdatum im Format <code>TTMM</code></td></tr>
+      <tr><td>Konto</td><td>FiBu-Konto</td></tr>
+      <tr><td>Kostfeld1</td><td>Kostenstelle (= Gegenkonto)</td></tr>
+      <tr><td>Kostfeld2</td><td>(leer)</td></tr>
+      <tr><td>Kostmenge</td><td>(leer)</td></tr>
+      <tr><td>Skonto</td><td>Skontobetrag falls vorhanden</td></tr>
+      <tr><td>Buchungstext</td><td>Beschreibung der Buchung</td></tr>
+      <tr><td>Festschreibung</td><td>DATEV-Festschreibungskennzeichen</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="datev-buchungsteile">Buchungsteile und Buchungstexte</h2>
+  <p>Der Export setzt sich aus mehreren Buchungsteilen zusammen, die per SQL-UNION verknüpft werden:</p>
+  <table>
+    <thead><tr><th>Teil</th><th>Buchungsart</th><th>Buchungstext-Muster</th><th>Beispiel</th></tr></thead>
+    <tbody>
+      <tr><td>1a–1d</td><td>Lieferantenrechnungen (0/19/7/7,8 %)</td><td><code>Name ORGNUM MwSt%</code></td><td>Molkereivertrieb Miesbach 1120762 0%</td></tr>
+      <tr><td>1e</td><td>Versorger-Rechnungen (Kundengruppe 998)</td><td><code>Name* VRENUM Beschreibung</code></td><td>Stadtwerke Weilheim* 5012 Strom Jan</td></tr>
+      <tr><td>2</td><td>Lieferantenzahlungen</td><td><code>VERW_ZWECK</code> (bei Umbuchung: + Partnername)</td><td>Rechnung 1120762</td></tr>
+      <tr><td>3a–3c</td><td>Kundenrechnungen (0/19/7 %)</td><td><code>Name MwSt%</code></td><td>Mustermann 19%</td></tr>
+      <tr><td>4</td><td>Kundenzahlungen</td><td><code>VERW_ZWECK</code></td><td>Ausgleich Rechnung 5001</td></tr>
+      <tr><td>5a–5c</td><td>Lieferanten-Tagesaggregate (0/19/7 %)</td><td><code>TTMM-Konto-MinVRENUM-MaxVRENUM</code></td><td>1503-70010-4980-4985</td></tr>
+      <tr><td>6</td><td>Kassenzahlungen</td><td><code>GV_TYP TTMM</code> (Gegenkonto bedingt)</td><td>Bareinzahlung 1503</td></tr>
+      <tr><td>7a–7c</td><td>Kunden-Tagesaggregate (0/19/7 %)</td><td><code>TTMM-Konto-MinVRENUM-MaxVRENUM</code></td><td>1503-10010-6001-6012</td></tr>
+      <tr><td>8</td><td>SB-Einzahlungen (Hibiscus)</td><td><code>kommentar</code> oder <code>SB-Einzahlung id</code></td><td>SB-Einzahlung 4521</td></tr>
+      <tr><td>9a</td><td>TELECASH-Kartenzahlungen (Hibiscus)</td><td><code>Kartennummer</code> (ab Position 9 im Zweck)</td><td>5432XXXXXXXX1234</td></tr>
+      <tr><td>9b</td><td>First-Data-Kartenzahlungen (Hibiscus)</td><td><code>Kartentyp</code> (aus Zweck extrahiert)</td><td>VISA</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="datev-filter">Filterung</h2>
+  <div class="hinweis">
+    <div class="hinweis-titel">Wichtig</div>
+    <p><strong>Storno-Buchungen</strong> werden bei Lieferantenrechnungen über <code>STADIUM &lt; 125</code> und bei Zahlungen über <code>STORNO = 0</code> gefiltert.</p>
+    <p><strong>Nullumsatz-Einträge</strong> (Umsatz = <code>0,00</code>) werden automatisch übersprungen, da DATEV diese beim Import als Fehler behandelt.</p>
+  </div>
+
+  <h2 id="datev-quellen">Datenquellen</h2>
+  <table>
+    <thead><tr><th>Teile</th><th>Quelle</th></tr></thead>
+    <tbody>
+      <tr><td>1–7</td><td>CAO-Faktura-Tabellen (<code>JOURNAL</code>, <code>JOURNALPOS</code>, <code>ZAHLUNGEN</code>, <code>ADRESSEN</code>)</td></tr>
+      <tr><td>8–9</td><td>Hibiscus-Banking-Tabelle (<code>hibiscus.umsatz</code>) – der DB-User benötigt Lesezugriff auf das <code>hibiscus</code>-Schema.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Speicherort</h3>
+  <p>Export-Dateien werden unter <code>wawi-app/app/datev_exports/</code> gespeichert (gitignored). Pro Export wird eine neue Datei mit Zeitstempel im Namen angelegt.</p>
+</div>
+
+<hr>
+
+<!-- ══════ ARTIKEL-SUCHE ══════ -->
+<div class="abschnitt" id="artikel">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">5</div>
+    <div><h1>Artikel-Suche</h1><div class="untertitel">Artikelstammdaten durchsuchen</div></div>
+  </div>
+
+  <p>Erreichbar unter <code>/wawi</code>. Freitextsuche nach Art.-Nr., Bezeichnung, Kassenname oder Barcode.</p>
+  <p>Zeigt Basisdetails, aktuelle VK-Preise aller Ebenen (VK1–VK5) und EK.</p>
+</div>
+
+<hr>
+
+<!-- ══════ REPORTING ══════ -->
+<div class="abschnitt" id="reporting">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">6</div>
+    <div><h1>Reporting</h1><div class="untertitel">Finanzübersicht und Warengruppen-Analyse</div></div>
+  </div>
+
+  <p>Erreichbar unter <code>/reporting</code>.</p>
+  <ul>
+    <li><strong>MwSt-Tabelle:</strong> Aufschlüsselung nach 7 % / 19 % je Monat (letzte 12 Monate).</li>
+    <li><strong>Warengruppen-Umsatz:</strong> Brutto-Umsatz und COGS nach Warengruppe für gewählten Monat.</li>
+    <li><strong>Finance-KPIs:</strong> Aktueller und Vormonat im Vergleich (Umsatz, Belege, Tages-Ø, Ø 6 Monate).</li>
+  </ul>
+</div>
+
+<hr>
+
+<!-- ══════ CFO-BERICHTE ══════ -->
+<div class="abschnitt" id="cfo-berichte">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">7</div>
+    <div><h1>CFO-Berichte</h1><div class="untertitel">Detaillierte Finanzberichte mit Export</div></div>
+  </div>
+
+  <p>Erreichbar über Sidebar → <strong>Weitere → Reporting / CFO-Reports</strong> oder direkt unter <code>/wawi/berichte</code>.</p>
+
+  <h2 id="cfo-liste">Verfügbare Berichte</h2>
+  <table>
+    <thead><tr><th>Bericht</th><th>URL</th><th>Beschreibung</th></tr></thead>
+    <tbody>
+      <tr><td>Übersicht</td><td><code>/wawi/berichte</code></td><td>Startseite mit Links zu allen 4 Berichten</td></tr>
+      <tr><td>Tagesumsatz</td><td><code>/wawi/berichte/tagesumsatz</code></td><td>Tagesumsätze nach Zahlart (Zeitraumfilter: Von/Bis)</td></tr>
+      <tr><td>Monatsübersicht</td><td><code>/wawi/berichte/monatsuebersicht</code></td><td>VK/EK je Monat + Balken-Chart (Jahresauswahl)</td></tr>
+      <tr><td>Kassenbuch</td><td><code>/wawi/berichte/kassenbuch</code></td><td>FiBu-Konto 1000 – Kasseneinnahmen/-ausgaben</td></tr>
+      <tr><td>EC-Umsätze</td><td><code>/wawi/berichte/ec-umsaetze</code></td><td>EC-Kartentransaktionen nach Zahlungsart</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="cfo-filter">Zeitraumfilter</h2>
+  <p>Alle Berichte mit Datum-Filter akzeptieren <code>?von=YYYY-MM-DD&amp;bis=YYYY-MM-DD</code> als URL-Parameter. Die Formularfelder auf der Seite setzen diese Parameter automatisch.</p>
+
+  <h2 id="cfo-export">CSV-Export</h2>
+  <p>Jeder Bericht hat einen <span class="taste">CSV exportieren</span>-Button. Die heruntergeladene Datei ist UTF-8-BOM-kodiert für direkte Öffnung in Excel (ohne Zeichensatzprobleme bei Umlauten).</p>
+</div>
+
+</div><!-- /inhalt -->
+</div><!-- /layout -->
+
+</body></html>
