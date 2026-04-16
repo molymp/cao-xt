@@ -51,7 +51,7 @@ WHERE YEAR(j1.RDATUM) = {year}
     AND j1.QUELLE IN (5)
     AND j1.QUELLE_SUB != 2
     AND j1.BSUMME_0 != 0
-    AND j1.STADIUM < 127
+    AND j1.STADIUM < 125
     AND A.KUNDENGRUPPE <> 998"""
 
 
@@ -80,7 +80,7 @@ WHERE YEAR(j2.RDATUM) = {year}
     AND j2.QUELLE IN (5)
     AND j2.QUELLE_SUB != 2
     AND j2.BSUMME_1 != 0
-    AND j2.STADIUM < 127
+    AND j2.STADIUM < 125
     AND A.KUNDENGRUPPE <> 998"""
 
 
@@ -109,7 +109,7 @@ WHERE YEAR(j3.RDATUM) = {year}
     AND j3.QUELLE IN (5)
     AND j3.QUELLE_SUB != 2
     AND j3.BSUMME_2 != 0
-    AND j3.STADIUM < 127
+    AND j3.STADIUM < 125
     AND A.KUNDENGRUPPE <> 998"""
 
 
@@ -138,7 +138,7 @@ WHERE YEAR(j4.RDATUM) = {year}
     AND j4.QUELLE IN (5)
     AND j4.QUELLE_SUB != 2
     AND j4.BSUMME_3 != 0
-    AND j4.STADIUM < 127
+    AND j4.STADIUM < 125
     AND A.KUNDENGRUPPE <> 998"""
 
 
@@ -185,8 +185,7 @@ WHERE YEAR(j20.RDATUM) = {year}
     AND MONTH(j20.RDATUM) = {month}
     AND j20.QUELLE IN (5)
     AND j20.QUELLE_SUB != 2
-    AND j20.BSUMME_1 != 0
-    AND j20.STADIUM < 127
+    AND j20.STADIUM < 125
     AND jp20.ARTIKELTYP != 'T'
     AND A20.KUNDENGRUPPE = 998"""
 
@@ -199,7 +198,7 @@ def _teil_2(year: int, month: int, k: Kontenplan) -> str:
     """2 – Zahlung von Lieferantenrechnungen."""
     return f"""
 SELECT 'EUR' AS Waehrungskennung,
-    IF(z1.BETRAG > 0, 'S', 'H') AS SollHabenKennzeichen,
+    IF(z1.ART = 'UB', IF(z1.BETRAG > 0, 'H', 'S'), IF(z1.BETRAG < 0, 'H', 'S')) AS SollHabenKennzeichen,
     REPLACE(ABS(z1.BETRAG), '.', ',') AS Umsatz,
     '' AS BUSchluessel,
     z1.FIBU_GEGENKTO AS Gegenkonto,
@@ -211,7 +210,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     IF(z1.SKONTO_BETRAG != 0, REPLACE(REPLACE(z1.SKONTO_BETRAG, '.', ','), '-', ''), '') AS Skonto,
-    z1.VERW_ZWECK AS Buchungstext,
+    IF(z1.ART = 'UB', CONCAT(z1.VERW_ZWECK, ' ', z1.PARTNER_NAME1), z1.VERW_ZWECK) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
 FROM ZAHLUNGEN z1
 WHERE YEAR(z1.DATUM) = {year}
@@ -248,7 +247,7 @@ WHERE YEAR(j5.RDATUM) = {year}
     AND j5.QUELLE IN (3)
     AND j5.QUELLE_SUB != 2
     AND j5.BSUMME_0 != 0
-    AND j5.STADIUM < 127"""
+    AND j5.STADIUM < 125"""
 
 
 def _teil_3b(year: int, month: int, k: Kontenplan) -> str:
@@ -275,7 +274,7 @@ WHERE YEAR(j6.RDATUM) = {year}
     AND j6.QUELLE IN (3)
     AND j6.QUELLE_SUB != 2
     AND j6.BSUMME_1 != 0
-    AND j6.STADIUM < 127"""
+    AND j6.STADIUM < 125"""
 
 
 def _teil_3c(year: int, month: int, k: Kontenplan) -> str:
@@ -302,7 +301,7 @@ WHERE YEAR(j7.RDATUM) = {year}
     AND j7.QUELLE IN (3)
     AND j7.QUELLE_SUB != 2
     AND j7.BSUMME_2 != 0
-    AND j7.STADIUM < 127"""
+    AND j7.STADIUM < 125"""
 
 
 # ---------------------------------------------------------------------------
@@ -430,8 +429,8 @@ SELECT 'EUR' AS Waehrungskennung,
     IF(z3.BETRAG > 0, 'S', 'H') AS SollHabenKennzeichen,
     REPLACE(ABS(z3.BETRAG), '.', ',') AS Umsatz,
     '' AS BUSchluessel,
-    {k.Geldtransit} AS Gegenkonto,
-    CONCAT('Banktransit_', DATE_FORMAT(z3.DATUM, '%d%m'), '_', z3.REC_ID) AS Belegfeld1,
+    IF(z3.GV_TYP = 'Geldtransit', {k.Geldtransit}, z3.FIBU_GEGENKTO) AS Gegenkonto,
+    CONCAT(z3.GV_TYP, '_', DATE_FORMAT(z3.DATUM, '%d%m'), '_', z3.REC_ID) AS Belegfeld1,
     '' AS Belegfeld2,
     DATE_FORMAT(z3.DATUM, '%d%m') AS Datum,
     z3.FIBU_KTO AS Konto,
@@ -541,14 +540,14 @@ GROUP BY DAY(RDATUM)"""
 # ---------------------------------------------------------------------------
 
 def _teil_8(year: int, month: int, k: Kontenplan) -> str:
-    """8 – Bankwertstellung der Bareinzahlungen."""
+    """8 – Bankwertstellung der Bareinzahlungen (hibiscus.umsatz)."""
     return f"""
 SELECT 'EUR' AS Waehrungskennung,
     IF(z3.BETRAG > 0, 'H', 'S') AS SollHabenKennzeichen,
-    REPLACE(ABS(z3.BETRAG), '.', ',') AS Umsatz,
+    REPLACE(REPLACE(FORMAT(z3.BETRAG, 2), ',', ''), '.', ',') AS Umsatz,
     '' AS BUSchluessel,
     {k.Bank} AS Gegenkonto,
-    CONCAT('Banktransit ', DATE_FORMAT(z3.VALUTA, '%d%m'), ' ', z3.BELEG) AS Belegfeld1,
+    CONCAT('Banktransit ', IF(z3.kommentar > '', z3.kommentar, DATE_FORMAT(z3.VALUTA, '%d%m')), ' ', z3.id) AS Belegfeld1,
     '' AS Belegfeld2,
     DATE_FORMAT(z3.VALUTA, '%d%m') AS Datum,
     {k.Geldtransit} AS Konto,
@@ -556,31 +555,29 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT('Banktransit EUR ', z3.BETRAG, ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.BELEG) AS Buchungstext,
+    CONCAT('Banktransit EUR ', z3.BETRAG, ' ', IF(z3.kommentar > '', z3.kommentar, ''), ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.id) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
-FROM XT_KTOAUS z3
-WHERE YEAR(z3.VALUTA) = {year}
+FROM hibiscus.umsatz z3
+WHERE z3.konto_id = 35
+    AND YEAR(z3.VALUTA) = {year}
     AND MONTH(z3.VALUTA) = {month}
-    AND z3.AUFTRAGSART = 'Einzahlungen'
-    AND z3.ZP_ZE = ''
-    AND z3.VERWENDUNGSZWECK = ''
-    AND z3.KTO_IBAN = ''
-    AND z3.BLZ_BIC = ''"""
+    AND z3.art = 'SB-Einzahlung'
+ORDER BY z3.VALUTA"""
 
 
 # ---------------------------------------------------------------------------
 # Teil 9 – Wertstellung EC-Zahlungen auf Bankkonto (Bank an ECTransit)
 # ---------------------------------------------------------------------------
 
-def _teil_9(year: int, month: int, k: Kontenplan) -> str:
-    """9 – Bankwertstellung der EC-/TELECASH-Zahlungen."""
+def _teil_9a(year: int, month: int, k: Kontenplan) -> str:
+    """9a – Bankwertstellung der EC-/TELECASH-Zahlungen (hibiscus.umsatz)."""
     return f"""
 SELECT 'EUR' AS Waehrungskennung,
     IF(z3.BETRAG > 0, 'H', 'S') AS SollHabenKennzeichen,
-    REPLACE(ABS(z3.BETRAG), '.', ',') AS Umsatz,
+    REPLACE(REPLACE(FORMAT(z3.BETRAG, 2), ',', ''), '.', ',') AS Umsatz,
     '' AS BUSchluessel,
     {k.Bank} AS Gegenkonto,
-    CONCAT('EC-Zahlungen ', DATE_FORMAT(z3.VALUTA, '%d%m'), ' ', z3.BELEG) AS Belegfeld1,
+    CONCAT('EC-Zahlungen ', DATE_FORMAT(z3.VALUTA, '%d%m'), ' ', z3.id) AS Belegfeld1,
     '' AS Belegfeld2,
     DATE_FORMAT(z3.VALUTA, '%d%m') AS Datum,
     {k.ECTransit} AS Konto,
@@ -588,14 +585,45 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Kostfeld2,
     '' AS Kostmenge,
     '' AS Skonto,
-    CONCAT('EC-Zahlungen ', SUBSTR(z3.VERWENDUNGSZWECK, LOCATE('TELECASH ', z3.VERWENDUNGSZWECK) + 11, 4),
-           ' EUR ', z3.BETRAG, ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.BELEG) AS Buchungstext,
+    CONCAT('EC-Zahlungen ', SUBSTR(z3.ZWECK, LOCATE('TELECASH ', z3.ZWECK) + 9, 4),
+           ' EUR ', z3.BETRAG, ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.id) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
-FROM XT_KTOAUS z3
-WHERE YEAR(z3.VALUTA) = {year}
+FROM hibiscus.umsatz z3
+WHERE z3.konto_id = 35
+    AND YEAR(z3.VALUTA) = {year}
     AND MONTH(z3.VALUTA) = {month}
-    AND z3.ZP_ZE = 'HABACHER DORFLADE'
-    AND z3.VERWENDUNGSZWECK LIKE '%TELECASH%'"""
+    AND z3.empfaenger_name = 'HABACHER DORFLADE'
+    AND z3.zweck LIKE '%TELECASH%'
+ORDER BY z3.VALUTA"""
+
+
+def _teil_9b(year: int, month: int, k: Kontenplan) -> str:
+    """9b – Bankwertstellung der Karten-Zahlungen / First Data (hibiscus.umsatz)."""
+    return f"""
+SELECT 'EUR' AS Waehrungskennung,
+    IF(z3.BETRAG > 0, 'H', 'S') AS SollHabenKennzeichen,
+    REPLACE(REPLACE(FORMAT(z3.BETRAG, 2), ',', ''), '.', ',') AS Umsatz,
+    '' AS BUSchluessel,
+    {k.Bank} AS Gegenkonto,
+    CONCAT('Karten-Zahlungen ', DATE_FORMAT(z3.VALUTA, '%d%m'), ' ', z3.id) AS Belegfeld1,
+    '' AS Belegfeld2,
+    DATE_FORMAT(z3.VALUTA, '%d%m') AS Datum,
+    {k.ECTransit} AS Konto,
+    '' AS Kostfeld1,
+    '' AS Kostfeld2,
+    '' AS Kostmenge,
+    '' AS Skonto,
+    CONCAT('Karten-Zahlungen ', SUBSTR(z3.ZWECK, LOCATE('Abrechnung vom ', z3.ZWECK) + 15, 6),
+           ' EUR ', z3.BETRAG, ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.id) AS Buchungstext,
+    {k.Festschreibungskennzeichen} AS Festschreibung
+FROM hibiscus.umsatz z3
+WHERE z3.konto_id = 35
+    AND YEAR(z3.VALUTA) = {year}
+    AND MONTH(z3.VALUTA) = {month}
+    AND z3.empfaenger_name = 'First Data GmbH'
+    AND z3.zweck LIKE '%GP-NR. 804065516%'
+    AND z3.zweck LIKE '%Abrechnungsbetrag%'
+ORDER BY z3.VALUTA"""
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +637,7 @@ _QUERY_PARTS = [
     _teil_4,
     _teil_5a, _teil_5b, _teil_5c,
     _teil_6,
-    _teil_8, _teil_9,
+    _teil_8, _teil_9a, _teil_9b,
     _teil_7a, _teil_7b, _teil_7c,
 ]
 
