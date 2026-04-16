@@ -562,7 +562,7 @@ WHERE z3.konto_id = 35
     AND YEAR(z3.VALUTA) = {year}
     AND MONTH(z3.VALUTA) = {month}
     AND z3.art = 'SB-Einzahlung'
-ORDER BY z3.VALUTA"""
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +594,7 @@ WHERE z3.konto_id = 35
     AND MONTH(z3.VALUTA) = {month}
     AND z3.empfaenger_name = 'HABACHER DORFLADE'
     AND z3.zweck LIKE '%TELECASH%'
-ORDER BY z3.VALUTA"""
+"""
 
 
 def _teil_9b(year: int, month: int, k: Kontenplan) -> str:
@@ -623,7 +623,7 @@ WHERE z3.konto_id = 35
     AND z3.empfaenger_name = 'First Data GmbH'
     AND z3.zweck LIKE '%GP-NR. 804065516%'
     AND z3.zweck LIKE '%Abrechnungsbetrag%'
-ORDER BY z3.VALUTA"""
+"""
 
 
 # ---------------------------------------------------------------------------
