@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 # Nutzt den gemeinsamen Connection-Pool (wird von der App via init_pool gesetzt).
@@ -268,21 +268,37 @@ def az_modell_speichern(pers_id: int, werte: dict, benutzer_ma_id: int) -> int:
     if werte['TYP'] not in ('WOCHE', 'MONAT'):
         raise ValueError('TYP muss WOCHE oder MONAT sein')
 
+    neu_ab = werte['GUELTIG_AB']
     with get_db_rw() as cur:
-        # Vorheriges offenes Modell schliessen (rolling close)
+        # 1. Jedes existierende Modell, das neu_ab ueberdeckt (GUELTIG_AB <= neu_ab
+        #    < GUELTIG_BIS oder offen), wird auf neu_ab - 1 gekuerzt.
         cur.execute(
             """UPDATE XT_PERSONAL_AZ_MODELL
                   SET GUELTIG_BIS = DATE_SUB(%s, INTERVAL 1 DAY)
-                WHERE PERS_ID = %s AND GUELTIG_BIS IS NULL
-                  AND GUELTIG_AB < %s""",
-            (werte['GUELTIG_AB'], int(pers_id), werte['GUELTIG_AB']),
+                WHERE PERS_ID = %s
+                  AND GUELTIG_AB < %s
+                  AND (GUELTIG_BIS IS NULL OR GUELTIG_BIS >= %s)""",
+            (neu_ab, int(pers_id), neu_ab, neu_ab),
         )
-        # Neuen Eintrag
+        # 2. Nachfolger-Modell suchen (fuer rueckwirkende Einfuegung): GUELTIG_BIS
+        #    des neuen Modells wird GUELTIG_AB des Nachfolgers minus 1.
+        cur.execute(
+            """SELECT MIN(GUELTIG_AB) AS next_ab
+                 FROM XT_PERSONAL_AZ_MODELL
+                WHERE PERS_ID = %s AND GUELTIG_AB > %s""",
+            (int(pers_id), neu_ab),
+        )
+        nachfolger = cur.fetchone()
+        neu_bis = werte.get('GUELTIG_BIS')
+        if neu_bis is None and nachfolger and nachfolger.get('next_ab'):
+            neu_bis = nachfolger['next_ab'] - timedelta(days=1)
+
+        # 3. Neues Modell einfuegen.
         cols = ['PERS_ID', 'GUELTIG_AB', 'GUELTIG_BIS', 'LOHNART_ID', 'TYP',
                 'STUNDEN_SOLL', *WOCHENTAGE, 'URLAUB_JAHR_TAGE', 'BEMERKUNG',
                 'ERSTELLT_VON']
         vals = [
-            int(pers_id), werte['GUELTIG_AB'], werte.get('GUELTIG_BIS'),
+            int(pers_id), neu_ab, neu_bis,
             int(werte['LOHNART_ID']), werte['TYP'], werte['STUNDEN_SOLL'],
             *(werte.get(k) for k in WOCHENTAGE),
             werte.get('URLAUB_JAHR_TAGE'), werte.get('BEMERKUNG'),

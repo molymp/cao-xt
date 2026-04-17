@@ -20,10 +20,25 @@
                    font-size: 13px; text-transform: none; font-weight: 600; }
 .radio-row input { width: auto; }
 .wochentag-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.wochentag-grid .form-group label { font-size: 10px; text-align: center; }
-.wochentag-grid input { text-align: center; padding: 5px 4px; }
-details.wochentage summary { cursor: pointer; font-size: 12px; font-weight: 700;
-                             color: var(--gruen-dunkel); padding: 4px 0; }
+.wt-cell { display: flex; flex-direction: column; align-items: center;
+           padding: 6px 4px; border: 1px solid var(--creme-dunkel);
+           border-radius: var(--radius-klein); background: white;
+           cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.wt-cell:hover { border-color: var(--gruen-mitte); }
+.wt-cell.aktiv { background: var(--gruen-blass); border-color: var(--gruen-mitte); }
+.wt-cell.aktiv .wt-label { color: var(--gruen-dunkel); font-weight: 800; }
+.wt-cell input[type="checkbox"] { display: none; }
+.wt-cell .wt-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+                     color: var(--grau-mitte); margin-bottom: 4px;
+                     text-transform: uppercase; }
+.wt-cell input[type="text"] { width: 100%; text-align: center; padding: 4px 2px;
+                              border: 1px solid var(--creme-dunkel); border-radius: 4px;
+                              font-size: 12px; background: var(--creme); }
+.wt-cell.aktiv input[type="text"] { background: white; border-color: var(--gruen-mitte); }
+.wt-cell:not(.aktiv) input[type="text"] { opacity: 0.4; pointer-events: none; }
+.wt-summe { font-size: 11px; margin-top: 6px; color: var(--text-mitte);
+            text-align: right; font-weight: 600; }
+.wt-summe.warn { color: #7a5a00; }
 .minijob-info { padding: 8px 12px; border-radius: var(--radius-klein);
                 font-size: 13px; font-weight: 600; margin-top: 8px;
                 background: var(--grau-hell); color: var(--text-mitte); }
@@ -153,17 +168,26 @@ details.wochentage summary { cursor: pointer; font-size: 12px; font-weight: 700;
           </div>
         </div>
 
-        <details class="wochentage" style="margin-top: 8px;">
-          <summary>Wochenverteilung (optional)</summary>
-          <div class="wochentag-grid" style="margin-top: 6px;">
-            {% for lbl, field in [('Mo','std_mo'),('Di','std_di'),('Mi','std_mi'),('Do','std_do'),('Fr','std_fr'),('Sa','std_sa'),('So','std_so')] %}
-            <div class="form-group">
-              <label>{{ lbl }}</label>
-              <input type="text" name="{{ field }}" placeholder="0">
-            </div>
+        <div style="margin-top: 8px;">
+          <div style="font-size: 10px; font-weight: 800; color: var(--text-mitte);
+                      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">
+            Verteilung auf Wochentage
+          </div>
+          <div class="wochentag-grid">
+            {% for lbl, field, checked in [
+                ('Mo','std_mo',True), ('Di','std_di',True), ('Mi','std_mi',True),
+                ('Do','std_do',True), ('Fr','std_fr',True),
+                ('Sa','std_sa',False), ('So','std_so',False)] %}
+            <label class="wt-cell {% if checked %}aktiv{% endif %}" data-wt="{{ field }}">
+              <input type="checkbox" class="wt-check" {% if checked %}checked{% endif %}>
+              <span class="wt-label">{{ lbl }}</span>
+              <input type="text" name="{{ field }}" class="wt-hours"
+                     inputmode="decimal" placeholder="0">
+            </label>
             {% endfor %}
           </div>
-        </details>
+          <div id="wt-summe" class="wt-summe"></div>
+        </div>
 
         <div id="minijob-info" class="minijob-info" style="display: none;"></div>
 
@@ -217,13 +241,101 @@ details.wochentage summary { cursor: pointer; font-size: 12px; font-weight: 700;
 
 <script>
 (function() {
-  // Live-Minijob-Check: triggert bei Aenderung an Lohnart, Stunden, Typ.
+  // Live-Minijob-Check + Wochentag-Auto-Verteilung.
   const form = document.getElementById('az-form');
   if (!form) return;
   const info = document.getElementById('minijob-info');
   const lohnart = document.getElementById('az-lohnart');
   const stunden = document.getElementById('az-stunden');
   const stundensatzAktuell = {{ aktueller_stundensatz_ct or 0 }} / 100;  // € pro Stunde
+  const FAKTOR_WM = 4.33;
+
+  // ── Wochentag-Auto-Verteilung ──────────────────────────────────
+  const wtCells = form.querySelectorAll('.wt-cell');
+  const summeEl = document.getElementById('wt-summe');
+  let manuellBearbeitet = false;  // true sobald User direkt in ein Tages-Feld tippt
+
+  function fmt(n) {
+    if (!n) return '';
+    const r = Math.round(n * 100) / 100;
+    return (r % 1 === 0 ? r.toFixed(0) : r.toFixed(2)).replace('.', ',');
+  }
+
+  function aktiveTage() {
+    return Array.from(wtCells).filter(c => c.querySelector('.wt-check').checked);
+  }
+
+  function wochenStundenSoll() {
+    const soll = parseFloat((stunden.value || '').replace(',', '.')) || 0;
+    const typ = form.querySelector('input[name="typ"]:checked').value;
+    return typ === 'MONAT' ? soll / FAKTOR_WM : soll;
+  }
+
+  function verteileAuto() {
+    const wochSoll = wochenStundenSoll();
+    const aktive = aktiveTage();
+    wtCells.forEach(c => {
+      const input = c.querySelector('.wt-hours');
+      if (c.classList.contains('aktiv')) {
+        input.value = aktive.length && wochSoll > 0 ? fmt(wochSoll / aktive.length) : '';
+      } else {
+        input.value = '';
+      }
+    });
+    aktualisiereSumme();
+  }
+
+  function aktualisiereSumme() {
+    let summe = 0;
+    wtCells.forEach(c => {
+      if (c.classList.contains('aktiv')) {
+        summe += parseFloat((c.querySelector('.wt-hours').value || '').replace(',', '.')) || 0;
+      }
+    });
+    const soll = wochenStundenSoll();
+    const typLabel = form.querySelector('input[name="typ"]:checked').value === 'MONAT' ? ' (Woche)' : '';
+    if (soll > 0) {
+      const diff = Math.abs(summe - soll);
+      summeEl.className = 'wt-summe' + (diff > 0.01 ? ' warn' : '');
+      summeEl.textContent = `Summe${typLabel}: ${fmt(summe)} / ${fmt(soll)} h`
+        + (diff > 0.01 ? ` (Abweichung ${fmt(summe - soll)})` : ' ✓');
+    } else {
+      summeEl.textContent = '';
+    }
+  }
+
+  // Zelle klickt → Checkbox toggeln, Auto-Verteilung aktualisieren
+  wtCells.forEach(c => {
+    const chk = c.querySelector('.wt-check');
+    const inp = c.querySelector('.wt-hours');
+    c.addEventListener('click', e => {
+      // Click auf Input-Feld NICHT in Checkbox-Toggle umwandeln
+      if (e.target === inp) return;
+      e.preventDefault();
+      chk.checked = !chk.checked;
+      c.classList.toggle('aktiv', chk.checked);
+      if (!manuellBearbeitet) verteileAuto();
+      aktualisiereSumme();
+    });
+    // Direkte Eingabe im Tages-Feld → manuell-Modus
+    inp.addEventListener('input', () => {
+      manuellBearbeitet = true;
+      aktualisiereSumme();
+    });
+  });
+
+  stunden.addEventListener('input', () => {
+    if (!manuellBearbeitet) verteileAuto();
+    aktualisiereSumme();
+  });
+  form.querySelectorAll('input[name="typ"]').forEach(r => {
+    r.addEventListener('change', () => {
+      if (!manuellBearbeitet) verteileAuto();
+      aktualisiereSumme();
+    });
+  });
+
+  // ── Live-Minijob-Check ────────────────────────────────────────
 
   function istMinijob() {
     const opt = lohnart.options[lohnart.selectedIndex];
