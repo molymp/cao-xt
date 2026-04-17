@@ -38,7 +38,14 @@
               border-radius: 8px; min-height: 44px;
               color: var(--text-dunkel); font-variant-numeric: tabular-nums;
               border: 2px solid var(--creme-dunkel); margin-bottom: 10px;
-              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+              display: flex; align-items: center; justify-content: flex-end; }
+.touch-wert .cursor { display: inline-block; width: 2px; height: 1em;
+                      background: var(--gruen-mitte); margin-left: 2px;
+                      animation: tw-blink 1s steps(2, jump-none) infinite; }
+@keyframes tw-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+/* Alpha-Keyboard zeigt links-buendig an (Text-Eingabe) */
+#tw-kbd .touch-wert { justify-content: flex-start; text-align: left; font-size: 18px; }
 .touch-btn { min-height: 52px; border: 1px solid var(--creme-dunkel);
              border-radius: 8px; background: white; font-family: inherit;
              font-size: 18px; font-weight: 700; cursor: pointer;
@@ -101,7 +108,7 @@
       <button type="button" class="touch-btn funktion" data-tw-numpad="_ABBR"
               style="min-height: 30px; font-size: 12px; padding: 0 10px;">✕</button>
     </div>
-    <div class="touch-wert" id="tw-numpad-wert">0</div>
+    <div class="touch-wert" id="tw-numpad-wert"><span class="val">0</span><span class="cursor"></span></div>
     <div class="grid">
       <button type="button" class="touch-btn" data-tw-numpad="7">7</button>
       <button type="button" class="touch-btn" data-tw-numpad="8">8</button>
@@ -129,7 +136,7 @@
       <button type="button" class="touch-btn funktion" data-tw-kbd="_ABBR"
               style="min-height: 30px; font-size: 12px; padding: 0 10px;">✕</button>
     </div>
-    <div class="touch-wert" id="tw-kbd-wert"></div>
+    <div class="touch-wert" id="tw-kbd-wert"><span class="val"></span><span class="cursor"></span></div>
     <div class="kbd-row" data-row="ziffern">
       {% for c in '1234567890' %}
       <button type="button" class="touch-btn zeichen" data-tw-kbd="{{ c }}">{{ c }}</button>
@@ -225,7 +232,8 @@
     document.getElementById('tw-numpad').classList.add('sichtbar');
   }
   function aktualisiereNumpadAnzeige() {
-    document.getElementById('tw-numpad-wert').textContent = buffer.replace('.', ',') || '0';
+    document.querySelector('#tw-numpad-wert .val').textContent =
+      buffer.replace('.', ',') || '0';
   }
   document.querySelectorAll('#tw-numpad [data-tw-numpad]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -255,7 +263,7 @@
     document.getElementById('tw-kbd').classList.add('sichtbar');
   }
   function aktualisiereKbdAnzeige() {
-    document.getElementById('tw-kbd-wert').textContent = buffer || ' ';
+    document.querySelector('#tw-kbd-wert .val').textContent = buffer;
   }
   function applyShift() {
     document.querySelectorAll('#tw-kbd .zeichen').forEach(b => {

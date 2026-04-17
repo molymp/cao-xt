@@ -78,6 +78,20 @@ def aktueller_stundensatz_ct(pers_id: int, stichtag: date | None = None) -> int 
         return int(row['STUNDENSATZ_CT']) if row else None
 
 
+def stundensaetze(pers_id: int) -> list[dict]:
+    """Vollstaendige Historie der Stundensaetze (neuester zuerst)."""
+    with get_db_ro() as cur:
+        cur.execute(
+            """SELECT REC_ID, GUELTIG_AB, STUNDENSATZ_CT, KOMMENTAR,
+                      ERSTELLT_AT, ERSTELLT_VON
+                 FROM XT_PERSONAL_STUNDENSATZ_HIST
+                WHERE PERS_ID = %s
+                ORDER BY GUELTIG_AB DESC, REC_ID DESC""",
+            (int(pers_id),),
+        )
+        return cur.fetchall()
+
+
 # ── Create / Update mit Audit ────────────────────────────────────────────────
 
 def _normalisiere(werte: dict) -> dict:

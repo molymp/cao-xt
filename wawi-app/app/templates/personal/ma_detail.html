@@ -75,33 +75,6 @@
     {% include 'personal/_form_felder.html' %}
   </div>
 
-  <div class="card card-section">
-    <h2>Stundensatz</h2>
-    <dl class="readonly-grid" style="margin-bottom: 16px;">
-      <dt>Aktuell gültig:</dt>
-      <dd>{% if aktueller_stundensatz %}{{ aktueller_stundensatz }} € / Std{% else %}<em>noch keiner erfasst</em>{% endif %}</dd>
-    </dl>
-    <div class="form-grid">
-      <div class="form-group">
-        <label>Neuer Stundensatz (€ brutto)</label>
-        <input type="text" name="stundensatz" class="num-touch"
-               inputmode="decimal" placeholder="z.B. 13,90"
-               data-touch-titel="Stundensatz (€)">
-      </div>
-      <div class="form-group">
-        <label>gültig ab</label>
-        <input type="text" name="stundensatz_ab" class="date-touch"
-               placeholder="JJJJ-MM-TT" data-touch-titel="gültig ab">
-      </div>
-      <div class="form-group form-col-2">
-        <label>Kommentar (optional)</label>
-        <input type="text" name="stundensatz_kommentar" class="alpha-touch"
-               maxlength="255" placeholder="z.B. Tariferhöhung 2026"
-               data-touch-titel="Kommentar">
-      </div>
-    </div>
-  </div>
-
   <div class="form-actions">
     <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">Abbrechen</a>
     <button type="submit" class="btn">Speichern</button>
@@ -121,9 +94,82 @@
   </dl>
 </div>
 
-{# ── Arbeitszeit & Lohn (eigenstaendiger Bereich, eigene Form) ─────────── #}
+{# ── Arbeitszeit & Lohn (eigenstaendiger Bereich, eigene Forms) ────────── #}
 <div class="card card-section">
   <h2>Arbeitszeit &amp; Lohn</h2>
+
+  {# ── Stundensatz ───────────────────────────────────────────────── #}
+  <h3 style="font-size: 14px; font-family: 'Nunito'; font-weight: 800;
+             color: var(--gruen-dunkel); text-transform: uppercase;
+             letter-spacing: 0.06em; margin-top: 4px; margin-bottom: 8px;
+             border-bottom: 1px solid var(--creme-dunkel); padding-bottom: 4px;">
+    Stundensatz
+    <span style="font-family: 'Nunito'; font-size: 13px; font-weight: 700;
+                 color: var(--text-mitte); text-transform: none; letter-spacing: 0;
+                 margin-left: 10px;">
+      {% if aktueller_stundensatz %}aktuell {{ aktueller_stundensatz }} € / Std{% else %}—{% endif %}
+    </span>
+  </h3>
+
+  {% if stundensaetze %}
+  <table class="az-historie">
+    <thead>
+      <tr>
+        <th>Gültig ab</th>
+        <th>Betrag</th>
+        <th>Kommentar</th>
+        <th>Erfasst</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in stundensaetze %}
+      <tr {% if loop.first %}class="aktuell"{% endif %}>
+        <td>{{ s.GUELTIG_AB.strftime('%d.%m.%Y') }}</td>
+        <td>{{ (s.STUNDENSATZ_CT / 100.0)|string|replace('.', ',') }} €</td>
+        <td class="tage">{{ s.KOMMENTAR or '—' }}</td>
+        <td class="tage">{{ s.ERSTELLT_AT.strftime('%d.%m.%Y') }} · MA-ID {{ s.ERSTELLT_VON }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <details {% if not stundensaetze %}open{% endif %} style="margin-bottom: 18px;">
+    <summary>+ Neuer Stundensatz</summary>
+    <form method="post" action="{{ url_for('wawi_personal.stundensatz_anlegen', pers_id=ma.PERS_ID) }}"
+          style="margin-top: 10px;">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Betrag (€ brutto)</label>
+          <input type="text" name="stundensatz" class="num-touch"
+                 inputmode="decimal" required placeholder="z.B. 13,90"
+                 data-touch-titel="Stundensatz (€)">
+        </div>
+        <div class="form-group">
+          <label>gültig ab *</label>
+          <input type="text" name="stundensatz_ab" class="date-touch" required
+                 placeholder="JJJJ-MM-TT" data-touch-titel="gültig ab">
+        </div>
+        <div class="form-group form-col-2">
+          <label>Kommentar (optional)</label>
+          <input type="text" name="stundensatz_kommentar" class="alpha-touch"
+                 maxlength="255" placeholder="z.B. Tariferhöhung 2026"
+                 data-touch-titel="Kommentar">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">Speichern</button>
+      </div>
+    </form>
+  </details>
+
+  {# ── Arbeitszeitmodell ─────────────────────────────────────────── #}
+  <h3 style="font-size: 14px; font-family: 'Nunito'; font-weight: 800;
+             color: var(--gruen-dunkel); text-transform: uppercase;
+             letter-spacing: 0.06em; margin-top: 4px; margin-bottom: 8px;
+             border-bottom: 1px solid var(--creme-dunkel); padding-bottom: 4px;">
+    Arbeitszeitmodell
+  </h3>
 
   {% if az_modelle %}
   <table class="az-historie">

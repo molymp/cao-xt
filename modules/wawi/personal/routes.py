@@ -114,28 +114,15 @@ def detail(pers_id: int):
         try:
             werte = _form_werte(request.form)
             anz = m.ma_update(pers_id, werte, session['ma_id'])
-            # Stundensatz: nur speichern wenn Wert+Datum angegeben
-            satz_raw = request.form.get('stundensatz', '').strip()
-            ab_raw = request.form.get('stundensatz_ab', '').strip()
-            if satz_raw and ab_raw:
-                m.stundensatz_setzen(
-                    pers_id,
-                    _form_to_date(ab_raw),
-                    _euro_to_ct(satz_raw),
-                    request.form.get('stundensatz_kommentar', '').strip() or None,
-                    session['ma_id'],
-                )
-                flash('Stundensatz hinzugefuegt.', 'ok')
             if anz:
                 flash(f'{anz} Feld(er) aktualisiert.', 'ok')
-            elif not (satz_raw and ab_raw):
+            else:
                 flash('Keine Aenderungen.', 'info')
             return redirect(url_for('wawi_personal.detail', pers_id=pers_id))
         except (ValueError, LookupError) as e:
             flash(str(e), 'error')
         except Exception as e:
             flash(f'Fehler beim Speichern: {e}', 'error')
-        # bei Fehler: Formular mit POST-Werten rendern
         ma = {**ma, **_form_werte(request.form)}
 
     aktuell_ct = m.aktueller_stundensatz_ct(pers_id)
@@ -144,12 +131,41 @@ def detail(pers_id: int):
         ma=ma,
         aktueller_stundensatz=m.ct_to_eurostr(aktuell_ct),
         aktueller_stundensatz_ct=aktuell_ct,
+        stundensaetze=m.stundensaetze(pers_id),
         az_modelle=m.az_modelle(pers_id),
         aktuelles_az=m.aktuelles_az_modell(pers_id),
         lohnarten=m.lohnarten(),
         lohnkonstanten=m.lohnkonstanten_aktuell(),
         today=date.today(),
     )
+
+
+# ── Stundensatz anlegen ──────────────────────────────────────────────────────
+
+@bp.post('/<int:pers_id>/stundensatz')
+@backoffice_required
+def stundensatz_anlegen(pers_id: int):
+    if not m.ma_by_id(pers_id):
+        flash('Mitarbeiter nicht gefunden.', 'error')
+        return redirect(url_for('wawi_personal.uebersicht'))
+    try:
+        satz_raw = request.form.get('stundensatz', '').strip()
+        ab_raw   = request.form.get('stundensatz_ab', '').strip()
+        if not satz_raw or not ab_raw:
+            raise ValueError('Betrag und Gueltigkeitsdatum sind Pflicht.')
+        m.stundensatz_setzen(
+            pers_id,
+            _form_to_date(ab_raw),
+            _euro_to_ct(satz_raw),
+            request.form.get('stundensatz_kommentar', '').strip() or None,
+            session['ma_id'],
+        )
+        flash('Stundensatz hinzugefuegt.', 'ok')
+    except (ValueError, LookupError) as e:
+        flash(str(e), 'error')
+    except Exception as e:
+        flash(f'Fehler beim Speichern: {e}', 'error')
+    return redirect(url_for('wawi_personal.detail', pers_id=pers_id))
 
 
 # ── Arbeitszeitmodell anlegen ────────────────────────────────────────────────
