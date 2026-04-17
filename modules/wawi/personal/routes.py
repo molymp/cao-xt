@@ -206,6 +206,71 @@ def az_modell_anlegen(pers_id: int):
     return redirect(url_for('wawi_personal.detail', pers_id=pers_id))
 
 
+# ── Einzelfeld-Autosave (AJAX) ───────────────────────────────────────────────
+
+@bp.post('/<int:pers_id>/feld')
+@backoffice_required
+def feld_autosave(pers_id: int):
+    """JSON-Endpoint fuer Autosave eines einzelnen MA-Stammdatenfelds.
+    POST: feld=<FELDNAME>&wert=<wert>  → {ok: bool, anz: int, ...}"""
+    if not m.ma_by_id(pers_id):
+        return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
+    feld = (request.form.get('feld') or '').strip()
+    if feld not in m.MA_FELDER:
+        return jsonify({'error': f'Unbekanntes Feld: {feld!r}'}), 400
+    wert_raw = request.form.get('wert', '')
+    # Datum-Felder
+    if feld in ('GEBDATUM', 'EINTRITT', 'AUSTRITT'):
+        try:
+            wert = _form_to_date(wert_raw)
+        except ValueError:
+            return jsonify({'error': 'Ungueltiges Datum'}), 400
+    elif feld == 'CAO_MA_ID':
+        wert = int(wert_raw) if wert_raw.strip().isdigit() else None
+    else:
+        wert = wert_raw if wert_raw != '' else None
+    try:
+        anz = m.ma_update(pers_id, {feld: wert}, session['ma_id'])
+        return jsonify({'ok': True, 'anz': anz})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+# ── AZ-Modell bearbeiten (retroaktive Aenderung) ─────────────────────────────
+
+@bp.post('/<int:pers_id>/az-modell/<int:rec_id>')
+@backoffice_required
+def az_modell_bearbeiten(pers_id: int, rec_id: int):
+    if not m.ma_by_id(pers_id):
+        flash('Mitarbeiter nicht gefunden.', 'error')
+        return redirect(url_for('wawi_personal.uebersicht'))
+    try:
+        werte = {}
+        # Nur Felder uebernehmen, die im Form-POST vorkommen
+        if 'lohnart_id' in request.form:
+            werte['LOHNART_ID'] = int(request.form['lohnart_id'])
+        if 'typ' in request.form:
+            werte['TYP'] = request.form['typ']
+        if 'stunden_soll' in request.form:
+            werte['STUNDEN_SOLL'] = _dezimal(request.form['stunden_soll'])
+        if 'urlaub_jahr_tage' in request.form:
+            werte['URLAUB_JAHR_TAGE'] = _dezimal(request.form['urlaub_jahr_tage'])
+        for k in m.WOCHENTAGE:
+            if k.lower() in request.form:
+                werte[k] = _dezimal(request.form[k.lower()])
+        if 'bemerkung' in request.form:
+            werte['BEMERKUNG'] = request.form['bemerkung'].strip() or None
+
+        n = m.az_modell_bearbeiten(rec_id, werte, session['ma_id'])
+        flash(f'{n} Feld(er) aktualisiert.' if n else 'Keine Aenderung.',
+              'ok' if n else 'info')
+    except (ValueError, KeyError) as e:
+        flash(f'Fehler: {e}', 'error')
+    except Exception as e:
+        flash(f'Fehler beim Speichern: {e}', 'error')
+    return redirect(url_for('wawi_personal.detail', pers_id=pers_id))
+
+
 # ── Live-Minijob-Check (AJAX, JSON) ──────────────────────────────────────────
 
 @bp.get('/api/minijob-check')

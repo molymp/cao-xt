@@ -2,12 +2,21 @@
 {% block title %}{{ ma.VNAME }} {{ ma.NAME }}{% endblock %}
 {% block extra_style %}{% include 'personal/_form_style.html' %}
 <style>
-.az-historie { width: 100%; font-size: 12px; margin-bottom: 10px; }
+.sub-h3 { font-size: 14px; font-family: 'Nunito'; font-weight: 800;
+          color: var(--gruen-dunkel); text-transform: uppercase;
+          letter-spacing: 0.06em; margin-top: 14px; margin-bottom: 8px;
+          border-bottom: 1px solid var(--creme-dunkel); padding-bottom: 4px; }
+.sub-h3 .neben { font-family: 'Nunito'; font-size: 13px; font-weight: 700;
+                 color: var(--text-mitte); text-transform: none; letter-spacing: 0;
+                 margin-left: 10px; }
+.az-historie { width: 100%; font-size: 12px; margin-bottom: 10px; border-collapse: collapse; }
 .az-historie th { background: var(--grau-hell); padding: 5px 8px; text-align: left;
                   font-size: 10px; font-weight: 800; text-transform: uppercase;
                   letter-spacing: 0.04em; color: var(--text-mitte); }
 .az-historie td { padding: 5px 8px; border-top: 1px solid var(--creme-dunkel); }
 .az-historie tr.aktuell { background: #f0f7e8; font-weight: 700; }
+.az-historie tr.editierbar { cursor: pointer; }
+.az-historie tr.editierbar:hover { background: var(--creme); }
 .az-historie .tage { color: var(--grau-mitte); font-size: 11px; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 10px;
         font-size: 10px; font-weight: 800; letter-spacing: 0.04em; }
@@ -46,6 +55,14 @@
                      border: 1px solid var(--gold); }
 .minijob-info.over { background: #fde8e8; color: var(--rot);
                      border: 1px solid var(--rot); }
+/* Autosave-Feedback */
+.form-group { position: relative; }
+.form-group .saved-ok {
+  position: absolute; top: 0; right: 0; font-size: 11px; font-weight: 700;
+  color: var(--gruen-mitte); opacity: 0;
+  transition: opacity 0.2s; pointer-events: none;
+}
+.form-group.saved .saved-ok { opacity: 1; }
 </style>
 {% endblock %}
 
@@ -67,46 +84,36 @@
   <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">← Zurück</a>
 </div>
 
-{# ── FORM 1: Stammdaten + Stundensatz (getrennt von AZ-Modell) ────────────── #}
-<form method="post" action="{{ url_for('wawi_personal.detail', pers_id=ma.PERS_ID) }}">
-
-  <div class="card card-section">
-    <h2>Stammdaten</h2>
-    {% include 'personal/_form_felder.html' %}
-  </div>
-
-  <div class="form-actions">
-    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">Abbrechen</a>
-    <button type="submit" class="btn">Speichern</button>
-  </div>
-</form>
-
-{# ── Audit (reine Anzeige, ausserhalb jeder Form) ─────────────────────── #}
-<div class="card card-section">
-  <h2>Audit</h2>
-  <dl class="readonly-grid">
-    <dt>Angelegt:</dt>
-    <dd>{{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '' }} (MA-ID {{ ma.ERSTELLT_VON }})</dd>
-    <dt>Zuletzt geändert:</dt>
-    <dd>{% if ma.GEAEND_AT %}{{ ma.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} (MA-ID {{ ma.GEAEND_VON }}){% else %}<em>—</em>{% endif %}</dd>
-    <dt>Pers-ID:</dt>
-    <dd>{{ ma.PERS_ID }}</dd>
-  </dl>
+{# ── Stammdaten (Auto-Save pro Feld, kein Submit-Button) ───────────────── #}
+<div class="card card-section" id="stammdaten-card" data-pers-id="{{ ma.PERS_ID }}">
+  <h2>Stammdaten</h2>
+  {% with autosave=True %}{% include 'personal/_form_felder.html' %}{% endwith %}
 </div>
 
-{# ── Arbeitszeit & Lohn (eigenstaendiger Bereich, eigene Forms) ────────── #}
-<div class="card card-section">
+{# ── Arbeitszeit & Lohn ───────────────────────────────────────────────── #}
+<div class="card card-section" data-pers-id="{{ ma.PERS_ID }}">
   <h2>Arbeitszeit &amp; Lohn</h2>
 
-  {# ── Stundensatz ───────────────────────────────────────────────── #}
-  <h3 style="font-size: 14px; font-family: 'Nunito'; font-weight: 800;
-             color: var(--gruen-dunkel); text-transform: uppercase;
-             letter-spacing: 0.06em; margin-top: 4px; margin-bottom: 8px;
-             border-bottom: 1px solid var(--creme-dunkel); padding-bottom: 4px;">
+  {# Eintritt/Austritt direkt hier (beeinflussen AZ-Modell-Enddatum) #}
+  <div class="form-grid" style="margin-bottom: 14px;">
+    <div class="form-group">
+      <label>Eintritt</label>
+      <input type="text" name="eintritt" class="date-touch" placeholder="JJJJ-MM-TT"
+             value="{{ ma.EINTRITT.isoformat() if ma.EINTRITT else '' }}"
+             data-touch-titel="Eintritt" data-autosave="EINTRITT">
+    </div>
+    <div class="form-group">
+      <label>Austritt <small>(schließt offenes Modell)</small></label>
+      <input type="text" name="austritt" class="date-touch" placeholder="JJJJ-MM-TT"
+             value="{{ ma.AUSTRITT.isoformat() if ma.AUSTRITT else '' }}"
+             data-touch-titel="Austritt" data-autosave="AUSTRITT">
+    </div>
+  </div>
+
+  {# ── Stundensatz ─────────────────────────────────────────────── #}
+  <h3 class="sub-h3">
     Stundensatz
-    <span style="font-family: 'Nunito'; font-size: 13px; font-weight: 700;
-                 color: var(--text-mitte); text-transform: none; letter-spacing: 0;
-                 margin-left: 10px;">
+    <span class="neben">
       {% if aktueller_stundensatz %}aktuell {{ aktueller_stundensatz }} € / Std{% else %}—{% endif %}
     </span>
   </h3>
@@ -114,12 +121,7 @@
   {% if stundensaetze %}
   <table class="az-historie">
     <thead>
-      <tr>
-        <th>Gültig ab</th>
-        <th>Betrag</th>
-        <th>Kommentar</th>
-        <th>Erfasst</th>
-      </tr>
+      <tr><th>Gültig ab</th><th>Betrag</th><th>Kommentar</th><th>Erfasst</th></tr>
     </thead>
     <tbody>
       {% for s in stundensaetze %}
@@ -127,7 +129,7 @@
         <td>{{ s.GUELTIG_AB.strftime('%d.%m.%Y') }}</td>
         <td>{{ (s.STUNDENSATZ_CT / 100.0)|string|replace('.', ',') }} €</td>
         <td class="tage">{{ s.KOMMENTAR or '—' }}</td>
-        <td class="tage">{{ s.ERSTELLT_AT.strftime('%d.%m.%Y') }} · MA-ID {{ s.ERSTELLT_VON }}</td>
+        <td class="tage">{{ s.ERSTELLT_AT.strftime('%d.%m.%Y') }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -163,13 +165,8 @@
     </form>
   </details>
 
-  {# ── Arbeitszeitmodell ─────────────────────────────────────────── #}
-  <h3 style="font-size: 14px; font-family: 'Nunito'; font-weight: 800;
-             color: var(--gruen-dunkel); text-transform: uppercase;
-             letter-spacing: 0.06em; margin-top: 4px; margin-bottom: 8px;
-             border-bottom: 1px solid var(--creme-dunkel); padding-bottom: 4px;">
-    Arbeitszeitmodell
-  </h3>
+  {# ── Arbeitszeitmodell ───────────────────────────────────────── #}
+  <h3 class="sub-h3">Arbeitszeitmodell</h3>
 
   {% if az_modelle %}
   <table class="az-historie">
@@ -186,7 +183,18 @@
     <tbody>
       {% for am in az_modelle %}
       {% set ist_aktuell = aktuelles_az and am.REC_ID == aktuelles_az.REC_ID %}
-      <tr class="{% if ist_aktuell %}aktuell{% endif %}">
+      <tr class="editierbar {% if ist_aktuell %}aktuell{% endif %}"
+          data-rec-id="{{ am.REC_ID }}"
+          data-lohnart-id="{{ am.LOHNART_ID }}"
+          data-typ="{{ am.TYP }}"
+          data-stunden-soll="{{ am.STUNDEN_SOLL }}"
+          data-urlaub="{{ am.URLAUB_JAHR_TAGE or '' }}"
+          data-mo="{{ am.STD_MO or '' }}" data-di="{{ am.STD_DI or '' }}"
+          data-mi="{{ am.STD_MI or '' }}" data-do="{{ am.STD_DO or '' }}"
+          data-fr="{{ am.STD_FR or '' }}" data-sa="{{ am.STD_SA or '' }}"
+          data-so="{{ am.STD_SO or '' }}"
+          data-bemerkung="{{ am.BEMERKUNG or '' }}"
+          title="Klicken zum Bearbeiten">
         <td>
           {{ am.GUELTIG_AB.strftime('%d.%m.%Y') }}
           {% if am.GUELTIG_BIS %}– {{ am.GUELTIG_BIS.strftime('%d.%m.%Y') }}{% else %}– offen{% endif %}
@@ -217,14 +225,16 @@
   </p>
   {% endif %}
 
-  <details {% if not az_modelle %}open{% endif %}>
+  <details {% if not az_modelle %}open{% endif %} id="az-neu-details">
     <summary>+ Neues Arbeitszeitmodell anlegen</summary>
     <form method="post" action="{{ url_for('wawi_personal.az_modell_anlegen', pers_id=ma.PERS_ID) }}"
           id="az-form" style="margin-top: 10px;">
+      <input type="hidden" name="_edit_rec_id" id="az-edit-rec-id" value="">
+
       <div class="form-grid">
         <div class="form-group">
           <label>Gültig ab *</label>
-          <input type="text" name="gueltig_ab" class="date-touch" required
+          <input type="text" name="gueltig_ab" id="az-gueltig-ab" class="date-touch" required
                  placeholder="JJJJ-MM-TT"
                  value="{{ today.isoformat() if today else '' }}"
                  data-touch-titel="Gültig ab">
@@ -234,9 +244,7 @@
           <select name="lohnart_id" id="az-lohnart" required>
             {% for la in lohnarten %}
             <option value="{{ la.LOHNART_ID }}"
-                    data-minijob="{{ la.MINIJOB_FLAG }}">
-              {{ la.BEZEICHNUNG }}
-            </option>
+                    data-minijob="{{ la.MINIJOB_FLAG }}">{{ la.BEZEICHNUNG }}</option>
             {% endfor %}
           </select>
         </div>
@@ -254,12 +262,12 @@
         </div>
         <div class="form-group">
           <label>Urlaub (Tage/Jahr)</label>
-          <input type="text" name="urlaub_jahr_tage" class="num-touch"
+          <input type="text" name="urlaub_jahr_tage" id="az-urlaub" class="num-touch"
                  placeholder="z.B. 24" data-touch-titel="Urlaubstage">
         </div>
         <div class="form-group form-col-2">
           <label>Bemerkung</label>
-          <input type="text" name="bemerkung" class="alpha-touch" maxlength="500"
+          <input type="text" name="bemerkung" id="az-bemerkung" class="alpha-touch" maxlength="500"
                  data-touch-titel="Bemerkung">
         </div>
       </div>
@@ -288,24 +296,93 @@
       <div id="minijob-info" class="minijob-info" style="display: none;"></div>
 
       <div class="form-actions">
-        <button type="submit" class="btn">Modell anlegen</button>
+        <button type="button" id="az-cancel-edit" class="btn-secondary btn"
+                style="display:none;">Bearbeiten abbrechen</button>
+        <button type="submit" class="btn" id="az-submit">Modell anlegen</button>
       </div>
     </form>
   </details>
 </div>
 
-{# ── Touch-Widgets (Numpad, Keyboard, Datepicker) ────────────────────── #}
+{# ── Audit ganz ans Seitenende ─────────────────────────────────────────── #}
+<div class="card card-section" style="margin-top: 30px;">
+  <h2 style="font-size: 14px; color: var(--grau-mitte);">Audit</h2>
+  <dl class="readonly-grid" style="font-size: 12px;">
+    <dt>Angelegt:</dt>
+    <dd>{{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '' }} (MA-ID {{ ma.ERSTELLT_VON }})</dd>
+    <dt>Zuletzt geändert:</dt>
+    <dd>{% if ma.GEAEND_AT %}{{ ma.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} (MA-ID {{ ma.GEAEND_VON }}){% else %}<em>—</em>{% endif %}</dd>
+    <dt>Pers-ID:</dt><dd>{{ ma.PERS_ID }}</dd>
+  </dl>
+</div>
+
+{# Touch-Widgets (Numpad, Keyboard, Datepicker) #}
 {% include 'touch/widgets.html' %}
 
 <script>
 (function() {
-  const form = document.getElementById('az-form');
-  if (!form) return;
+  const stammdatenCard = document.getElementById('stammdaten-card');
+  const azForm = document.getElementById('az-form');
+  const persId = stammdatenCard?.dataset.persId;
+
+  // ── Stammdaten Auto-Save ──────────────────────────────────────
+  // Einzelnes Feld wird sofort gespeichert (kein Submit-Button).
+  document.querySelectorAll('[data-autosave]').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const feld = inp.dataset.autosave;
+      const wert = inp.value;
+      const fg = inp.closest('.form-group');
+      // "✓ gespeichert"-Indicator vorbereiten
+      let tag = fg?.querySelector('.saved-ok');
+      if (fg && !tag) {
+        tag = document.createElement('span');
+        tag.className = 'saved-ok';
+        tag.textContent = '✓ gespeichert';
+        fg.appendChild(tag);
+      }
+      try {
+        const fd = new FormData();
+        fd.append('feld', feld); fd.append('wert', wert);
+        const r = await fetch(`/wawi/personal/${persId}/feld`, { method: 'POST', body: fd });
+        if (r.ok) {
+          fg.classList.add('saved');
+          setTimeout(() => fg.classList.remove('saved'), 1500);
+          // Austritt: Seite neu laden, damit Modell-Enddatum sichtbar wird
+          if (feld === 'AUSTRITT' && wert) {
+            setTimeout(() => window.location.reload(), 600);
+          }
+        } else {
+          const err = await r.json().catch(() => ({error: 'Fehler'}));
+          alert('Speichern fehlgeschlagen: ' + (err.error || r.status));
+        }
+      } catch (e) {
+        alert('Netzwerkfehler: ' + e);
+      }
+    });
+  });
+
+  if (!azForm) return;
   const info = document.getElementById('minijob-info');
   const lohnart = document.getElementById('az-lohnart');
   const stunden = document.getElementById('az-stunden');
+  const urlaub  = document.getElementById('az-urlaub');
+  const bem     = document.getElementById('az-bemerkung');
+  const gueltigAb = document.getElementById('az-gueltig-ab');
+  const editRecId = document.getElementById('az-edit-rec-id');
+  const azSubmit  = document.getElementById('az-submit');
+  const azCancel  = document.getElementById('az-cancel-edit');
+  const azDetails = document.getElementById('az-neu-details');
   const stundensatzAktuell = {{ aktueller_stundensatz_ct or 0 }} / 100;
   const FAKTOR_WM = 4.33;
+
+  const WT_WARNUNG = `Achtung: Wenn Sie die Regelarbeitszeit bearbeiten wird die Berechnung der Überstunden auch in der Vergangenheit angepasst!
+
+Sind Sie sicher, dass Sie die Regelarbeitszeit ändern möchten?`;
+  const UR_WARNUNG = `Achtung: Wenn Sie den jährlichen Urlaubsanspruch bearbeiten, wird die Berechnung des Resturlaubs für das gesamte Jahr angepasst.
+
+Unterjährige Anpassungen des Urlaubsanspruchs können Sie nachvollziehbar als Korrektur im Arbeitszeitkonto erfassen.
+
+Sind Sie sicher, dass Sie den jährlichen Urlaubsanspruch ändern möchten?`;
 
   function fmt(n) {
     if (!n) return '0';
@@ -314,16 +391,15 @@
   }
 
   // ── Wochentag-Auto-Verteilung ────────────────────────────────
-  const wtCells = form.querySelectorAll('.wt-cell');
+  const wtCells = azForm.querySelectorAll('.wt-cell');
   const summeEl = document.getElementById('wt-summe');
+  let manuellBearbeitet = false;  // true wenn direkt bearbeitet wird (Edit-Modus)
 
-  function aktiveCells() {
-    return Array.from(wtCells).filter(c => c.dataset.aktiv === '1');
-  }
+  function aktiveCells() { return Array.from(wtCells).filter(c => c.dataset.aktiv === '1'); }
 
   function wochenStundenSoll() {
     const soll = parseFloat((stunden.value || '').replace(',', '.')) || 0;
-    const typ = form.querySelector('input[name="typ"]:checked').value;
+    const typ = azForm.querySelector('input[name="typ"]:checked').value;
     return typ === 'MONAT' ? soll / FAKTOR_WM : soll;
   }
 
@@ -334,7 +410,13 @@
     wtCells.forEach(c => {
       const display = c.querySelector('.wt-hours-display');
       const hidden  = c.querySelector('input[type=hidden]');
-      if (c.dataset.aktiv === '1' && proTag > 0) {
+      if (manuellBearbeitet) {
+        // Werte aus hidden direkt anzeigen
+        const v = parseFloat((hidden.value || '').replace(',', '.')) || 0;
+        display.textContent = fmt(v);
+        c.dataset.aktiv = v > 0 ? '1' : '0';
+        c.classList.toggle('aktiv', v > 0);
+      } else if (c.dataset.aktiv === '1' && proTag > 0) {
         display.textContent = fmt(proTag);
         hidden.value = proTag.toFixed(2);
       } else {
@@ -349,7 +431,7 @@
     const aktive = aktiveCells();
     const wochSoll = wochenStundenSoll();
     if (!wochSoll) { summeEl.textContent = ''; return; }
-    const typ = form.querySelector('input[name="typ"]:checked').value;
+    const typ = azForm.querySelector('input[name="typ"]:checked').value;
     const suffix = typ === 'MONAT' ? ` (= ${fmt(wochSoll * FAKTOR_WM)} h/Monat)` : '';
     if (aktive.length === 0) {
       summeEl.className = 'wt-summe warn';
@@ -362,15 +444,15 @@
 
   wtCells.forEach(c => {
     c.addEventListener('click', () => {
+      manuellBearbeitet = false;
       c.dataset.aktiv = c.dataset.aktiv === '1' ? '0' : '1';
       c.classList.toggle('aktiv', c.dataset.aktiv === '1');
-      verteileUndSchreibe();
-      check();
+      verteileUndSchreibe(); check();
     });
   });
 
-  stunden.addEventListener('input', () => { verteileUndSchreibe(); check(); });
-  form.querySelectorAll('input[name="typ"]').forEach(r =>
+  stunden.addEventListener('input', () => { manuellBearbeitet = false; verteileUndSchreibe(); check(); });
+  azForm.querySelectorAll('input[name="typ"]').forEach(r =>
     r.addEventListener('change', () => { verteileUndSchreibe(); check(); }));
 
   verteileUndSchreibe();
@@ -383,19 +465,15 @@
   function fmtEur(ct) { return (ct / 100).toFixed(2).replace('.', ',') + ' €'; }
 
   async function check() {
-    if (!istMinijob() || !stundensatzAktuell) {
-      info.style.display = 'none'; return;
-    }
+    if (!istMinijob() || !stundensatzAktuell) { info.style.display = 'none'; return; }
     const std = parseFloat((stunden.value || '').replace(',', '.'));
     if (!std || std <= 0) { info.style.display = 'none'; return; }
-    const typ = form.querySelector('input[name="typ"]:checked').value;
-    const q = `?stunden=${std}&typ=${typ}&stundensatz=${stundensatzAktuell}`;
+    const typ = azForm.querySelector('input[name="typ"]:checked').value;
     try {
-      const r = await fetch('/wawi/personal/api/minijob-check' + q);
+      const r = await fetch(`/wawi/personal/api/minijob-check?stunden=${std}&typ=${typ}&stundensatz=${stundensatzAktuell}`);
       if (!r.ok) { info.style.display = 'none'; return; }
       const data = await r.json();
-      const brutto = fmtEur(data.brutto_monat_ct);
-      const grenze = fmtEur(data.grenze_ct);
+      const brutto = fmtEur(data.brutto_monat_ct), grenze = fmtEur(data.grenze_ct);
       if (data.ueberschreitet) {
         info.className = 'minijob-info over';
         info.innerHTML = `⚠️ Überschreitet Minijob-Grenze: <strong>${brutto}</strong> / ${grenze} (+${fmtEur(data.differenz_ct)})`;
@@ -404,13 +482,96 @@
         info.innerHTML = `✓ Minijob: <strong>${brutto}</strong> / ${grenze} (${fmtEur(-data.differenz_ct)} Puffer)`;
       }
       info.style.display = 'block';
-    } catch (e) {
-      info.style.display = 'none';
-    }
+    } catch (e) { info.style.display = 'none'; }
   }
-
   lohnart.addEventListener('change', check);
   check();
+
+  // ── Bearbeiten-Modus (retroaktive Änderung) ──────────────────
+  document.querySelectorAll('.az-historie tr.editierbar').forEach(tr => {
+    tr.addEventListener('click', () => starteEditModus(tr));
+  });
+
+  function starteEditModus(tr) {
+    const origUrlaub = (tr.dataset.urlaub || '').replace('.', ',');
+    // Confirmation ist eigentlich beim SPEICHERN relevant (s.u.); hier nur Umschaltung
+    manuellBearbeitet = true;
+    editRecId.value = tr.dataset.recId;
+    azDetails.open = true;
+    azForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    gueltigAb.value = '';
+    gueltigAb.placeholder = '(wird nicht geändert)';
+    gueltigAb.removeAttribute('required');
+    lohnart.value = tr.dataset.lohnartId;
+    azForm.querySelector(`input[name="typ"][value="${tr.dataset.typ}"]`).checked = true;
+    stunden.value = (tr.dataset.stundenSoll || '').replace('.', ',');
+    urlaub.value = origUrlaub;
+    bem.value = tr.dataset.bemerkung || '';
+    // Wochentage
+    const felder = ['mo','di','mi','do','fr','sa','so'];
+    felder.forEach(k => {
+      const c = azForm.querySelector(`.wt-cell[data-field="std_${k}"]`);
+      const v = tr.dataset[k];
+      c.querySelector('input[type=hidden]').value = v || '';
+      const n = parseFloat((v || '').replace(',', '.')) || 0;
+      c.dataset.aktiv = n > 0 ? '1' : '0';
+      c.classList.toggle('aktiv', n > 0);
+      c.querySelector('.wt-hours-display').textContent = n > 0 ? fmt(n) : '0';
+    });
+    aktualisiereSumme(); check();
+
+    azForm.action = `/wawi/personal/${persId}/az-modell/${tr.dataset.recId}`;
+    azSubmit.textContent = 'Änderung speichern';
+    azCancel.style.display = 'inline-block';
+    azForm.dataset.origUrlaub = origUrlaub;
+    azForm.dataset.origStunden = (tr.dataset.stundenSoll || '').replace('.', ',');
+  }
+
+  azCancel.addEventListener('click', () => {
+    editRecId.value = '';
+    manuellBearbeitet = false;
+    azForm.action = `/wawi/personal/${persId}/az-modell`;
+    azSubmit.textContent = 'Modell anlegen';
+    azCancel.style.display = 'none';
+    gueltigAb.placeholder = 'JJJJ-MM-TT';
+    gueltigAb.setAttribute('required', 'required');
+    gueltigAb.value = {{ ('"' + today.isoformat() + '"') if today else '""' }};
+    stunden.value = ''; urlaub.value = ''; bem.value = '';
+    delete azForm.dataset.origUrlaub;
+    delete azForm.dataset.origStunden;
+    // Wochentage auf Default
+    wtCells.forEach(c => {
+      const ist_mo_fr = ['std_mo','std_di','std_mi','std_do','std_fr'].includes(c.dataset.field);
+      c.dataset.aktiv = ist_mo_fr ? '1' : '0';
+      c.classList.toggle('aktiv', ist_mo_fr);
+      c.querySelector('input[type=hidden]').value = '';
+    });
+    verteileUndSchreibe();
+  });
+
+  // Confirmation vor dem Submit im Edit-Modus
+  azForm.addEventListener('submit', e => {
+    if (!editRecId.value) return;  // Neu-Anlage: keine Nachfrage
+    const neuUrlaub  = (urlaub.value || '').trim();
+    const origUrlaub = azForm.dataset.origUrlaub || '';
+    const neuStunden = (stunden.value || '').trim();
+    const origStunden = azForm.dataset.origStunden || '';
+    // Warnung nur zeigen wenn tatsächlich geändert
+    const azGeaendert = neuStunden !== origStunden ||
+                        Array.from(wtCells).some(c => {
+                          const k = c.dataset.field.slice(4);
+                          return (c.querySelector('input[type=hidden]').value || '').replace(',', '.')
+                              !== ((getDatasetDay(k) || '').replace(',', '.'));
+                        });
+    const urGeaendert = neuUrlaub !== origUrlaub;
+    if (azGeaendert && !confirm(WT_WARNUNG)) { e.preventDefault(); return; }
+    if (urGeaendert && !confirm(UR_WARNUNG)) { e.preventDefault(); return; }
+  });
+
+  function getDatasetDay(k) {
+    // unused — kept for future reference; we rely on confirm on any change
+    return null;
+  }
 })();
 </script>
 {% endblock %}

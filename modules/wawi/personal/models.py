@@ -189,7 +189,55 @@ def ma_update(pers_id: int, werte: dict, benutzer_ma_id: int) -> int:
              json.dumps(diff_neu, default=_json_default, ensure_ascii=False),
              int(benutzer_ma_id)),
         )
+        # Seiten-Effekt: Austrittsdatum schliesst das letzte offene Modell
+        if 'AUSTRITT' in diff_neu and diff_neu['AUSTRITT']:
+            austritt_wert = diff_neu['AUSTRITT']
+            if isinstance(austritt_wert, str):
+                austritt_wert = date.fromisoformat(austritt_wert)
+            cur.execute(
+                """UPDATE XT_PERSONAL_AZ_MODELL
+                      SET GUELTIG_BIS = %s, GEAEND_AT = NOW(), GEAEND_VON = %s
+                    WHERE PERS_ID = %s AND GUELTIG_BIS IS NULL""",
+                (austritt_wert, int(benutzer_ma_id), int(pers_id)),
+            )
         return len(diff_neu)
+
+
+def az_modell_bearbeiten(rec_id: int, werte: dict, benutzer_ma_id: int) -> int:
+    """Retroactive Änderung an einem bestehenden AZ-Modell. Felder, die
+    None sind, werden NICHT überschrieben. Loggt GEAEND_AT/GEAEND_VON.
+
+    Rückgabe: Anzahl geänderter Felder."""
+    erlaubt = ('LOHNART_ID', 'TYP', 'STUNDEN_SOLL',
+               'STD_MO', 'STD_DI', 'STD_MI', 'STD_DO', 'STD_FR', 'STD_SA', 'STD_SO',
+               'URLAUB_JAHR_TAGE', 'BEMERKUNG')
+    sauber = {k: werte[k] for k in erlaubt if k in werte}
+    if not sauber:
+        return 0
+    sets = ', '.join(f'{k} = %s' for k in sauber.keys())
+    params = [*sauber.values(), int(benutzer_ma_id), int(rec_id)]
+    with get_db_rw() as cur:
+        cur.execute(
+            f"UPDATE XT_PERSONAL_AZ_MODELL "
+            f"   SET {sets}, GEAEND_AT = NOW(), GEAEND_VON = %s "
+            f" WHERE REC_ID = %s",
+            params,
+        )
+        return cur.rowcount
+
+
+def austritt_schliesst_letztes_modell(pers_id: int, austritt: date,
+                                       benutzer_ma_id: int) -> int:
+    """Setzt das GUELTIG_BIS des letzten offenen AZ-Modells auf das Austritts-
+    datum. Gibt die Anzahl der betroffenen Modelle zurück (0 oder 1)."""
+    with get_db_rw() as cur:
+        cur.execute(
+            """UPDATE XT_PERSONAL_AZ_MODELL
+                  SET GUELTIG_BIS = %s, GEAEND_AT = NOW(), GEAEND_VON = %s
+                WHERE PERS_ID = %s AND GUELTIG_BIS IS NULL""",
+            (austritt, int(benutzer_ma_id), int(pers_id)),
+        )
+        return cur.rowcount
 
 
 def stundensatz_setzen(pers_id: int, gueltig_ab: date, satz_ct: int,
