@@ -231,7 +231,7 @@
   {% endif %}
 
   <details {% if not az_modelle %}open{% endif %} id="az-neu-details">
-    <summary>+ Neues Arbeitszeitmodell anlegen</summary>
+    <summary id="az-summary">+ Neues Arbeitszeitmodell anlegen</summary>
     <form method="post" action="{{ url_for('wawi_personal.az_modell_anlegen', pers_id=ma.PERS_ID) }}"
           id="az-form" style="margin-top: 10px;">
       <input type="hidden" name="_edit_rec_id" id="az-edit-rec-id" value="">
@@ -543,6 +543,8 @@ Sind Sie sicher, dass Sie den jährlichen Urlaubsanspruch ändern möchten?`;
     manuellBearbeitet = true;
     editRecId.value = tr.dataset.recId;
     azDetails.open = true;
+    document.getElementById('az-summary').textContent =
+      '✎ Arbeitszeitmodell bearbeiten (rückwirkend)';
     azForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
     gueltigAb.value = '';
     gueltigAb.placeholder = '(wird nicht geändert)';
@@ -578,6 +580,8 @@ Sind Sie sicher, dass Sie den jährlichen Urlaubsanspruch ändern möchten?`;
     azForm.action = `/wawi/personal/${persId}/az-modell`;
     azSubmit.textContent = 'Modell anlegen';
     azCancel.style.display = 'none';
+    document.getElementById('az-summary').textContent =
+      '+ Neues Arbeitszeitmodell anlegen';
     gueltigAb.placeholder = 'JJJJ-MM-TT';
     gueltigAb.setAttribute('required', 'required');
     gueltigAb.value = "{{ today.isoformat() if today else '' }}";
