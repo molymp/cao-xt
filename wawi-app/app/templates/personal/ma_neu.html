@@ -27,11 +27,13 @@
     <div class="form-grid">
       <div class="form-group">
         <label>Stundensatz (€ brutto)</label>
-        <input type="text" name="stundensatz" placeholder="z.B. 13,90">
+        <input type="text" name="stundensatz" class="num-touch" inputmode="decimal"
+               placeholder="z.B. 13,90" data-touch-titel="Stundensatz (€)">
       </div>
       <div class="form-group">
         <label>gültig ab</label>
-        <input type="date" name="stundensatz_ab">
+        <input type="text" name="stundensatz_ab" class="date-touch"
+               placeholder="JJJJ-MM-TT" data-touch-titel="gültig ab">
       </div>
     </div>
   </div>
@@ -41,4 +43,7 @@
     <button type="submit" class="btn">Anlegen</button>
   </div>
 </form>
+
+{# Touch-Widgets (Numpad, Keyboard, Datepicker) #}
+{% include 'touch/widgets.html' %}
 {% endblock %}

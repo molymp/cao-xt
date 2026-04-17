@@ -3,6 +3,7 @@ CAO-XT WaWi-App – Flask-Hauptanwendung
 Starten: cd wawi-app/app && python3 app.py
 """
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, send_from_directory
+from jinja2 import ChoiceLoader, FileSystemLoader
 from datetime import datetime, date
 import base64
 import io
@@ -26,6 +27,17 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
+
+# Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Widgets
+# (Touch-Numpad/Keyboard/Datepicker). Wird mit App-eigenen Templates
+# ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).
+_COMMON_TEMPLATES = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'templates')
+)
+app.jinja_loader = ChoiceLoader([
+    app.jinja_loader,
+    FileSystemLoader(_COMMON_TEMPLATES),
+])
 
 
 def _fmt_eur(value, dp=2):

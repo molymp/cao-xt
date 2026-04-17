@@ -11,10 +11,10 @@
 .az-historie .tage { color: var(--grau-mitte); font-size: 11px; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 10px;
         font-size: 10px; font-weight: 800; letter-spacing: 0.04em; }
-.pill-minijob { background: #fef1db; color: #7a5a00; }
+.pill-minijob  { background: #fef1db; color: #7a5a00; }
 .pill-teilzeit { background: #e5f0ff; color: #1c4a7a; }
 .pill-vollzeit { background: #e8f5e0; color: #2e7a2e; }
-.pill-sonst   { background: var(--grau-hell); color: var(--text-mitte); }
+.pill-sonst    { background: var(--grau-hell); color: var(--text-mitte); }
 .radio-row { display: flex; gap: 14px; font-size: 13px; }
 .radio-row label { display: flex; align-items: center; gap: 5px; cursor: pointer;
                    font-size: 13px; text-transform: none; font-weight: 600; }
@@ -39,36 +39,6 @@
 .wt-summe { font-size: 12px; margin-top: 8px; color: var(--text-mitte);
             text-align: right; font-weight: 700; }
 .wt-summe.warn { color: #7a5a00; }
-
-/* Touch-Numpad Overlay */
-.numpad-overlay { position: fixed; inset: 0; background: rgba(20, 40, 10, 0.5);
-                  z-index: 9000; display: none; align-items: flex-end;
-                  justify-content: center; touch-action: none; }
-.numpad-overlay.sichtbar { display: flex; }
-.numpad-panel { background: white; border-radius: 16px 16px 0 0; max-width: 380px;
-                width: 100%; padding: 12px 14px 16px; box-shadow: 0 -8px 32px rgba(0,0,0,0.2); }
-.numpad-kopf { display: flex; align-items: center; justify-content: space-between;
-               margin-bottom: 10px; }
-.numpad-titel { font-size: 13px; font-weight: 800; color: var(--gruen-dunkel);
-                text-transform: uppercase; letter-spacing: 0.04em; }
-.numpad-wert { font-family: 'Nunito', monospace; font-size: 28px; font-weight: 700;
-               text-align: right; padding: 6px 12px; background: var(--creme);
-               border-radius: var(--radius-klein); min-height: 46px;
-               color: var(--text-dunkel); font-variant-numeric: tabular-nums;
-               border: 2px solid var(--creme-dunkel); margin-bottom: 10px; }
-.numpad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.numpad-btn { min-height: 54px; border: 1px solid var(--creme-dunkel);
-              border-radius: var(--radius-klein); background: white; font-family: inherit;
-              font-size: 20px; font-weight: 700; cursor: pointer;
-              -webkit-tap-highlight-color: transparent; transition: background 0.1s; }
-.numpad-btn:active { background: var(--gruen-blass); }
-.numpad-btn.wide { grid-column: span 2; }
-.numpad-btn.funktion { background: var(--creme); font-size: 14px; font-weight: 800; }
-.numpad-btn.primary { background: var(--gruen-mitte); color: white; border-color: var(--gruen-mitte); }
-.numpad-btn.primary:active { background: var(--gruen-dunkel); }
-
-.num-touch { cursor: pointer; caret-color: transparent; }
-.num-touch:focus { outline: 2px solid var(--gruen-mitte); outline-offset: 1px; }
 .minijob-info { padding: 8px 12px; border-radius: var(--radius-klein);
                 font-size: 13px; font-weight: 600; margin-top: 8px;
                 background: var(--grau-hell); color: var(--text-mitte); }
@@ -97,138 +67,12 @@
   <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">← Zurück</a>
 </div>
 
+{# ── FORM 1: Stammdaten + Stundensatz (getrennt von AZ-Modell) ────────────── #}
 <form method="post" action="{{ url_for('wawi_personal.detail', pers_id=ma.PERS_ID) }}">
 
   <div class="card card-section">
     <h2>Stammdaten</h2>
     {% include 'personal/_form_felder.html' %}
-  </div>
-
-  <div class="card card-section">
-    <h2>Arbeitszeit &amp; Lohn</h2>
-
-    {# ── Historie der bestehenden Modelle ─────────────────────────────── #}
-    {% if az_modelle %}
-    <table class="az-historie">
-      <thead>
-        <tr>
-          <th>Gültig</th>
-          <th>Lohnart</th>
-          <th>Typ</th>
-          <th>Stunden Soll</th>
-          <th>Urlaub</th>
-          <th>Wochenverteilung</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for am in az_modelle %}
-        {% set ist_aktuell = aktuelles_az and am.REC_ID == aktuelles_az.REC_ID %}
-        <tr class="{% if ist_aktuell %}aktuell{% endif %}">
-          <td>
-            {{ am.GUELTIG_AB.strftime('%d.%m.%Y') }}
-            {% if am.GUELTIG_BIS %}– {{ am.GUELTIG_BIS.strftime('%d.%m.%Y') }}{% else %}– offen{% endif %}
-          </td>
-          <td>
-            {% set pill_cls = 'pill-minijob' if am.MINIJOB_FLAG else ('pill-teilzeit' if am.LOHNART_NAME == 'Teilzeit' else ('pill-vollzeit' if am.LOHNART_NAME == 'Vollzeit' else 'pill-sonst')) %}
-            <span class="pill {{ pill_cls }}">{{ am.LOHNART_NAME }}</span>
-          </td>
-          <td>{{ am.TYP|title }}</td>
-          <td>{{ am.STUNDEN_SOLL|string|replace('.', ',') }} h</td>
-          <td>{{ (am.URLAUB_JAHR_TAGE|string|replace('.', ',')) if am.URLAUB_JAHR_TAGE else '—' }}</td>
-          <td class="tage">
-            {% set wt_labels = ['Mo','Di','Mi','Do','Fr','Sa','So'] %}
-            {% set wt_vals = [am.STD_MO, am.STD_DI, am.STD_MI, am.STD_DO, am.STD_FR, am.STD_SA, am.STD_SO] %}
-            {% set paare = [] %}
-            {% for lbl, v in wt_labels|zip(wt_vals) %}
-              {% if v and v > 0 %}{% set _ = paare.append(lbl ~ ' ' ~ (v|string|replace('.',','))) %}{% endif %}
-            {% endfor %}
-            {{ paare|join(' · ') if paare else '—' }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 10px;">
-      Noch kein Arbeitszeitmodell hinterlegt.
-    </p>
-    {% endif %}
-
-    {# ── Neues Modell anlegen (eigenes Form) ──────────────────────────── #}
-    <details {% if not az_modelle %}open{% endif %}>
-      <summary>+ Neues Arbeitszeitmodell anlegen</summary>
-      <form method="post" action="{{ url_for('wawi_personal.az_modell_anlegen', pers_id=ma.PERS_ID) }}"
-            id="az-form" style="margin-top: 10px;">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Gültig ab *</label>
-            <input type="date" name="gueltig_ab" required
-                   value="{{ (today.isoformat() if today else '') }}">
-          </div>
-          <div class="form-group">
-            <label>Lohnart *</label>
-            <select name="lohnart_id" id="az-lohnart" required>
-              {% for la in lohnarten %}
-              <option value="{{ la.LOHNART_ID }}"
-                      data-minijob="{{ la.MINIJOB_FLAG }}">
-                {{ la.BEZEICHNUNG }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="form-group form-col-2">
-            <label>Eingabe als</label>
-            <div class="radio-row">
-              <label><input type="radio" name="typ" value="WOCHE" checked> pro Woche</label>
-              <label><input type="radio" name="typ" value="MONAT"> pro Monat</label>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Stunden Soll *</label>
-            <input type="text" name="stunden_soll" id="az-stunden" class="num-touch"
-                   inputmode="decimal" required placeholder="z.B. 20"
-                   data-numpad-titel="Stunden Soll">
-          </div>
-          <div class="form-group">
-            <label>Urlaub (Tage/Jahr)</label>
-            <input type="text" name="urlaub_jahr_tage" class="num-touch"
-                   inputmode="decimal" placeholder="z.B. 24"
-                   data-numpad-titel="Urlaubstage">
-          </div>
-          <div class="form-group form-col-2">
-            <label>Bemerkung</label>
-            <input type="text" name="bemerkung" maxlength="500">
-          </div>
-        </div>
-
-        <div style="margin-top: 8px;">
-          <div style="font-size: 10px; font-weight: 800; color: var(--text-mitte);
-                      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">
-            Verteilung auf Wochentage
-          </div>
-          <div class="wochentag-grid">
-            {% for lbl, field, aktiv in [
-                ('Mo','std_mo',True), ('Di','std_di',True), ('Mi','std_mi',True),
-                ('Do','std_do',True), ('Fr','std_fr',True),
-                ('Sa','std_sa',False), ('So','std_so',False)] %}
-            <button type="button" class="wt-cell {% if aktiv %}aktiv{% endif %}"
-                    data-field="{{ field }}" data-aktiv="{{ '1' if aktiv else '0' }}">
-              <span class="wt-label">{{ lbl }}</span>
-              <span class="wt-hours-display">0</span>
-              <input type="hidden" name="{{ field }}" value="">
-            </button>
-            {% endfor %}
-          </div>
-          <div id="wt-summe" class="wt-summe"></div>
-        </div>
-
-        <div id="minijob-info" class="minijob-info" style="display: none;"></div>
-
-        <div class="form-actions">
-          <button type="submit" class="btn">Modell anlegen</button>
-        </div>
-      </form>
-    </details>
   </div>
 
   <div class="card card-section">
@@ -240,30 +84,22 @@
     <div class="form-grid">
       <div class="form-group">
         <label>Neuer Stundensatz (€ brutto)</label>
-        <input type="text" name="stundensatz" placeholder="z.B. 13,90">
+        <input type="text" name="stundensatz" class="num-touch"
+               inputmode="decimal" placeholder="z.B. 13,90"
+               data-touch-titel="Stundensatz (€)">
       </div>
       <div class="form-group">
         <label>gültig ab</label>
-        <input type="date" name="stundensatz_ab">
+        <input type="text" name="stundensatz_ab" class="date-touch"
+               placeholder="JJJJ-MM-TT" data-touch-titel="gültig ab">
       </div>
       <div class="form-group form-col-2">
         <label>Kommentar (optional)</label>
-        <input type="text" name="stundensatz_kommentar" maxlength="255"
-               placeholder="z.B. Tariferhöhung 2026">
+        <input type="text" name="stundensatz_kommentar" class="alpha-touch"
+               maxlength="255" placeholder="z.B. Tariferhöhung 2026"
+               data-touch-titel="Kommentar">
       </div>
     </div>
-  </div>
-
-  <div class="card card-section">
-    <h2>Audit</h2>
-    <dl class="readonly-grid">
-      <dt>Angelegt:</dt>
-      <dd>{{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '' }} (MA-ID {{ ma.ERSTELLT_VON }})</dd>
-      <dt>Zuletzt geändert:</dt>
-      <dd>{% if ma.GEAEND_AT %}{{ ma.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} (MA-ID {{ ma.GEAEND_VON }}){% else %}<em>—</em>{% endif %}</dd>
-      <dt>Pers-ID:</dt>
-      <dd>{{ ma.PERS_ID }}</dd>
-    </dl>
   </div>
 
   <div class="form-actions">
@@ -272,33 +108,148 @@
   </div>
 </form>
 
-{# ── Touch-Numpad (global fuer diese Seite) ────────────────────────────── #}
-<div class="numpad-overlay" id="numpad">
-  <div class="numpad-panel">
-    <div class="numpad-kopf">
-      <span class="numpad-titel" id="numpad-titel">Zahl</span>
-      <button type="button" class="numpad-btn funktion" id="numpad-abbr"
-              style="min-height: 32px; font-size: 12px; padding: 0 12px;">✕</button>
-    </div>
-    <div class="numpad-wert" id="numpad-wert">0</div>
-    <div class="numpad-grid">
-      <button type="button" class="numpad-btn" data-numpad-btn="7">7</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="8">8</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="9">9</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="4">4</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="5">5</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="6">6</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="1">1</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="2">2</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="3">3</button>
-      <button type="button" class="numpad-btn" data-numpad-btn=".">,</button>
-      <button type="button" class="numpad-btn" data-numpad-btn="0">0</button>
-      <button type="button" class="numpad-btn funktion" data-numpad-btn="BACK">⌫</button>
-      <button type="button" class="numpad-btn funktion" data-numpad-btn="CLEAR">Löschen</button>
-      <button type="button" class="numpad-btn primary wide" id="numpad-ok">Übernehmen</button>
-    </div>
-  </div>
+{# ── Audit (reine Anzeige, ausserhalb jeder Form) ─────────────────────── #}
+<div class="card card-section">
+  <h2>Audit</h2>
+  <dl class="readonly-grid">
+    <dt>Angelegt:</dt>
+    <dd>{{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '' }} (MA-ID {{ ma.ERSTELLT_VON }})</dd>
+    <dt>Zuletzt geändert:</dt>
+    <dd>{% if ma.GEAEND_AT %}{{ ma.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} (MA-ID {{ ma.GEAEND_VON }}){% else %}<em>—</em>{% endif %}</dd>
+    <dt>Pers-ID:</dt>
+    <dd>{{ ma.PERS_ID }}</dd>
+  </dl>
 </div>
+
+{# ── Arbeitszeit & Lohn (eigenstaendiger Bereich, eigene Form) ─────────── #}
+<div class="card card-section">
+  <h2>Arbeitszeit &amp; Lohn</h2>
+
+  {% if az_modelle %}
+  <table class="az-historie">
+    <thead>
+      <tr>
+        <th>Gültig</th>
+        <th>Lohnart</th>
+        <th>Typ</th>
+        <th>Stunden Soll</th>
+        <th>Urlaub</th>
+        <th>Wochenverteilung</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for am in az_modelle %}
+      {% set ist_aktuell = aktuelles_az and am.REC_ID == aktuelles_az.REC_ID %}
+      <tr class="{% if ist_aktuell %}aktuell{% endif %}">
+        <td>
+          {{ am.GUELTIG_AB.strftime('%d.%m.%Y') }}
+          {% if am.GUELTIG_BIS %}– {{ am.GUELTIG_BIS.strftime('%d.%m.%Y') }}{% else %}– offen{% endif %}
+        </td>
+        <td>
+          {% set pill_cls = 'pill-minijob' if am.MINIJOB_FLAG else ('pill-teilzeit' if am.LOHNART_NAME == 'Teilzeit' else ('pill-vollzeit' if am.LOHNART_NAME == 'Vollzeit' else 'pill-sonst')) %}
+          <span class="pill {{ pill_cls }}">{{ am.LOHNART_NAME }}</span>
+        </td>
+        <td>{{ am.TYP|title }}</td>
+        <td>{{ am.STUNDEN_SOLL|string|replace('.', ',') }} h</td>
+        <td>{{ (am.URLAUB_JAHR_TAGE|string|replace('.', ',')) if am.URLAUB_JAHR_TAGE else '—' }}</td>
+        <td class="tage">
+          {% set wt_labels = ['Mo','Di','Mi','Do','Fr','Sa','So'] %}
+          {% set wt_vals = [am.STD_MO, am.STD_DI, am.STD_MI, am.STD_DO, am.STD_FR, am.STD_SA, am.STD_SO] %}
+          {% set paare = [] %}
+          {% for lbl, v in wt_labels|zip(wt_vals) %}
+            {% if v and v > 0 %}{% set _ = paare.append(lbl ~ ' ' ~ (v|string|replace('.',','))) %}{% endif %}
+          {% endfor %}
+          {{ paare|join(' · ') if paare else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 10px;">
+    Noch kein Arbeitszeitmodell hinterlegt.
+  </p>
+  {% endif %}
+
+  <details {% if not az_modelle %}open{% endif %}>
+    <summary>+ Neues Arbeitszeitmodell anlegen</summary>
+    <form method="post" action="{{ url_for('wawi_personal.az_modell_anlegen', pers_id=ma.PERS_ID) }}"
+          id="az-form" style="margin-top: 10px;">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Gültig ab *</label>
+          <input type="text" name="gueltig_ab" class="date-touch" required
+                 placeholder="JJJJ-MM-TT"
+                 value="{{ today.isoformat() if today else '' }}"
+                 data-touch-titel="Gültig ab">
+        </div>
+        <div class="form-group">
+          <label>Lohnart *</label>
+          <select name="lohnart_id" id="az-lohnart" required>
+            {% for la in lohnarten %}
+            <option value="{{ la.LOHNART_ID }}"
+                    data-minijob="{{ la.MINIJOB_FLAG }}">
+              {{ la.BEZEICHNUNG }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group form-col-2">
+          <label>Eingabe als</label>
+          <div class="radio-row">
+            <label><input type="radio" name="typ" value="WOCHE" checked> pro Woche</label>
+            <label><input type="radio" name="typ" value="MONAT"> pro Monat</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Stunden Soll *</label>
+          <input type="text" name="stunden_soll" id="az-stunden" class="num-touch"
+                 required placeholder="z.B. 20" data-touch-titel="Stunden Soll">
+        </div>
+        <div class="form-group">
+          <label>Urlaub (Tage/Jahr)</label>
+          <input type="text" name="urlaub_jahr_tage" class="num-touch"
+                 placeholder="z.B. 24" data-touch-titel="Urlaubstage">
+        </div>
+        <div class="form-group form-col-2">
+          <label>Bemerkung</label>
+          <input type="text" name="bemerkung" class="alpha-touch" maxlength="500"
+                 data-touch-titel="Bemerkung">
+        </div>
+      </div>
+
+      <div style="margin-top: 8px;">
+        <div style="font-size: 10px; font-weight: 800; color: var(--text-mitte);
+                    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">
+          Verteilung auf Wochentage
+        </div>
+        <div class="wochentag-grid">
+          {% for lbl, field, aktiv in [
+              ('Mo','std_mo',True), ('Di','std_di',True), ('Mi','std_mi',True),
+              ('Do','std_do',True), ('Fr','std_fr',True),
+              ('Sa','std_sa',False), ('So','std_so',False)] %}
+          <button type="button" class="wt-cell {% if aktiv %}aktiv{% endif %}"
+                  data-field="{{ field }}" data-aktiv="{{ '1' if aktiv else '0' }}">
+            <span class="wt-label">{{ lbl }}</span>
+            <span class="wt-hours-display">0</span>
+            <input type="hidden" name="{{ field }}" value="">
+          </button>
+          {% endfor %}
+        </div>
+        <div id="wt-summe" class="wt-summe"></div>
+      </div>
+
+      <div id="minijob-info" class="minijob-info" style="display: none;"></div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn">Modell anlegen</button>
+      </div>
+    </form>
+  </details>
+</div>
+
+{# ── Touch-Widgets (Numpad, Keyboard, Datepicker) ────────────────────── #}
+{% include 'touch/widgets.html' %}
 
 <script>
 (function() {
@@ -311,12 +262,12 @@
   const FAKTOR_WM = 4.33;
 
   function fmt(n) {
-    if (n === null || n === undefined || n === '' || isNaN(n) || n === 0) return '0';
+    if (!n) return '0';
     const r = Math.round(n * 100) / 100;
-    return (r % 1 === 0 ? r.toFixed(0) : r.toFixed(2).replace(/0$/, '')).replace('.', ',');
+    return (r % 1 === 0 ? r.toFixed(0) : r.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')).replace('.', ',');
   }
 
-  // ── Wochentag-Auto-Verteilung ──────────────────────────────────
+  // ── Wochentag-Auto-Verteilung ────────────────────────────────
   const wtCells = form.querySelectorAll('.wt-cell');
   const summeEl = document.getElementById('wt-summe');
 
@@ -351,7 +302,6 @@
   function aktualisiereSumme() {
     const aktive = aktiveCells();
     const wochSoll = wochenStundenSoll();
-    const summe = aktive.length && wochSoll > 0 ? wochSoll : 0;
     if (!wochSoll) { summeEl.textContent = ''; return; }
     const typ = form.querySelector('input[name="typ"]:checked').value;
     const suffix = typ === 'MONAT' ? ` (= ${fmt(wochSoll * FAKTOR_WM)} h/Monat)` : '';
@@ -360,101 +310,38 @@
       summeEl.textContent = 'Keine Tage aktiv – wähle mindestens einen Wochentag';
     } else {
       summeEl.className = 'wt-summe';
-      summeEl.textContent = `${fmt(summe)} h / Woche auf ${aktive.length} Tag(e) verteilt${suffix}`;
+      summeEl.textContent = `${fmt(wochSoll)} h / Woche auf ${aktive.length} Tag(e) verteilt${suffix}`;
     }
   }
 
-  // Toggle per Tap
   wtCells.forEach(c => {
     c.addEventListener('click', () => {
       c.dataset.aktiv = c.dataset.aktiv === '1' ? '0' : '1';
       c.classList.toggle('aktiv', c.dataset.aktiv === '1');
       verteileUndSchreibe();
+      check();
     });
   });
 
-  stunden.addEventListener('input', verteileUndSchreibe);
-  form.querySelectorAll('input[name="typ"]').forEach(r => r.addEventListener('change', verteileUndSchreibe));
+  stunden.addEventListener('input', () => { verteileUndSchreibe(); check(); });
+  form.querySelectorAll('input[name="typ"]').forEach(r =>
+    r.addEventListener('change', () => { verteileUndSchreibe(); check(); }));
 
-  verteileUndSchreibe();  // initial leer
+  verteileUndSchreibe();
 
-  // ── Touch-Numpad fuer alle .num-touch Inputs ──────────────────
-  let aktuellerNumInput = null;
-  let puffer = '';
-
-  function numpadOeffnen(input) {
-    aktuellerNumInput = input;
-    puffer = (input.value || '').replace(',', '.');
-    document.getElementById('numpad-titel').textContent =
-      input.dataset.numpadTitel || input.previousElementSibling?.textContent?.trim() || 'Zahl';
-    aktualisiereWert();
-    document.getElementById('numpad').classList.add('sichtbar');
-  }
-
-  function numpadSchliessen(uebernehmen) {
-    if (uebernehmen && aktuellerNumInput) {
-      const formatted = puffer.replace('.', ',');
-      aktuellerNumInput.value = formatted;
-      aktuellerNumInput.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    document.getElementById('numpad').classList.remove('sichtbar');
-    aktuellerNumInput = null;
-    puffer = '';
-  }
-
-  function aktualisiereWert() {
-    const el = document.getElementById('numpad-wert');
-    el.textContent = puffer || '0';
-  }
-
-  function numpadEingabe(taste) {
-    if (taste === 'BACK') {
-      puffer = puffer.slice(0, -1);
-    } else if (taste === 'CLEAR') {
-      puffer = '';
-    } else if (taste === '.') {
-      if (!puffer.includes('.')) puffer += puffer ? '.' : '0.';
-    } else {
-      puffer += taste;
-    }
-    aktualisiereWert();
-  }
-
-  document.querySelectorAll('.num-touch').forEach(inp => {
-    inp.addEventListener('focus', e => { e.preventDefault(); inp.blur(); numpadOeffnen(inp); });
-    inp.addEventListener('click', e => { e.preventDefault(); numpadOeffnen(inp); });
-  });
-
-  document.querySelectorAll('[data-numpad-btn]').forEach(btn => {
-    btn.addEventListener('click', () => numpadEingabe(btn.dataset.numpadBtn));
-  });
-  document.getElementById('numpad-ok').addEventListener('click',     () => numpadSchliessen(true));
-  document.getElementById('numpad-abbr').addEventListener('click',   () => numpadSchliessen(false));
-  document.getElementById('numpad').addEventListener('click', e => {
-    if (e.target.id === 'numpad') numpadSchliessen(false);
-  });
-
-  // ── Live-Minijob-Check ────────────────────────────────────────
-
+  // ── Live-Minijob-Check ───────────────────────────────────────
   function istMinijob() {
     const opt = lohnart.options[lohnart.selectedIndex];
     return opt && opt.dataset.minijob === '1';
   }
-
-  function fmtEur(ct) {
-    return (ct / 100).toFixed(2).replace('.', ',') + ' €';
-  }
+  function fmtEur(ct) { return (ct / 100).toFixed(2).replace('.', ',') + ' €'; }
 
   async function check() {
     if (!istMinijob() || !stundensatzAktuell) {
-      info.style.display = 'none';
-      return;
+      info.style.display = 'none'; return;
     }
     const std = parseFloat((stunden.value || '').replace(',', '.'));
-    if (!std || std <= 0) {
-      info.style.display = 'none';
-      return;
-    }
+    if (!std || std <= 0) { info.style.display = 'none'; return; }
     const typ = form.querySelector('input[name="typ"]:checked').value;
     const q = `?stunden=${std}&typ=${typ}&stundensatz=${stundensatzAktuell}`;
     try {
@@ -467,9 +354,8 @@
         info.className = 'minijob-info over';
         info.innerHTML = `⚠️ Überschreitet Minijob-Grenze: <strong>${brutto}</strong> / ${grenze} (+${fmtEur(data.differenz_ct)})`;
       } else {
-        const rest = fmtEur(-data.differenz_ct);
         info.className = 'minijob-info';
-        info.innerHTML = `✓ Minijob: <strong>${brutto}</strong> / ${grenze} (${rest} Puffer)`;
+        info.innerHTML = `✓ Minijob: <strong>${brutto}</strong> / ${grenze} (${fmtEur(-data.differenz_ct)} Puffer)`;
       }
       info.style.display = 'block';
     } catch (e) {
@@ -477,11 +363,7 @@
     }
   }
 
-  ['change', 'input'].forEach(ev => {
-    lohnart.addEventListener(ev, check);
-    stunden.addEventListener(ev, check);
-    form.querySelectorAll('input[name="typ"]').forEach(r => r.addEventListener('change', check));
-  });
+  lohnart.addEventListener('change', check);
   check();
 })();
 </script>

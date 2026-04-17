@@ -1,88 +1,104 @@
 {# Gemeinsame Formularfelder fuer Neu/Detail. Variablen: ``ma`` (dict).
-   4-Spalten-Grid, auf Tablet 2, auf Mobile 1 (siehe _form_style.html). #}
+   Alle Text- und Datumsfelder nutzen die Touch-Widgets (siehe
+   common/templates/touch/widgets.html). #}
 <div class="form-grid">
 
   {# Zeile 1 – Identitaet #}
   <div class="form-group">
     <label>Personalnummer *</label>
-    <input type="text" name="personalnummer" required maxlength="10"
-           value="{{ ma.PERSONALNUMMER or '' }}">
+    <input type="text" name="personalnummer" class="alpha-touch" required maxlength="10"
+           value="{{ ma.PERSONALNUMMER or '' }}" data-touch-titel="Personalnummer">
   </div>
   <div class="form-group">
     <label>Kürzel</label>
-    <input type="text" name="kuerzel" maxlength="10" style="text-transform: uppercase"
-           value="{{ ma.KUERZEL or '' }}">
+    <input type="text" name="kuerzel" class="alpha-touch" maxlength="10"
+           style="text-transform: uppercase"
+           value="{{ ma.KUERZEL or '' }}" data-touch-titel="Kürzel">
   </div>
   <div class="form-group">
     <label>CAO-MA-ID <small>optional</small></label>
-    <input type="number" name="cao_ma_id" min="1" value="{{ ma.CAO_MA_ID or '' }}">
+    <input type="text" name="cao_ma_id" class="num-touch" inputmode="numeric"
+           value="{{ ma.CAO_MA_ID or '' }}" data-touch-titel="CAO-MA-ID">
   </div>
   <div class="form-group">
     <label>Geburtstag</label>
-    <input type="date" name="gebdatum"
-           value="{{ ma.GEBDATUM.isoformat() if ma.GEBDATUM else '' }}">
+    <input type="text" name="gebdatum" class="date-touch" placeholder="JJJJ-MM-TT"
+           value="{{ ma.GEBDATUM.isoformat() if ma.GEBDATUM else '' }}"
+           data-touch-titel="Geburtstag">
   </div>
 
   {# Zeile 2 – Name #}
   <div class="form-group form-col-2">
     <label>Vorname *</label>
-    <input type="text" name="vname" required maxlength="100" value="{{ ma.VNAME or '' }}">
+    <input type="text" name="vname" class="alpha-touch" required maxlength="100"
+           value="{{ ma.VNAME or '' }}" data-touch-titel="Vorname">
   </div>
   <div class="form-group form-col-2">
     <label>Nachname *</label>
-    <input type="text" name="name" required maxlength="100" value="{{ ma.NAME or '' }}">
+    <input type="text" name="name" class="alpha-touch" required maxlength="100"
+           value="{{ ma.NAME or '' }}" data-touch-titel="Nachname">
   </div>
 
   {# Zeile 3 – E-Mail #}
   <div class="form-group form-col-2">
     <label>E-Mail</label>
-    <input type="email" name="email" maxlength="150" value="{{ ma.EMAIL or '' }}">
+    <input type="text" name="email" class="alpha-touch" maxlength="150"
+           value="{{ ma.EMAIL or '' }}" data-touch-titel="E-Mail">
   </div>
   <div class="form-group form-col-2">
     <label>E-Mail (alternativ)</label>
-    <input type="email" name="email_alt" maxlength="150" value="{{ ma.EMAIL_ALT or '' }}">
+    <input type="text" name="email_alt" class="alpha-touch" maxlength="150"
+           value="{{ ma.EMAIL_ALT or '' }}" data-touch-titel="E-Mail (alt)">
   </div>
 
   {# Zeile 4 – Adresse (Strasse + PLZ) #}
   <div class="form-group form-col-3">
     <label>Straße</label>
-    <input type="text" name="strasse" maxlength="100" value="{{ ma.STRASSE or '' }}">
+    <input type="text" name="strasse" class="alpha-touch" maxlength="100"
+           value="{{ ma.STRASSE or '' }}" data-touch-titel="Straße">
   </div>
   <div class="form-group">
     <label>PLZ</label>
-    <input type="text" name="plz" maxlength="10" value="{{ ma.PLZ or '' }}">
+    <input type="text" name="plz" class="num-touch" inputmode="numeric" maxlength="10"
+           value="{{ ma.PLZ or '' }}" data-touch-titel="PLZ">
   </div>
 
   {# Zeile 5 – Ort + Kontakt #}
   <div class="form-group form-col-2">
     <label>Ort</label>
-    <input type="text" name="ort" maxlength="100" value="{{ ma.ORT or '' }}">
+    <input type="text" name="ort" class="alpha-touch" maxlength="100"
+           value="{{ ma.ORT or '' }}" data-touch-titel="Ort">
   </div>
   <div class="form-group">
     <label>Telefon</label>
-    <input type="tel" name="telefon" maxlength="50" value="{{ ma.TELEFON or '' }}">
+    <input type="text" name="telefon" class="num-touch" maxlength="50"
+           value="{{ ma.TELEFON or '' }}" data-touch-titel="Telefon">
   </div>
   <div class="form-group">
     <label>Mobil</label>
-    <input type="tel" name="mobil" maxlength="50" value="{{ ma.MOBIL or '' }}">
+    <input type="text" name="mobil" class="num-touch" maxlength="50"
+           value="{{ ma.MOBIL or '' }}" data-touch-titel="Mobil">
   </div>
 
   {# Zeile 6 – Zugehoerigkeit #}
   <div class="form-group">
     <label>Eintritt</label>
-    <input type="date" name="eintritt"
-           value="{{ ma.EINTRITT.isoformat() if ma.EINTRITT else '' }}">
+    <input type="text" name="eintritt" class="date-touch" placeholder="JJJJ-MM-TT"
+           value="{{ ma.EINTRITT.isoformat() if ma.EINTRITT else '' }}"
+           data-touch-titel="Eintritt">
   </div>
   <div class="form-group">
     <label>Austritt</label>
-    <input type="date" name="austritt"
-           value="{{ ma.AUSTRITT.isoformat() if ma.AUSTRITT else '' }}">
+    <input type="text" name="austritt" class="date-touch" placeholder="JJJJ-MM-TT"
+           value="{{ ma.AUSTRITT.isoformat() if ma.AUSTRITT else '' }}"
+           data-touch-titel="Austritt">
   </div>
 
   {# Zeile 7 – Bemerkung volle Breite #}
   <div class="form-group form-col-4">
     <label>Bemerkung</label>
-    <textarea name="bemerkung" rows="2">{{ ma.BEMERKUNG or '' }}</textarea>
+    <input type="text" name="bemerkung" class="alpha-touch" maxlength="500"
+           value="{{ ma.BEMERKUNG or '' }}" data-touch-titel="Bemerkung">
   </div>
 
 </div>

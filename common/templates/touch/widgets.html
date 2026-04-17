@@ -1,0 +1,392 @@
+{# ============================================================
+   Common Touch-Input-Widgets – Numpad, Alpha-Keyboard, Datepicker
+   ============================================================
+   Nutzung:
+
+     {% include 'touch/widgets.html' %}
+
+   Input-Bindung via CSS-Klassen (Auto-Wiring nach DOMContentLoaded):
+
+     class="num-touch"    → Numpad        (Zahlen mit Komma)
+     class="alpha-touch"  → Alpha-Keyboard (Text, QWERTZ mit Umlauten)
+     class="date-touch"   → Datepicker    (Kalender, Format ISO YYYY-MM-DD)
+
+   Alle Widgets sind Bottom-Sheet-Overlays und nutzen die
+   CAO-XT-Farbvariablen aus base.html.
+   ============================================================ #}
+
+<style>
+/* ── gemeinsame Overlay-Basis ─────────────────────────────────── */
+.touch-overlay {
+  position: fixed; inset: 0; background: rgba(20, 40, 10, 0.55);
+  z-index: 9100; display: none; align-items: flex-end;
+  justify-content: center; touch-action: none;
+}
+.touch-overlay.sichtbar { display: flex; }
+.touch-panel {
+  background: white; border-radius: 16px 16px 0 0; width: 100%;
+  padding: 12px 14px 16px; box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
+  animation: touch-slide-up 0.18s cubic-bezier(0.2,0.8,0.2,1);
+}
+@keyframes touch-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.touch-kopf { display: flex; align-items: center; justify-content: space-between;
+              margin-bottom: 10px; }
+.touch-titel { font-size: 13px; font-weight: 800; color: var(--gruen-dunkel);
+               text-transform: uppercase; letter-spacing: 0.04em; }
+.touch-wert { font-family: 'Nunito', monospace; font-size: 26px; font-weight: 700;
+              text-align: right; padding: 6px 12px; background: var(--creme);
+              border-radius: 8px; min-height: 44px;
+              color: var(--text-dunkel); font-variant-numeric: tabular-nums;
+              border: 2px solid var(--creme-dunkel); margin-bottom: 10px;
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.touch-btn { min-height: 52px; border: 1px solid var(--creme-dunkel);
+             border-radius: 8px; background: white; font-family: inherit;
+             font-size: 18px; font-weight: 700; cursor: pointer;
+             -webkit-tap-highlight-color: transparent; transition: background 0.1s;
+             display: flex; align-items: center; justify-content: center; }
+.touch-btn:active { background: var(--gruen-blass); }
+.touch-btn.funktion { background: var(--creme); font-size: 13px; font-weight: 800; }
+.touch-btn.primary { background: var(--gruen-mitte); color: white;
+                     border-color: var(--gruen-mitte); }
+.touch-btn.primary:active { background: var(--gruen-dunkel); }
+.touch-btn.wide { flex: 1; }
+
+/* Input-Markierung: keine native Tastatur, aber Touch erkennbar */
+.num-touch, .alpha-touch, .date-touch {
+  cursor: pointer; caret-color: transparent !important;
+  user-select: none; background-image: none;
+}
+
+/* ── Numpad ──────────────────────────────────────────────────── */
+#tw-numpad .touch-panel { max-width: 360px; }
+#tw-numpad .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#tw-numpad .wide { grid-column: span 2; }
+
+/* ── Alpha-Keyboard ──────────────────────────────────────────── */
+#tw-kbd .touch-panel { max-width: 760px; }
+#tw-kbd .kbd-row { display: flex; gap: 5px; margin-bottom: 5px; }
+#tw-kbd .touch-btn { min-height: 44px; flex: 1; font-size: 16px; padding: 0; }
+#tw-kbd .touch-btn.zeichen { min-width: 0; }
+#tw-kbd .space { flex: 6; }
+#tw-kbd .shift-aktiv { background: var(--gruen-blass); border-color: var(--gruen-mitte); }
+
+/* ── Datepicker ──────────────────────────────────────────────── */
+#tw-date .touch-panel { max-width: 380px; }
+#tw-date .dp-nav { display: flex; align-items: center; justify-content: space-between;
+                   margin-bottom: 8px; }
+#tw-date .dp-monat { font-size: 15px; font-weight: 800; color: var(--gruen-dunkel); }
+#tw-date .dp-nav-btn { width: 44px; height: 44px; font-size: 18px; }
+#tw-date .dp-kopf { display: grid; grid-template-columns: repeat(7, 1fr);
+                    font-size: 10px; font-weight: 800; text-transform: uppercase;
+                    letter-spacing: 0.05em; color: var(--grau-mitte);
+                    text-align: center; padding: 4px 0; }
+#tw-date .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+#tw-date .dp-tag { min-height: 42px; border: 1px solid transparent;
+                   border-radius: 6px; background: transparent;
+                   font-family: inherit; font-size: 14px; cursor: pointer;
+                   color: var(--text-dunkel); -webkit-tap-highlight-color: transparent; }
+#tw-date .dp-tag:active { background: var(--creme); }
+#tw-date .dp-tag.ausserhalb { color: var(--grau-mitte); opacity: 0.4; }
+#tw-date .dp-tag.heute { border-color: var(--gold); color: var(--gold); font-weight: 800; }
+#tw-date .dp-tag.gewaehlt { background: var(--gruen-mitte); color: white;
+                            border-color: var(--gruen-dunkel); font-weight: 800; }
+#tw-date .dp-actions { display: flex; gap: 6px; margin-top: 10px; }
+</style>
+
+{# ── Numpad ─────────────────────────────────────────────────────── #}
+<div class="touch-overlay" id="tw-numpad">
+  <div class="touch-panel">
+    <div class="touch-kopf">
+      <span class="touch-titel" id="tw-numpad-titel">Zahl</span>
+      <button type="button" class="touch-btn funktion" data-tw-numpad="_ABBR"
+              style="min-height: 30px; font-size: 12px; padding: 0 10px;">✕</button>
+    </div>
+    <div class="touch-wert" id="tw-numpad-wert">0</div>
+    <div class="grid">
+      <button type="button" class="touch-btn" data-tw-numpad="7">7</button>
+      <button type="button" class="touch-btn" data-tw-numpad="8">8</button>
+      <button type="button" class="touch-btn" data-tw-numpad="9">9</button>
+      <button type="button" class="touch-btn" data-tw-numpad="4">4</button>
+      <button type="button" class="touch-btn" data-tw-numpad="5">5</button>
+      <button type="button" class="touch-btn" data-tw-numpad="6">6</button>
+      <button type="button" class="touch-btn" data-tw-numpad="1">1</button>
+      <button type="button" class="touch-btn" data-tw-numpad="2">2</button>
+      <button type="button" class="touch-btn" data-tw-numpad="3">3</button>
+      <button type="button" class="touch-btn" data-tw-numpad=",">,</button>
+      <button type="button" class="touch-btn" data-tw-numpad="0">0</button>
+      <button type="button" class="touch-btn funktion" data-tw-numpad="_BACK">⌫</button>
+      <button type="button" class="touch-btn funktion" data-tw-numpad="_CLEAR">Löschen</button>
+      <button type="button" class="touch-btn primary wide" data-tw-numpad="_OK">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+{# ── Alpha-Keyboard (QWERTZ deutsch) ────────────────────────────── #}
+<div class="touch-overlay" id="tw-kbd">
+  <div class="touch-panel">
+    <div class="touch-kopf">
+      <span class="touch-titel" id="tw-kbd-titel">Eingabe</span>
+      <button type="button" class="touch-btn funktion" data-tw-kbd="_ABBR"
+              style="min-height: 30px; font-size: 12px; padding: 0 10px;">✕</button>
+    </div>
+    <div class="touch-wert" id="tw-kbd-wert"></div>
+    <div class="kbd-row" data-row="ziffern">
+      {% for c in '1234567890' %}
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="{{ c }}">{{ c }}</button>
+      {% endfor %}
+      <button type="button" class="touch-btn funktion" data-tw-kbd="_BACK">⌫</button>
+    </div>
+    <div class="kbd-row" data-row="oben">
+      {% for c in 'qwertzuiopü' %}
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="{{ c }}">{{ c }}</button>
+      {% endfor %}
+    </div>
+    <div class="kbd-row" data-row="mitte">
+      {% for c in 'asdfghjklöä' %}
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="{{ c }}">{{ c }}</button>
+      {% endfor %}
+    </div>
+    <div class="kbd-row" data-row="unten">
+      <button type="button" class="touch-btn funktion" id="tw-kbd-shift">⇧</button>
+      {% for c in 'yxcvbnmß' %}
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="{{ c }}">{{ c }}</button>
+      {% endfor %}
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="-">-</button>
+      <button type="button" class="touch-btn zeichen" data-tw-kbd=".">.</button>
+    </div>
+    <div class="kbd-row" data-row="space">
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="@">@</button>
+      <button type="button" class="touch-btn zeichen space" data-tw-kbd=" ">Leer</button>
+      <button type="button" class="touch-btn zeichen" data-tw-kbd="_">_</button>
+      <button type="button" class="touch-btn primary wide" data-tw-kbd="_OK">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+{# ── Datepicker (Monats-Kalender) ──────────────────────────────── #}
+<div class="touch-overlay" id="tw-date">
+  <div class="touch-panel">
+    <div class="touch-kopf">
+      <span class="touch-titel" id="tw-date-titel">Datum wählen</span>
+      <button type="button" class="touch-btn funktion" data-tw-date="_ABBR"
+              style="min-height: 30px; font-size: 12px; padding: 0 10px;">✕</button>
+    </div>
+    <div class="dp-nav">
+      <button type="button" class="touch-btn dp-nav-btn" data-tw-date="_PREV">‹</button>
+      <span class="dp-monat" id="tw-date-monat"></span>
+      <button type="button" class="touch-btn dp-nav-btn" data-tw-date="_NEXT">›</button>
+    </div>
+    <div class="dp-kopf">
+      <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
+      <span>Fr</span><span>Sa</span><span>So</span>
+    </div>
+    <div class="dp-grid" id="tw-date-grid"></div>
+    <div class="dp-actions">
+      <button type="button" class="touch-btn funktion wide" data-tw-date="_CLEAR">Leeren</button>
+      <button type="button" class="touch-btn funktion wide" data-tw-date="_HEUTE">Heute</button>
+      <button type="button" class="touch-btn primary wide" data-tw-date="_OK">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const MONATE = ['Januar','Februar','März','April','Mai','Juni',
+                  'Juli','August','September','Oktober','November','Dezember'];
+  let zielInput = null;
+  let buffer = '';
+
+  // ── Helpers ────────────────────────────────────────────────
+  function schliesse(overlayId) {
+    document.getElementById(overlayId).classList.remove('sichtbar');
+    zielInput = null; buffer = '';
+  }
+  function uebernehme(val) {
+    if (zielInput) {
+      zielInput.value = val;
+      zielInput.dispatchEvent(new Event('input', { bubbles: true }));
+      zielInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  function ermittleTitel(input, fallback) {
+    return input.dataset.touchTitel
+        || input.previousElementSibling?.textContent?.trim()
+        || input.closest('.form-group')?.querySelector('label')?.textContent?.trim()
+        || fallback;
+  }
+
+  // ── Numpad ─────────────────────────────────────────────────
+  function numpadOeffnen(input) {
+    zielInput = input;
+    buffer = (input.value || '').replace(',', '.');
+    document.getElementById('tw-numpad-titel').textContent = ermittleTitel(input, 'Zahl');
+    aktualisiereNumpadAnzeige();
+    document.getElementById('tw-numpad').classList.add('sichtbar');
+  }
+  function aktualisiereNumpadAnzeige() {
+    document.getElementById('tw-numpad-wert').textContent = buffer.replace('.', ',') || '0';
+  }
+  document.querySelectorAll('#tw-numpad [data-tw-numpad]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.twNumpad;
+      if (t === '_OK')       { uebernehme(buffer.replace('.', ',')); schliesse('tw-numpad'); return; }
+      if (t === '_ABBR')     { schliesse('tw-numpad'); return; }
+      if (t === '_BACK')     { buffer = buffer.slice(0, -1); }
+      else if (t === '_CLEAR') { buffer = ''; }
+      else if (t === ',')    { if (!buffer.includes('.')) buffer += buffer ? '.' : '0.'; }
+      else                   { buffer += t; }
+      aktualisiereNumpadAnzeige();
+    });
+  });
+  document.getElementById('tw-numpad').addEventListener('click', e => {
+    if (e.target.id === 'tw-numpad') schliesse('tw-numpad');
+  });
+
+  // ── Alpha-Keyboard ─────────────────────────────────────────
+  let shift = false;
+  function kbdOeffnen(input) {
+    zielInput = input;
+    buffer = input.value || '';
+    shift = false;
+    applyShift();
+    document.getElementById('tw-kbd-titel').textContent = ermittleTitel(input, 'Eingabe');
+    aktualisiereKbdAnzeige();
+    document.getElementById('tw-kbd').classList.add('sichtbar');
+  }
+  function aktualisiereKbdAnzeige() {
+    document.getElementById('tw-kbd-wert').textContent = buffer || ' ';
+  }
+  function applyShift() {
+    document.querySelectorAll('#tw-kbd .zeichen').forEach(b => {
+      const orig = b.dataset.twKbd;
+      if (orig.length === 1 && orig.match(/[a-zäöüß]/i)) {
+        b.textContent = shift ? orig.toUpperCase() : orig;
+      }
+    });
+    document.getElementById('tw-kbd-shift').classList.toggle('shift-aktiv', shift);
+  }
+  document.querySelectorAll('#tw-kbd [data-tw-kbd]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.twKbd;
+      if (t === '_OK')   { uebernehme(buffer); schliesse('tw-kbd'); return; }
+      if (t === '_ABBR') { schliesse('tw-kbd'); return; }
+      if (t === '_BACK') { buffer = buffer.slice(0, -1); aktualisiereKbdAnzeige(); return; }
+      buffer += shift && t.match(/^[a-zäöüß]$/i) ? t.toUpperCase() : t;
+      if (shift) { shift = false; applyShift(); }
+      aktualisiereKbdAnzeige();
+    });
+  });
+  document.getElementById('tw-kbd-shift').addEventListener('click', e => {
+    e.stopPropagation();
+    shift = !shift;
+    applyShift();
+  });
+  document.getElementById('tw-kbd').addEventListener('click', e => {
+    if (e.target.id === 'tw-kbd') schliesse('tw-kbd');
+  });
+
+  // ── Datepicker ─────────────────────────────────────────────
+  let dpAnzeige = new Date();  // zeigt aktuellen Monat
+  let dpGewaehlt = null;       // gewaehltes Datum
+  function datePadOeffnen(input) {
+    zielInput = input;
+    const val = input.value || '';
+    const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      dpGewaehlt = new Date(+m[1], +m[2] - 1, +m[3]);
+      dpAnzeige = new Date(dpGewaehlt);
+    } else {
+      dpGewaehlt = null;
+      dpAnzeige = new Date();
+    }
+    document.getElementById('tw-date-titel').textContent = ermittleTitel(input, 'Datum wählen');
+    renderDatepicker();
+    document.getElementById('tw-date').classList.add('sichtbar');
+  }
+  function renderDatepicker() {
+    const jahr  = dpAnzeige.getFullYear();
+    const monat = dpAnzeige.getMonth();
+    document.getElementById('tw-date-monat').textContent = MONATE[monat] + ' ' + jahr;
+    const ersterTag = new Date(jahr, monat, 1);
+    // Mo=0..So=6 (Deutsch)
+    let vorMonatTage = ersterTag.getDay() - 1;
+    if (vorMonatTage < 0) vorMonatTage = 6;
+    const start = new Date(jahr, monat, 1 - vorMonatTage);
+    const grid = document.getElementById('tw-date-grid');
+    grid.innerHTML = '';
+    const heute = new Date(); heute.setHours(0,0,0,0);
+    for (let i = 0; i < 42; i++) {
+      const tag = new Date(start);
+      tag.setDate(start.getDate() + i);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dp-tag';
+      btn.textContent = tag.getDate();
+      if (tag.getMonth() !== monat) btn.classList.add('ausserhalb');
+      if (tag.getTime() === heute.getTime()) btn.classList.add('heute');
+      if (dpGewaehlt && tag.getTime() === dpGewaehlt.getTime()) btn.classList.add('gewaehlt');
+      btn.addEventListener('click', () => {
+        dpGewaehlt = new Date(tag);
+        renderDatepicker();
+      });
+      grid.appendChild(btn);
+    }
+  }
+  document.querySelectorAll('#tw-date [data-tw-date]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.twDate;
+      if (t === '_PREV')   { dpAnzeige.setMonth(dpAnzeige.getMonth() - 1); renderDatepicker(); }
+      else if (t === '_NEXT') { dpAnzeige.setMonth(dpAnzeige.getMonth() + 1); renderDatepicker(); }
+      else if (t === '_HEUTE') {
+        dpGewaehlt = new Date(); dpGewaehlt.setHours(0,0,0,0);
+        dpAnzeige = new Date(dpGewaehlt); renderDatepicker();
+      }
+      else if (t === '_CLEAR') { uebernehme(''); schliesse('tw-date'); }
+      else if (t === '_OK') {
+        if (dpGewaehlt) {
+          const y = dpGewaehlt.getFullYear();
+          const m = String(dpGewaehlt.getMonth() + 1).padStart(2, '0');
+          const d = String(dpGewaehlt.getDate()).padStart(2, '0');
+          uebernehme(`${y}-${m}-${d}`);
+        }
+        schliesse('tw-date');
+      }
+      else if (t === '_ABBR') { schliesse('tw-date'); }
+    });
+  });
+  document.getElementById('tw-date').addEventListener('click', e => {
+    if (e.target.id === 'tw-date') schliesse('tw-date');
+  });
+
+  // ── Auto-Wiring ────────────────────────────────────────────
+  function wireInput(sel, oeffne) {
+    document.querySelectorAll(sel).forEach(inp => {
+      if (inp.dataset.twWired) return;
+      inp.dataset.twWired = '1';
+      inp.setAttribute('readonly', 'readonly');
+      inp.addEventListener('focus',    e => { e.preventDefault(); inp.blur(); oeffne(inp); });
+      inp.addEventListener('mousedown', e => { e.preventDefault(); });
+      inp.addEventListener('click',    e => { e.preventDefault(); oeffne(inp); });
+    });
+  }
+  function wireAll() {
+    wireInput('.num-touch',   numpadOeffnen);
+    wireInput('.alpha-touch', kbdOeffnen);
+    wireInput('.date-touch',  datePadOeffnen);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireAll);
+  } else {
+    wireAll();
+  }
+
+  // Exponiere fuer dynamische Bindung
+  window.TouchInput = {
+    openNumpad:     numpadOeffnen,
+    openKeyboard:   kbdOeffnen,
+    openDatepicker: datePadOeffnen,
+    rewire:         wireAll,
+  };
+})();
+</script>
