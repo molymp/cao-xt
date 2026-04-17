@@ -39,6 +39,7 @@ def _fmt_eur(value, dp=2):
         return str(value)
 
 app.jinja_env.filters['eur'] = _fmt_eur
+app.jinja_env.filters['zip'] = lambda a, b: list(zip(a, b))
 
 
 @app.before_request

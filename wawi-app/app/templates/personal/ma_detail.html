@@ -1,6 +1,38 @@
 {% extends 'base.html' %}
 {% block title %}{{ ma.VNAME }} {{ ma.NAME }}{% endblock %}
-{% block extra_style %}{% include 'personal/_form_style.html' %}{% endblock %}
+{% block extra_style %}{% include 'personal/_form_style.html' %}
+<style>
+.az-historie { width: 100%; font-size: 12px; margin-bottom: 10px; }
+.az-historie th { background: var(--grau-hell); padding: 5px 8px; text-align: left;
+                  font-size: 10px; font-weight: 800; text-transform: uppercase;
+                  letter-spacing: 0.04em; color: var(--text-mitte); }
+.az-historie td { padding: 5px 8px; border-top: 1px solid var(--creme-dunkel); }
+.az-historie tr.aktuell { background: #f0f7e8; font-weight: 700; }
+.az-historie .tage { color: var(--grau-mitte); font-size: 11px; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 10px;
+        font-size: 10px; font-weight: 800; letter-spacing: 0.04em; }
+.pill-minijob { background: #fef1db; color: #7a5a00; }
+.pill-teilzeit { background: #e5f0ff; color: #1c4a7a; }
+.pill-vollzeit { background: #e8f5e0; color: #2e7a2e; }
+.pill-sonst   { background: var(--grau-hell); color: var(--text-mitte); }
+.radio-row { display: flex; gap: 14px; font-size: 13px; }
+.radio-row label { display: flex; align-items: center; gap: 5px; cursor: pointer;
+                   font-size: 13px; text-transform: none; font-weight: 600; }
+.radio-row input { width: auto; }
+.wochentag-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.wochentag-grid .form-group label { font-size: 10px; text-align: center; }
+.wochentag-grid input { text-align: center; padding: 5px 4px; }
+details.wochentage summary { cursor: pointer; font-size: 12px; font-weight: 700;
+                             color: var(--gruen-dunkel); padding: 4px 0; }
+.minijob-info { padding: 8px 12px; border-radius: var(--radius-klein);
+                font-size: 13px; font-weight: 600; margin-top: 8px;
+                background: var(--grau-hell); color: var(--text-mitte); }
+.minijob-info.warn { background: #fef1db; color: #7a5a00;
+                     border: 1px solid var(--gold); }
+.minijob-info.over { background: #fde8e8; color: var(--rot);
+                     border: 1px solid var(--rot); }
+</style>
+{% endblock %}
 
 {% block content %}
 {% with ms = get_flashed_messages(with_categories=true) %}
@@ -25,6 +57,121 @@
   <div class="card card-section">
     <h2>Stammdaten</h2>
     {% include 'personal/_form_felder.html' %}
+  </div>
+
+  <div class="card card-section">
+    <h2>Arbeitszeit &amp; Lohn</h2>
+
+    {# ── Historie der bestehenden Modelle ─────────────────────────────── #}
+    {% if az_modelle %}
+    <table class="az-historie">
+      <thead>
+        <tr>
+          <th>Gültig</th>
+          <th>Lohnart</th>
+          <th>Typ</th>
+          <th>Stunden Soll</th>
+          <th>Urlaub</th>
+          <th>Wochenverteilung</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for am in az_modelle %}
+        {% set ist_aktuell = aktuelles_az and am.REC_ID == aktuelles_az.REC_ID %}
+        <tr class="{% if ist_aktuell %}aktuell{% endif %}">
+          <td>
+            {{ am.GUELTIG_AB.strftime('%d.%m.%Y') }}
+            {% if am.GUELTIG_BIS %}– {{ am.GUELTIG_BIS.strftime('%d.%m.%Y') }}{% else %}– offen{% endif %}
+          </td>
+          <td>
+            {% set pill_cls = 'pill-minijob' if am.MINIJOB_FLAG else ('pill-teilzeit' if am.LOHNART_NAME == 'Teilzeit' else ('pill-vollzeit' if am.LOHNART_NAME == 'Vollzeit' else 'pill-sonst')) %}
+            <span class="pill {{ pill_cls }}">{{ am.LOHNART_NAME }}</span>
+          </td>
+          <td>{{ am.TYP|title }}</td>
+          <td>{{ am.STUNDEN_SOLL|string|replace('.', ',') }} h</td>
+          <td>{{ (am.URLAUB_JAHR_TAGE|string|replace('.', ',')) if am.URLAUB_JAHR_TAGE else '—' }}</td>
+          <td class="tage">
+            {% set wt_labels = ['Mo','Di','Mi','Do','Fr','Sa','So'] %}
+            {% set wt_vals = [am.STD_MO, am.STD_DI, am.STD_MI, am.STD_DO, am.STD_FR, am.STD_SA, am.STD_SO] %}
+            {% set paare = [] %}
+            {% for lbl, v in wt_labels|zip(wt_vals) %}
+              {% if v and v > 0 %}{% set _ = paare.append(lbl ~ ' ' ~ (v|string|replace('.',','))) %}{% endif %}
+            {% endfor %}
+            {{ paare|join(' · ') if paare else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 10px;">
+      Noch kein Arbeitszeitmodell hinterlegt.
+    </p>
+    {% endif %}
+
+    {# ── Neues Modell anlegen (eigenes Form) ──────────────────────────── #}
+    <details {% if not az_modelle %}open{% endif %}>
+      <summary>+ Neues Arbeitszeitmodell anlegen</summary>
+      <form method="post" action="{{ url_for('wawi_personal.az_modell_anlegen', pers_id=ma.PERS_ID) }}"
+            id="az-form" style="margin-top: 10px;">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Gültig ab *</label>
+            <input type="date" name="gueltig_ab" required
+                   value="{{ (today.isoformat() if today else '') }}">
+          </div>
+          <div class="form-group">
+            <label>Lohnart *</label>
+            <select name="lohnart_id" id="az-lohnart" required>
+              {% for la in lohnarten %}
+              <option value="{{ la.LOHNART_ID }}"
+                      data-minijob="{{ la.MINIJOB_FLAG }}">
+                {{ la.BEZEICHNUNG }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group form-col-2">
+            <label>Eingabe als</label>
+            <div class="radio-row">
+              <label><input type="radio" name="typ" value="WOCHE" checked> pro Woche</label>
+              <label><input type="radio" name="typ" value="MONAT"> pro Monat</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Stunden Soll *</label>
+            <input type="text" name="stunden_soll" id="az-stunden" required
+                   placeholder="z.B. 20">
+          </div>
+          <div class="form-group">
+            <label>Urlaub (Tage/Jahr)</label>
+            <input type="text" name="urlaub_jahr_tage" placeholder="z.B. 24">
+          </div>
+          <div class="form-group form-col-2">
+            <label>Bemerkung</label>
+            <input type="text" name="bemerkung" maxlength="500">
+          </div>
+        </div>
+
+        <details class="wochentage" style="margin-top: 8px;">
+          <summary>Wochenverteilung (optional)</summary>
+          <div class="wochentag-grid" style="margin-top: 6px;">
+            {% for lbl, field in [('Mo','std_mo'),('Di','std_di'),('Mi','std_mi'),('Do','std_do'),('Fr','std_fr'),('Sa','std_sa'),('So','std_so')] %}
+            <div class="form-group">
+              <label>{{ lbl }}</label>
+              <input type="text" name="{{ field }}" placeholder="0">
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+
+        <div id="minijob-info" class="minijob-info" style="display: none;"></div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn">Modell anlegen</button>
+        </div>
+      </form>
+    </details>
   </div>
 
   <div class="card card-section">
@@ -67,4 +214,64 @@
     <button type="submit" class="btn">Speichern</button>
   </div>
 </form>
+
+<script>
+(function() {
+  // Live-Minijob-Check: triggert bei Aenderung an Lohnart, Stunden, Typ.
+  const form = document.getElementById('az-form');
+  if (!form) return;
+  const info = document.getElementById('minijob-info');
+  const lohnart = document.getElementById('az-lohnart');
+  const stunden = document.getElementById('az-stunden');
+  const stundensatzAktuell = {{ aktueller_stundensatz_ct or 0 }} / 100;  // € pro Stunde
+
+  function istMinijob() {
+    const opt = lohnart.options[lohnart.selectedIndex];
+    return opt && opt.dataset.minijob === '1';
+  }
+
+  function fmtEur(ct) {
+    return (ct / 100).toFixed(2).replace('.', ',') + ' €';
+  }
+
+  async function check() {
+    if (!istMinijob() || !stundensatzAktuell) {
+      info.style.display = 'none';
+      return;
+    }
+    const std = parseFloat((stunden.value || '').replace(',', '.'));
+    if (!std || std <= 0) {
+      info.style.display = 'none';
+      return;
+    }
+    const typ = form.querySelector('input[name="typ"]:checked').value;
+    const q = `?stunden=${std}&typ=${typ}&stundensatz=${stundensatzAktuell}`;
+    try {
+      const r = await fetch('/wawi/personal/api/minijob-check' + q);
+      if (!r.ok) { info.style.display = 'none'; return; }
+      const data = await r.json();
+      const brutto = fmtEur(data.brutto_monat_ct);
+      const grenze = fmtEur(data.grenze_ct);
+      if (data.ueberschreitet) {
+        info.className = 'minijob-info over';
+        info.innerHTML = `⚠️ Überschreitet Minijob-Grenze: <strong>${brutto}</strong> / ${grenze} (+${fmtEur(data.differenz_ct)})`;
+      } else {
+        const rest = fmtEur(-data.differenz_ct);
+        info.className = 'minijob-info';
+        info.innerHTML = `✓ Minijob: <strong>${brutto}</strong> / ${grenze} (${rest} Puffer)`;
+      }
+      info.style.display = 'block';
+    } catch (e) {
+      info.style.display = 'none';
+    }
+  }
+
+  ['change', 'input'].forEach(ev => {
+    lohnart.addEventListener(ev, check);
+    stunden.addEventListener(ev, check);
+    form.querySelectorAll('input[name="typ"]').forEach(r => r.addEventListener('change', check));
+  });
+  check();
+})();
+</script>
 {% endblock %}

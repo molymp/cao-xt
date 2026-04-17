@@ -94,10 +94,106 @@ CREATE TABLE IF NOT EXISTS XT_PERSONAL_STUNDENSATZ_HIST (
   COMMENT='Append-only Historie der vereinbarten Stundensaetze';
 
 
+-- ============================================================
+-- P1b – Lohnart, Arbeitszeitmodelle, Lohnkonstanten
+-- ============================================================
+
+
+-- ── Lohnart (Stammdaten-Lookup) ──────────────────────────────────────────────
+--
+-- Beschaeftigungsarten, verwendet im Arbeitszeitmodell. MINIJOB_FLAG schaltet
+-- die Live-Warnung gegen MINIJOB_GRENZE_CT frei (siehe XT_PERSONAL_LOHNKONSTANTEN).
+--
+CREATE TABLE IF NOT EXISTS XT_PERSONAL_LOHNART (
+    LOHNART_ID         TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    BEZEICHNUNG        VARCHAR(50)  NOT NULL,
+    MINIJOB_FLAG       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = unterliegt Minijob-Grenze',
+    SV_PFLICHTIG_FLAG  TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '1 = sozialversicherungspflichtig',
+    AKTIV              TINYINT(1)   NOT NULL DEFAULT 1,
+    SORT               SMALLINT     NOT NULL DEFAULT 0,
+
+    UNIQUE KEY uq_bezeichnung (BEZEICHNUNG)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Lohnarten / Beschaeftigungsarten';
+
+INSERT IGNORE INTO XT_PERSONAL_LOHNART
+  (LOHNART_ID, BEZEICHNUNG, MINIJOB_FLAG, SV_PFLICHTIG_FLAG, SORT) VALUES
+  (1, 'Minijob',     1, 0, 10),
+  (2, 'Teilzeit',    0, 1, 20),
+  (3, 'Vollzeit',    0, 1, 30),
+  (4, 'Werkstudent', 0, 0, 40),
+  (5, 'Aushilfe',    0, 1, 50),
+  (6, 'Azubi',       0, 1, 60);
+
+
+-- ── Arbeitszeitmodell (versioniert pro MA) ───────────────────────────────────
+--
+-- Jeder Eintrag ist append-only zu betrachten, ausser dass GUELTIG_BIS
+-- automatisch gesetzt wird, wenn ein neues Modell mit spaeterem GUELTIG_AB
+-- eingefuegt wird ("rolling close": Vorgaenger bekommt GUELTIG_BIS = neu.AB - 1).
+--
+-- TYP='WOCHE': STUNDEN_SOLL = vereinbarte Wochenstunden.
+-- TYP='MONAT': STUNDEN_SOLL = vereinbarte Monatsstunden. Rechnen via Faktor 4,33.
+--
+-- STD_MO..STD_SO sind optional: falls gepflegt, bilden sie die Wochentags-
+-- verteilung ab (fuer Schichtplanung und Urlaubsberechnung). Die Summe kann,
+-- muss aber nicht mit STUNDEN_SOLL uebereinstimmen (z.B. 20 Monatsstunden +
+-- "flexibel" ohne feste Wochentage).
+--
+CREATE TABLE IF NOT EXISTS XT_PERSONAL_AZ_MODELL (
+    REC_ID           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PERS_ID          INT UNSIGNED NOT NULL,
+    GUELTIG_AB       DATE         NOT NULL,
+    GUELTIG_BIS      DATE         NULL,
+    LOHNART_ID       TINYINT UNSIGNED NOT NULL,
+    TYP              ENUM('WOCHE','MONAT') NOT NULL DEFAULT 'WOCHE',
+    STUNDEN_SOLL     DECIMAL(5,2) NOT NULL COMMENT 'Gesamt pro Woche oder Monat (je TYP)',
+    STD_MO           DECIMAL(4,2) NULL,
+    STD_DI           DECIMAL(4,2) NULL,
+    STD_MI           DECIMAL(4,2) NULL,
+    STD_DO           DECIMAL(4,2) NULL,
+    STD_FR           DECIMAL(4,2) NULL,
+    STD_SA           DECIMAL(4,2) NULL,
+    STD_SO           DECIMAL(4,2) NULL,
+    URLAUB_JAHR_TAGE DECIMAL(4,1) NULL COMMENT 'Vertraglicher Jahresurlaub in Arbeitstagen',
+    BEMERKUNG        VARCHAR(500) NULL,
+    ERSTELLT_AT      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ERSTELLT_VON     INT UNSIGNED NOT NULL,
+
+    INDEX idx_pers_gueltig (PERS_ID, GUELTIG_AB)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Versionierte Arbeitszeit-/Vertragsmodelle pro Mitarbeiter';
+
+
+-- ── Lohnkonstanten (Mindestlohn, Minijob-Grenze, versioniert) ────────────────
+--
+-- Jahresweise (oder unterjaehrig) gueltig ab GUELTIG_AB. Cent-Betraege:
+--   MINDESTLOHN_CT      = Bundesmindestlohn pro Stunde
+--   MINIJOB_GRENZE_CT   = Monatliches Brutto-Limit fuer geringfuegige Beschaeftigung
+--                         (Formel: Mindestlohn × 130 / 3, rund auf volle Euro)
+--
+CREATE TABLE IF NOT EXISTS XT_PERSONAL_LOHNKONSTANTEN (
+    REC_ID             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    GUELTIG_AB         DATE         NOT NULL,
+    MINDESTLOHN_CT     INT          NULL,
+    MINIJOB_GRENZE_CT  INT          NULL,
+    KOMMENTAR          VARCHAR(255) NULL,
+    ERSTELLT_AT        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ERSTELLT_VON       INT UNSIGNED NOT NULL,
+
+    UNIQUE KEY uq_gueltig_ab (GUELTIG_AB)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Gesetzliche Lohnkonstanten (versioniert)';
+
+INSERT IGNORE INTO XT_PERSONAL_LOHNKONSTANTEN
+  (GUELTIG_AB, MINDESTLOHN_CT, MINIJOB_GRENZE_CT, KOMMENTAR, ERSTELLT_VON) VALUES
+  ('2025-01-01', 1282, 55600, 'Mindestlohn 12,82 EUR, Minijob-Grenze 556 EUR', 0),
+  ('2026-01-01', 1390, 60300, 'Mindestlohn 13,90 EUR, Minijob-Grenze 603 EUR', 0);
+
+
 -- ── Hinweise fuer spaetere Erweiterungen ─────────────────────────────────────
 -- Neue Spalten werden per separatem ALTER TABLE hinzugefuegt (analog WaWi).
 -- Tabellen, die auf weitere Phasen folgen:
---   P1b: XT_PERSONAL_LOHNART, XT_PERSONAL_AZ_MODELL, XT_PERSONAL_LOHNKONSTANTEN
 --   P1c: XT_PERSONAL_URLAUBSANSPRUCH, XT_PERSONAL_URLAUBSKORREKTUR
 --   P2 : XT_PERSONAL_SCHICHT, XT_PERSONAL_SCHICHT_ZUORDNUNG
 --   P3 : XT_PERSONAL_STEMPEL, XT_PERSONAL_STEMPEL_KORREKTUR

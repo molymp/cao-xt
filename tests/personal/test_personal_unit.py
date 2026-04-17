@@ -134,6 +134,53 @@ class TestCsvParsing(unittest.TestCase):
         self.assertEqual(gueltig_ab, date(2012, 5, 1))
 
 
+class TestMinijobCheck(unittest.TestCase):
+    """Live-Minijob-Pruefung gegen die Grenze 2026 (603 €)."""
+
+    GRENZE_2026 = 60300   # 603,00 €
+
+    def test_woche_knapp_unter_grenze(self):
+        # 10 h/Woche × 13,90 € × 4,33 = 601,87 €  → unter 603 €
+        res = m.minijob_check(10, 'WOCHE', 1390, self.GRENZE_2026)
+        self.assertEqual(res['brutto_monat_ct'], 60187)
+        self.assertFalse(res['ueberschreitet'])
+        self.assertEqual(res['differenz_ct'], -113)
+
+    def test_woche_ueber_grenze(self):
+        # 15 h/Woche × 13,90 € × 4,33 = 902,80 €  → ueber
+        res = m.minijob_check(15, 'WOCHE', 1390, self.GRENZE_2026)
+        self.assertEqual(res['brutto_monat_ct'], 90280)
+        self.assertTrue(res['ueberschreitet'])
+
+    def test_monat_direkt(self):
+        # 40 h/Monat × 13,90 € = 556 €  → unter (ohne Faktor)
+        res = m.minijob_check(40, 'MONAT', 1390, self.GRENZE_2026)
+        self.assertEqual(res['brutto_monat_ct'], 55600)
+        self.assertFalse(res['ueberschreitet'])
+
+    def test_null_eingabe(self):
+        res = m.minijob_check(0, 'WOCHE', 1390, self.GRENZE_2026)
+        self.assertEqual(res['brutto_monat_ct'], 0)
+        self.assertFalse(res['ueberschreitet'])
+
+
+class TestAzModellPflichtfelder(unittest.TestCase):
+
+    def test_fehlende_pflichtfelder(self):
+        with self.assertRaises(ValueError):
+            m.az_modell_speichern(1, {'TYP': 'WOCHE', 'STUNDEN_SOLL': 10}, 2)
+        with self.assertRaises(ValueError):
+            m.az_modell_speichern(1, {
+                'GUELTIG_AB': '2026-01-01', 'LOHNART_ID': 1,
+                'TYP': 'UNGUELTIG', 'STUNDEN_SOLL': 10,
+            }, 2)
+
+
+class TestFaktor(unittest.TestCase):
+    def test_konstante_4_33(self):
+        self.assertEqual(m.FAKTOR_WOCHE_MONAT, 4.33)
+
+
 class TestJsonDefault(unittest.TestCase):
 
     def test_date_wird_serialisiert(self):
