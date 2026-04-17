@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}{{ ma.VNAME }} {{ ma.NAME }}{% endblock %}
+{% block extra_style %}{% include 'personal/_form_style.html' %}{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}
+    <div class="msg msg-{{ cat }}">{{ text }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>
+    {{ ma.VNAME }} {{ ma.NAME }}
+    {% if ma.KUERZEL %}<span style="font-family: 'Nunito'; font-size: 14px; color: var(--gruen-mitte); margin-left: 10px;">[{{ ma.KUERZEL }}]</span>{% endif %}
+  </h1>
+  {% if ma.AUSTRITT %}
+    <span class="msg msg-info" style="margin: 0;">Ausgetreten am {{ ma.AUSTRITT.strftime('%d.%m.%Y') }}</span>
+  {% endif %}
+  <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">← Zurück</a>
+</div>
+
+<form method="post" action="{{ url_for('wawi_personal.detail', pers_id=ma.PERS_ID) }}">
+
+  <div class="card card-section">
+    <h2>Stammdaten</h2>
+    {% include 'personal/_form_felder.html' %}
+  </div>
+
+  <div class="card card-section">
+    <h2>Stundensatz</h2>
+    <dl class="readonly-grid" style="margin-bottom: 16px;">
+      <dt>Aktuell gültig:</dt>
+      <dd>{% if aktueller_stundensatz %}{{ aktueller_stundensatz }} € / Std{% else %}<em>noch keiner erfasst</em>{% endif %}</dd>
+    </dl>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Neuer Stundensatz (€ brutto)</label>
+        <input type="text" name="stundensatz" placeholder="z.B. 13,90">
+      </div>
+      <div class="form-group">
+        <label>gültig ab</label>
+        <input type="date" name="stundensatz_ab">
+      </div>
+      <div class="form-group form-col-2">
+        <label>Kommentar (optional)</label>
+        <input type="text" name="stundensatz_kommentar" maxlength="255"
+               placeholder="z.B. Tariferhöhung 2026">
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-section">
+    <h2>Audit</h2>
+    <dl class="readonly-grid">
+      <dt>Angelegt:</dt>
+      <dd>{{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '' }} (MA-ID {{ ma.ERSTELLT_VON }})</dd>
+      <dt>Zuletzt geändert:</dt>
+      <dd>{% if ma.GEAEND_AT %}{{ ma.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} (MA-ID {{ ma.GEAEND_VON }}){% else %}<em>—</em>{% endif %}</dd>
+      <dt>Pers-ID:</dt>
+      <dd>{{ ma.PERS_ID }}</dd>
+    </dl>
+  </div>
+
+  <div class="form-actions">
+    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">Abbrechen</a>
+    <button type="submit" class="btn">Speichern</button>
+  </div>
+</form>
+{% endblock %}

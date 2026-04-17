@@ -1,0 +1,5 @@
+# Lokal importierte ShiftJuggler-/Personal-CSV-Dateien enthalten sensible
+# Personaldaten und dürfen NICHT im Repo landen.
+_seed_local/
+*.csv
+!example_*.csv

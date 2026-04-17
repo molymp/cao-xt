@@ -60,6 +60,13 @@ try:
 except Exception as e:
     log.warning("WaWi-Blueprint konnte nicht geladen werden: %s", e)
 
+try:
+    from modules.wawi.personal import create_blueprint as _personal_bp
+    app.register_blueprint(_personal_bp(), url_prefix='/wawi/personal')
+    log.info("WaWi-Personal-Blueprint registriert.")
+except Exception as e:
+    log.warning("WaWi-Personal-Blueprint konnte nicht geladen werden: %s", e)
+
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
 try:

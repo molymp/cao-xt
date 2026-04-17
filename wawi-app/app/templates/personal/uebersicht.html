@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Mitarbeiter{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.topbar h1 { flex: 1; }
+.btn { background: var(--gruen-mitte); color: white; border: none; border-radius: var(--radius-klein);
+       padding: 9px 16px; font-weight: 700; cursor: pointer; text-decoration: none;
+       font-family: inherit; font-size: 14px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.ma-table { width: 100%; background: white; border-collapse: collapse; border-radius: var(--radius);
+            overflow: hidden; box-shadow: var(--schatten); }
+.ma-table th { background: var(--gruen-blass); padding: 10px 14px; text-align: left;
+               font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+               color: var(--gruen-dunkel); }
+.ma-table td { padding: 7px 14px; border-top: 1px solid var(--creme-dunkel); font-size: 13px; }
+.ma-table tr.ausgetreten { opacity: 0.55; }
+.ma-table tr:hover { background: var(--creme); cursor: pointer; }
+.ma-table .email-alt { font-size: 11px; color: var(--grau-mitte); margin-top: 1px; }
+.kuerzel-chip { display: inline-block; padding: 2px 8px; background: var(--gruen-blass);
+                color: var(--gruen-dunkel); border-radius: 20px; font-size: 11px;
+                font-weight: 800; letter-spacing: 0.04em; }
+.empty { text-align: center; padding: 40px; color: var(--grau-mitte); }
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}
+    <div class="msg msg-{{ cat }}">{{ text }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>Mitarbeiter</h1>
+  {% if zeige_alle %}
+    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">
+      Nur Aktive
+    </a>
+  {% else %}
+    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht', alle=1) }}">
+      Inkl. ausgetretener
+    </a>
+  {% endif %}
+  <a class="btn" href="{{ url_for('wawi_personal.neu') }}">+ Neuer Mitarbeiter</a>
+</div>
+
+{% if mitarbeiter %}
+<table class="ma-table">
+  <thead>
+    <tr>
+      <th>Pers-Nr</th>
+      <th>Kürzel</th>
+      <th>Name</th>
+      <th>Vorname</th>
+      <th>E-Mail</th>
+      <th>Mobil</th>
+      <th>Eintritt</th>
+      <th>Austritt</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ma in mitarbeiter %}
+    <tr class="{% if ma.AUSTRITT %}ausgetreten{% endif %}"
+        onclick="window.location='{{ url_for('wawi_personal.detail', pers_id=ma.PERS_ID) }}'">
+      <td>{{ ma.PERSONALNUMMER }}</td>
+      <td>{% if ma.KUERZEL %}<span class="kuerzel-chip">{{ ma.KUERZEL }}</span>{% endif %}</td>
+      <td><strong>{{ ma.NAME }}</strong></td>
+      <td>{{ ma.VNAME }}</td>
+      <td>
+        {{ ma.EMAIL or '' }}
+        {% if ma.EMAIL_ALT %}<div class="email-alt">{{ ma.EMAIL_ALT }}</div>{% endif %}
+      </td>
+      <td>{{ ma.MOBIL or '' }}</td>
+      <td>{{ ma.EINTRITT.strftime('%d.%m.%Y') if ma.EINTRITT else '' }}</td>
+      <td>{{ ma.AUSTRITT.strftime('%d.%m.%Y') if ma.AUSTRITT else '' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="card empty">
+  <p>Noch keine Mitarbeiter erfasst.</p>
+  <p style="margin-top: 12px;">
+    <a class="btn" href="{{ url_for('wawi_personal.neu') }}">+ Ersten Mitarbeiter anlegen</a>
+  </p>
+</div>
+{% endif %}
+{% endblock %}

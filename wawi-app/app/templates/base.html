@@ -412,7 +412,7 @@ a { text-decoration: none; color: inherit; }
           </div>
         </div>
 
-        <a href="/coming-soon?modul=Mitarbeiter" class="sidebar-item">
+        <a href="/wawi/personal/" class="sidebar-item {% if request.path.startswith('/wawi/personal') %}aktiv{% endif %}">
           <span class="icon">🪪</span> Mitarbeiter
         </a>
       </div>

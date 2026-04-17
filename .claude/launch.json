@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["kiosk-app/app/app.py"],
       "port": 5001
+    },
+    {
+      "name": "wawi",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["wawi-app/app/app.py"],
+      "port": 5003
     }
   ]
 }
