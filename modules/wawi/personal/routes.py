@@ -136,6 +136,7 @@ def detail(pers_id: int):
         aktuelles_az=m.aktuelles_az_modell(pers_id),
         lohnarten=m.lohnarten(),
         lohnkonstanten=m.lohnkonstanten_aktuell(),
+        ma_log=m.ma_log(pers_id),
         today=date.today(),
     )
 

@@ -126,8 +126,12 @@
       <button type="button" class="touch-btn" id="tw-numpad-extra" data-tw-numpad=",">,</button>
       <button type="button" class="touch-btn" data-tw-numpad="0">0</button>
       <button type="button" class="touch-btn funktion" data-tw-numpad="_BACK">⌫</button>
-      <button type="button" class="touch-btn funktion" data-tw-numpad="_CLEAR">Löschen</button>
-      <button type="button" class="touch-btn primary wide" data-tw-numpad="_OK">Übernehmen</button>
+      <button type="button" class="touch-btn" id="tw-numpad-minus" data-tw-numpad="-"
+              style="display:none;">-</button>
+      <button type="button" class="touch-btn funktion" id="tw-numpad-loeschen"
+              data-tw-numpad="_CLEAR">Löschen</button>
+      <button type="button" class="touch-btn primary wide" id="tw-numpad-ok"
+              data-tw-numpad="_OK">Übernehmen</button>
     </div>
   </div>
 </div>
@@ -282,12 +286,18 @@
     cursorPos = buffer.length;
     // Dritten-Spalten-Key: Komma bei dezimal, + bei tel
     const extraKey = document.getElementById('tw-numpad-extra');
+    const minusKey = document.getElementById('tw-numpad-minus');
+    const okKey = document.getElementById('tw-numpad-ok');
     if (numpadModus === 'tel') {
       extraKey.dataset.twNumpad = '+';
       extraKey.textContent = '+';
+      minusKey.style.display = '';
+      okKey.classList.remove('wide');  // Platz fuer Minus-Button
     } else {
       extraKey.dataset.twNumpad = ',';
       extraKey.textContent = ',';
+      minusKey.style.display = 'none';
+      okKey.classList.add('wide');
     }
     document.getElementById('tw-numpad-titel').textContent = ermittleTitel(input, 'Zahl');
     aktualisiereNumpadAnzeige();
@@ -321,6 +331,10 @@
       else if (t === '+' && numpadModus === 'tel') {
         // + nur am Anfang sinnvoll
         if (cursorPos === 0 && !buffer.startsWith('+')) insertAtCursor('+');
+      }
+      else if (t === '-' && numpadModus === 'tel') {
+        // Trenner darf ueberall stehen, nicht doppelt hintereinander
+        if (buffer.slice(cursorPos - 1, cursorPos) !== '-') insertAtCursor('-');
       }
       else                   { insertAtCursor(t); }
       aktualisiereNumpadAnzeige();

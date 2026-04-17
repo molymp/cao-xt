@@ -50,8 +50,10 @@ def _fmt_eur(value, dp=2):
     except (TypeError, ValueError):
         return str(value)
 
+import json as _json
 app.jinja_env.filters['eur'] = _fmt_eur
 app.jinja_env.filters['zip'] = lambda a, b: list(zip(a, b))
+app.jinja_env.filters['fromjson'] = lambda s: _json.loads(s) if s else {}
 
 
 @app.before_request

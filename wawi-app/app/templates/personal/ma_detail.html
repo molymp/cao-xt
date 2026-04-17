@@ -169,6 +169,9 @@
   <h3 class="sub-h3">Arbeitszeitmodell</h3>
 
   {% if az_modelle %}
+  <p style="font-size: 11px; color: var(--grau-mitte); margin: 0 0 4px 0;">
+    Zeile antippen zum Bearbeiten (rückwirkend).
+  </p>
   <table class="az-historie">
     <thead>
       <tr>
@@ -178,6 +181,7 @@
         <th>Stunden Soll</th>
         <th>Urlaub</th>
         <th>Wochenverteilung</th>
+        <th style="width: 30px;"></th>
       </tr>
     </thead>
     <tbody>
@@ -215,6 +219,7 @@
           {% endfor %}
           {{ paare|join(' · ') if paare else '—' }}
         </td>
+        <td style="text-align: right; color: var(--gruen-mitte); font-weight: 800; font-size: 16px;">✎</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -304,16 +309,56 @@
   </details>
 </div>
 
-{# ── Audit ganz ans Seitenende ─────────────────────────────────────────── #}
+{# ── Audit / Änderungsprotokoll ─────────────────────────────────────────── #}
 <div class="card card-section" style="margin-top: 30px;">
-  <h2 style="font-size: 14px; color: var(--grau-mitte);">Audit</h2>
-  <dl class="readonly-grid" style="font-size: 12px;">
-    <dt>Angelegt:</dt>
-    <dd>{{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '' }} (MA-ID {{ ma.ERSTELLT_VON }})</dd>
-    <dt>Zuletzt geändert:</dt>
-    <dd>{% if ma.GEAEND_AT %}{{ ma.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} (MA-ID {{ ma.GEAEND_VON }}){% else %}<em>—</em>{% endif %}</dd>
-    <dt>Pers-ID:</dt><dd>{{ ma.PERS_ID }}</dd>
-  </dl>
+  <h2 style="font-size: 14px; color: var(--grau-mitte);">Änderungsprotokoll</h2>
+  <p style="font-size: 11px; color: var(--grau-mitte); margin-bottom: 8px;">
+    Angelegt am {{ ma.ERSTELLT_AT.strftime('%d.%m.%Y %H:%M') if ma.ERSTELLT_AT else '?' }}
+    von MA-ID {{ ma.ERSTELLT_VON }} · Pers-ID {{ ma.PERS_ID }}
+  </p>
+
+  {% if ma_log %}
+  <table class="az-historie">
+    <thead>
+      <tr>
+        <th style="width: 130px;">Zeitpunkt</th>
+        <th style="width: 110px;">Benutzer</th>
+        <th style="width: 70px;">Aktion</th>
+        <th>Felder / Änderung</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in ma_log %}
+      <tr>
+        <td class="tage">{{ e.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td class="tage">{{ e.GEAEND_NAME or ('MA-ID ' ~ e.GEAEND_VON) }}</td>
+        <td>
+          {% if e.OPERATION == 'INSERT' %}<span class="pill pill-vollzeit">Anlage</span>
+          {% elif e.OPERATION == 'UPDATE' %}<span class="pill pill-teilzeit">Änderung</span>
+          {% else %}<span class="pill pill-sonst">{{ e.OPERATION }}</span>{% endif %}
+        </td>
+        <td style="font-size: 11px;">
+          {% if e.OPERATION == 'INSERT' %}
+            <em style="color: var(--grau-mitte);">Erfassung aller Felder</em>
+          {% else %}
+            {% set alt = (e.FELDER_ALT_JSON or '{}')|fromjson %}
+            {% set neu = (e.FELDER_NEU_JSON or '{}')|fromjson %}
+            {% for feld, v_neu in neu.items() %}
+              <div>
+                <strong>{{ feld }}:</strong>
+                <span style="color: var(--grau-mitte); text-decoration: line-through;">{{ alt.get(feld) or '∅' }}</span>
+                → <strong>{{ v_neu or '∅' }}</strong>
+              </div>
+            {% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="font-size: 12px; color: var(--grau-mitte);">Noch keine Änderungen protokolliert.</p>
+  {% endif %}
 </div>
 
 {# Touch-Widgets (Numpad, Keyboard, Datepicker) #}
@@ -535,7 +580,7 @@ Sind Sie sicher, dass Sie den jährlichen Urlaubsanspruch ändern möchten?`;
     azCancel.style.display = 'none';
     gueltigAb.placeholder = 'JJJJ-MM-TT';
     gueltigAb.setAttribute('required', 'required');
-    gueltigAb.value = {{ ('"' + today.isoformat() + '"') if today else '""' }};
+    gueltigAb.value = "{{ today.isoformat() if today else '' }}";
     stunden.value = ''; urlaub.value = ''; bem.value = '';
     delete azForm.dataset.origUrlaub;
     delete azForm.dataset.origStunden;
