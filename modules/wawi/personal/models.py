@@ -189,9 +189,13 @@ def ma_update(pers_id: int, werte: dict, benutzer_ma_id: int) -> int:
              json.dumps(diff_neu, default=_json_default, ensure_ascii=False),
              int(benutzer_ma_id)),
         )
-        # Seiten-Effekt: Austritt setzen → schliesst offene Modelle.
-        # Austritt wieder aufheben (None) → oeffnet Modelle wieder, deren
-        # GUELTIG_BIS exakt auf dem alten Austrittsdatum stand.
+        # Seiten-Effekt: Austritt setzen → schliesst das genau eine offene
+        # AZ-Modell. Austritt wieder aufheben (None) → oeffnet das Modell
+        # wieder, dessen GUELTIG_BIS exakt auf dem alten Austrittsdatum stand.
+        # Invariante: pro MA existiert immer hoechstens ein offenes Modell
+        # (sichergestellt durch az_modell_speichern + az_modell_bearbeiten).
+        # Bei Verletzung wird ein Fehler geworfen, statt still mehrere
+        # Modelle zu überschreiben.
         if 'AUSTRITT' in diff_neu:
             neu_austritt = diff_neu['AUSTRITT']
             alt_austritt = diff_alt.get('AUSTRITT')
@@ -201,18 +205,45 @@ def ma_update(pers_id: int, werte: dict, benutzer_ma_id: int) -> int:
                 alt_austritt = date.fromisoformat(alt_austritt)
             if neu_austritt:
                 cur.execute(
-                    """UPDATE XT_PERSONAL_AZ_MODELL
-                          SET GUELTIG_BIS = %s, GEAEND_AT = NOW(), GEAEND_VON = %s
+                    """SELECT REC_ID FROM XT_PERSONAL_AZ_MODELL
                         WHERE PERS_ID = %s AND GUELTIG_BIS IS NULL""",
-                    (neu_austritt, int(benutzer_ma_id), int(pers_id)),
+                    (int(pers_id),),
                 )
+                offen = cur.fetchall()
+                if len(offen) > 1:
+                    raise RuntimeError(
+                        f'Invariantenbruch: PERS_ID {pers_id} hat '
+                        f'{len(offen)} offene AZ-Modelle – erwartet: maximal 1.'
+                    )
+                if len(offen) == 1:
+                    cur.execute(
+                        """UPDATE XT_PERSONAL_AZ_MODELL
+                              SET GUELTIG_BIS = %s,
+                                  GEAEND_AT = NOW(), GEAEND_VON = %s
+                            WHERE REC_ID = %s""",
+                        (neu_austritt, int(benutzer_ma_id), offen[0]['REC_ID']),
+                    )
             elif alt_austritt:
                 cur.execute(
-                    """UPDATE XT_PERSONAL_AZ_MODELL
-                          SET GUELTIG_BIS = NULL, GEAEND_AT = NOW(), GEAEND_VON = %s
+                    """SELECT REC_ID FROM XT_PERSONAL_AZ_MODELL
                         WHERE PERS_ID = %s AND GUELTIG_BIS = %s""",
-                    (int(benutzer_ma_id), int(pers_id), alt_austritt),
+                    (int(pers_id), alt_austritt),
                 )
+                geschlossen = cur.fetchall()
+                if len(geschlossen) > 1:
+                    raise RuntimeError(
+                        f'Invariantenbruch: PERS_ID {pers_id} hat '
+                        f'{len(geschlossen)} Modelle mit GUELTIG_BIS '
+                        f'{alt_austritt.isoformat()} – erwartet: maximal 1.'
+                    )
+                if len(geschlossen) == 1:
+                    cur.execute(
+                        """UPDATE XT_PERSONAL_AZ_MODELL
+                              SET GUELTIG_BIS = NULL,
+                                  GEAEND_AT = NOW(), GEAEND_VON = %s
+                            WHERE REC_ID = %s""",
+                        (int(benutzer_ma_id), geschlossen[0]['REC_ID']),
+                    )
         return len(diff_neu)
 
 
@@ -252,20 +283,6 @@ def az_modell_bearbeiten(rec_id: int, werte: dict, benutzer_ma_id: int) -> int:
             f"   SET {sets}, GEAEND_AT = NOW(), GEAEND_VON = %s "
             f" WHERE REC_ID = %s",
             params,
-        )
-        return cur.rowcount
-
-
-def austritt_schliesst_letztes_modell(pers_id: int, austritt: date,
-                                       benutzer_ma_id: int) -> int:
-    """Setzt das GUELTIG_BIS des letzten offenen AZ-Modells auf das Austritts-
-    datum. Gibt die Anzahl der betroffenen Modelle zurück (0 oder 1)."""
-    with get_db_rw() as cur:
-        cur.execute(
-            """UPDATE XT_PERSONAL_AZ_MODELL
-                  SET GUELTIG_BIS = %s, GEAEND_AT = NOW(), GEAEND_VON = %s
-                WHERE PERS_ID = %s AND GUELTIG_BIS IS NULL""",
-            (austritt, int(benutzer_ma_id), int(pers_id)),
         )
         return cur.rowcount
 
