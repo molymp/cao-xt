@@ -192,5 +192,133 @@ class TestJsonDefault(unittest.TestCase):
             json.dumps({'x': object()}, default=m._json_default)
 
 
+class TestArbeitstageZaehlung(unittest.TestCase):
+    """urlaub_arbeitstage zaehlt Tage anhand der Wochenverteilung des jeweils
+    gueltigen AZ-Modells. Wir mocken aktuelles_az_modell."""
+
+    def test_mo_fr_modell(self):
+        modell = {'STD_MO': 8, 'STD_DI': 8, 'STD_MI': 8, 'STD_DO': 8,
+                  'STD_FR': 8, 'STD_SA': None, 'STD_SO': None}
+        with patch.object(m, 'aktuelles_az_modell', return_value=modell):
+            # Mo 2026-04-13 .. So 2026-04-19 = 5 Arbeitstage
+            self.assertEqual(
+                m.urlaub_arbeitstage(1, date(2026, 4, 13), date(2026, 4, 19)),
+                5.0,
+            )
+
+    def test_teilzeit_mo_mi_fr(self):
+        modell = {'STD_MO': 4, 'STD_DI': None, 'STD_MI': 4, 'STD_DO': None,
+                  'STD_FR': 4, 'STD_SA': None, 'STD_SO': None}
+        with patch.object(m, 'aktuelles_az_modell', return_value=modell):
+            self.assertEqual(
+                m.urlaub_arbeitstage(1, date(2026, 4, 13), date(2026, 4, 19)),
+                3.0,
+            )
+
+    def test_fallback_ohne_verteilung(self):
+        # Alle STD_* None → Fallback Mo–Fr
+        modell = {k: None for k in m.WOCHENTAGE}
+        with patch.object(m, 'aktuelles_az_modell', return_value=modell):
+            self.assertEqual(
+                m.urlaub_arbeitstage(1, date(2026, 4, 13), date(2026, 4, 19)),
+                5.0,
+            )
+
+    def test_kein_modell_null_tage(self):
+        with patch.object(m, 'aktuelles_az_modell', return_value=None):
+            self.assertEqual(
+                m.urlaub_arbeitstage(1, date(2026, 4, 13), date(2026, 4, 19)),
+                0.0,
+            )
+
+    def test_einzelner_tag(self):
+        modell = {'STD_MO': 8, 'STD_DI': None, 'STD_MI': None, 'STD_DO': None,
+                  'STD_FR': None, 'STD_SA': None, 'STD_SO': None}
+        with patch.object(m, 'aktuelles_az_modell', return_value=modell):
+            # Montag
+            self.assertEqual(
+                m.urlaub_arbeitstage(1, date(2026, 4, 13), date(2026, 4, 13)),
+                1.0,
+            )
+            # Dienstag – kein Arbeitstag
+            self.assertEqual(
+                m.urlaub_arbeitstage(1, date(2026, 4, 14), date(2026, 4, 14)),
+                0.0,
+            )
+
+    def test_bis_vor_von(self):
+        self.assertEqual(m.urlaub_arbeitstage(1, date(2026, 4, 20),
+                                              date(2026, 4, 13)), 0.0)
+
+
+class TestUrlaubAntragValidierung(unittest.TestCase):
+
+    def test_bis_vor_von_wirft(self):
+        with self.assertRaises(ValueError):
+            m.urlaub_antrag_anlegen(1, date(2026, 5, 1), date(2026, 4, 30),
+                                    None, 2)
+
+    def test_unbekannter_status_wirft(self):
+        with self.assertRaises(ValueError):
+            m.urlaub_antrag_anlegen(1, date(2026, 5, 1), date(2026, 5, 5),
+                                    None, 2, status='erledigt')
+
+
+class TestStatusUebergang(unittest.TestCase):
+
+    def _mock_cursor(self, aktuell_status: str | None):
+        cur = MagicMock()
+        cur.fetchone.return_value = ({'STATUS': aktuell_status}
+                                     if aktuell_status else None)
+        cur.rowcount = 1
+        cm = MagicMock()
+        cm.__enter__.return_value = cur
+        cm.__exit__.return_value = None
+        return cm, cur
+
+    def test_erlaubt_geplant_zu_genehmigt(self):
+        cm, cur = self._mock_cursor('geplant')
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            n = m.urlaub_antrag_status_setzen(1, 'genehmigt', 2)
+        self.assertEqual(n, 1)
+
+    def test_verboten_geplant_zu_genommen(self):
+        cm, cur = self._mock_cursor('geplant')
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            with self.assertRaises(ValueError):
+                m.urlaub_antrag_status_setzen(1, 'genommen', 2)
+
+    def test_verboten_storniert_ist_terminal(self):
+        cm, cur = self._mock_cursor('storniert')
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            with self.assertRaises(ValueError):
+                m.urlaub_antrag_status_setzen(1, 'geplant', 2)
+
+    def test_gleichbleiben_ist_noop(self):
+        cm, cur = self._mock_cursor('geplant')
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            n = m.urlaub_antrag_status_setzen(1, 'geplant', 2)
+        self.assertEqual(n, 0)
+
+    def test_nicht_existent_wirft(self):
+        cm, cur = self._mock_cursor(None)
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            with self.assertRaises(LookupError):
+                m.urlaub_antrag_status_setzen(1, 'genehmigt', 2)
+
+    def test_unbekannter_zielstatus_wirft(self):
+        with self.assertRaises(ValueError):
+            m.urlaub_antrag_status_setzen(1, 'erledigt', 2)
+
+
+class TestKorrekturGrund(unittest.TestCase):
+
+    def test_leerer_grund_wirft(self):
+        with self.assertRaises(ValueError):
+            m.urlaub_korrektur_anlegen(1, 2026, 3.0, '', None, 2)
+        with self.assertRaises(ValueError):
+            m.urlaub_korrektur_anlegen(1, 2026, 3.0, '   ', None, 2)
+
+
 if __name__ == '__main__':
     unittest.main()

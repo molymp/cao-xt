@@ -126,6 +126,10 @@ def detail(pers_id: int):
         ma = {**ma, **_form_werte(request.form)}
 
     aktuell_ct = m.aktueller_stundensatz_ct(pers_id)
+    try:
+        urlaub_jahr = int(request.args.get('urlaub_jahr', date.today().year))
+    except (TypeError, ValueError):
+        urlaub_jahr = date.today().year
     return render_template(
         'personal/ma_detail.html',
         ma=ma,
@@ -137,6 +141,10 @@ def detail(pers_id: int):
         lohnarten=m.lohnarten(),
         lohnkonstanten=m.lohnkonstanten_aktuell(),
         ma_log=m.ma_log(pers_id),
+        urlaub_jahr=urlaub_jahr,
+        urlaub_saldo=m.urlaub_saldo(pers_id, urlaub_jahr),
+        urlaub_korrekturen=m.urlaub_korrekturen(pers_id, urlaub_jahr),
+        urlaub_antraege=m.urlaub_antraege(pers_id, urlaub_jahr),
         today=date.today(),
     )
 
@@ -293,6 +301,97 @@ def api_minijob_check():
         return jsonify({'brutto_monat_ct': 0, 'grenze_ct': lk['MINIJOB_GRENZE_CT'],
                         'ueberschreitet': False, 'differenz_ct': -lk['MINIJOB_GRENZE_CT']})
     return jsonify(m.minijob_check(stunden, typ, stundensatz_ct, lk['MINIJOB_GRENZE_CT']))
+
+
+# ── P1c: Urlaubskorrektur / Urlaubsantrag ────────────────────────────────────
+
+@bp.post('/<int:pers_id>/urlaub/korrektur')
+@backoffice_required
+def urlaub_korrektur_anlegen(pers_id: int):
+    if not m.ma_by_id(pers_id):
+        flash('Mitarbeiter nicht gefunden.', 'error')
+        return redirect(url_for('wawi_personal.uebersicht'))
+    jahr_raw = request.form.get('jahr', '').strip()
+    try:
+        jahr = int(jahr_raw) if jahr_raw else date.today().year
+        tage = _dezimal(request.form.get('tage'))
+        if tage is None:
+            raise ValueError('TAGE ist Pflicht')
+        m.urlaub_korrektur_anlegen(
+            pers_id, jahr, float(tage),
+            request.form.get('grund', '').strip(),
+            request.form.get('kommentar', '').strip() or None,
+            session['ma_id'],
+        )
+        flash('Korrekturbuchung hinzugefuegt.', 'ok')
+    except (ValueError, LookupError) as e:
+        flash(f'Fehler: {e}', 'error')
+    except Exception as e:
+        flash(f'Fehler beim Speichern: {e}', 'error')
+    return redirect(url_for('wawi_personal.detail',
+                            pers_id=pers_id, urlaub_jahr=jahr_raw or None))
+
+
+@bp.post('/<int:pers_id>/urlaub/antrag')
+@backoffice_required
+def urlaub_antrag_anlegen(pers_id: int):
+    if not m.ma_by_id(pers_id):
+        flash('Mitarbeiter nicht gefunden.', 'error')
+        return redirect(url_for('wawi_personal.uebersicht'))
+    try:
+        von = _form_to_date(request.form.get('von'))
+        bis = _form_to_date(request.form.get('bis'))
+        if not von or not bis:
+            raise ValueError('VON und BIS sind Pflicht.')
+        status = request.form.get('status', 'geplant')
+        m.urlaub_antrag_anlegen(
+            pers_id, von, bis,
+            request.form.get('kommentar', '').strip() or None,
+            session['ma_id'], status,
+        )
+        flash('Urlaubsantrag angelegt.', 'ok')
+    except (ValueError, LookupError) as e:
+        flash(f'Fehler: {e}', 'error')
+    except Exception as e:
+        flash(f'Fehler beim Speichern: {e}', 'error')
+    return redirect(url_for('wawi_personal.detail',
+                            pers_id=pers_id,
+                            urlaub_jahr=request.form.get('jahr') or None))
+
+
+@bp.post('/<int:pers_id>/urlaub/antrag/<int:rec_id>/status')
+@backoffice_required
+def urlaub_antrag_status(pers_id: int, rec_id: int):
+    if not m.ma_by_id(pers_id):
+        flash('Mitarbeiter nicht gefunden.', 'error')
+        return redirect(url_for('wawi_personal.uebersicht'))
+    try:
+        neuer = request.form.get('status', '').strip()
+        n = m.urlaub_antrag_status_setzen(rec_id, neuer, session['ma_id'])
+        flash('Status aktualisiert.' if n else 'Keine Aenderung.',
+              'ok' if n else 'info')
+    except (ValueError, LookupError) as e:
+        flash(f'Fehler: {e}', 'error')
+    except Exception as e:
+        flash(f'Fehler beim Speichern: {e}', 'error')
+    return redirect(url_for('wawi_personal.detail',
+                            pers_id=pers_id,
+                            urlaub_jahr=request.form.get('jahr') or None))
+
+
+# ── Live-Arbeitstage-Berechnung (AJAX, JSON) ─────────────────────────────────
+
+@bp.get('/<int:pers_id>/urlaub/arbeitstage')
+@backoffice_required
+def api_urlaub_arbeitstage(pers_id: int):
+    try:
+        von = _form_to_date(request.args.get('von'))
+        bis = _form_to_date(request.args.get('bis'))
+    except ValueError:
+        return jsonify({'error': 'Ungueltiges Datum'}), 400
+    if not von or not bis:
+        return jsonify({'error': 'VON und BIS sind Pflicht'}), 400
+    return jsonify({'arbeitstage': m.urlaub_arbeitstage(pers_id, von, bis)})
 
 
 def create_blueprint():

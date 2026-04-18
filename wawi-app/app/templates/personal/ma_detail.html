@@ -55,6 +55,28 @@
                      border: 1px solid var(--gold); }
 .minijob-info.over { background: #fde8e8; color: var(--rot);
                      border: 1px solid var(--rot); }
+/* Urlaubssaldo-Zeile */
+.saldo-row { display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap;
+             margin: 6px 0 14px 0; padding: 10px; background: var(--creme);
+             border-radius: var(--radius-klein); }
+.saldo-kpi { flex: 1 1 0; min-width: 78px; padding: 8px 6px; text-align: center;
+             background: white; border-radius: 5px; border: 1px solid var(--creme-dunkel); }
+.saldo-kpi.gesamt { background: #f0f7e8; border-color: var(--gruen-mitte); }
+.saldo-kpi.rest { background: #e8f5e0; border-color: var(--gruen-dunkel); font-weight: 800; }
+.saldo-kpi.rest.neg { background: #fde8e8; border-color: var(--rot); color: var(--rot); }
+.saldo-kpi.rest.nul { background: var(--grau-hell); border-color: var(--grau-mitte); }
+.saldo-label { font-size: 10px; font-weight: 800; letter-spacing: 0.04em;
+               color: var(--grau-mitte); text-transform: uppercase; }
+.saldo-kpi.gesamt .saldo-label, .saldo-kpi.rest .saldo-label { color: var(--gruen-dunkel); }
+.saldo-kpi.rest.neg .saldo-label { color: var(--rot); }
+.saldo-val { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums;
+             color: var(--text-mitte); margin-top: 2px; }
+.saldo-kpi.rest .saldo-val { color: var(--gruen-dunkel); }
+.saldo-kpi.rest.neg .saldo-val { color: var(--rot); }
+.saldo-val.hat-korr { color: var(--gold); }
+.saldo-op { display: flex; align-items: center; font-size: 18px; font-weight: 800;
+            color: var(--grau-mitte); padding: 0 2px; }
+
 /* Autosave-Feedback */
 .form-group { position: relative; }
 .form-group .saved-ok {
@@ -304,6 +326,173 @@
         <button type="button" id="az-cancel-edit" class="btn-secondary btn"
                 style="display:none;">Bearbeiten abbrechen</button>
         <button type="submit" class="btn" id="az-submit">Modell anlegen</button>
+      </div>
+    </form>
+  </details>
+</div>
+
+{# ── Urlaub ────────────────────────────────────────────────────────────── #}
+<div class="card card-section" data-pers-id="{{ ma.PERS_ID }}" id="urlaub-card">
+  <h2 style="display: flex; justify-content: space-between; align-items: center;">
+    <span>Urlaub</span>
+    <form method="get" style="display: flex; gap: 4px; align-items: center; font-size: 12px;">
+      <label style="font-size: 12px; color: var(--grau-mitte); text-transform: none; letter-spacing: 0; font-weight: 600;">Jahr:</label>
+      <select name="urlaub_jahr" onchange="this.form.submit()"
+              style="padding: 3px 6px; font-size: 13px; width: auto;">
+        {% for j in [urlaub_jahr - 1, urlaub_jahr, urlaub_jahr + 1] %}
+        <option value="{{ j }}" {% if j == urlaub_jahr %}selected{% endif %}>{{ j }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </h2>
+
+  {# KPI-Zeile #}
+  <div class="saldo-row">
+    <div class="saldo-kpi"><div class="saldo-label">Anspruch</div><div class="saldo-val">{{ ('%.1f'|format(urlaub_saldo.basis))|replace('.', ',') }}</div></div>
+    <div class="saldo-op">+</div>
+    <div class="saldo-kpi"><div class="saldo-label">Korrektur</div><div class="saldo-val {% if urlaub_saldo.korrektur != 0 %}hat-korr{% endif %}">{{ ('%+.1f'|format(urlaub_saldo.korrektur))|replace('.', ',') if urlaub_saldo.korrektur else '0,0' }}</div></div>
+    <div class="saldo-op">=</div>
+    <div class="saldo-kpi gesamt"><div class="saldo-label">Gesamt</div><div class="saldo-val">{{ ('%.1f'|format(urlaub_saldo.gesamt))|replace('.', ',') }}</div></div>
+    <div class="saldo-op">−</div>
+    <div class="saldo-kpi"><div class="saldo-label">Geplant</div><div class="saldo-val">{{ ('%.1f'|format(urlaub_saldo.geplant))|replace('.', ',') }}</div></div>
+    <div class="saldo-op">−</div>
+    <div class="saldo-kpi"><div class="saldo-label">Genehmigt</div><div class="saldo-val">{{ ('%.1f'|format(urlaub_saldo.genehmigt))|replace('.', ',') }}</div></div>
+    <div class="saldo-op">−</div>
+    <div class="saldo-kpi"><div class="saldo-label">Genommen</div><div class="saldo-val">{{ ('%.1f'|format(urlaub_saldo.genommen))|replace('.', ',') }}</div></div>
+    <div class="saldo-op">=</div>
+    <div class="saldo-kpi rest {% if urlaub_saldo.rest < 0 %}neg{% elif urlaub_saldo.rest == 0 %}nul{% endif %}">
+      <div class="saldo-label">Rest</div><div class="saldo-val">{{ ('%.1f'|format(urlaub_saldo.rest))|replace('.', ',') }}</div>
+    </div>
+  </div>
+
+  {# Urlaubsanträge #}
+  <h3 class="sub-h3">Urlaubsanträge {{ urlaub_jahr }}</h3>
+  {% if urlaub_antraege %}
+  <table class="az-historie">
+    <thead>
+      <tr><th>Zeitraum</th><th>Arbeitstage</th><th>Status</th><th>Kommentar</th><th>Aktionen</th></tr>
+    </thead>
+    <tbody>
+      {% for a in urlaub_antraege %}
+      <tr>
+        <td>{{ a.VON.strftime('%d.%m.%Y') }} – {{ a.BIS.strftime('%d.%m.%Y') }}</td>
+        <td>{{ ('%.1f'|format(a.ARBEITSTAGE))|replace('.', ',') }}</td>
+        <td>
+          {% set st = a.STATUS %}
+          {% set cls = 'pill-sonst' %}
+          {% if st == 'geplant' %}{% set cls = 'pill-teilzeit' %}
+          {% elif st == 'genehmigt' %}{% set cls = 'pill-minijob' %}
+          {% elif st == 'genommen' %}{% set cls = 'pill-vollzeit' %}
+          {% endif %}
+          <span class="pill {{ cls }}">{{ st }}</span>
+        </td>
+        <td class="tage">{{ a.KOMMENTAR or '—' }}</td>
+        <td style="white-space: nowrap;">
+          {% set folgen = {'geplant':['genehmigt','abgelehnt','storniert'],'genehmigt':['genommen','storniert']}.get(st, []) %}
+          {% for ziel in folgen %}
+          <form method="post" action="{{ url_for('wawi_personal.urlaub_antrag_status', pers_id=ma.PERS_ID, rec_id=a.REC_ID) }}" style="display:inline;">
+            <input type="hidden" name="status" value="{{ ziel }}">
+            <input type="hidden" name="jahr" value="{{ urlaub_jahr }}">
+            <button type="submit" class="btn-secondary btn" style="font-size: 11px; padding: 3px 8px;">→ {{ ziel }}</button>
+          </form>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 10px;">Keine Urlaubsanträge in {{ urlaub_jahr }}.</p>
+  {% endif %}
+
+  <details style="margin-bottom: 18px;">
+    <summary>+ Neuer Urlaubsantrag</summary>
+    <form method="post" action="{{ url_for('wawi_personal.urlaub_antrag_anlegen', pers_id=ma.PERS_ID) }}"
+          id="urlaub-antrag-form" style="margin-top: 10px;">
+      <input type="hidden" name="jahr" value="{{ urlaub_jahr }}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Von *</label>
+          <input type="text" name="von" id="ua-von" class="date-touch" required
+                 placeholder="JJJJ-MM-TT" data-touch-titel="Urlaub von">
+        </div>
+        <div class="form-group">
+          <label>Bis *</label>
+          <input type="text" name="bis" id="ua-bis" class="date-touch" required
+                 placeholder="JJJJ-MM-TT" data-touch-titel="Urlaub bis">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <option value="geplant" selected>geplant</option>
+            <option value="genehmigt">genehmigt</option>
+            <option value="genommen">genommen</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Arbeitstage (berechnet)</label>
+          <input type="text" id="ua-arbeitstage" disabled placeholder="wird berechnet" style="background: var(--grau-hell);">
+        </div>
+        <div class="form-group form-col-2">
+          <label>Kommentar</label>
+          <input type="text" name="kommentar" class="alpha-touch" maxlength="500"
+                 data-touch-titel="Kommentar">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">Antrag anlegen</button>
+      </div>
+    </form>
+  </details>
+
+  {# Korrekturbuchungen #}
+  <h3 class="sub-h3">Korrekturen {{ urlaub_jahr }}</h3>
+  {% if urlaub_korrekturen %}
+  <table class="az-historie">
+    <thead>
+      <tr><th>Datum</th><th>Tage</th><th>Grund</th><th>Kommentar</th><th>Erfasst von</th></tr>
+    </thead>
+    <tbody>
+      {% for k in urlaub_korrekturen %}
+      <tr>
+        <td class="tage">{{ k.ERSTELLT_AT.strftime('%d.%m.%Y') }}</td>
+        <td><strong style="color: {% if k.TAGE < 0 %}var(--rot){% else %}var(--gruen-dunkel){% endif %};">{{ ('%+.1f'|format(k.TAGE))|replace('.', ',') }}</strong></td>
+        <td>{{ k.GRUND }}</td>
+        <td class="tage">{{ k.KOMMENTAR or '—' }}</td>
+        <td class="tage">{{ k.ERSTELLT_NAME or ('MA-ID ' ~ k.ERSTELLT_VON) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 10px;">Keine Korrekturen in {{ urlaub_jahr }}.</p>
+  {% endif %}
+
+  <details style="margin-bottom: 6px;">
+    <summary>+ Neue Korrekturbuchung</summary>
+    <form method="post" action="{{ url_for('wawi_personal.urlaub_korrektur_anlegen', pers_id=ma.PERS_ID) }}"
+          style="margin-top: 10px;">
+      <input type="hidden" name="jahr" value="{{ urlaub_jahr }}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Tage (+/−) *</label>
+          <input type="text" name="tage" class="num-touch" required
+                 placeholder="z.B. 3 oder -2" data-touch-titel="Tage">
+        </div>
+        <div class="form-group form-col-2">
+          <label>Grund *</label>
+          <input type="text" name="grund" class="alpha-touch" required maxlength="100"
+                 placeholder="z.B. Übertrag aus Vorjahr"
+                 data-touch-titel="Grund">
+        </div>
+        <div class="form-group form-col-3">
+          <label>Kommentar</label>
+          <input type="text" name="kommentar" class="alpha-touch" maxlength="500"
+                 data-touch-titel="Kommentar">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">Korrektur buchen</button>
       </div>
     </form>
   </details>
@@ -621,6 +810,24 @@ Sind Sie sicher, dass Sie den jährlichen Urlaubsanspruch ändern möchten?`;
     // unused — kept for future reference; we rely on confirm on any change
     return null;
   }
+
+  // ── Live-Arbeitstage beim Urlaubsantrag ──────────────────────────
+  const uaVon = document.getElementById('ua-von');
+  const uaBis = document.getElementById('ua-bis');
+  const uaAt  = document.getElementById('ua-arbeitstage');
+  async function berechneArbeitstage() {
+    if (!uaVon || !uaBis || !uaAt) return;
+    const v = uaVon.value, b = uaBis.value;
+    if (!v || !b) { uaAt.value = ''; return; }
+    try {
+      const r = await fetch(`/wawi/personal/${persId}/urlaub/arbeitstage?von=${v}&bis=${b}`);
+      if (!r.ok) { uaAt.value = '?'; return; }
+      const data = await r.json();
+      uaAt.value = (data.arbeitstage || 0).toString().replace('.', ',') + ' Tag(e)';
+    } catch { uaAt.value = '?'; }
+  }
+  uaVon?.addEventListener('change', berechneArbeitstage);
+  uaBis?.addEventListener('change', berechneArbeitstage);
 })();
 </script>
 {% endblock %}

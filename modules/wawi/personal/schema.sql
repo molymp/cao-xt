@@ -193,10 +193,66 @@ INSERT IGNORE INTO XT_PERSONAL_LOHNKONSTANTEN
   ('2026-01-01', 1390, 60300, 'Mindestlohn 13,90 EUR, Minijob-Grenze 603 EUR', 0);
 
 
+-- ============================================================
+-- P1c – Urlaubskorrekturen und Urlaubsantraege
+-- ============================================================
+
+
+-- ── Urlaubs-Korrekturbuchungen (pro Jahr, beliebig viele) ────────────────────
+--
+-- Korrekturen gegen den aus dem AZ-Modell berechneten Basis-Anspruch:
+--   - Uebertrag aus Vorjahr (positiv)
+--   - Unterjaehriger Vertragswechsel (positiv oder negativ)
+--   - Ausgleichs-/Strafbuchungen
+-- Append-only: keine UPDATE/DELETE-Routen. Korrekturen werden durch neue
+-- Gegenbuchungen rueckgaengig gemacht, damit die Historie erhalten bleibt.
+--
+CREATE TABLE IF NOT EXISTS XT_PERSONAL_URLAUB_KORREKTUR (
+    REC_ID           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PERS_ID          INT UNSIGNED NOT NULL,
+    JAHR             SMALLINT     NOT NULL COMMENT 'Kalenderjahr fuer die Korrektur',
+    TAGE             DECIMAL(5,1) NOT NULL COMMENT 'Arbeitstage, positiv oder negativ',
+    GRUND            VARCHAR(100) NOT NULL,
+    KOMMENTAR        VARCHAR(500) NULL,
+    ERSTELLT_AT      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ERSTELLT_VON     INT UNSIGNED NOT NULL,
+
+    INDEX idx_pers_jahr (PERS_ID, JAHR)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Urlaubs-Korrekturbuchungen (Uebertrag, Anpassungen)';
+
+
+-- ── Urlaubsantraege mit Workflow-Status ──────────────────────────────────────
+--
+-- STATUS-Fluss: geplant → genehmigt → genommen.
+-- abgelehnt / storniert sind terminale Status.
+-- ARBEITSTAGE wird beim Anlegen vom Server aus dem AZ-Modell berechnet
+-- (Anzahl Arbeitstage zwischen VON und BIS inklusive, nach Wochenverteilung
+-- des jeweils gueltigen Modells).
+--
+CREATE TABLE IF NOT EXISTS XT_PERSONAL_URLAUB_ANTRAG (
+    REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PERS_ID           INT UNSIGNED NOT NULL,
+    VON               DATE         NOT NULL,
+    BIS               DATE         NOT NULL,
+    ARBEITSTAGE       DECIMAL(4,1) NOT NULL COMMENT 'Nutzbare Urlaubstage gemaess AZ-Modell',
+    STATUS            ENUM('geplant','genehmigt','genommen','abgelehnt','storniert')
+                      NOT NULL DEFAULT 'geplant',
+    KOMMENTAR         VARCHAR(500) NULL,
+    STATUS_GEAEND_AT  DATETIME     NULL,
+    STATUS_GEAEND_VON INT UNSIGNED NULL,
+    ERSTELLT_AT       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ERSTELLT_VON      INT UNSIGNED NOT NULL,
+
+    INDEX idx_pers_von (PERS_ID, VON),
+    INDEX idx_pers_status (PERS_ID, STATUS)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Urlaubsantraege mit Workflow-Status';
+
+
 -- ── Hinweise fuer spaetere Erweiterungen ─────────────────────────────────────
 -- Neue Spalten werden per separatem ALTER TABLE hinzugefuegt (analog WaWi).
 -- Tabellen, die auf weitere Phasen folgen:
---   P1c: XT_PERSONAL_URLAUBSANSPRUCH, XT_PERSONAL_URLAUBSKORREKTUR
 --   P2 : XT_PERSONAL_SCHICHT, XT_PERSONAL_SCHICHT_ZUORDNUNG
 --   P3 : XT_PERSONAL_STEMPEL, XT_PERSONAL_STEMPEL_KORREKTUR
---   P4 : XT_PERSONAL_ABWESENHEIT
+--   P4 : XT_PERSONAL_ABWESENHEIT (Krankheit etc., ergaenzend zu URLAUB_ANTRAG)

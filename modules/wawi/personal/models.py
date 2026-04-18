@@ -445,6 +445,205 @@ def minijob_check(stunden_soll: float, typ: str, stundensatz_ct: int,
     }
 
 
+# ── P1c: Urlaubsanspruch, Korrekturen, Antraege ──────────────────────────────
+
+_WKD_ZU_SPALTE = {
+    0: 'STD_MO', 1: 'STD_DI', 2: 'STD_MI', 3: 'STD_DO',
+    4: 'STD_FR', 5: 'STD_SA', 6: 'STD_SO',
+}
+
+
+def _modell_ist_arbeitstag(modell: dict, tag: date) -> bool:
+    """Ist `tag` laut Wochenverteilung des Modells ein Arbeitstag?
+    Wenn alle STD_* NULL sind: Fallback Mo–Fr = Arbeitstag."""
+    spalten = [modell.get(s) for s in WOCHENTAGE]
+    if all(v is None for v in spalten):
+        return tag.weekday() < 5
+    v = modell.get(_WKD_ZU_SPALTE[tag.weekday()])
+    return v is not None and float(v) > 0
+
+
+def urlaub_arbeitstage(pers_id: int, von: date, bis: date) -> float:
+    """Zaehlt Arbeitstage zwischen VON und BIS (inklusive) anhand des jeweils
+    gueltigen AZ-Modells. Liefert 0.0, wenn kein Modell existiert."""
+    if bis < von:
+        return 0.0
+    summe = 0.0
+    tag = von
+    while tag <= bis:
+        modell = aktuelles_az_modell(pers_id, tag)
+        if modell and _modell_ist_arbeitstag(modell, tag):
+            summe += 1.0
+        tag += timedelta(days=1)
+    return summe
+
+
+def urlaub_anspruch_basis(pers_id: int, jahr: int) -> float:
+    """Basis-Jahresanspruch: URLAUB_JAHR_TAGE des Modells, das zur Jahresmitte
+    (01.07.JAHR) gueltig ist. Fallback: letztes im Jahr gueltige Modell.
+    Keine unterjaehrige pro-rata-Berechnung – Anpassungen per Korrekturbuchung."""
+    modell = aktuelles_az_modell(pers_id, date(jahr, 7, 1))
+    if not modell:
+        with get_db_ro() as cur:
+            cur.execute(
+                """SELECT URLAUB_JAHR_TAGE FROM XT_PERSONAL_AZ_MODELL
+                    WHERE PERS_ID = %s AND GUELTIG_AB <= %s
+                    ORDER BY GUELTIG_AB DESC, REC_ID DESC LIMIT 1""",
+                (int(pers_id), date(jahr, 12, 31)),
+            )
+            row = cur.fetchone()
+            if not row or row.get('URLAUB_JAHR_TAGE') is None:
+                return 0.0
+            return float(row['URLAUB_JAHR_TAGE'])
+    return float(modell.get('URLAUB_JAHR_TAGE') or 0)
+
+
+def urlaub_korrekturen(pers_id: int, jahr: int) -> list[dict]:
+    with get_db_ro() as cur:
+        cur.execute(
+            """SELECT k.REC_ID, k.JAHR, k.TAGE, k.GRUND, k.KOMMENTAR,
+                      k.ERSTELLT_AT, k.ERSTELLT_VON,
+                      CONCAT_WS(' ', m.VNAME, m.NAME) AS ERSTELLT_NAME
+                 FROM XT_PERSONAL_URLAUB_KORREKTUR k
+            LEFT JOIN MITARBEITER m ON m.MA_ID = k.ERSTELLT_VON
+                WHERE k.PERS_ID = %s AND k.JAHR = %s
+                ORDER BY k.ERSTELLT_AT DESC, k.REC_ID DESC""",
+            (int(pers_id), int(jahr)),
+        )
+        return cur.fetchall()
+
+
+def urlaub_antraege(pers_id: int, jahr: int) -> list[dict]:
+    with get_db_ro() as cur:
+        cur.execute(
+            """SELECT a.REC_ID, a.VON, a.BIS, a.ARBEITSTAGE, a.STATUS,
+                      a.KOMMENTAR, a.STATUS_GEAEND_AT, a.STATUS_GEAEND_VON,
+                      a.ERSTELLT_AT, a.ERSTELLT_VON,
+                      CONCAT_WS(' ', m.VNAME, m.NAME) AS ERSTELLT_NAME
+                 FROM XT_PERSONAL_URLAUB_ANTRAG a
+            LEFT JOIN MITARBEITER m ON m.MA_ID = a.ERSTELLT_VON
+                WHERE a.PERS_ID = %s AND YEAR(a.VON) = %s
+                ORDER BY a.VON DESC, a.REC_ID DESC""",
+            (int(pers_id), int(jahr)),
+        )
+        return cur.fetchall()
+
+
+def urlaub_saldo(pers_id: int, jahr: int) -> dict:
+    """Berechnet alle Teilsalden fuer ein Urlaubsjahr. Alle Werte als float
+    (Tage mit einer Nachkommastelle). Rest = basis + korrektur − geplant − genehmigt − genommen."""
+    basis = urlaub_anspruch_basis(pers_id, jahr)
+    with get_db_ro() as cur:
+        cur.execute(
+            """SELECT COALESCE(SUM(TAGE), 0) AS summe
+                 FROM XT_PERSONAL_URLAUB_KORREKTUR
+                WHERE PERS_ID = %s AND JAHR = %s""",
+            (int(pers_id), int(jahr)),
+        )
+        korrektur = float(cur.fetchone()['summe'])
+        cur.execute(
+            """SELECT STATUS, COALESCE(SUM(ARBEITSTAGE), 0) AS summe
+                 FROM XT_PERSONAL_URLAUB_ANTRAG
+                WHERE PERS_ID = %s AND YEAR(VON) = %s
+                GROUP BY STATUS""",
+            (int(pers_id), int(jahr)),
+        )
+        nach_status = {row['STATUS']: float(row['summe']) for row in cur.fetchall()}
+    geplant   = nach_status.get('geplant', 0.0)
+    genehmigt = nach_status.get('genehmigt', 0.0)
+    genommen  = nach_status.get('genommen', 0.0)
+    gesamt    = basis + korrektur
+    rest      = gesamt - geplant - genehmigt - genommen
+    return {
+        'basis':     basis,
+        'korrektur': korrektur,
+        'gesamt':    gesamt,
+        'geplant':   geplant,
+        'genehmigt': genehmigt,
+        'genommen':  genommen,
+        'rest':      rest,
+    }
+
+
+def urlaub_korrektur_anlegen(pers_id: int, jahr: int, tage: float,
+                             grund: str, kommentar: str | None,
+                             benutzer_ma_id: int) -> int:
+    if not grund or not grund.strip():
+        raise ValueError('GRUND ist Pflicht')
+    with get_db_rw() as cur:
+        cur.execute(
+            """INSERT INTO XT_PERSONAL_URLAUB_KORREKTUR
+                 (PERS_ID, JAHR, TAGE, GRUND, KOMMENTAR, ERSTELLT_VON)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (int(pers_id), int(jahr), float(tage), grund.strip(),
+             kommentar, int(benutzer_ma_id)),
+        )
+        return cur.lastrowid
+
+
+def urlaub_antrag_anlegen(pers_id: int, von: date, bis: date,
+                          kommentar: str | None,
+                          benutzer_ma_id: int,
+                          status: str = 'geplant') -> int:
+    if bis < von:
+        raise ValueError('BIS darf nicht vor VON liegen')
+    if status not in ('geplant', 'genehmigt', 'genommen'):
+        raise ValueError('Status ungueltig')
+    arbeitstage = urlaub_arbeitstage(pers_id, von, bis)
+    with get_db_rw() as cur:
+        cur.execute(
+            """INSERT INTO XT_PERSONAL_URLAUB_ANTRAG
+                 (PERS_ID, VON, BIS, ARBEITSTAGE, STATUS, KOMMENTAR, ERSTELLT_VON)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (int(pers_id), von, bis, arbeitstage, status,
+             kommentar, int(benutzer_ma_id)),
+        )
+        return cur.lastrowid
+
+
+# Gueltige Statusuebergaenge (gerichtet). Rueckwege sind bewusst nicht erlaubt:
+# einmal 'genommen' bleibt genommen, einmal 'abgelehnt'/'storniert' ist terminal.
+_STATUS_UEBERGAENGE = {
+    'geplant':   {'genehmigt', 'abgelehnt', 'storniert'},
+    'genehmigt': {'genommen', 'storniert'},
+    'genommen':  set(),
+    'abgelehnt': set(),
+    'storniert': set(),
+}
+
+
+def urlaub_antrag_status_setzen(rec_id: int, neuer_status: str,
+                                benutzer_ma_id: int) -> int:
+    """Aktualisiert den Status eines Antrags, wenn der Uebergang erlaubt ist."""
+    if neuer_status not in ('geplant', 'genehmigt', 'genommen',
+                            'abgelehnt', 'storniert'):
+        raise ValueError(f'Unbekannter Status: {neuer_status!r}')
+    with get_db_rw() as cur:
+        cur.execute(
+            "SELECT STATUS FROM XT_PERSONAL_URLAUB_ANTRAG WHERE REC_ID = %s",
+            (int(rec_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LookupError(f'Antrag {rec_id} nicht gefunden')
+        aktuell = row['STATUS']
+        if aktuell == neuer_status:
+            return 0
+        if neuer_status not in _STATUS_UEBERGAENGE.get(aktuell, set()):
+            raise ValueError(
+                f'Status-Uebergang {aktuell!r} → {neuer_status!r} nicht erlaubt'
+            )
+        cur.execute(
+            """UPDATE XT_PERSONAL_URLAUB_ANTRAG
+                  SET STATUS = %s,
+                      STATUS_GEAEND_AT  = NOW(),
+                      STATUS_GEAEND_VON = %s
+                WHERE REC_ID = %s""",
+            (neuer_status, int(benutzer_ma_id), int(rec_id)),
+        )
+        return cur.rowcount
+
+
 # ── Hilfsfunktionen fuer Templates ────────────────────────────────────────────
 
 def ct_to_eurostr(ct: int | None) -> str:
