@@ -311,6 +311,47 @@ class TestStatusUebergang(unittest.TestCase):
             m.urlaub_antrag_status_setzen(1, 'erledigt', 2)
 
 
+class TestUrlaubAbschliessen(unittest.TestCase):
+    """Tagesaktueller Auto-Abschluss: 'genehmigt' → 'genommen' wenn BIS < heute."""
+
+    def _mock_cursor(self, rowcount: int = 0):
+        cur = MagicMock()
+        cur.rowcount = rowcount
+        cm = MagicMock()
+        cm.__enter__.return_value = cur
+        cm.__exit__.return_value = None
+        return cm, cur
+
+    def test_mit_pers_id_filtert_auf_ma(self):
+        cm, cur = self._mock_cursor(rowcount=2)
+        stichtag = date(2026, 4, 18)
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            n = m.urlaub_antraege_abschliessen(pers_id=42, stichtag=stichtag)
+        self.assertEqual(n, 2)
+        sql, params = cur.execute.call_args[0]
+        self.assertIn("STATUS = 'genommen'", sql)
+        self.assertIn("BIS < %s", sql)
+        self.assertIn("PERS_ID = %s", sql)
+        self.assertIn("STATUS_GEAEND_VON = NULL", sql)
+        self.assertEqual(params, (stichtag, 42))
+
+    def test_ohne_pers_id_global(self):
+        cm, cur = self._mock_cursor(rowcount=0)
+        stichtag = date(2026, 4, 18)
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            m.urlaub_antraege_abschliessen(stichtag=stichtag)
+        sql, params = cur.execute.call_args[0]
+        self.assertNotIn("PERS_ID", sql)
+        self.assertEqual(params, (stichtag,))
+
+    def test_stichtag_default_ist_heute(self):
+        cm, cur = self._mock_cursor()
+        with patch.object(m, 'get_db_rw', return_value=cm):
+            m.urlaub_antraege_abschliessen(pers_id=1)
+        _, params = cur.execute.call_args[0]
+        self.assertEqual(params[0], date.today())
+
+
 class TestKorrekturGrund(unittest.TestCase):
 
     def test_leerer_grund_wirft(self):

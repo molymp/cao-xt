@@ -130,6 +130,8 @@ def detail(pers_id: int):
         urlaub_jahr = int(request.args.get('urlaub_jahr', date.today().year))
     except (TypeError, ValueError):
         urlaub_jahr = date.today().year
+    # Tagesaktueller Abschluss: genehmigte Antraege mit BIS < heute → 'genommen'
+    m.urlaub_antraege_abschliessen(pers_id)
     return render_template(
         'personal/ma_detail.html',
         ma=ma,

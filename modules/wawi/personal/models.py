@@ -612,6 +612,27 @@ _STATUS_UEBERGAENGE = {
 }
 
 
+def urlaub_antraege_abschliessen(pers_id: int | None = None,
+                                 stichtag: date | None = None) -> int:
+    """Setzt alle 'genehmigten' Antraege, deren BIS-Datum vor dem Stichtag liegt,
+    automatisch auf 'genommen'. Idempotent – laeuft bei jedem Detail-Aufruf.
+    STATUS_GEAEND_VON bleibt NULL als Marker fuer System-Uebergaenge.
+    Wenn pers_id=None, wird global aktualisiert."""
+    stichtag = stichtag or date.today()
+    sql = ("""UPDATE XT_PERSONAL_URLAUB_ANTRAG
+                 SET STATUS = 'genommen',
+                     STATUS_GEAEND_AT  = NOW(),
+                     STATUS_GEAEND_VON = NULL
+               WHERE STATUS = 'genehmigt' AND BIS < %s""")
+    params: tuple = (stichtag,)
+    if pers_id is not None:
+        sql += " AND PERS_ID = %s"
+        params = (stichtag, int(pers_id))
+    with get_db_rw() as cur:
+        cur.execute(sql, params)
+        return cur.rowcount
+
+
 def urlaub_antrag_status_setzen(rec_id: int, neuer_status: str,
                                 benutzer_ma_id: int) -> int:
     """Aktualisiert den Status eines Antrags, wenn der Uebergang erlaubt ist."""
