@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Neuer Mitarbeiter{% endblock %}
+{% block extra_style %}{% include 'personal/_form_style.html' %}{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}
+    <div class="msg msg-{{ cat }}">{{ text }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>Neuer Mitarbeiter</h1>
+  <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">Abbrechen</a>
+</div>
+
+<form method="post" action="{{ url_for('wawi_personal.neu') }}">
+
+  <div class="card card-section">
+    <h2>Stammdaten</h2>
+    {% set ma = werte %}
+    {% include 'personal/_form_felder.html' %}
+  </div>
+
+  <div class="card card-section">
+    <h2>Stundensatz (optional)</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Stundensatz (€ brutto)</label>
+        <input type="text" name="stundensatz" class="num-touch" inputmode="decimal"
+               placeholder="z.B. 13,90" data-touch-titel="Stundensatz (€)">
+      </div>
+      <div class="form-group">
+        <label>gültig ab</label>
+        <input type="text" name="stundensatz_ab" class="date-touch"
+               placeholder="JJJJ-MM-TT" data-touch-titel="gültig ab">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">Abbrechen</a>
+    <button type="submit" class="btn">Anlegen</button>
+  </div>
+</form>
+
+{# Touch-Widgets (Numpad, Keyboard, Datepicker) #}
+{% include 'touch/widgets.html' %}
+{% endblock %}

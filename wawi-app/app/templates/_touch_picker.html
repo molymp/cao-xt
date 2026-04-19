@@ -1,0 +1,900 @@
+{# ── Touch-optimierte Date/Time-Picker für Touchscreen-Kiosk ── #}
+{# ── Design-Spec: HAB-338 · Bottom Sheet, Drum-Wheel, 52px Tap-Targets ── #}
+
+<style>
+/* ── Design-Tokens (Mapping auf bestehende Kiosk-Variablen) ── */
+:root {
+    --tap-min: 52px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --radius-xl: 32px;
+}
+
+/* ── Bottom-Sheet Overlay ── */
+.picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(60,30,10,0.45);
+    z-index: 9000;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    touch-action: none;
+}
+.picker-overlay.sichtbar { display: flex; }
+
+/* ── Bottom-Sheet Dialog ── */
+.picker-dialog {
+    background: white;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: 0 -8px 40px rgba(60,30,10,0.18);
+    max-width: 480px;
+    width: 100%;
+    overflow: hidden;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: transform;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+.picker-overlay.sichtbar .picker-dialog {
+    transform: translateY(0);
+}
+
+/* ── Drag-Handle ── */
+.picker-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--creme-dunkel);
+    border-radius: 99px;
+    margin: 12px auto 0;
+}
+
+/* ── Sheet-Kopf ── */
+.picker-kopf {
+    padding: 16px 20px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.picker-titel {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-dunkel);
+}
+.picker-schliessen {
+    background: var(--creme);
+    border: 2px solid var(--creme-dunkel);
+    border-radius: 10px;
+    color: var(--text-mitte);
+    font-size: 1.1rem;
+    width: var(--tap-min); height: var(--tap-min);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    -webkit-tap-highlight-color: transparent;
+}
+.picker-schliessen:active { background: var(--creme-warm); }
+
+/* ── Kalender ── */
+.kalender-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 12px;
+}
+.kalender-nav-btn {
+    width: var(--tap-min); height: var(--tap-min);
+    border: 2px solid var(--creme-dunkel);
+    border-radius: 10px;
+    background: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    color: var(--gruen-dunkel);
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s;
+}
+.kalender-nav-btn:active { background: var(--creme); }
+.kalender-monat {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-dunkel);
+}
+
+.kalender-kopfzeile {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 4px 16px;
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-hell);
+}
+
+.kalender-gitter {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    padding: 4px 16px 12px;
+    gap: 4px;
+}
+.kalender-tag {
+    width: 100%;
+    aspect-ratio: 1;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text-dunkel);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 44px;
+    transition: background 0.12s, color 0.12s;
+}
+.kalender-tag:active:not(:disabled):not(.leer) { background: var(--creme-warm); }
+.kalender-tag.heute {
+    border: 2px solid var(--gruen-hell);
+    color: var(--gruen-hell);
+}
+.kalender-tag.gewaehlt {
+    background: var(--gruen-hell);
+    color: white;
+    font-weight: 800;
+}
+.kalender-tag.gewaehlt.heute { border-color: transparent; }
+.kalender-tag.leer {
+    visibility: hidden;
+    cursor: default;
+}
+.kalender-tag:disabled {
+    color: var(--grau-mitte);
+    cursor: default;
+    opacity: 0.3;
+}
+
+.kalender-fuss {
+    display: flex;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+.kalender-fuss .btn {
+    flex: 1;
+    height: var(--tap-min);
+    font-size: 1rem;
+    border-radius: var(--radius-md);
+}
+
+/* ── Zeit-Picker (Drum-Wheel) ── */
+.zeit-vorschau {
+    font-size: 3rem;
+    font-weight: 900;
+    color: var(--gruen-dunkel);
+    letter-spacing: 4px;
+    font-variant-numeric: tabular-nums;
+    background: var(--creme);
+    border-radius: var(--radius-lg);
+    padding: 12px 24px;
+    border: 2px solid var(--creme-dunkel);
+    text-align: center;
+    margin: 0 20px 12px;
+}
+
+.zeit-drums {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 0 20px 8px;
+}
+.zeit-drum-spalte {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.zeit-drum-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-hell);
+    margin-bottom: 4px;
+}
+
+/* Stepper-Buttons über/unter der Trommel */
+.zeit-stepper {
+    width: 88px;
+    height: var(--tap-min);
+    border-radius: 10px;
+    border: 2px solid var(--creme-dunkel);
+    background: white;
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: var(--gruen-dunkel);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s;
+}
+.zeit-stepper:active { background: var(--creme); }
+
+/* Drum-Wheel Container */
+.zeit-drum {
+    width: 88px;
+    height: 156px; /* 3 sichtbare Items × 52px */
+    background: var(--creme);
+    border: 2px solid var(--creme-dunkel);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    position: relative;
+}
+.zeit-drum::before,
+.zeit-drum::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 52px;
+    z-index: 2;
+    pointer-events: none;
+}
+.zeit-drum::before {
+    top: 0;
+    background: linear-gradient(to bottom, var(--creme), transparent);
+}
+.zeit-drum::after {
+    bottom: 0;
+    background: linear-gradient(to top, var(--creme), transparent);
+}
+
+.zeit-drum-scroll {
+    height: 100%;
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.zeit-drum-scroll::-webkit-scrollbar { display: none; }
+
+/* Padding-Items damit der erste/letzte Wert in die Mitte scrollen kann */
+.zeit-drum-pad {
+    height: 52px;
+    flex-shrink: 0;
+}
+.zeit-drum-item {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-hell);
+    cursor: pointer;
+    scroll-snap-align: center;
+    transition: color 0.12s, font-size 0.12s;
+    flex-shrink: 0;
+}
+.zeit-drum-item.aktiv {
+    color: var(--gruen-dunkel);
+    font-size: 1.6rem;
+    font-weight: 900;
+    background: rgba(74,148,40,0.08);
+}
+
+.zeit-drum-trenner {
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--gruen-dunkel);
+    align-self: center;
+    margin-top: 28px;
+    padding: 0 2px;
+}
+
+.zeit-fuss {
+    display: flex;
+    gap: 10px;
+    padding: 8px 20px 20px;
+}
+.zeit-fuss .btn {
+    flex: 1;
+    height: var(--tap-min);
+    font-size: 1rem;
+    border-radius: var(--radius-md);
+}
+
+/* ── Kategorie-Filter ── */
+.kat-filter-leiste {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--creme-dunkel);
+}
+.kat-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 18px;
+    border: 2px solid var(--creme-dunkel);
+    border-radius: 99px;
+    background: white;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-mitte);
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: var(--tap-min);
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.15s;
+}
+.kat-filter-btn .kat-icon { font-size: 1.1rem; }
+.kat-filter-btn:hover {
+    border-color: var(--gruen-hell);
+    color: var(--gruen-dunkel);
+    background: var(--creme);
+}
+.kat-filter-btn.aktiv {
+    background: var(--gruen-dunkel);
+    color: var(--creme);
+    border-color: var(--gruen-dunkel);
+}
+.kat-filter-btn:active:not(.aktiv) { background: var(--creme-warm); }
+</style>
+
+<!-- ── Datum-Picker Bottom Sheet ── -->
+<div class="picker-overlay" id="datum-picker-overlay" onclick="if(event.target===this)schliessDatumPicker()">
+    <div class="picker-dialog" id="datum-picker-sheet">
+        <div class="picker-handle"></div>
+        <div class="picker-kopf">
+            <span class="picker-titel" id="datum-picker-titel">📅 Datum wählen</span>
+            <button class="picker-schliessen" onclick="schliessDatumPicker()">✕</button>
+        </div>
+        <div class="kalender-nav">
+            <button class="kalender-nav-btn" onclick="kalenderMonat(-1)">‹</button>
+            <span class="kalender-monat" id="kalender-monat"></span>
+            <button class="kalender-nav-btn" onclick="kalenderMonat(1)">›</button>
+        </div>
+        <div class="kalender-kopfzeile">
+            <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
+            <span>Fr</span><span>Sa</span><span>So</span>
+        </div>
+        <div class="kalender-gitter" id="kalender-gitter"></div>
+        <div class="kalender-fuss">
+            <button class="btn btn-sekundaer" onclick="datumPickerHeute()">Heute</button>
+            <button class="btn btn-sekundaer" onclick="datumPickerLoeschen()">Löschen</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Zeit-Picker Bottom Sheet (Drum-Wheel) ── -->
+<div class="picker-overlay" id="zeit-picker-overlay" onclick="if(event.target===this)schliessZeitPicker()">
+    <div class="picker-dialog" id="zeit-picker-sheet">
+        <div class="picker-handle"></div>
+        <div class="picker-kopf">
+            <span class="picker-titel">🕐 Uhrzeit wählen</span>
+            <button class="picker-schliessen" onclick="schliessZeitPicker()">✕</button>
+        </div>
+        <div class="zeit-vorschau" id="zeit-vorschau">08 : 00</div>
+        <div class="zeit-drums">
+            <!-- Stunden-Drum -->
+            <div class="zeit-drum-spalte">
+                <div class="zeit-drum-label">Stunden</div>
+                <button class="zeit-stepper" onclick="zeitDrumSchritt('h', -1)">＋</button>
+                <div class="zeit-drum">
+                    <div class="zeit-drum-scroll" id="drum-stunden"></div>
+                </div>
+                <button class="zeit-stepper" onclick="zeitDrumSchritt('h', 1)">－</button>
+            </div>
+
+            <div class="zeit-drum-trenner">:</div>
+
+            <!-- Minuten-Drum -->
+            <div class="zeit-drum-spalte">
+                <div class="zeit-drum-label">Minuten</div>
+                <button class="zeit-stepper" onclick="zeitDrumSchritt('m', -1)">＋</button>
+                <div class="zeit-drum">
+                    <div class="zeit-drum-scroll" id="drum-minuten"></div>
+                </div>
+                <button class="zeit-stepper" onclick="zeitDrumSchritt('m', 1)">－</button>
+            </div>
+        </div>
+        <div class="zeit-fuss">
+            <button class="btn btn-sekundaer" onclick="zeitPickerLoeschen()">Löschen</button>
+            <button class="btn btn-primaer" onclick="zeitPickerUebernehmen()" id="zeit-uebernehmen-btn">Übernehmen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// BOTTOM-SHEET: Swipe-to-dismiss
+// ═══════════════════════════════════════════════════
+
+(function() {
+    function initSheetSwipe(sheetId, schliesseFn) {
+        const sheet = document.getElementById(sheetId);
+        if (!sheet) return;
+        let startY = 0, currentY = 0, dragging = false;
+
+        sheet.addEventListener('touchstart', function(e) {
+            // Nur am Handle oder Kopf anfassen
+            const t = e.target;
+            if (t.closest('.kalender-gitter') || t.closest('.zeit-drum-scroll')
+                || t.closest('.kalender-fuss') || t.closest('.zeit-fuss')) return;
+            startY = e.touches[0].clientY;
+            currentY = startY;
+            dragging = true;
+            sheet.style.transition = 'none';
+        }, {passive: true});
+
+        sheet.addEventListener('touchmove', function(e) {
+            if (!dragging) return;
+            currentY = e.touches[0].clientY;
+            const dy = Math.max(0, currentY - startY);
+            sheet.style.transform = 'translateY(' + dy + 'px)';
+        }, {passive: true});
+
+        sheet.addEventListener('touchend', function() {
+            if (!dragging) return;
+            dragging = false;
+            sheet.style.transition = '';
+            const dy = currentY - startY;
+            if (dy > 80) {
+                schliesseFn();
+            } else {
+                sheet.style.transform = '';
+            }
+        }, {passive: true});
+    }
+
+    // Initialisierung nach DOM-Load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    function init() {
+        initSheetSwipe('datum-picker-sheet', schliessDatumPicker);
+        initSheetSwipe('zeit-picker-sheet', schliessZeitPicker);
+    }
+})();
+
+// ═══════════════════════════════════════════════════
+// DATUM-PICKER
+// ═══════════════════════════════════════════════════
+
+let _dpZielInput = null;
+let _dpCallback  = null;
+let _dpJahr  = 2026;
+let _dpMonat = 0; // 0-basiert
+
+const MONATE = ['Januar','Februar','März','April','Mai','Juni',
+                'Juli','August','September','Oktober','November','Dezember'];
+
+function oeffneDatumPicker(inputId, callback, titel) {
+    _dpZielInput = document.getElementById(inputId);
+    _dpCallback  = callback;
+    if (titel) document.getElementById('datum-picker-titel').textContent = '📅 ' + titel;
+    else document.getElementById('datum-picker-titel').textContent = '📅 Datum wählen';
+
+    const val = _dpZielInput.dataset.wert || '';
+    if (val) {
+        const teile = val.split('-');
+        _dpJahr  = parseInt(teile[0]);
+        _dpMonat = parseInt(teile[1]) - 1;
+    } else {
+        const jetzt = new Date();
+        _dpJahr  = jetzt.getFullYear();
+        _dpMonat = jetzt.getMonth();
+    }
+
+    kalenderRendern();
+    document.getElementById('datum-picker-overlay').classList.add('sichtbar');
+}
+
+function schliessDatumPicker() {
+    const overlay = document.getElementById('datum-picker-overlay');
+    const sheet = document.getElementById('datum-picker-sheet');
+    sheet.style.transform = 'translateY(100%)';
+    setTimeout(function() {
+        overlay.classList.remove('sichtbar');
+        sheet.style.transform = '';
+    }, 300);
+    _dpZielInput = null;
+    _dpCallback  = null;
+}
+
+function kalenderMonat(delta) {
+    _dpMonat += delta;
+    if (_dpMonat < 0)  { _dpMonat = 11; _dpJahr--; }
+    if (_dpMonat > 11) { _dpMonat = 0;  _dpJahr++; }
+    kalenderRendern();
+}
+
+function kalenderRendern() {
+    document.getElementById('kalender-monat').textContent = MONATE[_dpMonat] + ' ' + _dpJahr;
+
+    const gitter = document.getElementById('kalender-gitter');
+    gitter.innerHTML = '';
+
+    const ersterTag = new Date(_dpJahr, _dpMonat, 1);
+    let startWT = ersterTag.getDay() - 1;
+    if (startWT < 0) startWT = 6;
+
+    const tagImMonat = new Date(_dpJahr, _dpMonat + 1, 0).getDate();
+
+    const heute = new Date();
+    const heuteStr = heute.getFullYear() + '-' + String(heute.getMonth()+1).padStart(2,'0') + '-' + String(heute.getDate()).padStart(2,'0');
+    const gewStr = _dpZielInput ? (_dpZielInput.dataset.wert || '') : '';
+
+    for (let i = 0; i < startWT; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'kalender-tag leer';
+        btn.disabled = true;
+        gitter.appendChild(btn);
+    }
+
+    for (let tag = 1; tag <= tagImMonat; tag++) {
+        const btn = document.createElement('button');
+        btn.className = 'kalender-tag';
+        btn.textContent = tag;
+
+        const datumStr = _dpJahr + '-' + String(_dpMonat+1).padStart(2,'0') + '-' + String(tag).padStart(2,'0');
+        if (datumStr === heuteStr) btn.classList.add('heute');
+        if (datumStr === gewStr) btn.classList.add('gewaehlt');
+
+        btn.addEventListener('click', function() { datumGewaehlt(datumStr); });
+        gitter.appendChild(btn);
+    }
+}
+
+function datumGewaehlt(isoStr) {
+    if (_dpZielInput) {
+        _dpZielInput.dataset.wert = isoStr;
+        const teile = isoStr.split('-');
+        _dpZielInput.value = teile[2] + '.' + teile[1] + '.' + teile[0];
+    }
+    if (_dpCallback) _dpCallback(isoStr);
+    schliessDatumPicker();
+}
+
+function datumPickerHeute() {
+    const h = new Date();
+    const isoStr = h.getFullYear() + '-' + String(h.getMonth()+1).padStart(2,'0') + '-' + String(h.getDate()).padStart(2,'0');
+    datumGewaehlt(isoStr);
+}
+
+function datumPickerLoeschen() {
+    if (_dpZielInput) {
+        _dpZielInput.dataset.wert = '';
+        _dpZielInput.value = '';
+    }
+    if (_dpCallback) _dpCallback('');
+    schliessDatumPicker();
+}
+
+// ═══════════════════════════════════════════════════
+// ZEIT-PICKER (Drum-Wheel mit scroll-snap)
+// ═══════════════════════════════════════════════════
+
+let _zpZielInput = null;
+let _zpCallback  = null;
+let _zpH = 8;
+let _zpM = 0;
+let _zpDrumInit = false;
+let _zpScrollLock = false; // Verhindert Scroll-Event-Loops
+
+function zeitDrumErstellen() {
+    const hScroll = document.getElementById('drum-stunden');
+    const mScroll = document.getElementById('drum-minuten');
+    if (!hScroll || !mScroll) return;
+
+    // Stunden 00-23
+    hScroll.innerHTML = '<div class="zeit-drum-pad"></div>';
+    for (let i = 0; i < 24; i++) {
+        const el = document.createElement('div');
+        el.className = 'zeit-drum-item';
+        el.dataset.wert = i;
+        el.textContent = String(i).padStart(2, '0');
+        el.addEventListener('click', function() { zeitDrumWaehlen('h', i); });
+        hScroll.appendChild(el);
+    }
+    hScroll.innerHTML += '<div class="zeit-drum-pad"></div>';
+
+    // Minuten 00, 05, 10, ... 55
+    mScroll.innerHTML = '<div class="zeit-drum-pad"></div>';
+    for (let i = 0; i < 60; i += 5) {
+        const el = document.createElement('div');
+        el.className = 'zeit-drum-item';
+        el.dataset.wert = i;
+        el.textContent = String(i).padStart(2, '0');
+        el.addEventListener('click', function() { zeitDrumWaehlen('m', i); });
+        mScroll.appendChild(el);
+    }
+    mScroll.innerHTML += '<div class="zeit-drum-pad"></div>';
+
+    // Scroll-Events für Snap-Erkennung
+    hScroll.addEventListener('scroll', function() { zeitDrumScrollHandler('h'); }, {passive: true});
+    mScroll.addEventListener('scroll', function() { zeitDrumScrollHandler('m'); }, {passive: true});
+
+    _zpDrumInit = true;
+}
+
+function zeitDrumScrollHandler(teil) {
+    if (_zpScrollLock) return;
+    const scroll = document.getElementById(teil === 'h' ? 'drum-stunden' : 'drum-minuten');
+    const items = scroll.querySelectorAll('.zeit-drum-item');
+    const scrollMitte = scroll.scrollTop + scroll.clientHeight / 2;
+
+    let naechstes = null;
+    let minAbstand = Infinity;
+    items.forEach(function(item) {
+        const mitte = item.offsetTop + item.offsetHeight / 2;
+        const abstand = Math.abs(mitte - scrollMitte);
+        if (abstand < minAbstand) {
+            minAbstand = abstand;
+            naechstes = item;
+        }
+    });
+
+    if (naechstes) {
+        const wert = parseInt(naechstes.dataset.wert);
+        if (teil === 'h' && wert !== _zpH) {
+            _zpH = wert;
+            zeitVorschauAktualisieren();
+            zeitDrumAktivMarkieren();
+        } else if (teil === 'm' && wert !== _zpM) {
+            _zpM = wert;
+            zeitVorschauAktualisieren();
+            zeitDrumAktivMarkieren();
+        }
+    }
+}
+
+function zeitDrumAktivMarkieren() {
+    var hScroll = document.getElementById('drum-stunden');
+    var mScroll = document.getElementById('drum-minuten');
+    if (!hScroll || !mScroll) return;
+
+    hScroll.querySelectorAll('.zeit-drum-item').forEach(function(el) {
+        el.classList.toggle('aktiv', parseInt(el.dataset.wert) === _zpH);
+    });
+    mScroll.querySelectorAll('.zeit-drum-item').forEach(function(el) {
+        el.classList.toggle('aktiv', parseInt(el.dataset.wert) === _zpM);
+    });
+}
+
+function zeitDrumScrollTo(teil, wert, smooth) {
+    var scrollId = teil === 'h' ? 'drum-stunden' : 'drum-minuten';
+    var scroll = document.getElementById(scrollId);
+    if (!scroll) return;
+
+    var items = scroll.querySelectorAll('.zeit-drum-item');
+    var target = null;
+    items.forEach(function(el) {
+        if (parseInt(el.dataset.wert) === wert) target = el;
+    });
+
+    if (target) {
+        _zpScrollLock = true;
+        var zielTop = target.offsetTop - scroll.clientHeight / 2 + target.offsetHeight / 2;
+        scroll.scrollTo({top: zielTop, behavior: smooth ? 'smooth' : 'instant'});
+        setTimeout(function() { _zpScrollLock = false; }, smooth ? 350 : 50);
+    }
+}
+
+function zeitDrumWaehlen(teil, wert) {
+    if (teil === 'h') _zpH = wert;
+    else _zpM = wert;
+    zeitVorschauAktualisieren();
+    zeitDrumAktivMarkieren();
+    zeitDrumScrollTo(teil, wert, true);
+}
+
+function zeitDrumSchritt(teil, richtung) {
+    if (teil === 'h') {
+        _zpH = (_zpH + richtung + 24) % 24;
+        zeitDrumScrollTo('h', _zpH, true);
+    } else {
+        var idx = Math.round(_zpM / 5);
+        idx = (idx + richtung + 12) % 12;
+        _zpM = idx * 5;
+        zeitDrumScrollTo('m', _zpM, true);
+    }
+    zeitVorschauAktualisieren();
+    zeitDrumAktivMarkieren();
+}
+
+function zeitVorschauAktualisieren() {
+    var el = document.getElementById('zeit-vorschau');
+    if (el) {
+        el.textContent = String(_zpH).padStart(2, '0') + ' : ' + String(_zpM).padStart(2, '0');
+    }
+}
+
+function oeffneZeitPicker(inputId, callback) {
+    _zpZielInput = document.getElementById(inputId);
+    _zpCallback  = callback;
+
+    var val = _zpZielInput.dataset.wert || '';
+    if (val && val.includes(':')) {
+        var teile = val.split(':');
+        _zpH = parseInt(teile[0]) || 0;
+        _zpM = parseInt(teile[1]) || 0;
+    } else {
+        _zpH = 8;
+        _zpM = 0;
+    }
+    _zpM = Math.round(_zpM / 5) * 5;
+    if (_zpM >= 60) _zpM = 55;
+
+    if (!_zpDrumInit) zeitDrumErstellen();
+
+    zeitVorschauAktualisieren();
+    zeitDrumAktivMarkieren();
+
+    document.getElementById('zeit-picker-overlay').classList.add('sichtbar');
+
+    // Nach dem Anzeigen: Drum zu aktuellem Wert scrollen
+    setTimeout(function() {
+        zeitDrumScrollTo('h', _zpH, false);
+        zeitDrumScrollTo('m', _zpM, false);
+    }, 50);
+}
+
+function schliessZeitPicker() {
+    var overlay = document.getElementById('zeit-picker-overlay');
+    var sheet = document.getElementById('zeit-picker-sheet');
+    sheet.style.transform = 'translateY(100%)';
+    setTimeout(function() {
+        overlay.classList.remove('sichtbar');
+        sheet.style.transform = '';
+    }, 300);
+    _zpZielInput = null;
+    _zpCallback  = null;
+}
+
+function zeitPickerUebernehmen() {
+    var wert = String(_zpH).padStart(2,'0') + ':' + String(_zpM).padStart(2,'0');
+    if (_zpZielInput) {
+        _zpZielInput.dataset.wert = wert;
+        // type="time" akzeptiert nur "HH:MM"; Text-Inputs mit data-zeit-24h="1"
+        // sind bewusst als 24h-Feld markiert (z.B. Schicht-Form) und bekommen
+        // ebenfalls nur "HH:MM". Nur reine Kiosk-Text-Inputs ohne Marker
+        // bekommen " Uhr" als Anzeigesuffix.
+        if (_zpZielInput.type === 'time' || _zpZielInput.dataset.zeit24h === '1') {
+            _zpZielInput.value = wert;
+        } else {
+            _zpZielInput.value = wert + ' Uhr';
+        }
+        _zpZielInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (_zpCallback) _zpCallback(wert);
+    schliessZeitPicker();
+}
+
+function zeitPickerLoeschen() {
+    if (_zpZielInput) {
+        _zpZielInput.dataset.wert = '';
+        _zpZielInput.value = '';
+        _zpZielInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (_zpCallback) _zpCallback('');
+    schliessZeitPicker();
+}
+
+// Abwärtskompatibilität: alte Stepper-Funktionen
+function zeitAendern(teil, delta) {
+    if (teil === 'h') zeitDrumSchritt('h', delta > 0 ? -1 : 1);
+    else zeitDrumSchritt('m', delta > 0 ? -1 : 1);
+}
+function zeitAnzeigenAktualisieren() { zeitVorschauAktualisieren(); }
+
+// ═══════════════════════════════════════════════════
+// KATEGORIE-FILTER (mit Emoji-Icons)
+// ═══════════════════════════════════════════════════
+
+let _aktiveKategorie = null; // null = Alle
+
+// Emoji-Mapping für bekannte Kategorien
+const KAT_EMOJIS = {
+    'Backwaren': '🥐', 'Brot': '🍞', 'Brötchen': '🥖',
+    'Milch': '🥛', 'Milch & Käse': '🥛', 'Käse': '🧀',
+    'Eier': '🥚', 'Honig': '🍯', 'Honig & Aufstrich': '🍯',
+    'Gemüse': '🥦', 'Obst': '🍎', 'Fleisch': '🥩',
+    'Wurst': '🌭', 'Getränke': '🥤', 'Aufstrich': '🍯',
+    'Süßwaren': '🍬', 'Nudeln': '🍝', 'Mehl': '🌾',
+    'Gewürze': '🧂', 'Öl': '🫒',
+};
+
+function rendereKategorieFilter(produkte) {
+    var leiste = document.getElementById('kat-filter-leiste');
+    if (!leiste) return;
+
+    var katSet = new Set();
+    produkte.forEach(function(p) { katSet.add(p.kategorie_name || '– Sonstige –'); });
+    var kategorien = Array.from(katSet);
+
+    if (kategorien.length <= 1) {
+        leiste.style.display = 'none';
+        _aktiveKategorie = null;
+        return;
+    }
+
+    leiste.style.display = 'flex';
+    var html = '<button class="kat-filter-btn ' + (_aktiveKategorie === null ? 'aktiv' : '') + '" onclick="setzeKategorieFilter(null)">'
+             + '<span class="kat-icon">🛒</span> Alle</button>';
+    kategorien.forEach(function(kat) {
+        var aktiv = _aktiveKategorie === kat ? 'aktiv' : '';
+        var emoji = KAT_EMOJIS[kat] || '📦';
+        html += '<button class="kat-filter-btn ' + aktiv + '" onclick="setzeKategorieFilter(\'' + escHtml(kat) + '\')">'
+              + '<span class="kat-icon">' + emoji + '</span> ' + escHtml(kat) + '</button>';
+    });
+    leiste.innerHTML = html;
+}
+
+function setzeKategorieFilter(kat) {
+    _aktiveKategorie = kat;
+    rendereKategorieFilter(alleProdukte);
+    rendereProduktliste();
+}
+
+function gefilterteProdukte() {
+    if (_aktiveKategorie === null) return alleProdukte;
+    return alleProdukte.filter(function(p) {
+        return (p.kategorie_name || '– Sonstige –') === _aktiveKategorie;
+    });
+}
+
+// ═══════════════════════════════════════════════════
+// HELFER: Datum-Input initialisieren
+// ═══════════════════════════════════════════════════
+
+function initDatumInput(inputId, isoWert) {
+    var el = document.getElementById(inputId);
+    if (!el) return;
+    if (isoWert) {
+        el.dataset.wert = isoWert;
+        var teile = isoWert.split('-');
+        el.value = teile[2] + '.' + teile[1] + '.' + teile[0];
+    } else {
+        el.dataset.wert = '';
+        el.value = '';
+    }
+}
+
+function initZeitInput(inputId, zeitWert) {
+    var el = document.getElementById(inputId);
+    if (!el) return;
+    if (zeitWert) {
+        var kurz = zeitWert.substring(0, 5);
+        el.dataset.wert = kurz;
+        el.value = kurz + ' Uhr';
+    } else {
+        el.dataset.wert = '';
+        el.value = '';
+    }
+}
+
+function getDatumWert(inputId) {
+    var el = document.getElementById(inputId);
+    return el ? (el.dataset.wert || '') : '';
+}
+
+function getZeitWert(inputId) {
+    var el = document.getElementById(inputId);
+    return el ? (el.dataset.wert || '') : '';
+}
+</script>

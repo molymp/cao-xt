@@ -1,11 +1,14 @@
 """
-CAO-XT App Manager – Start/Stop/Restart/Status für alle vier Apps.
+CAO-XT App Manager – Start/Stop/Restart/Status für alle Apps und Daemons.
 
-Verwaltet die vier Flask-Apps:
+Flask-Apps (type='web', Port-basiert):
   verwaltung  → Port 5004
   wawi        → Port 5003
   kasse       → Port 5002
   kiosk       → Port 5001
+
+Daemons (type='daemon', PID-basiert, kein Port):
+  haccp-poller  → zieht zyklisch TFA-Messwerte, schreibt Heartbeat
 
 PIDs werden in /tmp/caoxt-pids.json persistiert.
 """
@@ -30,29 +33,40 @@ LOG_DIR  = '/tmp'
 
 APPS = {
     'verwaltung': {
+        'type': 'web',
         'port': 5004,
         'app_dir': os.path.join(_REPO_ROOT, 'verwaltung-app', 'app'),
         'log': os.path.join(LOG_DIR, 'caoxt-verwaltung.log'),
     },
     'wawi': {
+        'type': 'web',
         'port': 5003,
         'app_dir': os.path.join(_REPO_ROOT, 'wawi-app', 'app'),
         'log': os.path.join(LOG_DIR, 'caoxt-wawi.log'),
     },
     'kasse': {
+        'type': 'web',
         'port': 5002,
         'app_dir': os.path.join(_REPO_ROOT, 'kasse-app', 'app'),
         'log': os.path.join(LOG_DIR, 'caoxt-kasse.log'),
     },
     'kiosk': {
+        'type': 'web',
         'port': 5001,
         'app_dir': os.path.join(_REPO_ROOT, 'kiosk-app', 'app'),
         'log': os.path.join(LOG_DIR, 'caoxt-kiosk.log'),
     },
+    'haccp-poller': {
+        'type': 'daemon',
+        'module': 'modules.haccp.poller',
+        'cwd': _REPO_ROOT,
+        'log': os.path.join(LOG_DIR, 'caoxt-haccp-poller.log'),
+    },
 }
 
-# Start-Reihenfolge: Verwaltung zuerst (Stammdaten-Basis), Kiosk zuletzt
-START_ORDER = ['verwaltung', 'wawi', 'kasse', 'kiosk']
+# Start-Reihenfolge: Verwaltung zuerst (Stammdaten-Basis), danach WaWi
+# (legt HACCP-Tabellen an), dann Poller, dann Kasse, Kiosk zuletzt.
+START_ORDER = ['verwaltung', 'wawi', 'haccp-poller', 'kasse', 'kiosk']
 
 
 def _load_pids() -> dict:
@@ -116,8 +130,16 @@ def _pid_alive(pid: int) -> bool:
 
 
 def start_app(name: str, *, print_fn=print) -> bool:
-    """Startet eine einzelne App. Gibt True bei Erfolg zurück."""
+    """Startet eine einzelne App/Daemon. Gibt True bei Erfolg zurück.
+    Dispatch nach ``type``: 'web' wartet auf Port, 'daemon' prueft Lebenszeichen."""
     cfg = APPS[name]
+    if cfg.get('type', 'web') == 'daemon':
+        return _start_daemon(name, cfg, print_fn=print_fn)
+    return _start_web_app(name, cfg, print_fn=print_fn)
+
+
+def _start_web_app(name: str, cfg: dict, *, print_fn=print) -> bool:
+    """Startet eine Flask-App (port-basiert)."""
     port = cfg['port']
     app_dir = cfg['app_dir']
     log_path = cfg['log']
@@ -173,13 +195,69 @@ def start_app(name: str, *, print_fn=print) -> bool:
     return False
 
 
-def stop_app(name: str, *, print_fn=print) -> None:
-    """Stoppt eine einzelne App."""
-    cfg = APPS[name]
-    port = cfg['port']
-    pids = _load_pids()
+def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
+    """Startet einen port-losen Hintergrund-Daemon via ``python -m <module>``.
 
+    Health-Check: kurz warten und pruefen, dass der Prozess nicht sofort
+    abgestuerzt ist. Fuer echten Gesundheitscheck dient die Logdatei bzw.
+    der app-eigene Heartbeat (z.B. ``XT_HACCP_POLLER_STATUS`` beim Poller).
+    """
+    module = cfg['module']
+    cwd    = cfg.get('cwd', _REPO_ROOT)
+    log_path = cfg['log']
+
+    # Alten Prozess ueber PID-Datei stoppen (kein Port zum Checken)
+    pids = _load_pids()
+    alt_pid = pids.get(name)
+    if alt_pid and _pid_alive(alt_pid):
+        print_fn(f"  ⟳  {name}: alter Prozess (PID {alt_pid}) läuft noch – beende …")
+        try:
+            os.kill(alt_pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        # Kurz warten, dann falls noetig KILL
+        for _ in range(10):
+            if not _pid_alive(alt_pid):
+                break
+            time.sleep(1)
+
+    log_file = open(log_path, 'a')
+    try:
+        proc = subprocess.Popen(
+            [_APP_PYTHON, '-m', module],
+            cwd=cwd,
+            stdout=log_file,
+            stderr=log_file,
+            start_new_session=True,
+        )
+    except Exception as e:
+        print_fn(f"  ✗  {name}: Start fehlgeschlagen: {e}")
+        log_file.close()
+        return False
+    finally:
+        log_file.close()
+
+    # 3 Sekunden beobachten, dann ist der DB-Pool + TFA-Ping durch.
+    for _ in range(3):
+        time.sleep(1)
+        if proc.poll() is not None:
+            print_fn(f"  ✗  {name}: Prozess abgestürzt (Exit {proc.returncode}) – Log: {log_path}")
+            return False
+
+    pids = _load_pids()
+    pids[name] = proc.pid
+    _save_pids(pids)
+    print_fn(f"  ✓  {name} gestartet (PID {proc.pid}, Daemon)")
+    return True
+
+
+def stop_app(name: str, *, print_fn=print) -> None:
+    """Stoppt eine einzelne App/Daemon."""
+    cfg = APPS[name]
+    pids = _load_pids()
     pid = pids.get(name)
+    is_daemon = cfg.get('type', 'web') == 'daemon'
+
     if pid and _pid_alive(pid):
         try:
             os.kill(pid, signal.SIGTERM)
@@ -188,10 +266,10 @@ def stop_app(name: str, *, print_fn=print) -> None:
             pass
         del pids[name]
         _save_pids(pids)
-    elif _is_port_listening(port):
-        # Kein bekannter PID, aber Port ist belegt
-        _kill_port(port)
-        print_fn(f"  ✓  {name}: Port {port} freigegeben")
+    elif not is_daemon and _is_port_listening(cfg['port']):
+        # Kein bekannter PID, aber Port ist belegt (nur Web-Apps)
+        _kill_port(cfg['port'])
+        print_fn(f"  ✓  {name}: Port {cfg['port']} freigegeben")
     else:
         print_fn(f"  –  {name}: nicht gestartet")
 
@@ -204,17 +282,25 @@ def restart_app(name: str, *, print_fn=print) -> bool:
 
 
 def status_app(name: str) -> dict:
-    """Gibt Status-Dict für eine App zurück."""
+    """Gibt Status-Dict für eine App/Daemon zurück.
+    Web-Apps gelten als 'running', wenn der Port lauscht; Daemons, wenn
+    der PID noch lebt."""
     cfg = APPS[name]
-    port = cfg['port']
+    is_daemon = cfg.get('type', 'web') == 'daemon'
     pids = _load_pids()
     pid = pids.get(name)
-    listening = _is_port_listening(port)
     alive = _pid_alive(pid) if pid else False
+    if is_daemon:
+        running = alive
+        port = None
+    else:
+        port = cfg['port']
+        running = _is_port_listening(port)
     return {
         'name': name,
+        'type': cfg.get('type', 'web'),
         'port': port,
-        'running': listening,
+        'running': running,
         'pid': pid if alive else None,
         'log': cfg['log'],
     }
@@ -244,13 +330,14 @@ def status_all() -> list[dict]:
 
 
 def print_status(*, print_fn=print) -> None:
-    """Gibt formatierten Status aller Apps aus."""
+    """Gibt formatierten Status aller Apps/Daemons aus."""
     print_fn("")
-    print_fn("  App          Port   Status")
-    print_fn("  " + "─" * 40)
+    print_fn("  App            Port     Status")
+    print_fn("  " + "─" * 45)
     for info in status_all():
         icon = "✓" if info['running'] else "✗"
         pid_str = f"  (PID {info['pid']})" if info['pid'] else ""
-        print_fn(f"  {icon}  {info['name']:<12} {info['port']}   "
+        port_str = str(info['port']) if info['port'] else "daemon"
+        print_fn(f"  {icon}  {info['name']:<14} {port_str:<8} "
                  f"{'läuft' if info['running'] else 'gestoppt'}{pid_str}")
     print_fn("")

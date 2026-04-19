@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Feiertage{% endblock %}
+
+{% block extra_style %}
+<style>
+.feiertage-kopf { display: flex; align-items: flex-end; gap: 16px;
+                  flex-wrap: wrap; margin-bottom: 20px; }
+.feiertage-kopf .field { display: flex; flex-direction: column; gap: 4px; }
+.feiertage-kopf label { font-size: 11px; font-weight: 700;
+                        text-transform: uppercase; letter-spacing: 0.05em;
+                        color: var(--text-dim); }
+.feiertage-kopf select, .feiertage-kopf input {
+    padding: 10px 12px; border: 1px solid var(--border);
+    background: var(--bg-dunkel); color: var(--text-hell);
+    border-radius: 6px; font: inherit; min-height: 44px;
+}
+.feiertage-kopf .btn-action { margin-left: auto; }
+
+table.tbl-ft { width: 100%; border-collapse: collapse; }
+table.tbl-ft th, table.tbl-ft td { padding: 10px 12px;
+                                   border-bottom: 1px solid var(--border);
+                                   text-align: left; font-size: 14px; }
+table.tbl-ft th { color: var(--text-dim); font-weight: 700;
+                  text-transform: uppercase; font-size: 11px;
+                  letter-spacing: 0.05em; }
+table.tbl-ft td.col-datum { font-variant-numeric: tabular-nums;
+                            white-space: nowrap; }
+
+.quelle-chip { display: inline-block; padding: 2px 8px; border-radius: 10px;
+               font-size: 11px; font-weight: 700; text-transform: uppercase;
+               letter-spacing: 0.04em; }
+.quelle-paket   { background: rgba(90, 130, 200, 0.2); color: #89a8d8; }
+.quelle-manuell { background: rgba(230, 170, 60, 0.2); color: #e6aa3c; }
+
+.btn-del { background: rgba(200, 60, 60, 0.2); color: #e67676;
+           border: none; border-radius: 6px; padding: 6px 12px;
+           cursor: pointer; font: inherit; min-height: 36px; }
+.btn-del:hover { background: rgba(200, 60, 60, 0.35); }
+.btn-del[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+.card-neu { margin-top: 24px; }
+.form-neu { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.form-neu .field { display: flex; flex-direction: column; gap: 4px;
+                   min-width: 180px; }
+.form-neu .field.grow { flex: 1; }
+.form-neu input {
+    padding: 10px 12px; border: 1px solid var(--border);
+    background: var(--bg-dunkel); color: var(--text-hell);
+    border-radius: 6px; font: inherit; min-height: 44px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">📅 Feiertage</h1>
+<p style="color: var(--text-dim); margin-bottom: 20px; font-size: 14px;">
+  Gesetzliche Feiertage werden aus dem Python-Paket <code>holidays</code>
+  gesynct. Manuelle Eintraege (Betriebsferien, regionale Feste) ergaenzen
+  diese Liste. Sowohl Schichtplan als auch Urlaubsberechnung im Personal-Modul
+  berueksichtigen automatisch beide Quellen.
+</p>
+
+<div class="card">
+  <div class="feiertage-kopf">
+    <div class="field">
+      <label>Aktives Bundesland</label>
+      <select id="bl-select">
+        {% for kuerzel, name in bundeslaender %}
+        <option value="{{ kuerzel }}" {% if kuerzel == bundesland %}selected{% endif %}>
+          {{ name }} ({{ kuerzel }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Jahr</label>
+      <form method="get" style="display: flex; gap: 6px;">
+        <input type="number" name="jahr" value="{{ jahr }}" min="2020" max="2099"
+               style="max-width: 110px;">
+        <button type="submit" class="btn-secondary btn">Anzeigen</button>
+      </form>
+    </div>
+    <button id="btn-sync" class="btn-action btn"
+            onclick="synchronisieren()">
+      🔄 Feiertage aus Paket uebernehmen
+    </button>
+  </div>
+
+  {% if eintraege %}
+  <table class="tbl-ft">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Name</th>
+        <th>Bundesland</th>
+        <th>Quelle</th>
+        <th style="width: 100px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in eintraege %}
+      <tr>
+        <td class="col-datum">
+          {{ f.DATUM.strftime('%a, %d.%m.%Y') if f.DATUM.strftime else f.DATUM }}
+        </td>
+        <td>{{ f.NAME }}</td>
+        <td>{{ f.BUNDESLAND }}</td>
+        <td><span class="quelle-chip quelle-{{ f.QUELLE }}">{{ f.QUELLE }}</span></td>
+        <td>
+          {% if f.QUELLE == 'manuell' %}
+          <button class="btn-del"
+                  onclick="loeschen({{ f.REC_ID }}, '{{ f.NAME|replace("'", "\\'") }}')">
+            Loeschen
+          </button>
+          {% else %}
+          <button class="btn-del" disabled title="Paket-Eintraege sind fix">–</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-dim); padding: 20px 0; text-align: center;">
+    Noch keine Feiertage fuer {{ jahr }} / {{ bundesland }} eingetragen.
+    Klicke auf <strong>„Feiertage aus Paket uebernehmen“</strong>.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card card-neu">
+  <h3 style="margin-bottom: 12px; font-size: 16px;">+ Manueller Feiertag</h3>
+  <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 14px;">
+    Fuer Betriebsferien, Ortsfeste oder sonstige lokale Tage. Gilt fuer
+    das aktive Bundesland ({{ bundesland }}).
+  </p>
+  <form class="form-neu" onsubmit="event.preventDefault(); anlegen();">
+    <div class="field">
+      <label>Datum</label>
+      <input type="date" id="neu-datum" required>
+    </div>
+    <div class="field grow">
+      <label>Name</label>
+      <input type="text" id="neu-name" required
+             placeholder="z.B. Betriebsferien, Ortsfest">
+    </div>
+    <button type="submit" class="btn">Anlegen</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const AKTUELLES_JAHR = {{ jahr }};
+
+document.getElementById('bl-select').addEventListener('change', async (e) => {
+  const neu = e.target.value;
+  const r = await api('POST', '/api/feiertage/bundesland', { bundesland: neu });
+  if (r.ok) {
+    toast('Bundesland auf ' + neu + ' gesetzt', 'ok');
+    // Neu laden, damit die Liste aktualisiert wird
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+  }
+});
+
+async function synchronisieren() {
+  const btn = document.getElementById('btn-sync');
+  btn.disabled = true;
+  const r = await api('POST', '/api/feiertage/sync', { jahr: AKTUELLES_JAHR });
+  btn.disabled = false;
+  if (r.ok) {
+    toast(r.eingefuegt + ' neue Feiertage eingefuegt', 'ok');
+    setTimeout(() => location.reload(), 500);
+  } else {
+    toast(r.msg || 'Fehler beim Sync', 'err');
+  }
+}
+
+async function anlegen() {
+  const datum = document.getElementById('neu-datum').value;
+  const name = document.getElementById('neu-name').value.trim();
+  if (!datum || !name) return;
+  const r = await api('POST', '/api/feiertage/manuell', { datum, name });
+  if (r.ok) {
+    toast('Angelegt', 'ok');
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+  }
+}
+
+async function loeschen(rec_id, name) {
+  if (!confirm('„' + name + '“ wirklich loeschen?')) return;
+  const r = await api('DELETE', '/api/feiertage/' + rec_id);
+  if (r.ok) {
+    toast('Geloescht', 'ok');
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+  }
+}
+</script>
+{% endblock %}

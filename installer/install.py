@@ -35,10 +35,11 @@ _BANNER = r"""
 """
 
 _APP_LABELS = {
-    'verwaltung': 'Verwaltungs-App  (Port 5004)',
-    'wawi':       'WaWi-App         (Port 5003)',
-    'kasse':      'Kassen-App       (Port 5002)',
-    'kiosk':      'Kiosk-App        (Port 5001)',
+    'verwaltung':   'Verwaltungs-App    (Port 5004)',
+    'wawi':         'WaWi-App           (Port 5003)',
+    'kasse':        'Kassen-App         (Port 5002)',
+    'kiosk':        'Kiosk-App          (Port 5001)',
+    'haccp-poller': 'HACCP-Poller       (TFA-Temperatursensoren, Daemon)',
 }
 
 
@@ -159,25 +160,54 @@ def phase3_environment(non_interactive: bool = False) -> str:
     return env
 
 
+def _tfa_key_vorhanden() -> bool:
+    """True, wenn TFA_API_KEY in config/Env gesetzt ist (-> Poller sinnvoll)."""
+    # Env-Var hat Vorrang, dann wawi-app/app/config.py
+    if os.environ.get('TFA_API_KEY'):
+        return True
+    try:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, 'wawi-app', 'app'))
+        import config as wc  # noqa: WPS433
+        return bool(getattr(wc, 'TFA_API_KEY', ''))
+    except Exception:
+        return False
+
+
 def phase4_app_selection(non_interactive: bool = False) -> list[str]:
     """Phase 4: App-Auswahl."""
     _section("Phase 4: App-Auswahl")
 
     if non_interactive:
-        # Alle Apps starten
-        return list(START_ORDER)
+        # Im non-interactive Mode: alle Web-Apps, Poller nur wenn TFA-Key da.
+        auswahl = [a for a in START_ORDER
+                   if a != 'haccp-poller' or _tfa_key_vorhanden()]
+        return auswahl
 
     print("  Welche Apps sollen gestartet werden?")
     print("  (Verwaltungs-App wird immer gestartet)")
     print()
 
     selected = ['verwaltung']  # immer
-    print(f"  ✓ verwaltung  – Verwaltungs-App (Pflicht)")
+    print(f"  ✓ verwaltung      – Verwaltungs-App (Pflicht)")
 
     for app in ['wawi', 'kasse', 'kiosk']:
         label = _APP_LABELS[app]
         if _ask_yes_no(f"  {label} starten?", True):
             selected.append(app)
+
+    # HACCP-Poller: nur anbieten, wenn TFA-Key konfiguriert ist, sonst
+    # wuerde der Daemon beim Start sofort mit 'TFA_API_KEY nicht
+    # konfiguriert' abbrechen.
+    if _tfa_key_vorhanden():
+        label = _APP_LABELS['haccp-poller']
+        if _ask_yes_no(f"  {label} starten?", True):
+            # nach 'wawi' einsortieren (Tabellen existieren dann)
+            idx = selected.index('wawi') + 1 if 'wawi' in selected \
+                  else len(selected)
+            selected.insert(idx, 'haccp-poller')
+    else:
+        print("  –  HACCP-Poller übersprungen (TFA_API_KEY nicht gesetzt)")
+        print("     Später mit  ./dorfkern-ctl start haccp-poller  starten.")
 
     return selected
 
@@ -201,12 +231,15 @@ def phase5_start_and_report(selected_apps: list[str]) -> None:
         print("  Adressen:")
         for app in selected_apps:
             cfg = APPS[app]
-            print(f"    {app:<12}  http://localhost:{cfg['port']}")
+            if cfg.get('type', 'web') == 'daemon':
+                print(f"    {app:<14}  (Daemon, kein HTTP-Port)")
+            else:
+                print(f"    {app:<14}  http://localhost:{cfg['port']}")
         print()
         print("  Logs:")
         for app in selected_apps:
             cfg = APPS[app]
-            print(f"    {app:<12}  {cfg['log']}")
+            print(f"    {app:<14}  {cfg['log']}")
     else:
         failed = [a for a in selected_apps if not results.get(a, False)]
         print(f"  ⚠  Folgende Apps konnten nicht gestartet werden: {', '.join(failed)}")

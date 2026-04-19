@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block title %}Abwesenheiten{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+          flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+
+/* Touch-taugliche Buttons: min-height 44px */
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 10px 16px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       min-height: 44px; display: inline-flex; align-items: center; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel);
+                 border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+
+/* Filter-Leiste: grosse Felder, klare Labels */
+.filter-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+               background: white; padding: 14px 16px; border-radius: var(--radius);
+               box-shadow: var(--schatten); margin-bottom: 16px; }
+.filter-form .field { display: flex; flex-direction: column; gap: 4px;
+                      min-width: 160px; }
+.filter-form label { font-size: 11px; font-weight: 800; text-transform: uppercase;
+                     letter-spacing: 0.05em; color: var(--gruen-dunkel); }
+.filter-form input, .filter-form select {
+    padding: 10px 12px; border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein); font-size: 14px; min-height: 44px;
+    font-family: inherit; background: white;
+}
+
+/* Typ-Filter als gut tappbare Chips */
+.typ-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.typ-filter a { padding: 8px 14px; min-height: 40px; display: inline-flex;
+                align-items: center; border: 2px solid var(--creme-dunkel);
+                border-radius: 20px; font-weight: 700; font-size: 13px;
+                color: var(--text-mitte); text-decoration: none;
+                background: white; -webkit-tap-highlight-color: transparent; }
+.typ-filter a:hover { border-color: var(--gruen-mitte); }
+.typ-filter a.sel   { background: var(--gruen-blass);
+                      border-color: var(--gruen-mitte); color: var(--gruen-dunkel); }
+
+.abw-table { width: 100%; background: white; border-collapse: collapse;
+             border-radius: var(--radius); overflow: hidden;
+             box-shadow: var(--schatten); }
+.abw-table th { background: var(--gruen-blass); padding: 12px 14px;
+                text-align: left; font-size: 12px; font-weight: 800;
+                text-transform: uppercase; letter-spacing: 0.06em;
+                color: var(--gruen-dunkel); }
+.abw-table td { padding: 12px 14px; border-top: 1px solid var(--creme-dunkel);
+                font-size: 14px; vertical-align: middle; }
+.abw-table tr.klick { cursor: pointer; }
+.abw-table tr.klick:hover { background: var(--creme); }
+.abw-table .col-datum { font-variant-numeric: tabular-nums; white-space: nowrap;
+                        color: var(--text-mitte); }
+.abw-table .ma-name { font-weight: 700; }
+
+.typ-chip { display: inline-block; padding: 3px 10px; border-radius: 10px;
+            font-size: 11px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 0.04em; }
+.typ-krank       { background: #fde8e8; color: #a83232; }
+.typ-kind_krank  { background: #fdf1d8; color: #8a5e1a; }
+.typ-schulung    { background: #e0ebf5; color: #2e5a7a; }
+.typ-unbezahlt   { background: #e8e8e8; color: #555; }
+.typ-sonstiges   { background: #f0e8fd; color: #5b3e7a; }
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
+        font-size: 11px; font-weight: 800; letter-spacing: 0.04em; }
+.pill-ok    { background: #e8f5e0; color: #2e7a2e; }
+.pill-warn  { background: #fef1db; color: #7a5a00; }
+.pill-grau  { background: var(--grau-hell); color: var(--text-mitte); }
+
+.btn-touch { min-height: 38px; padding: 6px 14px; font-size: 12px;
+             display: inline-flex; align-items: center; }
+
+.empty { text-align: center; padding: 50px 20px; color: var(--grau-mitte);
+         background: white; border-radius: var(--radius); box-shadow: var(--schatten); }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+
+/* Zeile auf schmalem Screen: Spalten-Stacking */
+@media (max-width: 800px) {
+  .abw-table thead { display: none; }
+  .abw-table tr { display: block; padding: 12px 14px;
+                  border-top: 1px solid var(--creme-dunkel); }
+  .abw-table td { display: block; padding: 4px 0; border: none; }
+  .abw-table .ma-name { font-size: 15px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>Abwesenheiten</h1>
+  <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">
+     ← Mitarbeiter
+  </a>
+  <a class="btn-secondary btn" href="{{ url_for('wawi_personal.schichtplan') }}">
+     → Schichtplan
+  </a>
+</div>
+
+<form method="get" class="filter-form">
+  <div class="field">
+    <label>Von</label>
+    <input type="date" name="von" value="{{ von.isoformat() }}">
+  </div>
+  <div class="field">
+    <label>Bis</label>
+    <input type="date" name="bis" value="{{ bis.isoformat() }}">
+  </div>
+  {# Typ als Hidden: wird von den Filter-Chips unten gesetzt #}
+  <input type="hidden" name="typ" value="{{ typ_filter or '' }}">
+  <div class="field" style="min-width: 0;">
+    <button type="submit" class="btn">Filtern</button>
+  </div>
+</form>
+
+{# Typ-Filter als grosse Chip-Leiste: erspart das kleine Dropdown #}
+<div class="typ-filter">
+  <a href="{{ url_for('wawi_personal.abwesenheiten_uebersicht',
+                      von=von.isoformat(), bis=bis.isoformat()) }}"
+     class="{% if not typ_filter %}sel{% endif %}">Alle</a>
+  {% for t in typen %}
+  <a href="{{ url_for('wawi_personal.abwesenheiten_uebersicht',
+                      von=von.isoformat(), bis=bis.isoformat(), typ=t) }}"
+     class="{% if typ_filter == t %}sel{% endif %}">
+    <span class="typ-chip typ-{{ t }}" style="margin-right: 6px;">{{ typ_labels[t] }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if eintraege %}
+<table class="abw-table">
+  <thead>
+    <tr>
+      <th style="width: 200px;">Mitarbeiter</th>
+      <th style="width: 160px;">Typ</th>
+      <th style="width: 220px;">Zeitraum</th>
+      <th style="width: 100px;">Umfang</th>
+      <th style="width: 170px;">Status</th>
+      <th>Bemerkung</th>
+      <th style="width: 110px;"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in eintraege %}
+    <tr class="klick"
+        onclick="window.location='{{ url_for('wawi_personal.detail', pers_id=a.PERS_ID) }}#abwesenheit-card'">
+      <td><span class="ma-name">{{ a.VNAME }} {{ a.NAME }}</span></td>
+      <td><span class="typ-chip typ-{{ a.TYP }}">{{ typ_labels[a.TYP] }}</span></td>
+      <td class="col-datum">
+        {{ a.VON.strftime('%d.%m.%Y') }}
+        {% if a.VON != a.BIS %}<br>– {{ a.BIS.strftime('%d.%m.%Y') }}{% endif %}
+      </td>
+      <td class="col-datum">
+        {% if a.GANZTAGS %}ganztags
+        {% else %}{{ ('%.1f'|format(a.STUNDEN))|replace('.', ',') }}&nbsp;h{% endif %}
+      </td>
+      <td>
+        {% if a.BEZAHLT %}
+          <span class="pill pill-ok" title="Lohnfortzahlung">bezahlt</span>
+        {% else %}
+          <span class="pill pill-grau" title="keine Lohnfortzahlung">unbezahlt</span>
+        {% endif %}
+      </td>
+      <td style="font-size: 12px; color: var(--text-mitte);">{{ a.BEMERKUNG or '' }}</td>
+      <td onclick="event.stopPropagation();">
+        <a class="btn btn-secondary btn-touch"
+           href="{{ url_for('wawi_personal.detail', pers_id=a.PERS_ID) }}#abwesenheit-card">
+           Details →
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <p style="font-size: 15px;">Keine Abwesenheiten im gewählten Zeitraum.</p>
+</div>
+{% endif %}
+
+{% endblock %}

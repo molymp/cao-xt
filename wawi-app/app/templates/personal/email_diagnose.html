@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block title %}Email-Konfiguration – Diagnose{% endblock %}
+
+{% block extra_style %}
+<style>
+  .diag-wrap { max-width: 980px; margin: 0 auto; }
+  .diag-wrap h1 { margin: 0 0 8px 0; }
+  .diag-wrap .hint { color: var(--grau-mitte); margin-bottom: 20px; }
+  .diag-card { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+               padding: 16px 20px; margin-bottom: 16px; }
+  .diag-card h2 { margin: 0 0 12px 0; font-size: 16px; }
+  table.diag { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.diag th, table.diag td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; }
+  table.diag th { background: var(--gruen-blass); font-weight: 700; }
+  table.diag tr:last-child td { border-bottom: none; }
+  .q-registry { background: #d6f2d2; color: #1b5e20; }
+  .q-env      { background: #fff3cd; color: #7a5a00; }
+  .q-ini      { background: #e0e7ff; color: #283593; }
+  .q-fallback { background: #eee; color: #666; }
+  .q-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700;
+             font-size: 12px; text-transform: uppercase; }
+  .mono { font-family: monospace; }
+  .dev-an  { color: #c62828; font-weight: 700; }
+  .dev-aus { color: #2e7d32; font-weight: 700; }
+  .leer { color: #aaa; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="diag-wrap">
+  <h1>📧 Email-Konfiguration – Diagnose</h1>
+  <p class="hint">
+    Zeigt pro Konfigurations-Key, aus welcher Quelle der Wert gelesen wird.
+    Prioritaet: <b>REGISTRY</b> &gt; <b>ENV</b> &gt; <b>caoxt.ini</b> &gt; Fallback.
+    Passwoerter werden maskiert. Diese Seite schreibt nichts.
+  </p>
+
+  <div class="diag-card">
+    <h2>Effektive Konfiguration</h2>
+    <table class="diag">
+      <thead>
+        <tr><th>Key</th><th>Wert</th><th>Quelle</th><th>Details</th></tr>
+      </thead>
+      <tbody>
+        {% for key, src in diag.sources.items() %}
+        <tr>
+          <td class="mono">{{ key }}</td>
+          <td class="mono">
+            {% if key == 'dev_mode' %}
+              {% if diag.config.dev_mode %}<span class="dev-an">TRUE (aktiv)</span>
+              {% else %}<span class="dev-aus">false</span>{% endif %}
+            {% elif key == 'smtp_tls' %}
+              {{ 'true' if diag.config.smtp_tls else 'false' }}
+            {% elif diag.config[key] in ('', None) %}
+              <span class="leer">(leer)</span>
+            {% else %}
+              {{ diag.config[key] }}
+            {% endif %}
+          </td>
+          <td><span class="q-badge q-{{ src.quelle }}">{{ src.quelle }}</span></td>
+          <td class="mono">
+            {{ src.detail }}
+            {% if src.quelle != 'fallback' and src.roh not in ('', None) %}
+              → <b>{{ src.roh }}</b>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="diag-card">
+    <h2>Roh-Daten: CAO-REGISTRY <span class="mono">MAIN%EMAIL</span></h2>
+    <p style="margin:0 0 8px 0; font-size: 13px;">
+      <b>SQL:</b> <span class="mono">{{ diag.registry_debug.sql }}</span><br>
+      <b>Rows:</b> {{ diag.registry_debug.rows }}
+      {% if diag.registry_debug.mainkeys %}
+        &nbsp;|&nbsp; <b>MAINKEY-Varianten gefunden:</b>
+        {% for mk in diag.registry_debug.mainkeys %}
+          <span class="mono">{{ mk }}</span>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      {% endif %}
+      {% if diag.registry_debug.fehler %}
+        <br><b style="color:#c62828;">DB-Fehler:</b>
+        <span class="mono">{{ diag.registry_debug.fehler }}</span>
+      {% endif %}
+    </p>
+    {% if diag.registry %}
+      <table class="diag">
+        <thead><tr><th>NAME</th><th>Wert</th></tr></thead>
+        <tbody>
+          {% for name, wert in diag.registry.items() %}
+            <tr><td class="mono">{{ name }}</td><td class="mono">{{ wert }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="leer">Kein verwertbarer Wert aus den {{ diag.registry_debug.rows }}
+        gefundenen Zeile(n) extrahiert
+        {% if diag.registry_debug.rows == 0 %}(Query hat nichts geliefert){% endif %}.</p>
+    {% endif %}
+  </div>
+
+  <div class="diag-card">
+    <h2>ENV-Variablen <span class="mono">XT_EMAIL_*</span></h2>
+    {% if diag.env %}
+      <table class="diag">
+        <thead><tr><th>Variable</th><th>Wert</th></tr></thead>
+        <tbody>
+          {% for name, wert in diag.env.items() %}
+            <tr><td class="mono">{{ name }}</td><td class="mono">{{ wert }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="leer">Keine <span class="mono">XT_EMAIL_*</span>-Variablen gesetzt.</p>
+    {% endif %}
+  </div>
+
+  <div class="diag-card">
+    <h2>caoxt.ini <span class="mono">[Email]</span>-Sektion</h2>
+    <p>{% if diag.ini_vorhanden %}Sektion vorhanden.{% else %}
+      <span class="leer">Sektion nicht vorhanden.</span>{% endif %}</p>
+  </div>
+
+  <p><a href="{{ url_for('wawi_personal.uebersicht') }}">← zurueck zur Personal-Uebersicht</a></p>
+</div>
+{% endblock %}

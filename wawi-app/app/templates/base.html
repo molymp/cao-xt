@@ -287,6 +287,60 @@ a { text-decoration: none; color: inherit; }
 }
 .kpi-card.gruen .kpi-wert { color: var(--gruen-mitte); }
 .kpi-card.rot   .kpi-wert { color: var(--rot); }
+.kpi-card.gelb  .kpi-wert { color: #b86f1a; }
+.kpi-card.grau  .kpi-wert { color: var(--grau-mitte); }
+
+/* ── Ampel-Widget (HACCP-Dashboard) ─────────────────────── */
+.ampel-widget { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+.ampel-kugel  { width: 46px; height: 46px; border-radius: 50%;
+                border: 3px solid #0001; flex-shrink: 0;
+                box-shadow: inset 0 -4px 8px rgba(0,0,0,0.12),
+                            0 0 0 2px white, 0 2px 6px rgba(0,0,0,0.08); }
+.ampel-kugel.gruen { background: radial-gradient(circle at 30% 30%, #5db85d, #2e7a2e); }
+.ampel-kugel.gelb  { background: radial-gradient(circle at 30% 30%, #f3c155, #c9881a); }
+.ampel-kugel.rot   { background: radial-gradient(circle at 30% 30%, #e25858, #a71d1d);
+                     animation: ampel-puls 1.2s ease-in-out infinite; }
+.ampel-kugel.grau  { background: radial-gradient(circle at 30% 30%, #b8b8b8, #6a6a6a); }
+@keyframes ampel-puls { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+.ampel-text { flex: 1; }
+.ampel-text .haupt { font-size: 15px; font-weight: 700; color: var(--gruen-dunkel);
+                     line-height: 1.2; }
+.ampel-text .detail { font-size: 11px; color: var(--text-hell); margin-top: 2px; }
+.ampel-cta { display: inline-block; margin-top: 8px; font-size: 12px;
+             font-weight: 700; text-decoration: none;
+             padding: 6px 12px; border-radius: var(--radius-klein);
+             background: var(--gruen-mitte); color: white; }
+.ampel-cta:hover { background: var(--gruen-dunkel); }
+.ampel-cta.rot   { background: var(--rot); }
+.ampel-cta.rot:hover { background: #8f1818; }
+
+/* ── Personal-Widget (Abwesenheiten + offene Urlaubsantraege) ── */
+.personal-widget { grid-column: span 2; }
+@media (max-width: 640px) { .personal-widget { grid-column: auto; } }
+.personal-widget .pers-zeile { display: flex; align-items: flex-start; gap: 12px;
+                               margin-top: 10px; padding-top: 10px;
+                               border-top: 1px solid var(--creme-dunkel); }
+.personal-widget .pers-zeile:first-of-type { border-top: none; padding-top: 0; }
+.personal-widget .pers-nr { width: 46px; height: 46px; border-radius: 50%;
+                            flex-shrink: 0; display: flex; align-items: center;
+                            justify-content: center; font-family: 'Lobster', Georgia, serif;
+                            font-size: 26px; color: white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+.personal-widget .pers-nr.gruen { background: var(--gruen-mitte); }
+.personal-widget .pers-nr.gelb  { background: #c9881a; }
+.personal-widget .pers-nr.rot   { background: var(--rot); }
+.personal-widget .pers-text { flex: 1; min-width: 0; }
+.personal-widget .pers-text .haupt { font-size: 14px; font-weight: 700;
+                                     color: var(--gruen-dunkel); line-height: 1.3; }
+.personal-widget .pers-text .detail { font-size: 12px; color: var(--text-hell);
+                                      margin-top: 2px; line-height: 1.4; }
+.personal-widget .pers-liste { margin: 4px 0 0 0; padding-left: 0; list-style: none;
+                               font-size: 12px; }
+.personal-widget .pers-liste li { padding: 2px 0; color: var(--text-hell); }
+.personal-widget .pers-liste li.mehr { color: var(--grau-mitte); font-style: italic; }
+.personal-widget .pers-liste a { color: var(--gruen-dunkel); font-weight: 700;
+                                 text-decoration: none; }
+.personal-widget .pers-liste a:hover { text-decoration: underline; }
 
 /* ── Meldungen ───────────────────────────────────────────── */
 .alert {
@@ -412,9 +466,35 @@ a { text-decoration: none; color: inherit; }
           </div>
         </div>
 
-        <a href="/coming-soon?modul=Mitarbeiter" class="sidebar-item">
-          <span class="icon">🪪</span> Mitarbeiter
-        </a>
+        <div class="sidebar-group {% if request.path.startswith('/wawi/personal') %}open{% endif %}"
+             id="grp-personal">
+          <button class="sidebar-group-toggle" onclick="toggleGrp('grp-personal')">
+            <span class="icon">🪪</span> Personal
+            <span class="toggle-arrow">▶</span>
+          </button>
+          <div class="sidebar-group-items">
+            <a href="/wawi/personal/"
+               class="sidebar-sub-item {% if request.path == '/wawi/personal/' or (request.path.startswith('/wawi/personal/') and not request.path.startswith('/wawi/personal/schicht')) %}aktiv{% endif %}">
+              <span class="sub-icon">👥</span> Mitarbeiter
+            </a>
+            <a href="/wawi/personal/schichtplan/"
+               class="sidebar-sub-item {% if request.path.startswith('/wawi/personal/schichtplan') %}aktiv{% endif %}">
+              <span class="sub-icon">📅</span> Schichtplan
+            </a>
+            <a href="/wawi/personal/schicht/"
+               class="sidebar-sub-item {% if request.path.startswith('/wawi/personal/schicht/') or request.path == '/wawi/personal/schicht' %}aktiv{% endif %}">
+              <span class="sub-icon">🕐</span> Schichten
+            </a>
+            <a href="/wawi/personal/abwesenheiten/kalender"
+               class="sidebar-sub-item {% if request.path.startswith('/wawi/personal/abwesenheiten') %}aktiv{% endif %}">
+              <span class="sub-icon">🗓️</span> Abwesenheiten
+            </a>
+            <a href="/wawi/personal/arbeitszeitkonten"
+               class="sidebar-sub-item {% if request.path.startswith('/wawi/personal/arbeitszeitkonten') %}aktiv{% endif %}">
+              <span class="sub-icon">⏱️</span> Arbeitszeitkonten
+            </a>
+          </div>
+        </div>
       </div>
 
       <hr class="sidebar-divider">
@@ -524,7 +604,7 @@ a { text-decoration: none; color: inherit; }
         <a href="/coming-soon?modul=Lohnbuchhaltung" class="sidebar-item">
           <span class="icon">💼</span> Lohnbuchhaltung
         </a>
-        <a href="/coming-soon?modul=Hygienekonzept (HACCP)" class="sidebar-item">
+        <a href="{{ url_for('haccp.dashboard') }}" class="sidebar-item">
           <span class="icon">🧼</span> Hygiene / HACCP
         </a>
         <a href="/wawi/handbuch" class="sidebar-item">

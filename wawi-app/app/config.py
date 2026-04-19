@@ -33,6 +33,13 @@ VERWALTUNG_PORT = int(os.environ.get('VERWALTUNG_PORT', '5004'))
 
 FIRMA_NAME = os.environ.get('FIRMA_NAME', 'Habacher Dorfladen')
 
+# ── HACCP / TFA Cloud-API (Temperatursensoren) ────────────────
+# API-Key im config_local.py oder als Env-Var setzen. NICHT committen.
+TFA_API_KEY  = os.environ.get('TFA_API_KEY', '')
+TFA_BASE_URL = os.environ.get('TFA_BASE_URL', 'https://go.tfa.me')
+# Poll-Intervall des Background-Workers in Sekunden.
+HACCP_POLL_INTERVALL_S = int(os.environ.get('HACCP_POLL_INTERVALL_S', '120'))
+
 # ── Lokale Overrides (config_local.py, nicht in git) ─────────
 try:
     from config_local import *   # noqa: F401, F403

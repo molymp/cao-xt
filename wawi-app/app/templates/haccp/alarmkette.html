@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}HACCP Alarmkette{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 9px 16px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 13px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.btn-danger { background: #c44; color: white; }
+.btn-danger:hover { background: #a33; }
+
+.card { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+        padding: 16px 20px; margin-bottom: 18px; }
+.card h2 { margin: 0 0 6px 0; font-size: 16px; color: var(--gruen-dunkel); }
+.card .hinweis { font-size: 13px; color: var(--text-mitte); margin-bottom: 14px; }
+
+.stufe-box { border-left: 5px solid var(--gruen-mitte); padding: 12px 16px;
+             background: #fcfaf5; border-radius: var(--radius-klein);
+             margin-bottom: 12px; }
+.stufe-box.stufe-1 { border-left-color: #2e7a2e; }
+.stufe-box.stufe-2 { border-left-color: #e69a2a; }
+.stufe-box.stufe-3 { border-left-color: var(--rot); }
+.stufe-box h3 { margin: 0 0 8px 0; font-size: 14px; color: var(--gruen-dunkel); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--creme-dunkel); }
+th { font-weight: 700; color: var(--gruen-dunkel); font-size: 12px; }
+
+.form-row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap;
+            margin-top: 18px; padding-top: 14px;
+            border-top: 1px dashed var(--creme-dunkel); }
+.form-row label { display: flex; flex-direction: column; font-size: 11px;
+                  font-weight: 700; color: var(--gruen-dunkel); }
+.form-row input, .form-row select { padding: 7px 9px; font-size: 13px;
+                                     border: 1px solid var(--creme-dunkel);
+                                     border-radius: var(--radius-klein);
+                                     font-family: inherit; margin-top: 3px; }
+.form-row input[type=text] { min-width: 160px; }
+.form-row input[type=email] { min-width: 200px; }
+.form-row input[type=number] { width: 80px; }
+
+.empty { text-align: center; padding: 12px; color: var(--grau-mitte); font-style: italic; font-size: 13px; }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>📧 Alarmkette</h1>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.dashboard') }}">← Dashboard</a>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.alarme') }}">Alarme</a>
+</div>
+
+<div class="card">
+  <h2>Empfaenger je Eskalationsstufe</h2>
+  <p class="hinweis">
+    Bei Auftreten eines Alarms werden zuerst <b>Stufe-1</b>-Empfaenger benachrichtigt
+    (sofort, wenn <i>Delay = 0 min</i>). Wird der Alarm nicht innerhalb der eingestellten
+    Delay-Zeit quittiert und geschlossen, eskaliert er an <b>Stufe 2</b> und schliesslich
+    <b>Stufe 3</b>. Pro Stufe kann es mehrere Empfaenger geben.
+  </p>
+
+  {% set nach_stufe = {1: [], 2: [], 3: []} %}
+  {% for e in eintraege %}
+    {% set _ = nach_stufe[e.STUFE|int].append(e) %}
+  {% endfor %}
+
+  {% for stufe in [1, 2, 3] %}
+  <div class="stufe-box stufe-{{ stufe }}">
+    <h3>Stufe {{ stufe }}
+      {% if stufe == 1 %}— Erstbenachrichtigung (Kuechenleitung, Schichtleiter)
+      {% elif stufe == 2 %}— Eskalation (Betriebsleitung)
+      {% else %}— Eskalation (Geschaeftsleitung, QS)
+      {% endif %}
+    </h3>
+
+    {% if nach_stufe[stufe] %}
+    <table>
+      <thead>
+        <tr><th>Name</th><th>E-Mail</th><th>Delay (min)</th><th>Angelegt</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for e in nach_stufe[stufe] %}
+        <tr>
+          <td>{{ e.NAME }}</td>
+          <td>{{ e.EMAIL }}</td>
+          <td>{{ e.DELAY_MIN }}</td>
+          <td>{% if e.CREATED_AT %}{{ e.CREATED_AT.strftime('%d.%m.%Y') }}{% else %}—{% endif %}</td>
+          <td style="text-align: right;">
+            <form method="post"
+                  action="{{ url_for('haccp.alarmkette_loeschen', rec_id=e.REC_ID) }}"
+                  onsubmit="return confirm('Empfaenger wirklich entfernen?');"
+                  style="display: inline;">
+              <button class="btn btn-danger" type="submit">Entfernen</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">Keine Empfaenger in dieser Stufe.</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <form method="post" action="{{ url_for('haccp.alarmkette_anlegen') }}" class="form-row">
+    <label>Stufe
+      <select name="stufe" required>
+        <option value="1">1 — sofort</option>
+        <option value="2">2 — Eskalation</option>
+        <option value="3">3 — Chef</option>
+      </select>
+    </label>
+    <label>Name
+      <input type="text" name="name" required maxlength="100"
+             placeholder="z.B. Kuechenleitung">
+    </label>
+    <label>E-Mail
+      <input type="email" name="email" required maxlength="255"
+             placeholder="name@firma.de">
+    </label>
+    <label>Delay (min)
+      <input type="number" name="delay_min" min="0" max="1440" value="0">
+    </label>
+    <button class="btn" type="submit">Empfaenger hinzufuegen</button>
+  </form>
+</div>
+{% endblock %}

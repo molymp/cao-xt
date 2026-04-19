@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Benachrichtigungen{% endblock %}
+
+{% block extra_style %}
+<style>
+table.tbl-bn { width: 100%; border-collapse: collapse; }
+table.tbl-bn th, table.tbl-bn td { padding: 10px 12px;
+                                   border-bottom: 1px solid var(--border);
+                                   text-align: left; font-size: 14px; }
+table.tbl-bn th { color: var(--text-dim); font-weight: 700;
+                  text-transform: uppercase; font-size: 11px;
+                  letter-spacing: 0.05em; }
+table.tbl-bn td.col-schmal { white-space: nowrap; }
+
+.bereich-chip { display: inline-block; padding: 2px 8px; border-radius: 10px;
+                font-size: 11px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: 0.04em; background: rgba(90,130,200,0.2);
+                color: #89a8d8; }
+.status-chip { display: inline-block; padding: 2px 8px; border-radius: 10px;
+               font-size: 11px; font-weight: 700; text-transform: uppercase;
+               letter-spacing: 0.04em; cursor: pointer; }
+.status-aktiv   { background: rgba(90, 170, 90, 0.2); color: #8ccc8c; }
+.status-inaktiv { background: rgba(160, 160, 160, 0.2); color: #a0a0a0; }
+
+.btn-del { background: rgba(200, 60, 60, 0.2); color: #e67676;
+           border: none; border-radius: 6px; padding: 6px 12px;
+           cursor: pointer; font: inherit; min-height: 36px; }
+.btn-del:hover { background: rgba(200, 60, 60, 0.35); }
+
+.card-neu { margin-top: 24px; }
+.form-neu { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.form-neu .field { display: flex; flex-direction: column; gap: 4px;
+                   min-width: 180px; }
+.form-neu .field.grow { flex: 1; }
+.form-neu select, .form-neu input {
+    padding: 10px 12px; border: 1px solid var(--border);
+    background: var(--bg-dunkel); color: var(--text-hell);
+    border-radius: 6px; font: inherit; min-height: 44px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">✉️ Benachrichtigungs-Empfaenger</h1>
+<p style="color: var(--text-dim); margin-bottom: 20px; font-size: 14px;">
+  E-Mail-Verteiler fuer automatische Hinweise aus den Apps. Aktuell versenden
+  wir Mails bei neuen Abwesenheits- und Urlaubsantraegen vom Mitarbeiter
+  (Kiosk-Self-Service).
+  Der SMTP-Versand wird im Datenbank-Konfigurationsbereich eingerichtet.
+</p>
+
+<div class="card">
+  {% if eintraege %}
+  <table class="tbl-bn">
+    <thead>
+      <tr>
+        <th style="width: 220px;">Bereich</th>
+        <th>E-Mail</th>
+        <th style="width: 220px;">Name</th>
+        <th class="col-schmal" style="width: 100px;">Status</th>
+        <th class="col-schmal" style="width: 100px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in eintraege %}
+      <tr>
+        <td><span class="bereich-chip">{{ e.BEREICH }}</span></td>
+        <td>{{ e.EMAIL }}</td>
+        <td>{{ e.NAME or '' }}</td>
+        <td>
+          <span class="status-chip {% if e.AKTIV %}status-aktiv{% else %}status-inaktiv{% endif %}"
+                onclick="toggleAktiv({{ e.REC_ID }}, {{ 0 if e.AKTIV else 1 }})">
+            {{ 'aktiv' if e.AKTIV else 'inaktiv' }}
+          </span>
+        </td>
+        <td>
+          <button class="btn-del"
+                  onclick="loeschen({{ e.REC_ID }}, '{{ e.EMAIL|replace("'", "\\'") }}')">
+            Loeschen
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-dim); padding: 20px 0; text-align: center;">
+    Noch keine Empfaenger eingetragen. Fuegen Sie unten den ersten hinzu.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card card-neu">
+  <h3 style="margin-bottom: 12px; font-size: 16px;">+ Neuer Empfaenger</h3>
+  <form class="form-neu" onsubmit="event.preventDefault(); anlegen();">
+    <div class="field">
+      <label>Bereich</label>
+      <select id="neu-bereich" required>
+        {% for k, label in bereiche %}
+        <option value="{{ k }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field grow">
+      <label>E-Mail</label>
+      <input type="email" id="neu-email" required
+             placeholder="name@firma.de">
+    </div>
+    <div class="field grow">
+      <label>Name <small style="color: var(--text-dim);">(optional)</small></label>
+      <input type="text" id="neu-name" placeholder="z.B. Backoffice Inga">
+    </div>
+    <button type="submit" class="btn">Anlegen</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+async function anlegen() {
+  const bereich = document.getElementById('neu-bereich').value;
+  const email = document.getElementById('neu-email').value.trim();
+  const name = document.getElementById('neu-name').value.trim();
+  if (!bereich || !email) return;
+  const r = await api('POST', '/api/benachrichtigungen',
+                      { bereich, email, name });
+  if (r.ok) {
+    toast('Angelegt', 'ok');
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+  }
+}
+
+async function toggleAktiv(rec_id, aktiv) {
+  const r = await api('POST', '/api/benachrichtigungen/' + rec_id + '/aktiv',
+                      { aktiv });
+  if (r.ok) {
+    setTimeout(() => location.reload(), 200);
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+  }
+}
+
+async function loeschen(rec_id, email) {
+  if (!confirm('Empfaenger „' + email + '“ wirklich loeschen?')) return;
+  const r = await api('DELETE', '/api/benachrichtigungen/' + rec_id);
+  if (r.ok) {
+    toast('Geloescht', 'ok');
+    setTimeout(() => location.reload(), 400);
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+  }
+}
+</script>
+{% endblock %}

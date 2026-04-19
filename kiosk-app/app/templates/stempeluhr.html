@@ -1,0 +1,219 @@
+{% extends "kunden_base.html" %}
+{% block title %}Stempeluhr{% endblock %}
+
+{% block extra_css %}
+<style>
+.stempel-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: calc(100vh - 72px);
+    padding: 2rem;
+    text-align: center;
+}
+.stempel-karte {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--schatten-stark);
+    padding: 3rem 4rem;
+    max-width: 640px;
+    width: 100%;
+}
+.stempel-icon { font-size: 5rem; margin-bottom: 1rem; line-height: 1; }
+.stempel-titel { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.stempel-beschreibung {
+    font-size: 1.15rem; color: var(--text-mitte);
+    margin-bottom: 2rem; line-height: 1.6;
+}
+.stempel-uhr {
+    font-family: 'Nunito', sans-serif; font-weight: 800;
+    font-size: 3rem; color: var(--gruen-dunkel);
+    font-variant-numeric: tabular-nums; margin-bottom: 1.2rem;
+}
+.stempel-eingabe {
+    width: 100%; padding: 16px 20px; font-size: 1.2rem;
+    border: 2px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+    font-family: 'Nunito', sans-serif; text-align: center;
+    background: var(--creme);
+    transition: border-color 0.15s, background 0.15s;
+}
+.stempel-eingabe:focus {
+    outline: none; border-color: var(--gruen-hell); background: white;
+}
+.stempel-hinweis {
+    margin-top: 2rem; font-size: 0.85rem; color: var(--grau-mitte);
+}
+.stempel-fehler {
+    display: none; margin-top: 1rem;
+    padding: 12px 20px; background: #fde8e8; color: var(--rot);
+    border-radius: var(--radius-klein); font-weight: 700; font-size: 1rem;
+}
+.stempel-fehler.sichtbar { display: block; }
+
+.stempel-oder { margin-top: 1.6rem; color: var(--grau-mitte); font-size: 0.85rem; }
+.stempel-aktionen {
+    display: flex; gap: 10px; justify-content: center;
+    flex-wrap: wrap; margin-top: 0.8rem;
+}
+.stempel-aktionen .btn {
+    min-height: 56px; padding: 14px 24px; font-size: 1rem;
+    border-radius: var(--radius-klein); border: none; cursor: pointer;
+    font-family: 'Nunito', sans-serif; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+}
+.btn-pin { background: var(--gold); color: white; }
+.btn-pin:hover { background: var(--gold-hell); }
+.btn-zurueck { background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+.btn-zurueck:hover { background: var(--creme-warm); }
+
+/* Feedback-Screen nach erfolgreichem Stempel */
+.stempel-feedback {
+    display: none;
+    position: fixed; inset: 0;
+    align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.stempel-feedback.sichtbar { display: flex; }
+.stempel-feedback.kommen { background: #e8f5e0; }
+.stempel-feedback.gehen  { background: #fde8d0; }
+.feedback-karte {
+    text-align: center; padding: 3rem 4rem;
+    max-width: 700px;
+}
+.feedback-icon { font-size: 7rem; margin-bottom: 0.5rem; }
+.feedback-titel { font-size: 3.5rem; margin-bottom: 0.5rem; }
+.feedback-name { font-size: 1.8rem; font-weight: 800; color: var(--text-dunkel); margin-bottom: 0.3rem; }
+.feedback-zeit {
+    font-size: 2.2rem; font-weight: 800; color: var(--gruen-dunkel);
+    font-variant-numeric: tabular-nums;
+}
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="stempel-container" id="scan-screen">
+    <div class="stempel-karte">
+        <div class="stempel-icon">&#x1F570;&#xFE0F;</div>
+        <h1 class="stempel-titel">Stempeluhr</h1>
+        <div class="stempel-uhr" id="uhr">--:--:--</div>
+        <p class="stempel-beschreibung">
+            Bitte Mitarbeiterkarte scannen.
+        </p>
+        <input type="text" class="stempel-eingabe" id="barcode-eingabe"
+               placeholder="Karte scannen ..."
+               autocomplete="off" autofocus>
+        <div class="stempel-fehler" id="scan-fehler"></div>
+        <p class="stempel-hinweis">
+            Kommen/Gehen wird automatisch aus der letzten Buchung ermittelt.
+        </p>
+        <p class="stempel-oder">— oder —</p>
+        <div class="stempel-aktionen">
+            <a href="/stempeluhr/pin" class="btn btn-pin">&#x1F522; Mit PIN anmelden</a>
+            <a href="/" class="btn btn-zurueck">&#x2190; Zum Kiosk</a>
+        </div>
+    </div>
+</div>
+
+<div class="stempel-feedback" id="feedback-screen">
+    <div class="feedback-karte">
+        <div class="feedback-icon" id="fb-icon"></div>
+        <h1 class="feedback-titel" id="fb-titel"></h1>
+        <div class="feedback-name" id="fb-name"></div>
+        <div class="feedback-zeit" id="fb-zeit"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const eingabe  = document.getElementById('barcode-eingabe');
+    const fehler   = document.getElementById('scan-fehler');
+    const uhr      = document.getElementById('uhr');
+    const scan     = document.getElementById('scan-screen');
+    const feedback = document.getElementById('feedback-screen');
+    const fbIcon   = document.getElementById('fb-icon');
+    const fbTitel  = document.getElementById('fb-titel');
+    const fbName   = document.getElementById('fb-name');
+    const fbZeit   = document.getElementById('fb-zeit');
+    let verarbeitet = false;
+    let feedbackTimer = null;
+
+    function padLeft(n) { return n < 10 ? '0' + n : '' + n; }
+    function tickUhr() {
+        const d = new Date();
+        uhr.textContent = padLeft(d.getHours()) + ':' + padLeft(d.getMinutes())
+                        + ':' + padLeft(d.getSeconds());
+    }
+    tickUhr();
+    setInterval(tickUhr, 1000);
+
+    function zurueckZuScan() {
+        feedback.classList.remove('sichtbar', 'kommen', 'gehen');
+        eingabe.value = '';
+        verarbeitet = false;
+        eingabe.focus();
+    }
+
+    function zeigFeedback(data) {
+        fbIcon.textContent   = data.richtung === 'kommen' ? '👋' : '🏠';
+        fbTitel.textContent  = data.richtung === 'kommen' ? 'Willkommen!' : 'Tschuess!';
+        fbName.textContent   = data.vname + ' ' + data.name;
+        fbZeit.textContent   = data.zeit;
+        feedback.classList.add('sichtbar', data.richtung);
+        if (feedbackTimer) clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(zurueckZuScan, 3000);
+    }
+
+    eingabe.addEventListener('keydown', async function(e) {
+        fehler.classList.remove('sichtbar');
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+
+        const barcode = eingabe.value.trim();
+        if (!barcode || verarbeitet) return;
+        verarbeitet = true;
+
+        try {
+            const res = await fetch('/api/stempeluhr/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ barcode }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                zeigFeedback(data);
+            } else {
+                fehler.textContent = data.fehler || 'Karte nicht erkannt';
+                fehler.classList.add('sichtbar');
+                eingabe.value = '';
+                eingabe.focus();
+                verarbeitet = false;
+            }
+        } catch (err) {
+            fehler.textContent = 'Verbindungsfehler – bitte erneut versuchen';
+            fehler.classList.add('sichtbar');
+            eingabe.value = '';
+            eingabe.focus();
+            verarbeitet = false;
+        }
+    });
+
+    // Input-Feld immer fokussieren (Touch-Terminal). Buttons/Links
+    // ausnehmen, sonst wird die Auswahl "Mit PIN / Zum Kiosk" geklaut.
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('a, button')) return;
+        if (!feedback.classList.contains('sichtbar')) eingabe.focus();
+    });
+    setInterval(function() {
+        if (!feedback.classList.contains('sichtbar') && document.activeElement !== eingabe) {
+            eingabe.focus();
+        }
+    }, 3000);
+
+    // Klick auf Feedback-Screen → sofort zurueck
+    feedback.addEventListener('click', zurueckZuScan);
+})();
+</script>
+{% endblock %}

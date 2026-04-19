@@ -1,0 +1,791 @@
+{% extends 'base.html' %}
+{% block title %}Schichtplan{% endblock %}
+
+{% macro zeit(t) -%}
+  {%- if t is none -%}{%- elif t.__class__.__name__ == 'timedelta' -%}
+    {%- set total = (t.total_seconds()|int) -%}
+    {{ '%02d:%02d'|format(total // 3600, (total % 3600) // 60) }}
+  {%- else -%}
+    {{ '%02d:%02d'|format(t.hour, t.minute) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% set wtage = ['Mo','Di','Mi','Do','Fr','Sa','So'] %}
+
+{% block extra_style %}
+<style>
+.wochen-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+                 flex-wrap: wrap; }
+.wochen-topbar h1 { flex: 1; margin: 0; }
+.woche-input { font: inherit; padding: 10px 12px; border: 1px solid var(--creme-dunkel);
+               border-radius: var(--radius-klein); background: white; min-height: 44px; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 10px 16px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       display: inline-flex; align-items: center; min-height: 44px; gap: 6px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel);
+                 border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.ansicht-tabs { display: flex; gap: 4px; background: white; border-radius: var(--radius-klein);
+                padding: 4px; border: 1px solid var(--creme-dunkel); }
+.ansicht-tabs a { padding: 8px 14px; border-radius: 6px; color: var(--text-mitte);
+                  text-decoration: none; font-weight: 700; font-size: 13px; }
+.ansicht-tabs a.aktiv { background: var(--gruen-mitte); color: white; }
+
+.plan-grid { width: 100%; border-collapse: collapse; background: white;
+             border-radius: var(--radius); overflow: hidden;
+             box-shadow: var(--schatten); }
+.plan-grid th { background: var(--gruen-blass); color: var(--gruen-dunkel);
+                font-size: 11px; font-weight: 800; text-transform: uppercase;
+                letter-spacing: 0.05em; padding: 10px 6px; text-align: center;
+                border-right: 1px solid var(--creme-dunkel); }
+.plan-grid th.ma-col { text-align: left; padding-left: 12px; min-width: 160px; }
+.plan-grid th.kpi-col { min-width: 130px; }
+.plan-grid th.heute { background: var(--gruen-mitte); color: white; }
+.plan-grid th.sonntag, .plan-grid th.feiertag { background: #fdeadd; }
+.plan-grid th.feiertag { background: #f9d8db; }
+.feiertag-name { display: block; font-size: 9px; font-weight: 800;
+                 text-transform: none; letter-spacing: 0; color: #8b2e2e;
+                 margin-top: 2px; line-height: 1.1; white-space: normal; }
+.plan-grid td { border-top: 1px solid var(--creme-dunkel);
+                border-right: 1px solid var(--creme-dunkel);
+                padding: 6px; vertical-align: top; font-size: 12px; }
+.plan-grid td.ma-cell { padding: 10px 12px; background: var(--creme); min-width: 160px; }
+.plan-grid td.ma-cell .ma-name { font-weight: 700; }
+.plan-grid td.ma-cell .ma-kuerzel { display: inline-block; padding: 1px 6px;
+                                    background: var(--gruen-blass);
+                                    color: var(--gruen-dunkel);
+                                    border-radius: 8px; font-size: 10px;
+                                    font-weight: 800; }
+.plan-grid td.tag-cell { min-width: 120px; height: 64px; position: relative; cursor: pointer; }
+.plan-grid td.tag-cell:hover { background: var(--creme); }
+.plan-grid td.tag-cell.heute { background: #fffcf0; }
+/* Sonntag + Feiertag: deutlich erkennbar, aber klickbar (Schichten erlaubt).
+   Schraffur via repeating-linear-gradient statt voller Fuellung, damit
+   Schicht-Chips sichtbar bleiben. */
+.plan-grid td.tag-cell.sonntag {
+    background-image: repeating-linear-gradient(
+        -45deg, transparent 0, transparent 6px,
+        rgba(139, 46, 46, 0.06) 6px, rgba(139, 46, 46, 0.06) 10px);
+}
+.plan-grid td.tag-cell.feiertag {
+    background-color: #fcf0f0;
+    background-image: repeating-linear-gradient(
+        -45deg, transparent 0, transparent 6px,
+        rgba(139, 46, 46, 0.14) 6px, rgba(139, 46, 46, 0.14) 10px);
+}
+.plan-grid td.tag-cell.urlaub-genehmigt { background: #fde8e8; cursor: not-allowed; }
+.plan-grid td.tag-cell.urlaub-geplant { background: #fff8e8; cursor: not-allowed; }
+.plan-grid td.tag-cell.urlaub-genommen { background: #f0e8fd; cursor: not-allowed; }
+.plan-grid td.tag-cell.abw-krank       { background: #fde8e8; cursor: not-allowed; }
+.plan-grid td.tag-cell.abw-kind_krank  { background: #fdf1d8; cursor: not-allowed; }
+.plan-grid td.tag-cell.abw-schulung    { background: #e0ebf5; cursor: not-allowed; }
+.plan-grid td.tag-cell.abw-unbezahlt   { background: #e8e8e8; cursor: not-allowed; }
+.plan-grid td.tag-cell.abw-sonstiges   { background: #f0e8fd; cursor: not-allowed; }
+.urlaub-label { display: block; font-size: 10px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.04em;
+                color: var(--text-mitte); text-align: center; padding-top: 22px; }
+.abw-label    { display: block; font-size: 10px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.04em;
+                color: var(--text-mitte); text-align: center; padding-top: 22px; }
+
+.schicht-chip { display: block; margin-bottom: 3px; padding: 3px 20px 3px 6px;
+                color: white; border-radius: 4px; font-size: 11px;
+                font-weight: 700; position: relative; }
+.schicht-chip.typ-aufgabe { background: #8E5BA8 !important;
+                            background-image: repeating-linear-gradient(
+                                -45deg, transparent, transparent 4px,
+                                rgba(255,255,255,0.1) 4px, rgba(255,255,255,0.1) 8px) !important; }
+.schicht-chip .del-btn { position: absolute; top: 0; right: 0;
+                         background: transparent; border: none; color: white;
+                         opacity: 0.75; cursor: pointer; font-size: 14px;
+                         line-height: 1; padding: 2px 5px; }
+.schicht-chip .del-btn:hover { opacity: 1; }
+.schicht-chip form { display: inline; }
+
+.plan-grid td.kpi-cell { text-align: center; font-size: 12px; background: var(--creme); }
+.kpi-ok { color: #2e7a2e; font-weight: 700; }
+.kpi-mehr { color: var(--rot); font-weight: 700; }
+.kpi-weniger { color: #c98600; font-weight: 700; }
+.kpi-main { display: block; line-height: 1.3; }
+.kpi-small { font-size: 10px; color: var(--grau-mitte); line-height: 1.3; }
+
+.wtag-kopf { font-weight: 800; }
+.wtag-datum { font-size: 10px; font-weight: 500; color: var(--grau-mitte);
+              margin-top: 2px; }
+.wtag-kopf.heute-kopf, .wtag-datum.heute-kopf { color: white; }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+
+/* Wochen-Status-Bar (Iteration 1: offen / freigegeben) */
+.woche-status-bar { display: flex; align-items: center; gap: 12px;
+                    padding: 10px 14px; margin-bottom: 14px;
+                    border-radius: var(--radius-klein); flex-wrap: wrap; }
+.woche-status-bar.offen      { background: #eef5e8; color: var(--gruen-dunkel); }
+.woche-status-bar.freigegeben { background: #fff1d6; color: #7a5a00;
+                                border: 1px solid #e2b85f; }
+.woche-status-bar .status-badge { font-weight: 800; text-transform: uppercase;
+                                  font-size: 12px; letter-spacing: 0.06em;
+                                  padding: 4px 10px; border-radius: 99px;
+                                  background: white; }
+.woche-status-bar .status-meta { flex: 1; font-size: 13px; }
+.woche-status-bar form { display: inline; margin: 0; }
+.woche-status-bar .btn { min-height: 38px; padding: 8px 14px; font-size: 13px; }
+.woche-status-bar .btn-warn { background: #c9902a; }
+.woche-status-bar .btn-warn:hover { background: #a47420; }
+
+/* Gesperrte Woche: Zellen werden visuell blockiert */
+.plan-grid.gesperrt td.tag-cell { cursor: not-allowed; opacity: 0.82; }
+.plan-grid.gesperrt td.tag-cell:hover { background: transparent; }
+.plan-grid.gesperrt .schicht-chip .del-btn { display: none; }
+
+/* Overlay Bottom-Sheet */
+.overlay-bg { display: none; position: fixed; inset: 0; background: rgba(60,30,10,0.4);
+              z-index: 9000; align-items: flex-end; justify-content: center;
+              touch-action: none; }
+.overlay-bg.open { display: flex; }
+.overlay-sheet { background: white; border-radius: 28px 28px 0 0;
+                 padding: 16px 20px 24px; width: 100%; max-width: 640px;
+                 box-shadow: 0 -8px 40px rgba(60,30,10,0.18); max-height: 90vh;
+                 overflow-y: auto; }
+.overlay-sheet .handle { width: 40px; height: 4px; background: var(--creme-dunkel);
+                         border-radius: 99px; margin: 0 auto 12px; }
+.overlay-sheet h2 { margin: 0 0 4px; font-size: 18px; }
+.overlay-meta { color: var(--grau-mitte); margin-bottom: 14px; font-size: 13px; }
+
+.schicht-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+                   gap: 10px; margin-bottom: 14px; }
+.schicht-btn { min-height: 64px; padding: 10px 8px; border: 2px solid transparent;
+               border-radius: var(--radius-klein); cursor: pointer;
+               font: inherit; font-weight: 700; font-size: 13px; color: white;
+               display: flex; flex-direction: column; justify-content: center;
+               align-items: center; line-height: 1.3; text-align: center; }
+.schicht-btn.typ-aufgabe { background-image: repeating-linear-gradient(
+                               -45deg, transparent, transparent 5px,
+                               rgba(255,255,255,0.12) 5px, rgba(255,255,255,0.12) 10px); }
+.schicht-btn:hover { border-color: rgba(0,0,0,0.3); }
+.schicht-btn.aktiv { border-color: #1a3a1a; box-shadow: 0 0 0 3px rgba(74,124,58,0.4); }
+.schicht-btn .s-kuerzel { font-size: 18px; letter-spacing: 0.02em; }
+.schicht-btn .s-name { font-size: 11px; font-weight: 600; opacity: 0.92; margin-top: 2px; }
+.schicht-btn .s-zeit { font-size: 10px; font-weight: 500; opacity: 0.85; margin-top: 1px; }
+.schicht-btn .s-typ { font-size: 9px; font-weight: 600; text-transform: uppercase;
+                      letter-spacing: 0.04em; opacity: 0.7; margin-top: 2px; }
+
+.flex-eingabe { display: none; background: var(--creme); padding: 12px;
+                border-radius: var(--radius-klein); margin-bottom: 12px; }
+.flex-eingabe.sichtbar { display: block; }
+.flex-eingabe label { display: block; font-weight: 700; font-size: 12px;
+                      text-transform: uppercase; letter-spacing: 0.04em;
+                      color: var(--text-mitte); margin-bottom: 6px; }
+.dauer-schnell { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.dauer-schnell-btn { padding: 10px 14px; border: 1px solid var(--gruen-mitte);
+                     background: white; border-radius: var(--radius-klein);
+                     cursor: pointer; font-weight: 700; font-size: 14px;
+                     min-height: 44px; font-family: inherit; }
+.dauer-schnell-btn.aktiv { background: var(--gruen-mitte); color: white; }
+.dauer-eingabe { display: flex; gap: 10px; align-items: center; }
+.dauer-eingabe > .touch-dual-wrap { flex: 1; }
+.dauer-eingabe input[type=number] { flex: 1; padding: 12px; font-size: 15px;
+                                     min-height: 48px; border: 1px solid var(--creme-dunkel);
+                                     border-radius: var(--radius-klein);
+                                     box-sizing: border-box; }
+
+.overlay-sheet .kommentar-feld { width: 100%; padding: 12px; font: inherit;
+                                  min-height: 48px; box-sizing: border-box;
+                                  border: 1px solid var(--creme-dunkel);
+                                  border-radius: var(--radius-klein);
+                                  margin-bottom: 14px; }
+.overlay-buttons { display: flex; gap: 10px; }
+.overlay-buttons .btn { flex: 1; justify-content: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% include 'touch/widgets.html' %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="wochen-topbar">
+  <h1>Schichtplan KW&nbsp;{{ '%02d'|format(wochennummer) }}/{{ jahr }}</h1>
+  <div class="ansicht-tabs">
+    <a href="{{ url_for('wawi_personal.schichtplan', woche=montag.isoformat()) }}"
+       class="aktiv">Matrix</a>
+    <a href="{{ url_for('wawi_personal.schichtplan_raster', woche=montag.isoformat()) }}">
+       Zeitraster</a>
+  </div>
+  <form method="get" style="display: flex; gap: 8px; align-items: center;">
+    <a class="btn btn-secondary" href="{{ url_for('wawi_personal.schichtplan',
+                                                  woche=vorwoche) }}"
+       aria-label="Vorwoche">← Woche</a>
+    {# KW-Select: touch-tauglich, listet KW pro Jahr als optgroup.
+       onchange submittet direkt → ein Tap = navigiert. #}
+    <select class="woche-input" name="woche" onchange="this.form.submit()"
+            aria-label="Kalenderwoche waehlen">
+      {% set ns = namespace(last_jahr=0) %}
+      {% for opt in kw_optionen %}
+        {% if opt.jahr != ns.last_jahr %}
+          {% if ns.last_jahr != 0 %}</optgroup>{% endif %}
+          <optgroup label="Jahr {{ opt.jahr }}">
+          {% set ns.last_jahr = opt.jahr %}
+        {% endif %}
+        <option value="{{ opt.value }}"
+                {% if opt.value == montag.isoformat() %}selected{% endif %}>
+          {{ opt.label }}
+        </option>
+      {% endfor %}
+      </optgroup>
+    </select>
+    <a class="btn btn-secondary" href="{{ url_for('wawi_personal.schichtplan',
+                                                  woche=folgewoche) }}"
+       aria-label="Folgewoche">Woche →</a>
+    {% if montag.isoformat() != aktuelle_woche %}
+    <a class="btn" href="{{ url_for('wawi_personal.schichtplan',
+                                    woche=aktuelle_woche) }}">Heute</a>
+    {% endif %}
+  </form>
+</div>
+
+{% if pause_reg %}
+<div class="msg msg-info" style="font-weight: 500;">
+  Pausenregelung: ab {{ pause_reg.SCHWELLE1_MIN // 60 }}&nbsp;h → {{ pause_reg.PAUSE1_MIN }}&nbsp;min,
+  ab {{ pause_reg.SCHWELLE2_MIN // 60 }}&nbsp;h → {{ pause_reg.PAUSE2_MIN }}&nbsp;min
+  ({% if pause_reg.PAUSE_BEZAHLT_FLAG %}bezahlt{% else %}Abzug{% endif %})
+</div>
+{% endif %}
+
+<div class="woche-status-bar {{ woche_status.STATUS }}">
+  <span class="status-badge">
+    {% if woche_status.STATUS == 'freigegeben' %}🔒 Freigegeben{% else %}✏ Offen{% endif %}
+  </span>
+  <span class="status-meta">
+    {% if woche_status.STATUS == 'freigegeben' %}
+      Freigegeben {{ woche_status.FREIGEGEBEN_AT.strftime('%d.%m.%Y %H:%M') if woche_status.FREIGEGEBEN_AT else '' }}
+      {% if woche_status.FREIGEGEBEN_NAME %}von {{ woche_status.FREIGEGEBEN_NAME }}{% endif %}
+      – Bearbeiten gesperrt.
+    {% else %}
+      Planung läuft – Zuordnungen änderbar.
+    {% endif %}
+  </span>
+  <button type="button" class="btn btn-secondary"
+          onclick="oeffneKopieren()">Kopieren…</button>
+  <button type="button" class="btn btn-secondary"
+          onclick="oeffneVorlagen()">Vorlagen…</button>
+  <a href="{{ url_for('wawi_personal.email_diagnose') }}" class="btn btn-secondary"
+     title="Email-Konfig pruefen (Quelle pro Key)">📧&nbsp;Diag</a>
+  <form method="post" action="{{ url_for('wawi_personal.schichtplan_freigabe') }}"
+        onsubmit="return freigabeAbsenden(this, {{ 'true' if woche_gesperrt else 'false' }});">
+    <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+    <input type="hidden" name="rueck" value="matrix">
+    {% if woche_gesperrt %}
+      <input type="hidden" name="aktion" value="entsperren">
+      <button type="submit" class="btn btn-warn">Entsperren</button>
+    {% else %}
+      <input type="hidden" name="aktion" value="freigeben">
+      <button type="submit" class="btn">Freigeben</button>
+    {% endif %}
+  </form>
+</div>
+
+<div id="freigabe-loading" style="display:none; position:fixed; inset:0;
+     background:rgba(20,25,35,0.78); z-index:9999;
+     align-items:center; justify-content:center; flex-direction:column;
+     color:#fff; font-family:sans-serif;">
+  <div style="width:64px; height:64px; border:6px solid rgba(255,255,255,0.2);
+              border-top-color:#fff; border-radius:50%;
+              animation:freigabe-spin 1s linear infinite;"></div>
+  <div id="freigabe-loading-text"
+       style="margin-top:20px; font-size:18px; font-weight:600;">
+    Bitte warten…
+  </div>
+  <div style="margin-top:8px; font-size:13px; opacity:0.7;">
+    Seite nicht schließen.
+  </div>
+</div>
+<style>
+@keyframes freigabe-spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+function freigabeAbsenden(form, istGesperrt) {
+  // Re-Entry verhindern: das programmatische form.submit() weiter unten
+  // triggert zwar onsubmit nicht erneut, aber safety first.
+  if (form.dataset.submitting === 'yes') return false;
+  const frage = istGesperrt
+    ? 'Freigabe zurücknehmen und Woche entsperren?'
+    : 'Woche freigeben und sperren?';
+  if (!confirm(frage)) return false;
+  const overlay = document.getElementById('freigabe-loading');
+  const text = document.getElementById('freigabe-loading-text');
+  if (text) {
+    text.textContent = istGesperrt
+      ? 'Woche wird entsperrt…'
+      : 'Freigegeben, Emails werden gesendet…';
+  }
+  if (overlay) overlay.style.display = 'flex';
+  const btn = form.querySelector('button[type=submit]');
+  if (btn) btn.disabled = true;
+  form.dataset.submitting = 'yes';
+  // Wichtig: onsubmit unterbrechen und Submit erst nach zwei Paint-Ticks
+  // ausloesen – sonst startet der Browser die Navigation, bevor das
+  // Overlay tatsaechlich gerendert wird.
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      form.submit();
+    });
+  });
+  return false;
+}
+</script>
+
+<div id="kopieren-overlay" class="overlay-bg" onclick="if(event.target===this)schliesseKopieren()">
+  <div class="overlay-sheet" style="max-width: 460px;">
+    <div class="handle"></div>
+    <h2>Wochenplan kopieren</h2>
+    <div class="overlay-meta">
+      Quelle: KW {{ '%02d'|format(wochennummer) }}/{{ jahr }} ({{ montag.strftime('%d.%m.%Y') }}).
+      Ziel muss in der Zukunft liegen und leer sein.
+    </div>
+    <form method="post" action="{{ url_for('wawi_personal.schichtplan_kopieren') }}">
+      <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+      <label style="display:block; font-weight:700; font-size:12px;
+                    text-transform:uppercase; letter-spacing:0.04em;
+                    color:var(--text-mitte); margin-bottom:6px;">
+        Ziel-Woche (Montag)
+      </label>
+      <input id="kopieren-ziel" name="ziel_woche" type="date" required
+             class="woche-input"
+             style="width:100%; box-sizing:border-box; margin-bottom:14px;"
+             min="{{ folgewoche }}"
+             value="{{ folgewoche }}">
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="setZielRelativ(7)">Nächste KW</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="setZielRelativ(14)">+2 Wochen</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="setZielRelativ(28)">+4 Wochen</button>
+      </div>
+      <div class="overlay-buttons">
+        <button type="button" class="btn btn-secondary"
+                onclick="schliesseKopieren()">Abbrechen</button>
+        <button type="submit" class="btn">Kopieren</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function oeffneKopieren() {
+  document.getElementById('kopieren-overlay').classList.add('open');
+}
+function schliesseKopieren() {
+  document.getElementById('kopieren-overlay').classList.remove('open');
+}
+function setZielRelativ(tage) {
+  const basis = new Date('{{ montag.isoformat() }}');
+  basis.setDate(basis.getDate() + tage);
+  document.getElementById('kopieren-ziel').value =
+    basis.toISOString().slice(0, 10);
+}
+function oeffneVorlagen() {
+  document.getElementById('vorlagen-overlay').classList.add('open');
+}
+function schliesseVorlagen() {
+  document.getElementById('vorlagen-overlay').classList.remove('open');
+}
+function setVorlageZielRelativ(tage) {
+  const basis = new Date('{{ montag.isoformat() }}');
+  basis.setDate(basis.getDate() + tage);
+  document.getElementById('vorlage-ziel').value =
+    basis.toISOString().slice(0, 10);
+}
+</script>
+
+<div id="vorlagen-overlay" class="overlay-bg" onclick="if(event.target===this)schliesseVorlagen()">
+  <div class="overlay-sheet" style="max-width: 560px;">
+    <div class="handle"></div>
+    <h2>Schichtplan-Vorlagen</h2>
+    <div class="overlay-meta">
+      Eine Vorlage ist ein gespeicherter Wochen-Plan, kalenderunabhängig.
+      Anwenden setzt eine leere Ziel-KW voraus.
+    </div>
+
+    <h3 style="margin:18px 0 8px; font-size:14px; text-transform:uppercase;
+               letter-spacing:0.06em; color:var(--gruen-dunkel);">
+      Aktuelle Woche als Vorlage speichern
+    </h3>
+    <form method="post"
+          action="{{ url_for('wawi_personal.schichtplan_vorlage_speichern') }}"
+          style="display:flex; gap:8px; margin-bottom:6px;">
+      <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+      <input type="hidden" name="rueck" value="matrix">
+      <input type="text" name="name" required maxlength="100"
+             placeholder="Name (z.B. 'Standard-Woche')"
+             class="woche-input" style="flex:1;">
+      <button type="submit" class="btn">Speichern</button>
+    </form>
+    <div style="color:var(--grau-mitte); font-size:12px; margin-bottom:18px;">
+      KW {{ '%02d'|format(wochennummer) }}/{{ jahr }} wird unter diesem Namen
+      abgelegt (Zuordnungen pro Wochentag, ohne KW-Bindung).
+    </div>
+
+    {% if vorlagen %}
+    <h3 style="margin:18px 0 8px; font-size:14px; text-transform:uppercase;
+               letter-spacing:0.06em; color:var(--gruen-dunkel);">
+      Gespeicherte Vorlagen
+    </h3>
+    <form method="post"
+          action="{{ url_for('wawi_personal.schichtplan_vorlage_anwenden') }}"
+          style="margin-bottom:10px;">
+      <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+      <label style="display:block; font-weight:700; font-size:12px;
+                    text-transform:uppercase; letter-spacing:0.04em;
+                    color:var(--text-mitte); margin-bottom:6px;">
+        Vorlage auswählen
+      </label>
+      <select name="vorlage_id" required class="woche-input"
+              style="width:100%; box-sizing:border-box; margin-bottom:12px;">
+        <option value="">– Vorlage –</option>
+        {% for v in vorlagen %}
+        <option value="{{ v.REC_ID }}">
+          {{ v.NAME }} ({{ v.ANZAHL }} Zuordnung{% if v.ANZAHL != 1 %}en{% endif %})
+        </option>
+        {% endfor %}
+      </select>
+      <label style="display:block; font-weight:700; font-size:12px;
+                    text-transform:uppercase; letter-spacing:0.04em;
+                    color:var(--text-mitte); margin-bottom:6px;">
+        Ziel-Woche (Montag)
+      </label>
+      <input id="vorlage-ziel" name="ziel_woche" type="date" required
+             class="woche-input"
+             style="width:100%; box-sizing:border-box; margin-bottom:10px;"
+             min="{{ folgewoche }}"
+             value="{{ folgewoche }}">
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="setVorlageZielRelativ(7)">Nächste KW</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="setVorlageZielRelativ(14)">+2 Wochen</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="setVorlageZielRelativ(28)">+4 Wochen</button>
+      </div>
+      <button type="submit" class="btn" style="width:100%;">Vorlage anwenden</button>
+    </form>
+    <ul style="list-style:none; padding:0; margin:10px 0 0;
+               border:1px solid var(--creme-dunkel);
+               border-radius:var(--radius-klein);">
+    {% for v in vorlagen %}
+      <li style="display:flex; align-items:center; gap:10px;
+                 padding:8px 12px;
+                 border-bottom:1px solid var(--creme-dunkel);">
+        <span style="flex:1; font-size:13px;">
+          <strong>{{ v.NAME }}</strong>
+          <span style="color:var(--grau-mitte);">
+            · {{ v.ANZAHL }} Zuordnung{% if v.ANZAHL != 1 %}en{% endif %}
+            {% if v.ERSTELLT_AT %}· {{ v.ERSTELLT_AT.strftime('%d.%m.%Y') }}{% endif %}
+          </span>
+        </span>
+        <form method="post" style="margin:0;"
+              action="{{ url_for('wawi_personal.schichtplan_vorlage_loeschen', rec_id=v.REC_ID) }}"
+              onsubmit="return confirm('Vorlage „{{ v.NAME }}“ wirklich löschen?');">
+          <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+          <input type="hidden" name="rueck" value="matrix">
+          <button type="submit" class="btn btn-secondary"
+                  style="min-height:32px; padding:4px 10px; font-size:12px;
+                         color:var(--rot); border-color:var(--rot);">
+            Löschen
+          </button>
+        </form>
+      </li>
+    {% endfor %}
+    </ul>
+    {% else %}
+    <div style="color:var(--grau-mitte); font-size:13px; padding:10px 0;">
+      Noch keine Vorlagen gespeichert.
+    </div>
+    {% endif %}
+
+    <div class="overlay-buttons" style="margin-top:18px;">
+      <button type="button" class="btn btn-secondary"
+              onclick="schliesseVorlagen()">Schließen</button>
+    </div>
+  </div>
+</div>
+
+{% if woche_log %}
+<details style="margin-bottom: 14px;">
+  <summary style="cursor: pointer; font-size: 13px; color: var(--grau-mitte);">
+    Freigabe-Log ({{ woche_log|length }})
+  </summary>
+  <ul style="margin: 8px 0 0; padding-left: 20px; font-size: 12px; color: var(--text-mitte);">
+    {% for e in woche_log %}
+    <li>
+      {{ e.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }} – <strong>{{ e.EREIGNIS }}</strong>
+      {% if e.GEAEND_NAME %}durch {{ e.GEAEND_NAME }}{% endif %}
+      {% if e.DETAIL %}<span style="color: var(--grau-mitte);">({{ e.DETAIL }})</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+
+<table class="plan-grid {% if woche_gesperrt %}gesperrt{% endif %}">
+  <thead>
+    <tr>
+      <th class="ma-col">Mitarbeiter</th>
+      {% for i in range(7) %}
+        {% set tag = tage[i] %}
+        {% set ist_heute = tag == heute %}
+        {% set ist_sonntag = (tag.weekday() == 6) %}
+        {% set ft_name = feiertage.get(tag) %}
+        {% set kopf_cls = 'heute' if ist_heute
+                          else ('feiertag' if ft_name
+                          else ('sonntag' if ist_sonntag else '')) %}
+        <th class="{{ kopf_cls }}"
+            {% if ft_name %}title="{{ ft_name }} (gesetzlicher Feiertag)"
+            {% elif ist_sonntag %}title="Sonntag"{% endif %}>
+          <div class="wtag-kopf {% if ist_heute %}heute-kopf{% endif %}">{{ wtage[i] }}</div>
+          <div class="wtag-datum {% if ist_heute %}heute-kopf{% endif %}">
+            {{ '%02d.%02d.'|format(tag.day, tag.month) }}
+          </div>
+          {% if ft_name %}
+            <span class="feiertag-name">{{ ft_name }}</span>
+          {% endif %}
+        </th>
+      {% endfor %}
+      <th class="kpi-col">Ist (netto) / Soll</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ma in mitarbeiter %}
+    <tr>
+      <td class="ma-cell">
+        <div class="ma-name">{{ ma.NAME }}, {{ ma.VNAME }}</div>
+        {% if ma.KUERZEL %}<span class="ma-kuerzel">{{ ma.KUERZEL }}</span>{% endif %}
+      </td>
+      {% for tag in tage %}
+        {% set zs = plan.get((ma.PERS_ID, tag), []) %}
+        {% set ustat = urlaub_map.get((ma.PERS_ID, tag)) %}
+        {% set atyp  = abwesenheit_map.get((ma.PERS_ID, tag)) %}
+        {% set cls = 'urlaub-' ~ ustat if ustat else ('abw-' ~ atyp if atyp else '') %}
+        {% set heute_cls = 'heute' if tag == heute else '' %}
+        {% set ft_name = feiertage.get(tag) %}
+        {% set kal_cls = 'feiertag' if ft_name
+                          else ('sonntag' if tag.weekday() == 6 else '') %}
+        <td class="tag-cell {{ cls }} {{ heute_cls }} {{ kal_cls }}"
+            {% if ft_name %}title="{{ ft_name }}"{% endif %}
+            {% if not ustat and not atyp and not woche_gesperrt %}
+            data-pers="{{ ma.PERS_ID }}"
+            data-vname="{{ ma.VNAME }}"
+            data-name="{{ ma.NAME }}"
+            data-datum="{{ tag.isoformat() }}"
+            data-tag="{{ wtage[loop.index0] }}, {{ '%02d.%02d.'|format(tag.day, tag.month) }}"
+            onclick="openZuordnung(this)"
+            {% endif %}>
+          {% if ustat %}
+            <span class="urlaub-label">
+              {%- if ustat == 'genehmigt' -%}Urlaub
+              {%- elif ustat == 'geplant' -%}Urlaub&nbsp;geplant
+              {%- elif ustat == 'genommen' -%}Urlaub&nbsp;genommen
+              {%- endif -%}
+            </span>
+          {% elif atyp %}
+            <span class="abw-label">{{ abwesenheit_typ_labels[atyp] }}</span>
+          {% else %}
+            {% for z in zs %}
+            <span class="schicht-chip typ-{{ z.TYP }}" style="background: {{ z.FARBE }}">
+              {% if z.TYP == 'fix' %}
+                {{ z.KUERZEL }} {{ zeit(z.STARTZEIT) }}–{{ zeit(z.ENDZEIT) }}
+              {% elif z.TYP == 'flex' %}
+                {{ z.KUERZEL }} · {{ z.DAUER_MIN }}&nbsp;min
+              {% else %}
+                {{ z.KUERZEL }} · Aufgabe
+              {% endif %}
+              <form method="post"
+                    action="{{ url_for('wawi_personal.schichtplan_zuordnung_loeschen',
+                                       rec_id=z.REC_ID) }}"
+                    onclick="event.stopPropagation();"
+                    onsubmit="return confirm('Zuordnung entfernen?');">
+                <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+                <button type="submit" class="del-btn" title="Entfernen">×</button>
+              </form>
+            </span>
+            {% endfor %}
+          {% endif %}
+        </td>
+      {% endfor %}
+      {% set k = kpi[ma.PERS_ID] %}
+      {% set ist = k.ist_min %}
+      {% set soll = k.soll_min %}
+      <td class="kpi-cell">
+        <span class="kpi-main">
+          <strong>{{ '%d:%02d'|format(ist//60, ist%60) }}&nbsp;h</strong>
+          {% if soll is not none %}
+            / {{ '%d:%02d'|format(soll//60, soll%60) }}&nbsp;h
+          {% endif %}
+        </span>
+        {% if k.pause_min > 0 %}
+          <div class="kpi-small">brutto {{ '%d:%02d'|format(k.brutto_min//60, k.brutto_min%60) }}, Pause {{ k.pause_min }}&nbsp;min</div>
+        {% endif %}
+        {% if soll is none %}
+          <div class="kpi-small">kein AZ-Modell</div>
+        {% else %}
+          {% set diff = ist - soll %}
+          <div>
+            {% if diff == 0 %}
+              <small class="kpi-ok">✓ Soll erfüllt</small>
+            {% elif diff > 0 %}
+              <small class="kpi-mehr">+{{ '%d:%02d'|format(diff//60, diff%60) }}</small>
+            {% else %}
+              <small class="kpi-weniger">−{{ '%d:%02d'|format((-diff)//60, (-diff)%60) }}</small>
+            {% endif %}
+          </div>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--grau-mitte);">
+        Keine aktiven Mitarbeiter in dieser Woche.
+    </td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ── Bottom-Sheet Zuordnung ──────────────────────────────────────────── -->
+<div id="zuordnung-overlay" class="overlay-bg" onclick="if (event.target === this) closeZuordnung()">
+  <form method="post" action="{{ url_for('wawi_personal.schichtplan_zuordnung_anlegen') }}"
+        class="overlay-sheet" onsubmit="return zuordnungPruefen(event)">
+    <div class="handle"></div>
+    <h2>Schicht zuordnen</h2>
+    <div class="overlay-meta" id="ovl-meta"></div>
+    <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+    <input type="hidden" name="pers_id" id="ovl-pers">
+    <input type="hidden" name="datum" id="ovl-datum">
+    <input type="hidden" name="schicht_id" id="ovl-schicht">
+    <input type="hidden" name="dauer_min" id="ovl-dauer-min">
+
+    <div class="schicht-buttons" id="ovl-schicht-grid">
+      {% for s in alle_schichten %}
+        <button type="button" class="schicht-btn typ-{{ s.TYP }}"
+                style="background: {{ s.FARBE }}"
+                data-schicht="{{ s.SCHICHT_ID }}"
+                data-typ="{{ s.TYP }}"
+                data-name="{{ s.BEZEICHNUNG }}"
+                onclick="waehleSchicht(this)">
+          <span class="s-kuerzel">{{ s.KUERZEL }}</span>
+          <span class="s-name">{{ s.BEZEICHNUNG }}</span>
+          {% if s.TYP == 'fix' %}
+            <span class="s-zeit">{{ zeit(s.STARTZEIT) }}–{{ zeit(s.ENDZEIT) }}</span>
+          {% else %}
+            <span class="s-typ">{{ s.TYP }}</span>
+          {% endif %}
+        </button>
+      {% endfor %}
+    </div>
+
+    <div class="flex-eingabe" id="ovl-flex">
+      <label>Dauer (Minuten) *</label>
+      <div class="dauer-schnell">
+        {% for m_val, label in [(60,'1h'), (90,'1½h'), (120,'2h'),
+                                (180,'3h'), (240,'4h'), (300,'5h'), (480,'8h')] %}
+          <button type="button" class="dauer-schnell-btn" data-minuten="{{ m_val }}"
+                  onclick="setzeDauer({{ m_val }})">{{ label }}</button>
+        {% endfor %}
+      </div>
+      <div class="dauer-eingabe">
+        <input type="number" id="ovl-dauer-eingabe" class="num-touch"
+               inputmode="numeric" min="15" max="720" step="15"
+               data-touch-titel="Dauer (Minuten)"
+               placeholder="z.B. 90" oninput="document.getElementById('ovl-dauer-min').value = this.value">
+        <span>Minuten</span>
+      </div>
+    </div>
+
+    <input type="text" class="kommentar-feld alpha-touch" name="kommentar"
+           id="ovl-kommentar" data-touch-titel="Kommentar"
+           placeholder="Kommentar (optional)">
+
+    <div class="overlay-buttons">
+      <button type="button" class="btn btn-secondary"
+              onclick="closeZuordnung()">Abbrechen</button>
+      <button type="submit" class="btn" id="ovl-submit" disabled>Zuordnen</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  const overlay = document.getElementById('zuordnung-overlay');
+  const flexBox = document.getElementById('ovl-flex');
+  const submitBtn = document.getElementById('ovl-submit');
+
+  function openZuordnung(cell) {
+    document.getElementById('ovl-pers').value = cell.dataset.pers;
+    document.getElementById('ovl-datum').value = cell.dataset.datum;
+    document.getElementById('ovl-meta').textContent =
+      cell.dataset.vname + ' ' + cell.dataset.name + ' – ' + cell.dataset.tag;
+    document.getElementById('ovl-schicht').value = '';
+    document.getElementById('ovl-dauer-min').value = '';
+    document.getElementById('ovl-dauer-eingabe').value = '';
+    document.getElementById('ovl-kommentar').value = '';
+    document.querySelectorAll('#ovl-schicht-grid .schicht-btn').forEach(b =>
+      b.classList.remove('aktiv'));
+    document.querySelectorAll('.dauer-schnell-btn').forEach(b =>
+      b.classList.remove('aktiv'));
+    flexBox.classList.remove('sichtbar');
+    submitBtn.disabled = true;
+    overlay.classList.add('open');
+  }
+  function closeZuordnung() { overlay.classList.remove('open'); }
+
+  function waehleSchicht(btn) {
+    document.querySelectorAll('#ovl-schicht-grid .schicht-btn').forEach(b =>
+      b.classList.remove('aktiv'));
+    btn.classList.add('aktiv');
+    document.getElementById('ovl-schicht').value = btn.dataset.schicht;
+    if (btn.dataset.typ === 'flex') {
+      flexBox.classList.add('sichtbar');
+      submitBtn.disabled = !document.getElementById('ovl-dauer-min').value;
+    } else {
+      flexBox.classList.remove('sichtbar');
+      document.getElementById('ovl-dauer-min').value = '';
+      submitBtn.disabled = false;
+    }
+  }
+  function setzeDauer(m) {
+    document.getElementById('ovl-dauer-min').value = m;
+    document.getElementById('ovl-dauer-eingabe').value = m;
+    document.querySelectorAll('.dauer-schnell-btn').forEach(b =>
+      b.classList.toggle('aktiv', Number(b.dataset.minuten) === m));
+    submitBtn.disabled = false;
+  }
+  document.getElementById('ovl-dauer-eingabe').addEventListener('input', (e) => {
+    submitBtn.disabled = !e.target.value || Number(e.target.value) <= 0;
+    document.querySelectorAll('.dauer-schnell-btn').forEach(b =>
+      b.classList.remove('aktiv'));
+  });
+  function zuordnungPruefen(ev) {
+    if (!document.getElementById('ovl-schicht').value) {
+      alert('Bitte Schicht auswählen.');
+      ev.preventDefault();
+      return false;
+    }
+    // flex: Dauer Pflicht
+    const btn = document.querySelector('#ovl-schicht-grid .schicht-btn.aktiv');
+    if (btn && btn.dataset.typ === 'flex'
+        && !document.getElementById('ovl-dauer-min').value) {
+      alert('Bitte Dauer eingeben.');
+      ev.preventDefault();
+      return false;
+    }
+    return true;
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeZuordnung();
+  });
+</script>
+{% endblock %}

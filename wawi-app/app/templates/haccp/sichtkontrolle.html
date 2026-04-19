@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% block title %}HACCP Sichtkontrolle{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 12px 22px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       min-height: 48px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.btn-big { font-size: 16px; padding: 14px 28px; min-height: 56px; }
+
+.hinweis { background: var(--creme); border-left: 4px solid var(--gruen-mitte);
+           padding: 10px 16px; border-radius: var(--radius-klein);
+           margin-bottom: 14px; font-size: 13px; color: var(--text-dunkel); }
+
+.grid { display: grid; gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        margin-bottom: 16px; }
+
+.reihe { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+         border-left: 6px solid var(--gruen-mitte); display: flex; align-items: stretch;
+         overflow: hidden; transition: transform 0.08s; min-height: 74px; cursor: pointer;
+         user-select: none; }
+.reihe:active { transform: scale(0.99); }
+.reihe.warn    { border-left-color: #e69a2a; }
+.reihe.alarm, .reihe.warn-alarm { border-left-color: var(--rot); }
+.reihe.offline { border-left-color: #888; opacity: 0.85; background: #f5f5f5; }
+.reihe.quittiert { background: #f0f8eb; border-left-color: #2e7a2e; }
+
+/* Grosse Checkbox-Area, tap-friendly */
+.check-area { width: 72px; display: flex; align-items: center; justify-content: center;
+              background: var(--creme-hell); position: relative;
+              border-right: 1px solid var(--creme-dunkel); }
+.reihe.quittiert .check-area { background: #d7ecc7; }
+.check-area input[type=checkbox] {
+    appearance: none; -webkit-appearance: none;
+    width: 36px; height: 36px; border: 3px solid var(--gruen-mitte);
+    border-radius: 8px; background: white; cursor: pointer;
+    position: relative; margin: 0;
+}
+.check-area input[type=checkbox]:checked {
+    background: var(--gruen-mitte); border-color: var(--gruen-mitte);
+}
+.check-area input[type=checkbox]:checked::after {
+    content: '✓'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 900; font-size: 24px;
+}
+
+/* bereits heute quittiert — dicker Haken, nicht mehr anklickbar */
+.bereits-quittiert { font-size: 28px; color: #2e7a2e; font-weight: 900; }
+.bereits-quittiert small { display: block; font-size: 10px; color: #555; font-weight: 600; }
+
+.info { flex: 1; padding: 10px 14px; display: flex; flex-direction: column;
+        justify-content: center; min-width: 0; }
+.info .name { font-weight: 800; font-size: 15px; color: var(--gruen-dunkel);
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .meta { font-size: 11px; color: var(--text-mitte); }
+.info .wert { font-variant-numeric: tabular-nums; font-weight: 700;
+              font-size: 14px; margin-top: 3px; }
+.wert.warn { color: #b86f1a; }
+.wert.alarm { color: var(--rot); }
+.wert.offline { color: #888; }
+
+.aktionen { position: sticky; bottom: 0; background: white; padding: 14px;
+            border-top: 2px solid var(--creme-dunkel); margin: 16px -16px -16px;
+            display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.06); z-index: 10; }
+.aktionen .counter { font-size: 14px; font-weight: 700; color: var(--gruen-dunkel);
+                     flex: 1; }
+.bemerkung-zeile { margin: 12px 0; display: flex; gap: 8px; align-items: center; }
+.bemerkung-zeile input { flex: 1; padding: 10px 12px; font-size: 14px;
+                         border: 1px solid var(--creme-dunkel);
+                         border-radius: var(--radius-klein); font-family: inherit; }
+
+.empty { text-align: center; padding: 40px; color: var(--grau-mitte);
+         background: white; border-radius: var(--radius); }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+
+@media (max-width: 600px) {
+  .aktionen { flex-direction: column; align-items: stretch; }
+  .aktionen .counter { text-align: center; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>✅ Sichtkontrolle
+    <small style="font-weight: 400; font-size: 14px; color: var(--text-mitte);">
+      {{ jetzt_utc.strftime('%d.%m.%Y') }}
+    </small>
+  </h1>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.dashboard') }}">← Dashboard</a>
+</div>
+
+<div class="hinweis">
+  Tippe auf die Zeilen der Geräte, die du kontrolliert hast — dann unten
+  <b>gesammelt quittieren</b>. Geräte mit grünem Haken sind heute bereits erledigt.
+</div>
+
+{% if kacheln %}
+<form method="post" action="{{ url_for('haccp.sichtkontrolle_bulk') }}" id="bulk-form">
+  <div class="grid">
+    {% for k in kacheln %}
+    <label class="reihe {{ k.status }}{% if k.heute_quittiert %} quittiert{% endif %}">
+      <div class="check-area">
+        {% if k.heute_quittiert %}
+          <div class="bereits-quittiert" title="Heute bereits quittiert">
+            ✓<small>HEUTE</small>
+          </div>
+        {% else %}
+          <input type="checkbox" name="geraet_id" value="{{ k.geraet.GERAET_ID }}"
+                 data-bulk-check>
+        {% endif %}
+      </div>
+      <div class="info">
+        <div class="name">
+          {{ k.geraet.NAME }}
+          {% if k.letzter and k.letzter.BATTERY_LOW %}
+            <span class="batt" title="Batterie schwach">🔋</span>
+          {% endif %}
+        </div>
+        <div class="meta">
+          {{ k.geraet.STANDORT or '—' }}
+          {% if k.geraet.WARENGRUPPE %} · {{ k.geraet.WARENGRUPPE }}{% endif %}
+        </div>
+        <div class="wert {{ k.status }}">
+          {% if k.letzter and k.letzter.TEMP_C is not none and not k.letzter.NO_CONNECTION %}
+            {{ '%.1f'|format(k.letzter.TEMP_C) }} °C
+            {% if k.grenz %}
+              <span style="color: var(--text-mitte); font-weight: 400;">
+                (Soll {{ '%.1f'|format(k.grenz.TEMP_MIN_C) }}–{{ '%.1f'|format(k.grenz.TEMP_MAX_C) }} °C)
+              </span>
+            {% endif %}
+          {% elif k.status == 'offline' %}
+            <span style="color: #888;">offline</span>
+          {% else %}
+            —
+          {% endif %}
+        </div>
+      </div>
+    </label>
+    {% endfor %}
+  </div>
+
+  <div class="bemerkung-zeile">
+    <label style="font-weight: 700; color: var(--gruen-dunkel);">Bemerkung (optional, gilt für alle):</label>
+    <input type="text" name="bemerkung" maxlength="500"
+           placeholder="z.B. alles in Ordnung, alles sauber"
+           class="alpha-touch" data-touch-titel="Bemerkung">
+  </div>
+
+  <div class="aktionen">
+    <div class="counter">
+      <span id="cnt-sel">0</span> ausgewählt
+      · <span id="cnt-offen">{{ kacheln|rejectattr('heute_quittiert')|list|length }}</span> noch offen
+    </div>
+    <button type="button" class="btn-secondary btn" id="btn-alle">Alle offenen auswählen</button>
+    <button type="submit" class="btn btn-big">Quittieren</button>
+  </div>
+</form>
+
+<script>
+(function() {
+  const boxes = document.querySelectorAll('[data-bulk-check]');
+  const cntSel = document.getElementById('cnt-sel');
+  function aktualisiere() {
+    const n = document.querySelectorAll('[data-bulk-check]:checked').length;
+    cntSel.textContent = n;
+  }
+  boxes.forEach(b => b.addEventListener('change', aktualisiere));
+  document.getElementById('btn-alle').addEventListener('click', () => {
+    boxes.forEach(b => { b.checked = true; });
+    aktualisiere();
+  });
+  aktualisiere();
+})();
+</script>
+{% else %}
+<div class="empty">
+  <p>Keine Geräte aktiv.</p>
+</div>
+{% endif %}
+
+{% include 'touch/widgets.html' %}
+{% endblock %}

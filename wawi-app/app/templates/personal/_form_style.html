@@ -1,0 +1,59 @@
+{# Shared CSS fuer Personal-Formulare. Wird per {% include %} innerhalb von
+   {% block extra_style %} eingebunden. #}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.topbar h1 { flex: 1; font-size: 26px; }
+.btn { background: var(--gruen-mitte); color: white; border: none; border-radius: var(--radius-klein);
+       padding: 8px 14px; font-weight: 700; cursor: pointer; text-decoration: none;
+       font-family: inherit; font-size: 13px; display: inline-block; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+
+.card-section { margin-bottom: 12px; padding: 14px 16px; }
+.card-section h2 { font-size: 15px; margin-bottom: 10px;
+                   font-family: 'Nunito'; font-weight: 800; color: var(--gruen-dunkel);
+                   text-transform: uppercase; letter-spacing: 0.08em;
+                   border-bottom: 1px solid var(--creme-dunkel); padding-bottom: 6px; }
+
+/* 4-Spalten-Grid auf Desktop, 2 auf Tablet, 1 auf Mobile */
+.form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 14px; }
+.form-col-2 { grid-column: span 2; }
+.form-col-3 { grid-column: span 3; }
+.form-col-4 { grid-column: span 4; }
+
+.form-group { display: flex; flex-direction: column; min-width: 0; }
+.form-group label { font-size: 10px; font-weight: 800; color: var(--text-mitte);
+                    margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+.form-group label small { font-weight: 500; text-transform: none; letter-spacing: 0;
+                          color: var(--grau-mitte); margin-left: 4px; }
+.form-group input, .form-group textarea, .form-group select {
+  padding: 6px 8px; border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+  font-family: inherit; font-size: 13px; background: white; width: 100%;
+}
+.form-group textarea { min-height: 52px; resize: vertical; }
+.form-group input:focus, .form-group textarea:focus {
+  outline: none; border-color: var(--gruen-mitte); box-shadow: 0 0 0 2px rgba(74,148,40,0.15);
+}
+
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+
+.msg { padding: 8px 12px; border-radius: var(--radius-klein); margin-bottom: 10px;
+       font-weight: 600; font-size: 13px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+
+.readonly-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px;
+                 font-size: 13px; }
+.readonly-grid dt { font-weight: 700; color: var(--text-mitte); }
+
+@media (max-width: 1000px) {
+  .form-grid { grid-template-columns: repeat(2, 1fr); }
+  .form-col-3, .form-col-4 { grid-column: span 2; }
+}
+@media (max-width: 540px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .form-col-2, .form-col-3, .form-col-4 { grid-column: span 1; }
+}
+</style>

@@ -325,6 +325,7 @@
             <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
         </a>
         <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+        <a href="/stempeluhr" class="{% if '/stempeluhr' in request.path %}aktiv{% endif %}">⏱ Stempeluhr</a>
         <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
         <a href="/terminal-einstellung" class="{% if request.path == '/terminal-einstellung' %}aktiv{% endif %}">🖥️ Terminal</a>
         {% if terminal_nr == 9 %}

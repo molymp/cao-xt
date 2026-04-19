@@ -64,9 +64,88 @@ def _migrationen_ausfuehren():
                 INSERT IGNORE INTO XT_EINSTELLUNGEN (schluessel, wert, beschreibung)
                 VALUES
                     ('kiosk_parken_aktiv', '1', 'Parken-Funktion in der Kiosk-App aktiv'),
-                    ('kasse_parken_aktiv', '1', 'Parken-Funktion in der Kasse-App aktiv')
+                    ('kasse_parken_aktiv', '1', 'Parken-Funktion in der Kasse-App aktiv'),
+                    ('personal_bundesland', 'BY', 'Bundesland fuer gesetzliche Feiertage (BY, BW, BE, BB, HB, HH, HE, MV, NI, NW, RP, SL, SN, ST, SH, TH)'),
+                    ('personal_urlaub_uebertrag_verfall', '03-31', 'Stichtag (Format MM-TT) im Folgejahr, bis zu dem Urlaubsuebertraege aus dem Vorjahr genommen werden muessen – danach verfallen sie ersatzlos')
             """)
             log.info("Migration: XT_EINSTELLUNGEN geprüft/erstellt.")
+            # Benachrichtigungs-Empfaenger (E-Mail-Verteiler je Bereich).
+            # Spiegel des Schemas in modules/wawi/personal/schema.sql –
+            # idempotent, damit die Verwaltung auch ohne wawi-Start laeuft.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_BENACHRICHTIGUNG_EMPFAENGER (
+                    REC_ID       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    BEREICH      VARCHAR(40)  NOT NULL,
+                    EMAIL        VARCHAR(150) NOT NULL,
+                    NAME         VARCHAR(100) NULL,
+                    AKTIV        TINYINT UNSIGNED NOT NULL DEFAULT 1,
+                    ERSTELLT_AT  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ERSTELLT_VON INT UNSIGNED NULL,
+                    UNIQUE KEY uq_bereich_email (BEREICH, EMAIL),
+                    INDEX idx_bereich_aktiv (BEREICH, AKTIV)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='E-Mail-Verteiler fuer Hinweis-Benachrichtigungen'
+            """)
+            log.info("Migration: XT_BENACHRICHTIGUNG_EMPFAENGER geprüft/erstellt.")
+            # Spalte VERFAELLT_AM in XT_PERSONAL_URLAUB_KORREKTUR –
+            # fuer Urlaubsuebertrag-Verfall (Spiegel zu
+            # modules/wawi/personal/schema.sql). Nur ausfuehren, wenn die
+            # Zieltabelle bereits existiert (sonst legt das wawi-Modul sie
+            # beim ersten Personal-Zugriff an und die Spalte kommt dort mit).
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES "
+                " WHERE TABLE_SCHEMA = DATABASE() "
+                "   AND TABLE_NAME = 'XT_PERSONAL_URLAUB_KORREKTUR'"
+            )
+            if cur.fetchone()['n']:
+                cur.execute("""
+                    ALTER TABLE XT_PERSONAL_URLAUB_KORREKTUR
+                      ADD COLUMN IF NOT EXISTS VERFAELLT_AM DATE NULL
+                      COMMENT 'Stichtag, bis zu dem diese Korrektur verbraucht sein muss'
+                      AFTER KOMMENTAR
+                """)
+                log.info("Migration: XT_PERSONAL_URLAUB_KORREKTUR.VERFAELLT_AM geprüft.")
+            # Log-Tabelle fuer Stunden-Korrekturen (GoBD, append-only) –
+            # Spiegel zu modules/wawi/personal/schema.sql.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_PERSONAL_STUNDEN_KORREKTUR_LOG (
+                    REC_ID           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    PERS_ID          INT UNSIGNED NOT NULL,
+                    REF_REC_ID       INT UNSIGNED NOT NULL,
+                    OPERATION        ENUM('INSERT','UPDATE','DELETE') NOT NULL,
+                    FELDER_ALT_JSON  JSON         NULL,
+                    FELDER_NEU_JSON  JSON         NULL,
+                    GEAEND_AT        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    GEAEND_VON       INT UNSIGNED NULL,
+                    INDEX idx_pers_id   (PERS_ID),
+                    INDEX idx_geaend_at (GEAEND_AT)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Append-only Aenderungsprotokoll fuer XT_PERSONAL_STUNDEN_KORREKTUR'
+            """)
+            log.info("Migration: XT_PERSONAL_STUNDEN_KORREKTUR_LOG geprüft/erstellt.")
+            # Spalte IN_ZEITERFASSUNG in XT_PERSONAL_LOHNART + Seed-Eintrag
+            # fuer 'Leitende Angestellte / GF' (Spiegel zu
+            # modules/wawi/personal/schema.sql).
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES "
+                " WHERE TABLE_SCHEMA = DATABASE() "
+                "   AND TABLE_NAME = 'XT_PERSONAL_LOHNART'"
+            )
+            if cur.fetchone()['n']:
+                cur.execute("""
+                    ALTER TABLE XT_PERSONAL_LOHNART
+                      ADD COLUMN IF NOT EXISTS IN_ZEITERFASSUNG TINYINT(1)
+                         NOT NULL DEFAULT 1
+                         COMMENT '1 = nimmt an Zeiterfassung teil, 0 = nicht'
+                         AFTER SV_PFLICHTIG_FLAG
+                """)
+                cur.execute("""
+                    INSERT IGNORE INTO XT_PERSONAL_LOHNART
+                      (LOHNART_ID, BEZEICHNUNG, MINIJOB_FLAG,
+                       SV_PFLICHTIG_FLAG, IN_ZEITERFASSUNG, SORT)
+                    VALUES (7, 'Leitende Angestellte / GF', 0, 1, 0, 70)
+                """)
+                log.info("Migration: XT_PERSONAL_LOHNART.IN_ZEITERFASSUNG geprüft.")
     except Exception as e:
         log.warning("Migration fehlgeschlagen (DB evtl. nicht erreichbar): %s", e)
 
@@ -600,6 +679,273 @@ def api_einstellung_setzen(schluessel: str):
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── Phase G: Feiertage (Personal-Modul) ──────────────────────────
+#
+# Verwaltet XT_PERSONAL_FEIERTAG (gesetzlich via holidays-Paket + manuell).
+# Das aktive Bundesland liegt in XT_EINSTELLUNGEN.personal_bundesland.
+#
+
+BUNDESLAENDER = (
+    ('BW', 'Baden-Wuerttemberg'), ('BY', 'Bayern'), ('BE', 'Berlin'),
+    ('BB', 'Brandenburg'),        ('HB', 'Bremen'),  ('HH', 'Hamburg'),
+    ('HE', 'Hessen'),             ('MV', 'Mecklenburg-Vorpommern'),
+    ('NI', 'Niedersachsen'),      ('NW', 'Nordrhein-Westfalen'),
+    ('RP', 'Rheinland-Pfalz'),    ('SL', 'Saarland'),
+    ('SN', 'Sachsen'),            ('ST', 'Sachsen-Anhalt'),
+    ('SH', 'Schleswig-Holstein'), ('TH', 'Thueringen'),
+)
+
+
+def _aktuelles_bundesland() -> str:
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT wert FROM XT_EINSTELLUNGEN WHERE schluessel='personal_bundesland'"
+            )
+            row = cur.fetchone()
+            if row and row.get('wert'):
+                return str(row['wert']).strip().upper()
+    except Exception:
+        pass
+    return 'BY'
+
+
+@app.route('/feiertage')
+@_login_required
+def feiertage():
+    jahr_str = request.args.get('jahr', '')
+    try:
+        jahr = int(jahr_str) if jahr_str else datetime.now().year
+    except (TypeError, ValueError):
+        jahr = datetime.now().year
+    bundesland = _aktuelles_bundesland()
+    eintraege = []
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT REC_ID, DATUM, NAME, BUNDESLAND, QUELLE, ERSTELLT_AT
+                     FROM XT_PERSONAL_FEIERTAG
+                    WHERE YEAR(DATUM) = %s AND BUNDESLAND IN (%s, 'BUND')
+                    ORDER BY DATUM, QUELLE='manuell' DESC, REC_ID""",
+                (int(jahr), bundesland),
+            )
+            eintraege = cur.fetchall() or []
+    except Exception as e:
+        log.warning("Feiertage laden fehlgeschlagen: %s", e)
+    return render_template(
+        'feiertage.html',
+        jahr=jahr,
+        bundesland=bundesland,
+        bundeslaender=BUNDESLAENDER,
+        eintraege=eintraege,
+    )
+
+
+@app.post('/api/feiertage/bundesland')
+@_login_required
+def api_feiertage_bundesland():
+    """Setzt das aktive Bundesland."""
+    d = request.get_json(force=True)
+    neu = str(d.get('bundesland', '')).strip().upper()
+    if neu not in {k for k, _ in BUNDESLAENDER}:
+        return jsonify(ok=False, msg='Unbekanntes Bundesland.'), 400
+    benutzer = session.get('login_name', '')
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "UPDATE XT_EINSTELLUNGEN SET wert=%s, geaendert_von=%s "
+                " WHERE schluessel='personal_bundesland'",
+                (neu, benutzer),
+            )
+        return jsonify(ok=True, bundesland=neu)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/feiertage/sync')
+@_login_required
+def api_feiertage_sync():
+    """Synchronisiert gesetzliche Feiertage aus dem holidays-Paket fuer
+    (jahr, aktuelles_bundesland). INSERT IGNORE – vorhandene Eintraege
+    bleiben unveraendert."""
+    d = request.get_json(force=True) or {}
+    try:
+        jahr = int(d.get('jahr') or datetime.now().year)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, msg='Ungueltige Jahresangabe.'), 400
+    bundesland = _aktuelles_bundesland()
+    try:
+        import holidays
+    except ImportError:
+        return jsonify(ok=False,
+                       msg='Python-Paket "holidays" nicht installiert.'), 500
+    try:
+        try:
+            kal = holidays.country_holidays('DE', subdiv=bundesland, years=jahr)
+        except Exception:
+            kal = holidays.country_holidays('DE', years=jahr)
+        eingefuegt = 0
+        with get_db_transaction() as cur:
+            for tag, name in sorted(kal.items()):
+                cur.execute(
+                    """INSERT IGNORE INTO XT_PERSONAL_FEIERTAG
+                         (DATUM, NAME, BUNDESLAND, QUELLE, ERSTELLT_VON)
+                       VALUES (%s, %s, %s, 'paket', NULL)""",
+                    (tag, str(name), bundesland),
+                )
+                eingefuegt += cur.rowcount
+        return jsonify(ok=True, eingefuegt=eingefuegt, jahr=jahr, bundesland=bundesland)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/feiertage/manuell')
+@_login_required
+def api_feiertag_manuell_anlegen():
+    """Legt einen manuellen Feiertag an. Body: {datum, name}"""
+    d = request.get_json(force=True) or {}
+    datum = str(d.get('datum', '')).strip()
+    name = str(d.get('name', '')).strip()
+    if not datum or not name:
+        return jsonify(ok=False, msg='Datum und Name erforderlich.'), 400
+    try:
+        datetime.strptime(datum, '%Y-%m-%d')
+    except ValueError:
+        return jsonify(ok=False, msg='Datum im Format JJJJ-MM-TT angeben.'), 400
+    bundesland = _aktuelles_bundesland()
+    ma_id = session.get('ma_id') or 0
+    try:
+        with get_db_transaction() as cur:
+            cur.execute(
+                """INSERT INTO XT_PERSONAL_FEIERTAG
+                     (DATUM, NAME, BUNDESLAND, QUELLE, ERSTELLT_VON)
+                   VALUES (%s, %s, %s, 'manuell', %s)""",
+                (datum, name, bundesland, int(ma_id)),
+            )
+        return jsonify(ok=True)
+    except Exception as e:
+        # Duplikat via UNIQUE-Key ist der haeufigste Fehler
+        return jsonify(ok=False, msg=str(e)), 400
+
+
+@app.delete('/api/feiertage/<int:rec_id>')
+@_login_required
+def api_feiertag_loeschen(rec_id: int):
+    """Loescht einen manuellen Feiertag. Paket-Eintraege lassen sich
+    so nicht entfernen (re-Sync wuerde sie ohnehin wiederherstellen)."""
+    try:
+        with get_db_transaction() as cur:
+            cur.execute(
+                "DELETE FROM XT_PERSONAL_FEIERTAG "
+                " WHERE REC_ID=%s AND QUELLE='manuell'",
+                (int(rec_id),),
+            )
+            anz = cur.rowcount
+        if not anz:
+            return jsonify(ok=False,
+                           msg='Nicht gefunden oder kein manueller Eintrag.'), 404
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# ── Benachrichtigungs-Empfaenger (E-Mails fuer Hinweis-Hooks) ────────
+
+# Bereiche, fuer die aktuell Hinweis-Mails verschickt werden. Ergaenzend
+# hinzufuegen, sobald eine neue Benachrichtigungs-Kategorie auftaucht.
+BENACHRICHTIGUNG_BEREICHE: tuple[tuple[str, str], ...] = (
+    ('abwesenheit_antrag',  'Abwesenheit: neuer Antrag vom MA'),
+    ('urlaub_antrag',       'Urlaub: neuer Antrag vom MA'),
+)
+
+
+def _benachrichtigung_bereich_ok(bereich: str) -> bool:
+    return bereich in {k for k, _ in BENACHRICHTIGUNG_BEREICHE}
+
+
+@app.get('/benachrichtigungen')
+@_login_required
+def benachrichtigungen():
+    eintraege = []
+    try:
+        with get_db() as cur:
+            cur.execute(
+                """SELECT REC_ID, BEREICH, EMAIL, NAME, AKTIV, ERSTELLT_AT
+                     FROM XT_BENACHRICHTIGUNG_EMPFAENGER
+                    ORDER BY BEREICH, EMAIL"""
+            )
+            eintraege = cur.fetchall() or []
+    except Exception as e:
+        log.warning("Benachrichtigungs-Empfaenger laden fehlgeschlagen: %s", e)
+    return render_template(
+        'benachrichtigungen.html',
+        bereiche=BENACHRICHTIGUNG_BEREICHE,
+        eintraege=eintraege,
+    )
+
+
+@app.post('/api/benachrichtigungen')
+@_login_required
+def api_benachrichtigung_anlegen():
+    d = request.get_json(force=True) or {}
+    bereich = str(d.get('bereich', '')).strip()
+    email = str(d.get('email', '')).strip()
+    name = str(d.get('name', '')).strip() or None
+    if not _benachrichtigung_bereich_ok(bereich):
+        return jsonify(ok=False, msg='Unbekannter Bereich.'), 400
+    if '@' not in email or len(email) > 150:
+        return jsonify(ok=False, msg='Ungueltige E-Mail-Adresse.'), 400
+    ma_id = session.get('ma_id') or 0
+    try:
+        with get_db_transaction() as cur:
+            cur.execute(
+                """INSERT INTO XT_BENACHRICHTIGUNG_EMPFAENGER
+                     (BEREICH, EMAIL, NAME, ERSTELLT_VON)
+                   VALUES (%s, %s, %s, %s)""",
+                (bereich, email, name, int(ma_id) if ma_id else None),
+            )
+        return jsonify(ok=True)
+    except Exception as e:
+        # UNIQUE (BEREICH, EMAIL) ist der haeufige Fehlerfall
+        return jsonify(ok=False, msg=str(e)), 400
+
+
+@app.post('/api/benachrichtigungen/<int:rec_id>/aktiv')
+@_login_required
+def api_benachrichtigung_aktiv(rec_id: int):
+    """Toggelt den AKTIV-Schalter eines Empfaengers."""
+    d = request.get_json(force=True) or {}
+    aktiv = 1 if d.get('aktiv') else 0
+    try:
+        with get_db_transaction() as cur:
+            cur.execute(
+                "UPDATE XT_BENACHRICHTIGUNG_EMPFAENGER SET AKTIV=%s "
+                " WHERE REC_ID=%s",
+                (aktiv, int(rec_id)),
+            )
+            if cur.rowcount == 0:
+                return jsonify(ok=False, msg='Nicht gefunden.'), 404
+        return jsonify(ok=True, aktiv=aktiv)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.delete('/api/benachrichtigungen/<int:rec_id>')
+@_login_required
+def api_benachrichtigung_loeschen(rec_id: int):
+    try:
+        with get_db_transaction() as cur:
+            cur.execute(
+                "DELETE FROM XT_BENACHRICHTIGUNG_EMPFAENGER WHERE REC_ID=%s",
+                (int(rec_id),),
+            )
+            if cur.rowcount == 0:
+                return jsonify(ok=False, msg='Nicht gefunden.'), 404
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── Handbuch ─────────────────────────────────────────────────────
 
 @app.get('/verwaltung/doku/<path:dateiname>')
@@ -787,6 +1133,59 @@ def api_system_update():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
     return jsonify({'ok': True, 'log': '/tmp/caoxt-update.log'})
+
+
+# ── Zeiten-CSV Import (ShiftJuggler Attendance-Export) ───────────
+
+@app.route('/zeiten-import', methods=['GET', 'POST'])
+@_login_required
+def zeiten_import():
+    """Upload-Formular fuer eine ShiftJuggler-Attendance-CSV.
+
+    GET  → Formular mit Format-Infos (Template: zeiten_import.html).
+    POST → Datei parsen und entweder Dry-Run-Report oder scharf importieren.
+
+    Der eigentliche Import liegt in
+    ``modules.wawi.personal.tools.import_zeiten`` – die Verwaltungs-App ruft
+    ihn nur auf und zeigt den Report an.
+    """
+    if request.method == 'GET':
+        return render_template('zeiten_import.html',
+                               stats=None, dry_run=None, fehler=None)
+
+    datei = request.files.get('csv')
+    dry_run = bool(request.form.get('dry_run'))
+    if not datei or not datei.filename:
+        return render_template('zeiten_import.html',
+                               stats=None, dry_run=dry_run,
+                               fehler='Keine Datei ausgewaehlt.')
+
+    import tempfile
+    from modules.wawi.personal.tools.import_zeiten import importiere_csv
+
+    suffix = '.csv' if datei.filename.lower().endswith('.csv') else ''
+    fd, tmp_path = tempfile.mkstemp(prefix='zeiten_import_', suffix=suffix)
+    try:
+        with os.fdopen(fd, 'wb') as fh:
+            datei.save(fh)
+        try:
+            stats = importiere_csv(tmp_path,
+                                   benutzer_ma_id=session['ma_id'],
+                                   dry_run=dry_run)
+        except Exception as e:
+            log.warning("Zeiten-Import fehlgeschlagen: %s", e)
+            return render_template('zeiten_import.html',
+                                   stats=None, dry_run=dry_run,
+                                   fehler=f'Import fehlgeschlagen: {e}')
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    return render_template('zeiten_import.html',
+                           stats=stats, dry_run=dry_run, fehler=None,
+                           dateiname=datei.filename)
 
 
 # ── App starten ──────────────────────────────────────────────────

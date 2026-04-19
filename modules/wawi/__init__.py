@@ -1,13 +1,17 @@
 """
-CAO-XT WaWi-Modul – Warenwirtschaft Phase 1: Artikelpreispflege & VK-Ermittlung
+CAO-XT WaWi-Modul – Warenwirtschaft.
 
-Registriert den Flask-Blueprint.  Port: 5003 (standalone) oder Blueprint in Haupt-App.
+Registrierung:
 
     from modules.wawi import create_blueprint
     app.register_blueprint(create_blueprint(), url_prefix='/wawi')
+
+Hinweis: Der Blueprint wird lazy geladen, damit der Import von
+``modules.wawi.personal`` (oder anderer Sub-Pakete) nicht davon abhaengt,
+dass ``modules/wawi/`` selbst auf ``sys.path`` liegt.
 """
-from .routes import bp as _bp
 
 
 def create_blueprint():
-    return _bp
+    from .routes import bp
+    return bp

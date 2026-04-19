@@ -1,0 +1,109 @@
+{% extends "kunden_base.html" %}
+{% block title %}Stempeluhr – Uebersicht{% endblock %}
+
+{% block extra_css %}
+<style>
+.ss-wrap { max-width: 900px; margin: 0 auto; padding: 16px 20px 40px; }
+.ss-kopf { display: flex; align-items: center; justify-content: space-between;
+           gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.ss-kopf h1 { font-size: 1.6rem; margin: 0; }
+.ss-kopf .btn { padding: 10px 16px; border-radius: var(--radius-klein);
+                text-decoration: none; font-weight: 700;
+                background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+
+.ss-box { background: white; border-radius: var(--radius);
+          padding: 16px 18px; box-shadow: var(--schatten); margin-bottom: 14px; }
+.ss-box h2 { font-size: 1.2rem; margin-bottom: 10px; }
+
+.saldo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 6px; }
+.saldo-kachel {
+    background: var(--creme); border-radius: var(--radius-klein);
+    padding: 10px; text-align: center;
+}
+.saldo-kachel .lbl { font-size: 0.72rem; font-weight: 700; color: var(--grau-mitte); text-transform: uppercase; }
+.saldo-kachel .val { font-size: 1.6rem; font-weight: 800; color: var(--gruen-dunkel); }
+
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th, .tbl td { padding: 8px 10px; font-size: 0.92rem;
+                   border-bottom: 1px solid var(--creme-dunkel); text-align: left; }
+.tbl th { font-weight: 700; color: var(--grau-mitte); }
+
+.status-geplant   { color: var(--gold); font-weight: 700; }
+.status-genehmigt { color: var(--gruen-hell); font-weight: 700; }
+.status-genommen  { color: var(--grau-mitte); font-weight: 700; }
+.status-abgelehnt { color: var(--rot); font-weight: 700; }
+.status-storniert { color: var(--grau-mitte); text-decoration: line-through; }
+
+.leer { font-style: italic; color: var(--grau-mitte); }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="ss-wrap">
+    <div class="ss-kopf">
+        <h1>📊 Uebersicht {{ jahr }}</h1>
+        <a href="/stempeluhr/menu" class="btn">&#x2190; Zum Menue</a>
+    </div>
+
+    <div class="ss-box">
+        <h2>Urlaubs-Saldo</h2>
+        <div class="saldo-grid">
+            <div class="saldo-kachel"><div class="lbl">Anspruch</div><div class="val">{{ '%.1f'|format(saldo.gesamt) }}</div></div>
+            <div class="saldo-kachel"><div class="lbl">Geplant</div><div class="val">{{ '%.1f'|format(saldo.geplant) }}</div></div>
+            <div class="saldo-kachel"><div class="lbl">Genommen</div><div class="val">{{ '%.1f'|format(saldo.genommen) }}</div></div>
+            <div class="saldo-kachel"><div class="lbl">Rest</div><div class="val">{{ '%.1f'|format(saldo.rest) }}</div></div>
+        </div>
+    </div>
+
+    <div class="ss-box">
+        <h2>Urlaubsantraege</h2>
+        {% if not antraege %}
+            <p class="leer">Noch keine Antraege fuer {{ jahr }}.</p>
+        {% else %}
+        <table class="tbl">
+            <thead><tr>
+                <th>Zeitraum</th><th>Arbeitstage</th><th>Status</th><th>Kommentar</th>
+            </tr></thead>
+            <tbody>
+            {% for a in antraege %}
+                <tr>
+                    <td>{{ a.VON.strftime('%d.%m.%Y') }} &ndash; {{ a.BIS.strftime('%d.%m.%Y') }}</td>
+                    <td>{{ '%.1f'|format(a.ARBEITSTAGE) }}</td>
+                    <td class="status-{{ a.STATUS }}">{{ a.STATUS|capitalize }}</td>
+                    <td>{{ a.KOMMENTAR or '' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
+    <div class="ss-box">
+        <h2>Abwesenheiten</h2>
+        {% if not abwesenheiten %}
+            <p class="leer">Keine Abwesenheiten fuer {{ jahr }}.</p>
+        {% else %}
+        <table class="tbl">
+            <thead><tr>
+                <th>Art</th><th>Zeitraum</th><th>Bezahlt</th><th>AU</th><th>Bemerkung</th>
+            </tr></thead>
+            <tbody>
+            {% for x in abwesenheiten %}
+                <tr {% if x.STORNIERT %}class="status-storniert"{% endif %}>
+                    <td>{{ typen.get(x.TYP, x.TYP) }}</td>
+                    <td>
+                        {{ x.VON.strftime('%d.%m.%Y') }}
+                        {% if x.BIS != x.VON %} &ndash; {{ x.BIS.strftime('%d.%m.%Y') }}{% endif %}
+                        {% if not x.GANZTAGS and x.STUNDEN %}<br><small>{{ '%.1f'|format(x.STUNDEN) }} Std.</small>{% endif %}
+                    </td>
+                    <td>{% if x.BEZAHLT %}✓{% else %}—{% endif %}</td>
+                    <td>{% if x.AU_VORGELEGT %}✓{% else %}—{% endif %}</td>
+                    <td>{{ x.BEMERKUNG or '' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

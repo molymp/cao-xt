@@ -64,6 +64,35 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Input-Row (analog zu toggle-row, aber fuer Text-/Datums-Eingaben) */
+.input-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 20px;
+}
+.input-row:last-child { border-bottom: none; }
+.input-row .toggle-info { flex: 1; }
+.input-row input[type="text"],
+.input-row input[type="date"] {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-hell);
+  font-variant-numeric: tabular-nums;
+  width: 110px;
+  text-align: center;
+}
+.input-row input:focus {
+  outline: 2px solid var(--gruen);
+  outline-offset: 1px;
+}
 </style>
 {% endblock %}
 
@@ -88,7 +117,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" style="margin-bottom:24px;">
   <h3 style="margin-bottom:4px;font-size:18px;">Kasse-App</h3>
   <div class="toggle-row" id="row-kasse-parken">
     <div class="toggle-info">
@@ -102,6 +131,24 @@
     </label>
   </div>
 </div>
+
+<div class="card">
+  <h3 style="margin-bottom:4px;font-size:18px;">Personal</h3>
+  <div class="input-row" id="row-urlaub-verfall">
+    <div class="toggle-info">
+      <div class="toggle-label">Stichtag Urlaubsübertrag</div>
+      <div class="toggle-desc">
+        Bis zu diesem Tag im Folgejahr (Format <code>MM-TT</code>) muss der
+        Übertrag aus dem Vorjahr genommen sein — andernfalls verfällt er
+        ersatzlos. Default: <code>03-31</code>.
+      </div>
+    </div>
+    <input type="text" id="input-urlaub-verfall"
+           maxlength="5" pattern="[0-9]{2}-[0-9]{2}"
+           placeholder="03-31"
+           onchange="setzeEinstellung('personal_urlaub_uebertrag_verfall', this.value, this)">
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -109,6 +156,9 @@
 const TOGGLE_MAP = {
   'kiosk_parken_aktiv': 'toggle-kiosk-parken',
   'kasse_parken_aktiv': 'toggle-kasse-parken',
+};
+const INPUT_MAP = {
+  'personal_urlaub_uebertrag_verfall': 'input-urlaub-verfall',
 };
 
 async function ladeEinstellungen() {
@@ -118,6 +168,13 @@ async function ladeEinstellungen() {
     const el = document.getElementById(elId);
     if (el && r.einstellungen[key]) {
       el.checked = r.einstellungen[key].wert === '1';
+    }
+  }
+  for (const [key, elId] of Object.entries(INPUT_MAP)) {
+    const el = document.getElementById(elId);
+    if (el && r.einstellungen[key]) {
+      el.value = r.einstellungen[key].wert || '';
+      el.dataset.lastvalue = el.value;
     }
   }
 }
@@ -132,6 +189,34 @@ async function toggleEinstellung(schluessel, aktiv) {
     toast(r.msg || 'Fehler', 'err');
     // Zurücksetzen bei Fehler
     if (el) el.checked = !aktiv;
+  }
+  if (el) el.disabled = false;
+}
+
+async function setzeEinstellung(schluessel, wert, el) {
+  wert = (wert || '').trim();
+  // MM-TT-Validierung client-seitig (Feedback vor Server-Call).
+  if (schluessel === 'personal_urlaub_uebertrag_verfall') {
+    if (!/^\d{2}-\d{2}$/.test(wert)) {
+      toast('Format MM-TT erwartet (z.B. 03-31)', 'err');
+      if (el) el.value = el.dataset.lastvalue || '';
+      return;
+    }
+    const [mm, tt] = wert.split('-').map(Number);
+    if (mm < 1 || mm > 12 || tt < 1 || tt > 31) {
+      toast('Ungueltiger Monat oder Tag', 'err');
+      if (el) el.value = el.dataset.lastvalue || '';
+      return;
+    }
+  }
+  if (el) el.disabled = true;
+  const r = await api('PUT', '/api/einstellungen/' + schluessel, { wert: wert });
+  if (r.ok) {
+    toast('Gespeichert', 'ok');
+    if (el) el.dataset.lastvalue = wert;
+  } else {
+    toast(r.msg || 'Fehler', 'err');
+    if (el) el.value = el.dataset.lastvalue || '';
   }
   if (el) el.disabled = false;
 }

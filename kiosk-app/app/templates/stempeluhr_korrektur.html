@@ -1,0 +1,141 @@
+{% extends "kunden_base.html" %}
+{% block title %}Stempeluhr – Korrekturen{% endblock %}
+
+{% block extra_css %}
+<style>
+.ss-wrap { max-width: 900px; margin: 0 auto; padding: 16px 20px 40px; }
+.ss-kopf { display: flex; align-items: center; justify-content: space-between;
+           gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.ss-kopf h1 { font-size: 1.6rem; margin: 0; }
+.ss-kopf .btn { padding: 10px 16px; border-radius: var(--radius-klein);
+                text-decoration: none; font-weight: 700;
+                background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+
+.ss-box { background: white; border-radius: var(--radius);
+          padding: 16px 18px; box-shadow: var(--schatten);
+          margin-bottom: 14px; }
+.ss-box h2 { font-size: 1.2rem; margin-bottom: 10px; }
+
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th, .tbl td { padding: 8px 10px; font-size: 0.92rem; border-bottom: 1px solid var(--creme-dunkel); text-align: left; }
+.tbl th { font-weight: 700; color: var(--grau-mitte); }
+
+.ss-formzeile { display: grid; grid-template-columns: 1fr 1fr 1fr 2fr auto;
+                gap: 8px; align-items: end; margin-top: 10px; }
+.ss-formzeile label { display: block; font-size: 0.78rem; font-weight: 700;
+                      color: var(--grau-mitte); margin-bottom: 3px; }
+.ss-formzeile input, .ss-formzeile select {
+    width: 100%; padding: 10px 12px; font-size: 1rem;
+    border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+    background: var(--creme); font-family: 'Nunito', sans-serif;
+}
+.ss-formzeile button {
+    padding: 10px 16px; background: var(--gruen-hell); color: white;
+    border: none; border-radius: var(--radius-klein); font-weight: 700;
+    cursor: pointer;
+}
+
+.zeile-form {
+    display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px;
+    align-items: end; margin-top: 8px;
+}
+.zeile-form input, .zeile-form select {
+    padding: 8px 10px; font-size: 0.95rem;
+    border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+    background: var(--creme); font-family: 'Nunito', sans-serif;
+    width: 100%;
+}
+.zeile-form button {
+    padding: 8px 14px; background: var(--gold); color: white;
+    border: none; border-radius: var(--radius-klein); font-weight: 700;
+    cursor: pointer;
+}
+
+.ss-hinweis { color: var(--text-mitte); font-size: 0.85rem;
+              margin-top: 6px; line-height: 1.5; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="ss-wrap">
+    <div class="ss-kopf">
+        <h1>🛠 Buchungen korrigieren</h1>
+        <a href="/stempeluhr/menu" class="btn">&#x2190; Zum Menue</a>
+    </div>
+
+    <div class="ss-box">
+        <h2>Fehlenden Stempel nachtragen</h2>
+        <form method="post" action="/stempeluhr/korrektur/neu" class="ss-formzeile">
+            <div>
+                <label for="n-tag">Tag</label>
+                <input type="date" id="n-tag" name="tag" value="{{ bis.isoformat() }}"
+                       min="{{ von.isoformat() }}" max="{{ bis.isoformat() }}" required>
+            </div>
+            <div>
+                <label for="n-zeit">Zeit</label>
+                <input type="time" id="n-zeit" name="zeit" required>
+            </div>
+            <div>
+                <label for="n-r">Richtung</label>
+                <select id="n-r" name="richtung" required>
+                    <option value="kommen">Kommen</option>
+                    <option value="gehen">Gehen</option>
+                </select>
+            </div>
+            <div>
+                <label for="n-g">Grund *</label>
+                <input type="text" id="n-g" name="grund" maxlength="200" required
+                       placeholder="z.B. Karte vergessen">
+            </div>
+            <div><button type="submit">Nachtragen</button></div>
+        </form>
+        <div class="ss-hinweis">
+            Der Grund ist Pflicht und wird im Aenderungsprotokoll erfasst.
+            Nachtraege sind bis {{ max_tage }} Tage rueckwirkend moeglich.
+        </div>
+    </div>
+
+    <div class="ss-box">
+        <h2>Deine Stempel der letzten {{ max_tage }} Tage</h2>
+        {% if not stempel %}
+            <p class="ss-hinweis">Keine Stempel in diesem Zeitraum.</p>
+        {% else %}
+        <table class="tbl">
+            <thead><tr>
+                <th>Datum</th><th>Zeit</th><th>Richtung</th><th>Quelle</th><th>Aendern</th>
+            </tr></thead>
+            <tbody>
+            {% for s in stempel %}
+                <tr>
+                    <td>{{ s.ZEITPUNKT.strftime('%d.%m.%Y') }}</td>
+                    <td>{{ s.ZEITPUNKT.strftime('%H:%M') }}</td>
+                    <td>
+                        {% if s.RICHTUNG == 'kommen' %}🟢 Kommen{% else %}🔴 Gehen{% endif %}
+                    </td>
+                    <td style="color: var(--grau-mitte); font-size: 0.85rem;">
+                        {{ s.QUELLE }}{% if s.TERMINAL_NR %} T{{ s.TERMINAL_NR }}{% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="/stempeluhr/korrektur/{{ s.REC_ID }}"
+                              class="zeile-form">
+                            <input type="time" name="zeit"
+                                   value="{{ s.ZEITPUNKT.strftime('%H:%M') }}" required>
+                            <select name="richtung">
+                                <option value="kommen" {% if s.RICHTUNG=='kommen' %}selected{% endif %}>Kommen</option>
+                                <option value="gehen"  {% if s.RICHTUNG=='gehen'  %}selected{% endif %}>Gehen</option>
+                            </select>
+                            <input type="text" name="grund" placeholder="Grund *" required maxlength="200">
+                            <button type="submit">Speichern</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        <div class="ss-hinweis">
+            Das Loeschen eines Stempels ist nur durch das Backoffice moeglich.
+        </div>
+    </div>
+</div>
+{% endblock %}

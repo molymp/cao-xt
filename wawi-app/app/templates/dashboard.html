@@ -20,6 +20,113 @@
     <div class="kpi-sub">Lieferscheine ohne Rechnung</div>
   </div>
 
+  {% if personal %}
+  <div class="kpi-card {{ personal.ampel }} personal-widget">
+    <div class="kpi-label">👥 Personal heute</div>
+    <div class="pers-zeile">
+      <span class="pers-nr {{ 'gelb' if personal.abw_heute_count else 'gruen' }}">
+        {{ personal.abw_heute_count }}
+      </span>
+      <div class="pers-text">
+        <div class="haupt">{% if personal.abw_heute_count == 0 %}Niemand abwesend
+                           {% elif personal.abw_heute_count == 1 %}1 Abwesenheit
+                           {% else %}{{ personal.abw_heute_count }} Abwesenheiten{% endif %}</div>
+        {% if personal.abw_heute_preview %}
+          <div class="detail">
+            {% for a in personal.abw_heute_preview -%}
+              {{ a.VNAME }} {{ a.NAME }} ({{ a.TYP_LABEL }}){% if not loop.last %}, {% endif %}
+            {%- endfor %}
+            {% if personal.abw_heute_count > personal.abw_heute_preview|length %}
+              …
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="pers-zeile">
+      <span class="pers-nr {{ 'rot' if personal.antraege_offen_count else 'gruen' }}">
+        {{ personal.antraege_offen_count }}
+      </span>
+      <div class="pers-text">
+        <div class="haupt">{% if personal.antraege_offen_count == 0 %}Keine offenen Urlaubsanträge
+                           {% elif personal.antraege_offen_count == 1 %}1 offener Urlaubsantrag
+                           {% else %}{{ personal.antraege_offen_count }} offene Urlaubsanträge{% endif %}</div>
+        {% if personal.antraege_offen_preview %}
+          <ul class="pers-liste">
+            {% for a in personal.antraege_offen_preview %}
+              <li><a href="{{ url_for('wawi_personal.detail', pers_id=a.PERS_ID) }}">
+                {{ a.VNAME }} {{ a.NAME }}</a> ·
+                {{ a.VON.strftime('%d.%m.') }}–{{ a.BIS.strftime('%d.%m.%y') }}
+                ({{ '%g'|format(a.ARBEITSTAGE) }} Tage)</li>
+            {% endfor %}
+            {% if personal.antraege_offen_count > personal.antraege_offen_preview|length %}
+              <li class="mehr">… {{ personal.antraege_offen_count - personal.antraege_offen_preview|length }} weitere</li>
+            {% endif %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+    <a class="ampel-cta{% if personal.ampel == 'rot' %} rot{% endif %}"
+       href="{{ url_for('wawi_personal.abwesenheiten_uebersicht') }}">Abwesenheiten →</a>
+  </div>
+  {% endif %}
+
+  {% if haccp %}
+  <div class="kpi-card {{ haccp.temp_ampel }}">
+    <div class="kpi-label">🌡️ Temperaturstatus</div>
+    <div class="ampel-widget">
+      <span class="ampel-kugel {{ haccp.temp_ampel }}"></span>
+      <div class="ampel-text">
+        {% if haccp.temp_ampel == 'rot' %}
+          <div class="haupt">{{ haccp.alarme_offen }} offene Alarme</div>
+          <div class="detail">Bitte Temperatur prüfen</div>
+        {% elif haccp.temp_ampel == 'gelb' %}
+          <div class="haupt">
+            {% if haccp.offline_count %}{{ haccp.offline_count }} offline{% endif %}
+            {% if haccp.offline_count and haccp.batt_low_count %} · {% endif %}
+            {% if haccp.batt_low_count %}{{ haccp.batt_low_count }} × 🔋{% endif %}
+          </div>
+          <div class="detail">{{ haccp.geraete_total }} Sensoren überwacht</div>
+        {% elif haccp.temp_ampel == 'gruen' %}
+          <div class="haupt">Alles im Soll</div>
+          <div class="detail">{{ haccp.geraete_total }} Sensoren OK</div>
+        {% else %}
+          <div class="haupt">Keine Sensoren</div>
+          <div class="detail">HACCP nicht konfiguriert</div>
+        {% endif %}
+      </div>
+    </div>
+    <a class="ampel-cta{% if haccp.temp_ampel == 'rot' %} rot{% endif %}"
+       href="{{ url_for('haccp.dashboard') }}">HACCP öffnen →</a>
+  </div>
+
+  <div class="kpi-card {{ haccp.sicht_ampel }}">
+    <div class="kpi-label">✅ Sichtkontrolle heute</div>
+    <div class="ampel-widget">
+      <span class="ampel-kugel {{ haccp.sicht_ampel }}"></span>
+      <div class="ampel-text">
+        {% if haccp.sicht_ampel == 'rot' %}
+          <div class="haupt">{{ haccp.unquittiert_count }} offen</div>
+          <div class="detail">{{ haccp.quittiert_count }} von {{ haccp.geraete_total }} erledigt</div>
+        {% elif haccp.sicht_ampel == 'gruen' %}
+          <div class="haupt">Alle quittiert ✓</div>
+          <div class="detail">{{ haccp.geraete_total }} Sensoren kontrolliert</div>
+        {% else %}
+          <div class="haupt">Keine Sensoren</div>
+          <div class="detail">Nichts zu quittieren</div>
+        {% endif %}
+      </div>
+    </div>
+    {% if haccp.sicht_ampel == 'rot' %}
+    <a class="ampel-cta rot"
+       href="{{ url_for('haccp.sichtkontrolle_dashboard') }}">Jetzt quittieren →</a>
+    {% elif haccp.sicht_ampel == 'gruen' %}
+    <a class="ampel-cta"
+       href="{{ url_for('haccp.sichtkontrolle_dashboard') }}">Übersicht →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
 </div>
 
 <!-- Monatsumsatz -->
