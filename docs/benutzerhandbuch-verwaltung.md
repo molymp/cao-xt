@@ -1,6 +1,6 @@
 # Benutzerhandbuch – Verwaltungs-App
 
-**Version:** 1.2.0 | **Stand:** 2026-04-13 | **App:** Verwaltung (Port 5004)
+**Version:** 1.3.0 | **Stand:** 2026-04-19 | **App:** Verwaltung (Port 5004)
 
 ---
 
@@ -24,6 +24,9 @@ Die Sidebar links gliedert sich in zwei Bereiche:
 | System   | **Updates**      | System-Updates prüfen und installieren       |
 | Daten    | Backwaren        | Artikel für den Kiosk verwalten              |
 | Daten    | **Funktionen**   | Feature-Toggles für Kiosk- und Kasse-App    |
+| Personal | **Feiertage**    | Bundesland-Auswahl und Feiertage pflegen     |
+| Personal | **Benachrichtigungen** | E-Mail-Verteiler für Hinweise pro Bereich |
+| Personal | **Zeiten-Import** | ShiftJuggler-CSV in die Zeiterfassung importieren |
 | Hilfe    | **Handbuch**     | Mitarbeiter-Handbuch (lesbar, bearbeitbar)   |
 
 ---
@@ -98,6 +101,98 @@ Die Funktionen-Seite ermöglicht das Ein- und Ausschalten einzelner Features in 
 
 - **Deaktivierung blockiert**, wenn noch Bons/Warenkörbe geparkt sind (Fehlermeldung 409)
 - Zuerst alle geparkten Vorgänge abschließen oder entparken, dann deaktivieren
+
+---
+
+## Personal → Feiertage
+
+Pflegt die Liste der gesetzlichen und betrieblichen Feiertage, die im Arbeitszeitkonto und in den Stundenzetteln berücksichtigt werden.
+
+### Bundesland auswählen
+
+Oben auf der Seite ein Dropdown mit allen 16 deutschen Bundesländern (plus `BUND` für bundesweite Feiertage). Die Auswahl gilt systemweit und wird in `XT_EINSTELLUNGEN` (`schluessel='personal_bundesland'`) gespeichert.
+
+### Feiertage synchronisieren
+
+Button **„Feiertage synchronisieren"** (je Jahr). Die App verwendet das Python-Paket `holidays` und schreibt alle gesetzlichen Feiertage für das gewählte Bundesland und Jahr via `INSERT IGNORE` in `XT_PERSONAL_FEIERTAG`:
+
+- Bereits vorhandene Einträge bleiben unberührt (Quelle: `holidays`).
+- Zusätzlich bundesweite Einträge mit `BUNDESLAND='BUND'` (Neujahr, Tag der Arbeit, …).
+- Fehlt das `holidays`-Paket, erscheint eine Fehlermeldung.
+
+### Manuelle Einträge
+
+Für betriebsinterne freie Tage (z. B. Betriebsausflug, Brückentag) kann ein Eintrag manuell angelegt werden:
+
+- **Datum** (Datepicker mit Jahr-/Monats-Sprung)
+- **Name** (z. B. „Betriebsausflug Dorfladen")
+- **Bundesland** — bei betriebsweiter Gültigkeit auf das aktive Bundesland setzen.
+
+Manuelle Einträge werden in der Liste oben angezeigt (erkennbar an Quelle `manuell`), bleiben beim nächsten Sync erhalten und lassen sich per Klick löschen.
+
+### Jahr wählen
+
+URL-Parameter `?jahr=YYYY` oder Jahresauswahl auf der Seite. Default: aktuelles Kalenderjahr.
+
+---
+
+## Personal → Benachrichtigungen
+
+Verwaltet pro Hinweis-Bereich die Liste der E-Mail-Empfänger, die beim entsprechenden Ereignis automatisch informiert werden.
+
+### Verfügbare Bereiche
+
+| Schlüssel | Beschreibung |
+|-----------|-------------|
+| `abwesenheit_antrag` | Neue Abwesenheits-Meldung eines Mitarbeiters (Krank / Fortbildung / Sonstiges) |
+| `urlaub_antrag` | Neuer Urlaubsantrag eines Mitarbeiters |
+
+Weitere Bereiche werden ergänzt, sobald neue Kategorien hinzukommen.
+
+### Empfänger anlegen
+
+Pro Bereich eine kleine Liste mit Formular:
+
+- **E-Mail-Adresse** (Pflicht, validiert gegen `@` und Länge ≤ 150).
+- **Name** (optional, für Lesbarkeit).
+- **Aktiv** (Toggle) — inaktive Empfänger bleiben in der Liste, bekommen aber keine Mails. Nützlich für Urlaubsvertretung.
+
+### Aktiv-/Inaktiv-Toggle
+
+Klick auf den Toggle in einer Zeile wechselt den Status ohne Seitenreload (AJAX). Gelöscht wird dauerhaft über den 🗑-Button.
+
+### SMTP-Konfiguration
+
+Der Mail-Versand nutzt den gleichen gemeinsamen Helper wie die Schichtplan-Freigabe (`common/email.py`): SMTP-Daten stammen primär aus der CAO-REGISTRY (`MAINKEY='MAIN\EMAIL'`), Fallback auf `XT_EMAIL_*`-ENV und `[Email]`-Sektion in `caoxt.ini`. Ist SMTP nicht konfiguriert, werden Mails schlicht nicht versendet — ohne Fehler für den Antragsteller.
+
+---
+
+## Personal → Zeiten-Import
+
+Importiert historische Zeiterfassungsdaten aus dem früher genutzten **ShiftJuggler**-System als CSV in die `XT_PERSONAL_ZEITEN`-Tabelle der WaWi.
+
+### Ablauf
+
+1. **CSV auswählen** (UTF-8, ShiftJuggler-Attendance-Format).
+2. Toggle **„Dry-Run"** (Default: aktiv). Bei Dry-Run wird die Datei geparst und geprüft, aber nichts geschrieben.
+3. **Importieren** klicken.
+
+### Report
+
+Nach Verarbeitung zeigt die Seite:
+
+- **Gelesene Zeilen** und **erkannte Mitarbeiter** (per Personalnummer oder Kürzel gematcht).
+- **Neu einzufügende Buchungen** (nur im Dry-Run als Vorschau).
+- **Übersprungene Zeilen** mit Begründung (MA nicht gefunden, Zeitraum-Duplikat, unzulässiges Format).
+- **Fehler** bei echtem Import — die Transaktion rollt in dem Fall zurück.
+
+### Empfohlenes Vorgehen
+
+1. Zuerst **immer** mit aktivem Dry-Run laden → Report prüfen.
+2. Bei 0 Fehlern und plausiblen Zahlen Dry-Run deaktivieren und erneut importieren.
+3. Nach erfolgreichem Import in der WaWi die Stempel-Ansicht eines Mitarbeiters stichprobenartig prüfen.
+
+**Achtung:** Der Import arbeitet idempotent über ein eindeutiges Tupel (MA, Datum, Typ, Zeit); ein versehentlich doppelt gestarteter Import erzeugt keine Dubletten.
 
 ---
 

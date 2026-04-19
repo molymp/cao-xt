@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+{% block title %}Stempel: {{ ma.VNAME }} {{ ma.NAME }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+          flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 10px 16px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       min-height: 44px; display: inline-flex; align-items: center; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel);
+                 border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.btn-danger { background: var(--rot); color: white; }
+.btn-danger:hover { background: #922a2a; }
+
+.filter-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+               background: white; padding: 14px 16px; border-radius: var(--radius);
+               box-shadow: var(--schatten); margin-bottom: 16px; }
+.filter-form .field { display: flex; flex-direction: column; gap: 4px;
+                      min-width: 160px; }
+.filter-form label { font-size: 11px; font-weight: 800; text-transform: uppercase;
+                     letter-spacing: 0.05em; color: var(--gruen-dunkel); }
+.filter-form input {
+    padding: 10px 12px; border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein); font-size: 14px; min-height: 44px;
+    font-family: inherit; background: white;
+}
+
+.card { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+        padding: 16px 18px; margin-bottom: 16px; }
+.card h2 { margin-top: 0; color: var(--gruen-dunkel); font-size: 18px;
+           margin-bottom: 10px; }
+
+.tag-block { border-bottom: 1px solid var(--creme-dunkel); padding: 12px 0; }
+.tag-block:last-child { border-bottom: none; }
+.tag-header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+              margin-bottom: 6px; }
+.tag-header .datum { font-weight: 800; font-size: 16px; color: var(--gruen-dunkel); }
+.tag-header .dauer { font-variant-numeric: tabular-nums; color: var(--text-mitte);
+                     font-weight: 700; }
+.stempel-liste { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-item { display: inline-flex; align-items: center; gap: 6px;
+           padding: 4px 10px; border-radius: 14px;
+           font-size: 13px; font-variant-numeric: tabular-nums;
+           background: var(--creme); }
+.st-item.kommen { background: #e8f5e0; color: #2e7a2e; }
+.st-item.gehen  { background: #fef1db; color: #8a5e1a; }
+.st-item .pfeil { font-size: 16px; }
+.st-item .edit-btn {
+    background: none; border: none; cursor: pointer; padding: 0 4px;
+    font-size: 13px; color: inherit; text-decoration: underline;
+}
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
+        font-size: 10px; font-weight: 800; letter-spacing: 0.04em;
+        text-transform: uppercase; }
+.pill-korrektur { background: #e0ebf5; color: #2e5a7a; }
+
+.edit-form { display: flex; flex-direction: column; gap: 10px;
+             background: var(--creme); padding: 14px; border-radius: var(--radius-klein);
+             margin-top: 8px; }
+.edit-form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.edit-form .field { display: flex; flex-direction: column; gap: 4px;
+                    min-width: 160px; flex: 1; }
+.edit-form label { font-size: 11px; font-weight: 800;
+                   text-transform: uppercase; letter-spacing: 0.05em;
+                   color: var(--gruen-dunkel); }
+.edit-form input, .edit-form select {
+    padding: 8px 10px; border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein); font-size: 14px; min-height: 40px;
+    font-family: inherit; background: white;
+}
+
+.log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.log-table th, .log-table td { padding: 8px 10px; text-align: left;
+                               border-bottom: 1px solid var(--creme-dunkel); }
+.log-table th { color: var(--gruen-dunkel); font-size: 11px; font-weight: 800;
+                text-transform: uppercase; }
+.log-table .col-zeit { font-variant-numeric: tabular-nums; white-space: nowrap;
+                        color: var(--text-mitte); }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+
+.empty-tag { color: var(--grau-mitte); font-style: italic; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>&#x1F570;&#xFE0F; Stempel: {{ ma.VNAME }} {{ ma.NAME }}
+    {% if ma.KUERZEL %}<span style="color: var(--text-mitte); font-size: 0.7em;">({{ ma.KUERZEL }})</span>{% endif %}
+  </h1>
+  <a class="btn-secondary btn" href="{{ url_for('wawi_personal.detail', pers_id=ma.PERS_ID) }}">
+     ← Stammdaten
+  </a>
+  <a class="btn-secondary btn" href="{{ url_for('wawi_personal.stempel_uebersicht') }}">
+     &#x1F4C5; Tagesuebersicht
+  </a>
+</div>
+
+<form method="get" class="filter-form">
+  <div class="field">
+    <label>Von</label>
+    <input type="date" name="von" value="{{ von.isoformat() }}">
+  </div>
+  <div class="field">
+    <label>Bis</label>
+    <input type="date" name="bis" value="{{ bis.isoformat() }}">
+  </div>
+  <button type="submit" class="btn">Anzeigen</button>
+</form>
+
+<div class="card">
+  <h2>Stempel im Zeitraum</h2>
+  {% if tage %}
+    {% for t in tage %}
+    <div class="tag-block">
+      <div class="tag-header">
+        <span class="datum">{{ t.datum.strftime('%a, %d.%m.%Y') }}</span>
+        <span class="dauer">
+          {% set std = (t.arbeitsdauer_min // 60) %}
+          {% set mins = (t.arbeitsdauer_min % 60) %}
+          Arbeitsdauer: {{ '%d:%02d'|format(std, mins) }} h
+        </span>
+      </div>
+      <div class="stempel-liste">
+        {% for s in t.stempel %}
+        <span class="st-item {{ s.RICHTUNG }}">
+          <span class="pfeil">{% if s.RICHTUNG == 'kommen' %}&#x2192;{% else %}&#x2190;{% endif %}</span>
+          {{ s.ZEITPUNKT.strftime('%H:%M') }}
+          {% if s.QUELLE == 'korrektur' %}<span class="pill pill-korrektur">K</span>{% endif %}
+          <button type="button" class="edit-btn"
+                  onclick="toggleEdit({{ s.REC_ID }})">bearbeiten</button>
+        </span>
+        <form method="post" id="edit-{{ s.REC_ID }}" style="display: none; width: 100%;"
+              class="edit-form"
+              action="{{ url_for('wawi_personal.stempel_korrektur_bearbeiten',
+                                 pers_id=ma.PERS_ID, rec_id=s.REC_ID) }}">
+          <div class="edit-form-row">
+            <div class="field" style="min-width: 140px; flex: 0 0 140px;">
+              <label>Richtung</label>
+              <select name="richtung" required>
+                <option value="kommen" {% if s.RICHTUNG == 'kommen' %}selected{% endif %}>kommen</option>
+                <option value="gehen"  {% if s.RICHTUNG == 'gehen' %}selected{% endif %}>gehen</option>
+              </select>
+            </div>
+            <div class="field" style="min-width: 200px;">
+              <label>Zeitpunkt</label>
+              <input type="datetime-local" name="zeitpunkt" required
+                     value="{{ s.ZEITPUNKT.strftime('%Y-%m-%dT%H:%M') }}">
+            </div>
+            <div class="field" style="flex: 2;">
+              <label>Grund (Pflicht)</label>
+              <input type="text" name="grund" required
+                     placeholder="z.B. Ausstempeln vergessen">
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="submit" class="btn">Speichern</button>
+            <button type="submit" class="btn btn-danger"
+                    formaction="{{ url_for('wawi_personal.stempel_korrektur_loeschen',
+                                           pers_id=ma.PERS_ID, rec_id=s.REC_ID) }}"
+                    onclick="return confirm('Diesen Stempel wirklich loeschen?')">
+                    Loeschen
+            </button>
+            <button type="button" class="btn btn-secondary"
+                    onclick="toggleEdit({{ s.REC_ID }})">Abbrechen</button>
+          </div>
+        </form>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-tag">Keine Stempel im gewaehlten Zeitraum.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>+ Stempel nachtragen</h2>
+  <form method="post"
+        action="{{ url_for('wawi_personal.stempel_korrektur_anlegen', pers_id=ma.PERS_ID) }}"
+        class="edit-form" style="background: white; padding: 0;">
+    <div class="edit-form-row">
+      <div class="field" style="min-width: 140px; flex: 0 0 140px;">
+        <label>Richtung</label>
+        <select name="richtung" required>
+          <option value="kommen">kommen</option>
+          <option value="gehen">gehen</option>
+        </select>
+      </div>
+      <div class="field" style="min-width: 200px;">
+        <label>Zeitpunkt</label>
+        <input type="datetime-local" name="zeitpunkt" required>
+      </div>
+      <div class="field" style="flex: 2;">
+        <label>Grund (Pflicht)</label>
+        <input type="text" name="grund" required
+               placeholder="z.B. Karte vergessen">
+      </div>
+      <button type="submit" class="btn">Eintragen</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Korrektur-Historie</h2>
+  {% if korrektur_log %}
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th>Zeitpunkt</th>
+        <th>Aktion</th>
+        <th>Grund</th>
+        <th>Durch</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for k in korrektur_log %}
+      <tr>
+        <td class="col-zeit">{{ k.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td>{{ k.OPERATION }}</td>
+        <td>{{ k.GRUND }}</td>
+        <td>MA_ID {{ k.GEAEND_VON }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-tag">Keine Korrekturen bisher.</p>
+  {% endif %}
+</div>
+
+<script>
+function toggleEdit(recId) {
+  const f = document.getElementById('edit-' + recId);
+  if (!f) return;
+  f.style.display = (f.style.display === 'none' || !f.style.display) ? 'flex' : 'none';
+}
+</script>
+{% endblock %}

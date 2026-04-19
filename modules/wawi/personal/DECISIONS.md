@@ -1,6 +1,6 @@
 # WaWi-Personal – Architekturentscheidungen
 
-Teil der Zeitmanagement-Reihe (Phasen P1–P5). Dieses Modul: **P1 Mitarbeiterverwaltung**.
+Teil der Zeitmanagement-Reihe (Phasen P1–P5). Dieses Modul: **P1 Mitarbeiterverwaltung + P3 Stempeluhr**.
 
 ## Grundsatzentscheidung: Entkopplung von CAO.MITARBEITER
 
@@ -61,12 +61,40 @@ Die UI formatiert mit dem vorhandenen `eur`-Filter aus `wawi-app/app/app.py`.
 - Reiner Bootstrap-Pfad für lokale Entwicklungs-/Testumgebung. Für Produktion
   separater, dokumentierter Import-Lauf.
 
+## P3 Stempeluhr – Entscheidungen
+
+**Tabellen:** `XT_PERSONAL_STEMPEL` (append-only Stempel-Events) +
+`XT_PERSONAL_STEMPEL_KORREKTUR` (GoBD-konformes Änderungs-Log mit JSON-Snapshots
+und Pflicht-Grund).
+
+**Keine Schema-Änderung an CAO.`KARTEN`.** Mitarbeiterkarte und optional RFID
+werden beide als `KARTEN.TYP='M'` geführt, bestehende Auth-Funktion
+`common.auth.mitarbeiter_login_karte(guid)` wird wiederverwendet.
+
+**Kiosk-Route öffentlich (`/stempeluhr`), kein Cookie-Login.** Der Karten-Scan
+IST die Authentifizierung; eine Terminal-0-/Cookie-Logik wäre zusätzlicher
+Komplexitätsaufwand ohne Mehrwert.
+
+**Richtungs-Logik „last event wins":** Beim Scan wird der letzte Stempel des
+MA geladen (unabhängig vom Datum) und kommen↔gehen gewechselt. Vorteil:
+robust gegen Nachtschichten und vergessene Ausstempel-Vorgänge. Korrekturen
+erfolgen über die Admin-UI.
+
+**Keine UNIQUE-Constraint auf `(PERS_ID, ZEITPUNKT)`.** Mehrere legitime
+Stempel pro Tag/Minute möglich (z.B. Pause in Sekunden-Auflösung); Paarbildung
+passiert im View-Layer (`_stempel_paare_tag`).
+
+**`GRUND` ist Pflicht bei jeder Korrektur.** Python-Layer erzwingt mit
+`ValueError`, DB-Spalte ist `NOT NULL`. Korrektur-Historie (Insert/Update/Delete)
+bleibt vollständig im Log sichtbar, auch nach Stempel-Löschung.
+
+**Terminal-Nummer rein informativ** (`TINYINT UNSIGNED NULL`, aus
+`TERMINAL_NR`-Env/Cookie des Kiosk). Nicht in Auth/Berechtigung verwoben.
+
 ## Offene Punkte für spätere Phasen
 
 - **P1b:** Lohnart-Lookup-Tabelle + Lohnkonstanten (Mindestlohn, Minijob-Grenze)
   versioniert.
 - **P1b:** Arbeitszeitmodelle mit Wochenverteilung (versioniert pro MA).
 - **P1c:** Urlaubsanspruch + Korrekturbuchungen + „geplant/genehmigt/genommen"-Sicht.
-- **P3:** Stempeluhr im Kiosk (Mitarbeiterkarte + optional RFID — beide als
-  `KARTEN.TYP='M'` mit unterschiedlicher GUID, **keine Schema-Änderung an `KARTEN`**).
 - **P5:** DATEV-Lohn-Export (separates Format, nicht das vorhandene Finanzbuchhaltungs-Modul).

@@ -42,7 +42,7 @@
 <div class="topbar">
   <h1>Mitarbeiter</h1>
   {% if zeige_alle %}
-    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">
+    <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht', alle=0) }}">
       Nur Aktive
     </a>
   {% else %}
@@ -50,6 +50,14 @@
       Inkl. ausgetretener
     </a>
   {% endif %}
+  <a class="btn-secondary btn"
+     href="{{ url_for('wawi_personal.abwesenheiten_uebersicht') }}">
+     Abwesenheiten
+  </a>
+  <a class="btn-secondary btn"
+     href="{{ url_for('wawi_personal.stempel_uebersicht') }}">
+     &#x1F570;&#xFE0F; Stempel
+  </a>
   <a class="btn" href="{{ url_for('wawi_personal.neu') }}">+ Neuer Mitarbeiter</a>
 </div>
 

@@ -1,0 +1,463 @@
+{% extends 'base.html' %}
+{% block title %}HACCP Temperatur{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 10px 18px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       min-height: 44px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+
+.alarm-banner { background: #fde8e8; color: var(--rot); padding: 12px 16px;
+                border-radius: var(--radius); margin-bottom: 16px;
+                font-weight: 700; }
+.alarm-banner ul { margin: 8px 0 0 0; padding-left: 20px; font-weight: 600; }
+.battery-banner { background: #fef1db; color: #8a5e1a; padding: 10px 14px;
+                  border-radius: var(--radius); margin-bottom: 14px;
+                  font-weight: 700; border-left: 6px solid #e69a2a; }
+.battery-banner ul { margin: 6px 0 0 0; padding-left: 20px; font-weight: 600;
+                     font-size: 13px; }
+
+/* ── Poller-Status-Widget ─────────────────────────────────────── */
+.poller-status { display: flex; align-items: center; gap: 12px;
+                 padding: 10px 14px; border-radius: var(--radius);
+                 margin-bottom: 16px; font-size: 13px;
+                 border-left: 6px solid var(--gruen-mitte); background: white;
+                 box-shadow: var(--schatten); }
+.poller-status.warn  { border-left-color: #e69a2a; background: #fff8ed; }
+.poller-status.alarm { border-left-color: var(--rot); background: #fde8e8; color: var(--rot); }
+.poller-status .punkt { width: 12px; height: 12px; border-radius: 50%;
+                        background: var(--gruen-mitte); flex-shrink: 0; }
+.poller-status.warn .punkt  { background: #e69a2a;
+                              animation: puls 1.2s ease-in-out infinite; }
+.poller-status.alarm .punkt { background: var(--rot);
+                              animation: puls 0.6s ease-in-out infinite; }
+@keyframes puls { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.poller-status .details { flex: 1; }
+.poller-status .fehler { font-weight: 700; }
+.poller-status .meta { font-size: 11px; color: var(--text-mitte); }
+.poller-status.alarm .meta { color: inherit; opacity: 0.8; }
+
+/* ── Multi-Sensor-Chart Card ──────────────────────────────────── */
+.chart-card { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+              padding: 14px 18px; margin-bottom: 18px; }
+.chart-card h2 { margin: 0 0 10px 0; font-size: 15px; color: var(--gruen-dunkel); }
+.chart-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.chart-toolbar .zeit-btn { padding: 6px 12px; font-size: 12px;
+                           border: 1px solid var(--creme-dunkel); background: white;
+                           border-radius: var(--radius-klein); cursor: pointer; font-family: inherit; }
+.chart-toolbar .zeit-btn.aktiv { background: var(--gruen-mitte); color: white; border-color: var(--gruen-mitte); }
+.chart-wrapper { position: relative; height: 360px; }
+.chart-legende { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;
+                 padding-top: 10px; border-top: 1px solid var(--creme-dunkel);
+                 font-size: 12px; }
+.chart-legende .eintrag { display: flex; align-items: center; gap: 6px;
+                          padding: 3px 8px; border-radius: 12px;
+                          background: var(--creme-hell); cursor: pointer;
+                          transition: opacity 0.15s; }
+.chart-legende .eintrag.aus { opacity: 0.35; }
+.chart-legende .farb { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #0002; }
+.chart-status-bar { display: flex; gap: 16px; font-size: 11px; color: var(--text-mitte);
+                    margin-top: 6px; }
+.chart-status-bar .punkt-ok    { color: #2e7a2e; }
+.chart-status-bar .punkt-warn  { color: #b86f1a; }
+.chart-status-bar .punkt-alarm { color: var(--rot); }
+
+/* ── Kachel-Raster (unverandert) ───────────────────────────────── */
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.kachel { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+          padding: 14px 16px; border-left: 6px solid var(--gruen-mitte);
+          text-decoration: none; color: inherit; display: block;
+          transition: transform 0.1s ease; }
+.kachel:hover { transform: translateY(-2px); }
+.kachel.warn    { border-left-color: #e69a2a; background: #fff8ed; }
+.kachel.offline { border-left-color: #888; background: #f5f5f5; opacity: 0.9; }
+.kachel h3 { margin: 0 0 6px 0; font-size: 15px; color: var(--gruen-dunkel); }
+.kachel .meta { color: var(--text-mitte); font-size: 11px; }
+.kachel .temp { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums;
+                color: var(--gruen-dunkel); margin: 6px 0 2px 0; }
+.kachel.warn .temp    { color: #b86f1a; }
+.kachel.offline .temp { color: #888; }
+.kachel .soll { font-size: 11px; color: var(--text-mitte); }
+.kachel .alter { font-size: 10px; color: var(--grau-mitte); margin-top: 4px; }
+.kachel.warn .alter, .kachel.offline .alter { color: inherit; font-weight: 600; }
+.kachel .quittung { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--creme-dunkel);
+                    font-size: 11px; }
+.kachel .quittung.noch-nicht { color: #b86f1a; font-weight: 600; }
+.kachel .quittung.ok { color: #2e7a2e; }
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
+        font-size: 10px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.04em; }
+.pill-ok      { background: #e8f5e0; color: #2e7a2e; }
+.pill-warn    { background: #fef1db; color: #8a5e1a; }
+.pill-offline { background: #e0e0e0; color: #555; }
+
+.empty { text-align: center; padding: 40px; color: var(--grau-mitte);
+         background: white; border-radius: var(--radius); }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>🧼 HACCP Temperaturüberwachung</h1>
+  <a class="btn" href="{{ url_for('haccp.sichtkontrolle_dashboard') }}">✅ Sichtkontrolle</a>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.alarme') }}">Alarme</a>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.alarmkette_view') }}">Alarmkette</a>
+  <form method="post" action="{{ url_for('haccp.backfill_alle') }}" style="display:inline;"
+        onsubmit="return confirm('7 Tage Historie für alle Geräte aus der Cloud nachladen?\n(API-Rate-Limit: 10 Aufrufe/h)');">
+    <input type="hidden" name="tage" value="7">
+    <button type="submit" class="btn-secondary btn" title="Historie aus TFA-Cloud laden (Initialisierung oder Stromausfall)">⟲ 7 T. nachladen</button>
+  </form>
+</div>
+
+{# ── Poller-Status ──────────────────────────────────────────── #}
+{% set ps = poller_status %}
+{% if ps %}
+  {% set alter_run = ((jetzt_utc - ps.LAST_RUN_AT).total_seconds() / 60)|int %}
+  {% set ps_class = 'ok' %}
+  {% if not ps.TFA_OK or alter_run > 10 %}{% set ps_class = 'warn' %}{% endif %}
+  {% if alter_run > 30 %}{% set ps_class = 'alarm' %}{% endif %}
+  <div class="poller-status {{ ps_class }}">
+    <span class="punkt"></span>
+    <div class="details">
+      {% if ps_class == 'ok' %}
+        <b>Poller läuft.</b>
+        <span class="meta">
+          Letzter Abruf vor {{ alter_run }} min
+          · Zyklen heute: {{ ps.ZYKLUS_COUNT }}
+          {% if ps.HOSTNAME %} · Host: {{ ps.HOSTNAME }}{% endif %}
+        </span>
+      {% elif ps_class == 'warn' %}
+        <span class="fehler">⚠️ Letzter TFA-Abruf fehlgeschlagen
+          oder Heartbeat leicht verzögert ({{ alter_run }} min).</span>
+        {% if ps.LAST_ERROR %}<div class="meta">{{ ps.LAST_ERROR }}</div>{% endif %}
+      {% else %}
+        <span class="fehler">🚨 Poller-Ausfall: Heartbeat ist {{ alter_run }} min alt.</span>
+        <div class="meta">
+          Letzter Erfolg: {{ ps.LAST_SUCCESS_AT.strftime('%d.%m. %H:%M') if ps.LAST_SUCCESS_AT else 'nie' }}
+          {% if ps.LAST_ERROR %} · Fehler: {{ ps.LAST_ERROR }}{% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="poller-status alarm">
+    <span class="punkt"></span>
+    <div class="details">
+      <span class="fehler">🚨 Poller hat noch nie einen Heartbeat geschrieben.</span>
+      <div class="meta">
+        <code>python -m modules.haccp.poller</code> starten.
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if offene_alarme %}
+<div class="alarm-banner">
+  ⚠️ {{ offene_alarme|length }} offene Alarme:
+  <ul>
+  {% for a in offene_alarme %}
+    <li>{{ a.GERAET_NAME }} — {{ a.TYP }}
+        seit {{ a.START_AT.strftime('%d.%m. %H:%M') }}
+        {% if a.KORREKTUR_TEXT %}<em>(Korrektur: {{ a.KORREKTUR_TEXT }})</em>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# Low-Battery-Warnung: sammle alle Sensoren mit BATTERY_LOW=1 #}
+{% set battery_kacheln = kacheln|selectattr('letzter')|selectattr('letzter.BATTERY_LOW')|list %}
+{% if battery_kacheln %}
+<div class="battery-banner">
+  🔋 Batterie schwach bei {{ battery_kacheln|length }} Sensor(en):
+  <ul>
+  {% for k in battery_kacheln %}
+    <li>{{ k.geraet.NAME }}{% if k.geraet.STANDORT %} · {{ k.geraet.STANDORT }}{% endif %} — bitte Batterie tauschen</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# ── Multi-Sensor-Chart ─────────────────────────────────────── #}
+{% if kacheln %}
+<div class="chart-card">
+  <h2>📈 Verlauf aller Sensoren</h2>
+  <div class="chart-toolbar">
+    <button class="zeit-btn aktiv" data-stunden="24">24 h</button>
+    <button class="zeit-btn" data-stunden="72">3 Tage</button>
+    <button class="zeit-btn" data-stunden="168">7 Tage</button>
+    <button class="zeit-btn" data-stunden="720">30 Tage</button>
+    <div style="flex: 1;"></div>
+    <label style="font-size: 12px;">
+      <input type="checkbox" id="ch-grenzen"> Grenzbereiche anzeigen
+    </label>
+  </div>
+  <div class="chart-wrapper"><canvas id="multi-chart"></canvas></div>
+  <div class="chart-status-bar">
+    <span class="punkt-ok">● OK (im Kern-Band)</span>
+    <span class="punkt-warn">● Grenzbereich (nahe Soll-Grenze)</span>
+    <span class="punkt-alarm">● außerhalb Soll</span>
+    <span style="flex:1; text-align: right;">Linien = Temperatur je Sensor · Farben zufällig</span>
+  </div>
+  <div class="chart-legende" id="ch-legende"></div>
+</div>
+{% endif %}
+
+{% if kacheln %}
+<div class="grid">
+  {% for k in kacheln %}
+  <a class="kachel {{ k.status }}" href="{{ url_for('haccp.geraet_detail', geraet_id=k.geraet.GERAET_ID) }}">
+    <h3>{{ k.geraet.NAME }}</h3>
+    <div class="meta">
+      {{ k.geraet.STANDORT or '—' }}
+      {% if k.geraet.WARENGRUPPE %} · {{ k.geraet.WARENGRUPPE }}{% endif %}
+    </div>
+    <div class="temp">
+      {% if k.letzter and k.letzter.TEMP_C is not none and not k.letzter.NO_CONNECTION %}
+        {{ '%.1f'|format(k.letzter.TEMP_C) }} °C
+      {% else %}
+        —
+      {% endif %}
+    </div>
+    <div class="soll">
+      {% if k.grenz %}
+        Soll: {{ '%.1f'|format(k.grenz.TEMP_MIN_C) }} … {{ '%.1f'|format(k.grenz.TEMP_MAX_C) }} °C
+      {% else %}
+        <em>Grenzwerte nicht gesetzt</em>
+      {% endif %}
+    </div>
+    <div class="alter">
+      {% if k.status == 'offline' %}
+        <span class="pill pill-offline">Offline</span>
+        {% if k.alter_min is not none %} seit {{ k.alter_min }} min{% endif %}
+      {% elif k.status == 'warn' %}
+        <span class="pill pill-warn">Abweichung</span>
+      {% else %}
+        <span class="pill pill-ok">OK</span>
+        {% if k.alter_min is not none %} · vor {{ k.alter_min }} min{% endif %}
+      {% endif %}
+      {% if k.letzter and k.letzter.BATTERY_LOW %} · 🔋 schwach{% endif %}
+    </div>
+    <div class="quittung {% if k.heute_quittiert %}ok{% else %}noch-nicht{% endif %}">
+      {% if k.heute_quittiert %}
+        ✓ Sichtkontrolle heute quittiert
+      {% else %}
+        ⏱ Sichtkontrolle heute ausstehend
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+<script>
+(function() {
+  const canvas = document.getElementById('multi-chart');
+  if (!canvas) return;
+
+  const STATUS_FARBE = { ok: '#2e7a2e', warn: '#e69a2a', alarm: '#c02020' };
+  let chart = null;
+  let aktDatasets = [];
+  let aktJson = null;
+  let zeigeGrenzen = false;
+
+  function farbeVonHue(h, light=false) {
+    return light ? `hsla(${h}, 60%, 85%, 0.18)` : `hsl(${h}, 62%, 42%)`;
+  }
+
+  function baueChart(json) {
+    aktJson = json;
+    const datasets = [];
+    for (const d of json.datasets) {
+      const linienFarbe = farbeVonHue(d.hue);
+      const bandFarbe = farbeVonHue(d.hue, true);
+
+      // Linie fuer Sensor: Punkt-Farbe je Status
+      datasets.push({
+        label: d.name + (d.standort ? ' · ' + d.standort : ''),
+        data: d.punkte.map(p => ({x: p.t, y: p.v, status: p.s})),
+        borderColor: linienFarbe,
+        backgroundColor: linienFarbe,
+        borderWidth: 1.5,
+        pointRadius: 2.5,
+        pointHoverRadius: 5,
+        pointBackgroundColor: ctx => {
+          const s = ctx.raw && ctx.raw.status;
+          return STATUS_FARBE[s] || linienFarbe;
+        },
+        pointBorderColor: ctx => {
+          const s = ctx.raw && ctx.raw.status;
+          return STATUS_FARBE[s] || linienFarbe;
+        },
+        tension: 0.25,
+        spanGaps: false,
+        _geraet_id: d.geraet_id,
+        _hue: d.hue,
+        _grenz_min: d.grenz_min,
+        _grenz_max: d.grenz_max,
+      });
+
+      // Grenzbereich als schwaches Band (gruen-gefuellt) pro Sensor, initial aus.
+      if (d.grenz_min !== null && d.grenz_max !== null) {
+        const spanne = [
+          {x: json.von, y: d.grenz_max},
+          {x: json.bis, y: d.grenz_max},
+        ];
+        datasets.push({
+          label: d.name + ' Grenzen',
+          data: spanne,
+          borderColor: linienFarbe,
+          borderDash: [4, 4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: '-1',
+          backgroundColor: bandFarbe,
+          hidden: !zeigeGrenzen,
+          _istGrenze: true,
+          _geraet_id: d.geraet_id,
+        });
+        // Zusaetzliche untere Grenze als gestrichelte Linie
+        datasets.push({
+          label: d.name + ' min',
+          data: [{x: json.von, y: d.grenz_min}, {x: json.bis, y: d.grenz_min}],
+          borderColor: linienFarbe,
+          borderDash: [4, 4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+          hidden: !zeigeGrenzen,
+          _istGrenze: true,
+          _geraet_id: d.geraet_id,
+        });
+      }
+    }
+    aktDatasets = datasets;
+
+    if (chart) { chart.destroy(); }
+    chart = new Chart(canvas, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        scales: {
+          x: { type: 'time',
+               time: { tooltipFormat: 'dd.MM.yyyy HH:mm',
+                       displayFormats: {minute: 'HH:mm', hour: 'HH:mm',
+                                        day: 'dd.MM', week: 'dd.MM'} },
+               ticks: { maxRotation: 0, autoSkip: true } },
+          y: { title: { display: true, text: '°C' },
+               ticks: { callback: v => (+v).toFixed(1) + ' °C' } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            filter: (item) => !item.dataset._istGrenze,
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.y;
+                const s = ctx.raw.status;
+                const stat = s === 'alarm' ? ' 🔴' : (s === 'warn' ? ' 🟡' : ' 🟢');
+                return `${ctx.dataset.label}: ${v.toFixed(1)} °C${stat}`;
+              }
+            }
+          }
+        }
+      }
+    });
+    baueLegende(json);
+  }
+
+  function baueLegende(json) {
+    const wrap = document.getElementById('ch-legende');
+    wrap.innerHTML = '';
+    for (const d of json.datasets) {
+      const el = document.createElement('span');
+      el.className = 'eintrag';
+      el.dataset.gid = d.geraet_id;
+      el.innerHTML = `<span class="farb" style="background:${farbeVonHue(d.hue)}"></span>${d.name}`;
+      el.addEventListener('click', () => {
+        el.classList.toggle('aus');
+        const aus = el.classList.contains('aus');
+        chart.data.datasets.forEach((ds, i) => {
+          if (ds._geraet_id === d.geraet_id) {
+            // Grenzlinien nur einblenden, wenn zeigeGrenzen aktiv ist
+            const hide = aus || (ds._istGrenze && !zeigeGrenzen);
+            chart.setDatasetVisibility(i, !hide);
+          }
+        });
+        chart.update();
+      });
+      wrap.appendChild(el);
+    }
+  }
+
+  async function laden(stunden) {
+    canvas.style.opacity = '0.4';
+    try {
+      const r = await fetch(`{{ url_for('haccp.multi_chart_json') }}?stunden=${stunden}`);
+      const json = await r.json();
+      baueChart(json);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      canvas.style.opacity = '1';
+    }
+  }
+
+  document.querySelectorAll('.zeit-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.zeit-btn').forEach(x => x.classList.remove('aktiv'));
+      b.classList.add('aktiv');
+      laden(+b.dataset.stunden);
+    });
+  });
+  document.getElementById('ch-grenzen').addEventListener('change', (e) => {
+    zeigeGrenzen = e.target.checked;
+    if (!chart) return;
+    // toggle only _istGrenze datasets fuer sichtbare Sensoren
+    const aus_gids = new Set();
+    document.querySelectorAll('#ch-legende .eintrag.aus').forEach(el => {
+      aus_gids.add(+el.dataset.gid);
+    });
+    chart.data.datasets.forEach((ds, i) => {
+      if (ds._istGrenze) {
+        chart.setDatasetVisibility(i, zeigeGrenzen && !aus_gids.has(ds._geraet_id));
+      }
+    });
+    chart.update();
+  });
+
+  laden(24);
+})();
+</script>
+{% else %}
+<div class="empty">
+  <p style="font-size: 16px;">Noch keine Geräte vorhanden.</p>
+  <p style="font-size: 13px; margin-top: 8px;">
+    Der Poller legt sie beim nächsten Durchlauf automatisch an, sobald Messwerte
+    in der TFA-Cloud ankommen.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

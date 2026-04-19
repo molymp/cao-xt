@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block title %}HACCP Alarme{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 9px 16px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 13px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+
+.card { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+        padding: 16px 20px; margin-bottom: 18px; }
+.card h2 { margin: 0 0 12px 0; font-size: 16px; color: var(--gruen-dunkel); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--creme-dunkel);
+         vertical-align: top; }
+th { background: var(--creme-hell); font-weight: 700; color: var(--gruen-dunkel); }
+tr.open { background: #fff8ed; }
+tr.open td { font-weight: 600; }
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
+        font-size: 10px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.04em; }
+.pill-temp_hoch { background: #fde8e8; color: var(--rot); }
+.pill-temp_tief { background: #e0e8f8; color: #1b4a8f; }
+.pill-drift     { background: #fef1db; color: #8a5e1a; }
+.pill-offline   { background: #e0e0e0; color: #555; }
+.pill-battery   { background: #f5e8d0; color: #8a5e1a; }
+.pill-stufe     { background: var(--gruen-blass); color: var(--gruen-dunkel); }
+
+.korrektur-form { display: flex; gap: 6px; margin-top: 4px; }
+.korrektur-form input[type=text] { flex: 1; padding: 6px 8px; font-size: 12px;
+                                    border: 1px solid var(--creme-dunkel);
+                                    border-radius: var(--radius-klein); font-family: inherit; }
+
+.empty { text-align: center; padding: 24px; color: var(--grau-mitte); font-style: italic; }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>⚠️ HACCP-Alarme</h1>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.dashboard') }}">← Dashboard</a>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.alarmkette_view') }}">Alarmkette</a>
+</div>
+
+<div class="card">
+  <h2>Offene Alarme ({{ offen|length }})</h2>
+  {% if offen %}
+  <table>
+    <thead>
+      <tr>
+        <th>Geraet</th><th>Typ</th><th>Seit</th><th>Stufe</th>
+        <th>Max-Wert</th><th>Korrektur</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in offen %}
+      <tr class="open">
+        <td>
+          <a href="{{ url_for('haccp.geraet_detail', geraet_id=a.GERAET_ID) }}">
+            {{ a.GERAET_NAME }}
+          </a>
+          {% if a.STANDORT %}<br><small>{{ a.STANDORT }}</small>{% endif %}
+        </td>
+        <td><span class="pill pill-{{ a.TYP }}">{{ a.TYP }}</span></td>
+        <td>{{ a.START_AT.strftime('%d.%m.%Y %H:%M') }}<br>
+            <small>vor {{ ((now_utc - a.START_AT).total_seconds() / 60)|int }} min</small></td>
+        <td>{% if a.LETZTE_STUFE %}<span class="pill pill-stufe">Stufe {{ a.LETZTE_STUFE }}</span>{% else %}—{% endif %}</td>
+        <td>{% if a.MAX_WERT is not none %}{{ '%.1f'|format(a.MAX_WERT) }} °C{% else %}—{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('haccp.alarm_korrektur', alarm_id=a.ALARM_ID) }}"
+                class="korrektur-form">
+            <input type="text" name="text" placeholder="Korrekturmassnahme…" required
+                   maxlength="500">
+            <input type="hidden" name="next" value="{{ url_for('haccp.alarme') }}">
+            <button class="btn" type="submit">Speichern & schliessen</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Keine offenen Alarme. 🎉</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Historie (letzte {{ history|length }})</h2>
+  {% if history %}
+  <table>
+    <thead>
+      <tr>
+        <th>Geraet</th><th>Typ</th><th>Start</th><th>Ende</th>
+        <th>Dauer</th><th>Max</th><th>Korrektur</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in history %}
+      <tr class="{% if not a.ENDE_AT %}open{% endif %}">
+        <td>
+          <a href="{{ url_for('haccp.geraet_detail', geraet_id=a.GERAET_ID) }}">
+            {{ a.GERAET_NAME }}
+          </a>
+        </td>
+        <td><span class="pill pill-{{ a.TYP }}">{{ a.TYP }}</span></td>
+        <td>{{ a.START_AT.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td>{% if a.ENDE_AT %}{{ a.ENDE_AT.strftime('%d.%m.%Y %H:%M') }}{% else %}<em>offen</em>{% endif %}</td>
+        <td>
+          {% if a.ENDE_AT %}
+            {% set d = ((a.ENDE_AT - a.START_AT).total_seconds() / 60)|int %}
+            {% if d < 60 %}{{ d }} min
+            {% else %}{{ (d / 60)|round(1) }} h{% endif %}
+          {% else %}
+            laufend
+          {% endif %}
+        </td>
+        <td>{% if a.MAX_WERT is not none %}{{ '%.1f'|format(a.MAX_WERT) }} °C{% else %}—{% endif %}</td>
+        <td>
+          {% if a.KORREKTUR_TEXT %}
+            {{ a.KORREKTUR_TEXT }}<br>
+            <small>{{ a.KORREKTUR_VON_NAME or '—' }},
+                   {{ a.KORREKTUR_AT.strftime('%d.%m.%Y %H:%M') if a.KORREKTUR_AT else '' }}</small>
+          {% else %}
+            <em style="color: var(--grau-mitte);">keine</em>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Noch keine Alarme aufgezeichnet.</div>
+  {% endif %}
+</div>
+{% endblock %}

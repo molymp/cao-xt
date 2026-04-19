@@ -1,0 +1,157 @@
+{% extends "kunden_base.html" %}
+{% block title %}Stempeluhr – PIN aendern{% endblock %}
+
+{% block extra_css %}
+<style>
+.ss-wrap { max-width: 480px; margin: 0 auto; padding: 16px 20px 40px; }
+.ss-kopf { display: flex; align-items: center; justify-content: space-between;
+           gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.ss-kopf h1 { font-size: 1.6rem; margin: 0; }
+.ss-kopf .btn { padding: 10px 16px; border-radius: var(--radius-klein);
+                text-decoration: none; font-weight: 700;
+                background: var(--creme-dunkel); color: var(--gruen-dunkel); }
+
+.ss-box { background: white; border-radius: var(--radius);
+          padding: 22px 24px; box-shadow: var(--schatten-stark);
+          margin-bottom: 14px; text-align: center; }
+
+.pin-step { margin-bottom: 22px; }
+.pin-step-titel { font-size: 1rem; font-weight: 700; margin-bottom: 8px; color: var(--text-mitte); }
+.pin-anzeige { display: flex; justify-content: center; gap: 10px; margin: 8px 0 4px; }
+.pin-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--grau-mitte); background: var(--creme);
+}
+.pin-dot.voll  { background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); }
+.pin-dot.aktiv { border-color: var(--gold); }
+
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+          max-width: 320px; margin: 16px auto 0; }
+.keypad button {
+    padding: 16px 0; font-size: 1.5rem; font-weight: 800;
+    border: 1px solid var(--creme-dunkel); background: var(--creme);
+    color: var(--gruen-dunkel); border-radius: var(--radius-klein);
+    cursor: pointer; font-family: 'Nunito', sans-serif;
+}
+.keypad button:active { background: var(--creme-warm); transform: scale(0.95); }
+.keypad .kb-del    { grid-column: 1; background: #fde8e8; color: var(--rot); }
+.keypad .kb-ok     { grid-column: 3; background: var(--gruen-hell); color: white; }
+
+.pin-fehler { color: var(--rot); font-weight: 700; margin-top: 10px; min-height: 1.2em; }
+.pin-erfolg { color: var(--gruen-hell); font-weight: 700; margin-top: 10px; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="ss-wrap">
+    <div class="ss-kopf">
+        <h1>🔐 PIN aendern</h1>
+        <a href="/stempeluhr/menu" class="btn">&#x2190; Zum Menue</a>
+    </div>
+
+    <div class="ss-box" id="box">
+        <div class="pin-step">
+            <div class="pin-step-titel" id="step-titel">Schritt 1: Aktuelle PIN</div>
+            <div class="pin-anzeige" id="pin-anzeige">
+                <div class="pin-dot"></div><div class="pin-dot"></div>
+                <div class="pin-dot"></div><div class="pin-dot"></div>
+            </div>
+        </div>
+        <div class="keypad">
+            <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+            <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+            <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+            <button class="kb-del" data-k="del">&larr;</button>
+            <button data-k="0">0</button>
+            <button class="kb-ok" data-k="ok">OK</button>
+        </div>
+        <div class="pin-fehler" id="pin-fehler"></div>
+        <div class="pin-erfolg" id="pin-erfolg" style="display:none;">
+            ✓ PIN geaendert. Bitte melde dich neu an.
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const dots     = document.querySelectorAll('#pin-anzeige .pin-dot');
+    const titel    = document.getElementById('step-titel');
+    const fehler   = document.getElementById('pin-fehler');
+    const erfolg   = document.getElementById('pin-erfolg');
+
+    let step = 1;   // 1 = alte PIN, 2 = neue PIN, 3 = neue PIN wiederholen
+    let alte = '', neu1 = '', neu2 = '', buf = '';
+
+    function aktualisiere() {
+        dots.forEach((el, i) => {
+            el.classList.toggle('voll', i < buf.length);
+        });
+    }
+    function setStep(n) {
+        step = n;
+        buf = '';
+        fehler.textContent = '';
+        aktualisiere();
+        if (n === 1) titel.textContent = 'Schritt 1: Aktuelle PIN';
+        if (n === 2) titel.textContent = 'Schritt 2: Neue PIN';
+        if (n === 3) titel.textContent = 'Schritt 3: Neue PIN wiederholen';
+    }
+
+    document.querySelectorAll('.keypad button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const k = this.dataset.k;
+            if (k === 'del') { buf = buf.slice(0, -1); aktualisiere(); return; }
+            if (k === 'ok')  { weiter(); return; }
+            if (buf.length >= 4) return;
+            buf += k;
+            aktualisiere();
+            if (buf.length === 4) setTimeout(weiter, 120);
+        });
+    });
+
+    async function weiter() {
+        if (buf.length !== 4) {
+            fehler.textContent = 'Bitte 4 Ziffern eingeben.';
+            return;
+        }
+        if (step === 1) { alte = buf; setStep(2); return; }
+        if (step === 2) { neu1 = buf; setStep(3); return; }
+        if (step === 3) {
+            neu2 = buf;
+            if (neu1 !== neu2) {
+                fehler.textContent = 'Die neuen PINs stimmen nicht ueberein.';
+                setStep(2);
+                return;
+            }
+            try {
+                const res = await fetch('/api/stempeluhr/pin-aendern', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ alte_pin: alte, neue_pin: neu1 }),
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    erfolg.style.display = 'block';
+                    document.querySelector('.keypad').style.display = 'none';
+                    setTimeout(() => { window.location.href = '/stempeluhr/abmelden'; }, 2000);
+                } else {
+                    fehler.textContent = data.fehler || 'Fehler.';
+                    setStep(1);
+                }
+            } catch (e) {
+                fehler.textContent = 'Verbindungsfehler.';
+                setStep(1);
+            }
+        }
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key >= '0' && e.key <= '9') {
+            if (buf.length < 4) { buf += e.key; aktualisiere(); }
+            if (buf.length === 4) setTimeout(weiter, 120);
+        } else if (e.key === 'Backspace') { buf = buf.slice(0, -1); aktualisiere(); }
+        else if (e.key === 'Enter') { weiter(); }
+    });
+})();
+</script>
+{% endblock %}

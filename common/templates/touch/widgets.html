@@ -1,18 +1,28 @@
 {# ============================================================
-   Common Touch-Input-Widgets – Numpad, Alpha-Keyboard, Datepicker
+   Common Touch-Input-Widgets – Dual-Mode (Touch UND Maus/Tastatur)
    ============================================================
+   GRUNDSATZ: Alle Apps (außer Kiosk) müssen parallel per Touch UND per
+   Maus/Tastatur bedienbar sein. Deshalb bleiben die Inputs voll nativ
+   editierbar; rechts vom Feld erscheint ein Edit-Icon, das das
+   On-Screen-Overlay öffnet (⌨️ Tastatur, 🔢 Numpad, 📅 Kalender).
+
    Nutzung:
 
      {% include 'touch/widgets.html' %}
 
    Input-Bindung via CSS-Klassen (Auto-Wiring nach DOMContentLoaded):
 
-     class="num-touch"    → Numpad        (Zahlen mit Komma)
-     class="alpha-touch"  → Alpha-Keyboard (Text, QWERTZ mit Umlauten)
-     class="date-touch"   → Datepicker    (Kalender, Format ISO YYYY-MM-DD)
+     class="num-touch"    → Numpad     (Zahlen mit Komma)
+     class="tel-touch"    → Numpad     (Tel-Modus: +, -)
+     class="alpha-touch"  → QWERTZ     (Text mit Umlauten)
+     class="date-touch"   → Kalender   (Jahr-/Monats-Sprung)
+                             Default-Format: ISO YYYY-MM-DD
+                             Opt-in Deutsch: data-format="de" → TT.MM.JJJJ
 
-   Alle Widgets sind Bottom-Sheet-Overlays und nutzen die
-   CAO-XT-Farbvariablen aus base.html.
+   Touch-Only-Variante (nur Kiosk, Input NICHT editierbar):
+     zusätzliche Klasse   class="... touch-only"
+
+   Alle Overlays sind Bottom-Sheets und nutzen die CAO-XT-Farbvariablen.
    ============================================================ #}
 
 <style>
@@ -44,7 +54,6 @@
                       background: var(--gruen-mitte); margin-left: 2px;
                       animation: tw-blink 1s steps(2, jump-none) infinite; }
 @keyframes tw-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
-/* Alpha-Keyboard zeigt links-buendig an (Text-Eingabe) */
 #tw-kbd .touch-wert { justify-content: flex-start; text-align: left; font-size: 18px; }
 .touch-btn { min-height: 52px; border: 1px solid var(--creme-dunkel);
              border-radius: 8px; background: white; font-family: inherit;
@@ -58,11 +67,27 @@
 .touch-btn.primary:active { background: var(--gruen-dunkel); }
 .touch-btn.wide { flex: 1; }
 
-/* Input-Markierung: keine native Tastatur, aber Touch erkennbar */
-.num-touch, .tel-touch, .alpha-touch, .date-touch {
-  cursor: pointer; caret-color: transparent !important;
-  user-select: none; background-image: none;
-}
+/* ── Edit-Icon-Wrapper (Dual-Mode) ───────────────────────────── */
+/* Input bleibt voll editierbar; Icon rechts öffnet das Overlay. */
+.touch-dual-wrap { position: relative; display: block; }
+.touch-dual-wrap > input { padding-right: 48px !important; width: 100%;
+                           box-sizing: border-box; }
+.touch-dual-btn { position: absolute; top: 50%; right: 4px;
+                  transform: translateY(-50%); width: 40px; height: 40px;
+                  border: none; background: transparent; cursor: pointer;
+                  font-size: 20px; border-radius: 8px; padding: 0;
+                  display: flex; align-items: center; justify-content: center;
+                  color: var(--gruen-dunkel); opacity: 0.7;
+                  transition: opacity 0.1s, background 0.1s; }
+.touch-dual-btn:hover { opacity: 1; background: var(--creme); }
+.touch-dual-btn:focus-visible { outline: 2px solid var(--gruen-mitte);
+                                outline-offset: 1px; opacity: 1; }
+
+/* ── Touch-Only (optional) ───────────────────────────────────── */
+/* Fuer Stationen ohne Tastatur: Feld ist readonly, ganzes Feld öffnet Overlay. */
+.touch-only { cursor: pointer; caret-color: transparent !important;
+              user-select: none; background-image: none; }
+
 .touch-wert .char { display: inline-block; min-width: 4px; padding: 0 1px;
                     cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .touch-wert .endspacer { display: inline-block; min-width: 12px; flex: 1;
@@ -83,10 +108,15 @@
 
 /* ── Datepicker ──────────────────────────────────────────────── */
 #tw-date .touch-panel { max-width: 380px; }
-#tw-date .dp-nav { display: flex; align-items: center; justify-content: space-between;
+#tw-date .dp-nav { display: flex; align-items: center; gap: 6px;
                    margin-bottom: 8px; }
-#tw-date .dp-monat { font-size: 15px; font-weight: 800; color: var(--gruen-dunkel); }
-#tw-date .dp-nav-btn { width: 44px; height: 44px; font-size: 18px; }
+#tw-date .dp-kopfknopf { flex: 1; min-height: 44px; border: 1px solid var(--creme-dunkel);
+                         border-radius: 8px; background: white; cursor: pointer;
+                         font-family: inherit; font-size: 15px; font-weight: 800;
+                         color: var(--gruen-dunkel);
+                         -webkit-tap-highlight-color: transparent; }
+#tw-date .dp-kopfknopf:hover { background: var(--creme); }
+#tw-date .dp-nav-btn { width: 44px; height: 44px; font-size: 18px; flex: 0 0 44px; }
 #tw-date .dp-kopf { display: grid; grid-template-columns: repeat(7, 1fr);
                     font-size: 10px; font-weight: 800; text-transform: uppercase;
                     letter-spacing: 0.05em; color: var(--grau-mitte);
@@ -101,6 +131,28 @@
 #tw-date .dp-tag.heute { border-color: var(--gold); color: var(--gold); font-weight: 800; }
 #tw-date .dp-tag.gewaehlt { background: var(--gruen-mitte); color: white;
                             border-color: var(--gruen-dunkel); font-weight: 800; }
+/* Monats-Modus: 4×3 Grid */
+#tw-date .dp-monat-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+                          gap: 6px; }
+#tw-date .dp-monat-btn { min-height: 56px; border: 1px solid var(--creme-dunkel);
+                         border-radius: 8px; background: white; font-family: inherit;
+                         font-size: 14px; font-weight: 700; cursor: pointer;
+                         color: var(--text-dunkel);
+                         -webkit-tap-highlight-color: transparent; }
+#tw-date .dp-monat-btn:active { background: var(--creme); }
+#tw-date .dp-monat-btn.aktiv { background: var(--gruen-mitte); color: white;
+                               border-color: var(--gruen-dunkel); }
+/* Jahres-Modus: 5×5 Grid, 25 Jahre sichtbar */
+#tw-date .dp-jahr-grid { display: grid; grid-template-columns: repeat(5, 1fr);
+                         gap: 4px; }
+#tw-date .dp-jahr-btn { min-height: 44px; border: 1px solid var(--creme-dunkel);
+                        border-radius: 6px; background: white; font-family: inherit;
+                        font-size: 13px; font-weight: 700; cursor: pointer;
+                        color: var(--text-dunkel);
+                        -webkit-tap-highlight-color: transparent; }
+#tw-date .dp-jahr-btn:active { background: var(--creme); }
+#tw-date .dp-jahr-btn.aktiv { background: var(--gruen-mitte); color: white;
+                              border-color: var(--gruen-dunkel); }
 #tw-date .dp-actions { display: flex; gap: 6px; margin-top: 10px; }
 </style>
 
@@ -178,7 +230,7 @@
   </div>
 </div>
 
-{# ── Datepicker (Monats-Kalender) ──────────────────────────────── #}
+{# ── Datepicker mit Tag-/Monats-/Jahres-Modus ──────────────────── #}
 <div class="touch-overlay" id="tw-date">
   <div class="touch-panel">
     <div class="touch-kopf">
@@ -188,14 +240,26 @@
     </div>
     <div class="dp-nav">
       <button type="button" class="touch-btn dp-nav-btn" data-tw-date="_PREV">‹</button>
-      <span class="dp-monat" id="tw-date-monat"></span>
+      <button type="button" class="dp-kopfknopf" id="tw-date-kopf"
+              data-tw-date="_MODUS"></button>
       <button type="button" class="touch-btn dp-nav-btn" data-tw-date="_NEXT">›</button>
     </div>
-    <div class="dp-kopf">
-      <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
-      <span>Fr</span><span>Sa</span><span>So</span>
+    {# Tag-Modus (Standard) #}
+    <div id="tw-date-tag-wrap">
+      <div class="dp-kopf">
+        <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span>
+        <span>Fr</span><span>Sa</span><span>So</span>
+      </div>
+      <div class="dp-grid" id="tw-date-grid"></div>
     </div>
-    <div class="dp-grid" id="tw-date-grid"></div>
+    {# Monats-Modus #}
+    <div id="tw-date-monat-wrap" style="display: none;">
+      <div class="dp-monat-grid" id="tw-date-monat-grid"></div>
+    </div>
+    {# Jahres-Modus #}
+    <div id="tw-date-jahr-wrap" style="display: none;">
+      <div class="dp-jahr-grid" id="tw-date-jahr-grid"></div>
+    </div>
     <div class="dp-actions">
       <button type="button" class="touch-btn funktion wide" data-tw-date="_CLEAR">Leeren</button>
       <button type="button" class="touch-btn funktion wide" data-tw-date="_HEUTE">Heute</button>
@@ -209,12 +273,13 @@
   'use strict';
   const MONATE = ['Januar','Februar','März','April','Mai','Juni',
                   'Juli','August','September','Oktober','November','Dezember'];
+  const MONATE_KURZ = ['Jan','Feb','Mär','Apr','Mai','Jun',
+                       'Jul','Aug','Sep','Okt','Nov','Dez'];
   let zielInput = null;
   let buffer = '';
-  let cursorPos = 0;  // Position innerhalb von buffer (0..buffer.length)
+  let cursorPos = 0;
 
   // Rendert Buffer als klickbare Char-Spans + Cursor zwischen den Spans.
-  // Tap auf ein Zeichen → cursorPos davor. Tap in den Leerbereich → Ende.
   function renderValue(containerEl, onchange) {
     containerEl.innerHTML = '';
     const valSpan = document.createElement('span');
@@ -255,7 +320,6 @@
     cursorPos--;
   }
 
-  // ── Helpers ────────────────────────────────────────────────
   function schliesse(overlayId) {
     document.getElementById(overlayId).classList.remove('sichtbar');
     zielInput = null; buffer = '';
@@ -275,7 +339,6 @@
   }
 
   // ── Numpad ─────────────────────────────────────────────────
-  // modus: 'dezimal' (Komma) oder 'tel' (+ statt Komma, keine Dezimalstellen)
   let numpadModus = 'dezimal';
 
   function numpadOeffnen(input, modus) {
@@ -284,7 +347,6 @@
     buffer = input.value || '';
     if (numpadModus === 'dezimal') buffer = buffer.replace(',', '.');
     cursorPos = buffer.length;
-    // Dritten-Spalten-Key: Komma bei dezimal, + bei tel
     const extraKey = document.getElementById('tw-numpad-extra');
     const minusKey = document.getElementById('tw-numpad-minus');
     const okKey = document.getElementById('tw-numpad-ok');
@@ -292,7 +354,7 @@
       extraKey.dataset.twNumpad = '+';
       extraKey.textContent = '+';
       minusKey.style.display = '';
-      okKey.classList.remove('wide');  // Platz fuer Minus-Button
+      okKey.classList.remove('wide');
     } else {
       extraKey.dataset.twNumpad = ',';
       extraKey.textContent = ',';
@@ -306,9 +368,7 @@
   function aktualisiereNumpadAnzeige() {
     const el = document.getElementById('tw-numpad-wert');
     if (!buffer) { el.innerHTML = '<span class="val">0</span><span class="cursor"></span>'; return; }
-    const vorher = buffer;
     renderValue(el, aktualisiereNumpadAnzeige);
-    // Bei dezimal: zeige Komma statt Punkt (Anzeige only, buffer bleibt Punkt)
     if (numpadModus === 'dezimal') {
       el.querySelectorAll('.char').forEach(s => {
         if (s.textContent === '.') s.textContent = ',';
@@ -318,7 +378,7 @@
   document.querySelectorAll('#tw-numpad [data-tw-numpad]').forEach(btn => {
     btn.addEventListener('click', () => {
       const t = btn.dataset.twNumpad;
-      if (t === '_OK')       {
+      if (t === '_OK') {
         const out = numpadModus === 'dezimal' ? buffer.replace('.', ',') : buffer;
         uebernehme(out); schliesse('tw-numpad'); return;
       }
@@ -329,14 +389,12 @@
         if (!buffer.includes('.')) insertAtCursor(buffer ? '.' : '0.');
       }
       else if (t === '+' && numpadModus === 'tel') {
-        // + nur am Anfang sinnvoll
         if (cursorPos === 0 && !buffer.startsWith('+')) insertAtCursor('+');
       }
       else if (t === '-' && numpadModus === 'tel') {
-        // Trenner darf ueberall stehen, nicht doppelt hintereinander
         if (buffer.slice(cursorPos - 1, cursorPos) !== '-') insertAtCursor('-');
       }
-      else                   { insertAtCursor(t); }
+      else { insertAtCursor(t); }
       aktualisiereNumpadAnzeige();
     });
   });
@@ -391,30 +449,70 @@
     if (e.target.id === 'tw-kbd') schliesse('tw-kbd');
   });
 
-  // ── Datepicker ─────────────────────────────────────────────
-  let dpAnzeige = new Date();  // zeigt aktuellen Monat
-  let dpGewaehlt = null;       // gewaehltes Datum
+  // ── Datepicker mit Tag-/Monats-/Jahres-Modus ───────────────
+  let dpAnzeige = new Date();
+  let dpGewaehlt = null;
+  let dpModus = 'tag';     // 'tag' | 'monat' | 'jahr'
+  let dpJahrBasis = 0;     // Start des 5x5-Grids
+
+  // Format-Helfer: akzeptiert ISO (YYYY-MM-DD) UND deutsch (TT.MM.JJJJ)
+  function dpParseValue(val) {
+    if (!val) return null;
+    let m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = val.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+    return null;
+  }
+  function dpFormat(dt, format) {
+    const y = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return format === 'de' ? `${d}.${mm}.${y}` : `${y}-${mm}-${d}`;
+  }
+
   function datePadOeffnen(input) {
     zielInput = input;
-    const val = input.value || '';
-    const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) {
-      dpGewaehlt = new Date(+m[1], +m[2] - 1, +m[3]);
-      dpAnzeige = new Date(dpGewaehlt);
+    const d0 = dpParseValue(input.value || '');
+    if (d0) {
+      dpGewaehlt = d0;
+      dpAnzeige = new Date(d0);
     } else {
       dpGewaehlt = null;
       dpAnzeige = new Date();
     }
+    dpModus = 'tag';
     document.getElementById('tw-date-titel').textContent = ermittleTitel(input, 'Datum wählen');
     renderDatepicker();
     document.getElementById('tw-date').classList.add('sichtbar');
   }
+  function setzeModusSicht() {
+    document.getElementById('tw-date-tag-wrap').style.display   = dpModus === 'tag'   ? '' : 'none';
+    document.getElementById('tw-date-monat-wrap').style.display = dpModus === 'monat' ? '' : 'none';
+    document.getElementById('tw-date-jahr-wrap').style.display  = dpModus === 'jahr'  ? '' : 'none';
+  }
   function renderDatepicker() {
+    setzeModusSicht();
     const jahr  = dpAnzeige.getFullYear();
     const monat = dpAnzeige.getMonth();
-    document.getElementById('tw-date-monat').textContent = MONATE[monat] + ' ' + jahr;
+    const kopf = document.getElementById('tw-date-kopf');
+    if (dpModus === 'tag') {
+      kopf.textContent = MONATE[monat] + ' ' + jahr;
+      renderTagGrid(jahr, monat);
+    } else if (dpModus === 'monat') {
+      kopf.textContent = String(jahr);
+      renderMonatGrid(jahr);
+    } else if (dpModus === 'jahr') {
+      // dpJahrBasis hält die Start-Jahreszahl des 5×5-Grids
+      if (!dpJahrBasis || jahr < dpJahrBasis || jahr >= dpJahrBasis + 25) {
+        dpJahrBasis = Math.floor(jahr / 25) * 25;
+      }
+      kopf.textContent = dpJahrBasis + '–' + (dpJahrBasis + 24);
+      renderJahrGrid();
+    }
+  }
+  function renderTagGrid(jahr, monat) {
     const ersterTag = new Date(jahr, monat, 1);
-    // Mo=0..So=6 (Deutsch)
     let vorMonatTage = ersterTag.getDay() - 1;
     if (vorMonatTage < 0) vorMonatTage = 6;
     const start = new Date(jahr, monat, 1 - vorMonatTage);
@@ -433,6 +531,45 @@
       if (dpGewaehlt && tag.getTime() === dpGewaehlt.getTime()) btn.classList.add('gewaehlt');
       btn.addEventListener('click', () => {
         dpGewaehlt = new Date(tag);
+        dpAnzeige = new Date(tag);
+        renderDatepicker();
+      });
+      grid.appendChild(btn);
+    }
+  }
+  function renderMonatGrid(jahr) {
+    const grid = document.getElementById('tw-date-monat-grid');
+    grid.innerHTML = '';
+    const aktMonat = dpAnzeige.getMonth();
+    const aktJahr  = dpAnzeige.getFullYear();
+    for (let m = 0; m < 12; m++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dp-monat-btn';
+      btn.textContent = MONATE_KURZ[m];
+      if (m === aktMonat && jahr === aktJahr) btn.classList.add('aktiv');
+      btn.addEventListener('click', () => {
+        dpAnzeige = new Date(jahr, m, 1);
+        dpModus = 'tag';
+        renderDatepicker();
+      });
+      grid.appendChild(btn);
+    }
+  }
+  function renderJahrGrid() {
+    const grid = document.getElementById('tw-date-jahr-grid');
+    grid.innerHTML = '';
+    const aktJahr = dpAnzeige.getFullYear();
+    for (let i = 0; i < 25; i++) {
+      const jahr = dpJahrBasis + i;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dp-jahr-btn';
+      btn.textContent = jahr;
+      if (jahr === aktJahr) btn.classList.add('aktiv');
+      btn.addEventListener('click', () => {
+        dpAnzeige = new Date(jahr, dpAnzeige.getMonth(), 1);
+        dpModus = 'monat';
         renderDatepicker();
       });
       grid.appendChild(btn);
@@ -441,45 +578,82 @@
   document.querySelectorAll('#tw-date [data-tw-date]').forEach(btn => {
     btn.addEventListener('click', () => {
       const t = btn.dataset.twDate;
-      if (t === '_PREV')   { dpAnzeige.setMonth(dpAnzeige.getMonth() - 1); renderDatepicker(); }
-      else if (t === '_NEXT') { dpAnzeige.setMonth(dpAnzeige.getMonth() + 1); renderDatepicker(); }
-      else if (t === '_HEUTE') {
+      if (t === '_PREV') {
+        if (dpModus === 'tag') dpAnzeige.setMonth(dpAnzeige.getMonth() - 1);
+        else if (dpModus === 'monat') dpAnzeige.setFullYear(dpAnzeige.getFullYear() - 1);
+        else if (dpModus === 'jahr') dpJahrBasis -= 25;
+        renderDatepicker();
+      } else if (t === '_NEXT') {
+        if (dpModus === 'tag') dpAnzeige.setMonth(dpAnzeige.getMonth() + 1);
+        else if (dpModus === 'monat') dpAnzeige.setFullYear(dpAnzeige.getFullYear() + 1);
+        else if (dpModus === 'jahr') dpJahrBasis += 25;
+        renderDatepicker();
+      } else if (t === '_MODUS') {
+        // Tag → Monat → Jahr → Tag
+        if (dpModus === 'tag') dpModus = 'monat';
+        else if (dpModus === 'monat') dpModus = 'jahr';
+        else dpModus = 'tag';
+        renderDatepicker();
+      } else if (t === '_HEUTE') {
         dpGewaehlt = new Date(); dpGewaehlt.setHours(0,0,0,0);
-        dpAnzeige = new Date(dpGewaehlt); renderDatepicker();
-      }
-      else if (t === '_CLEAR') { uebernehme(''); schliesse('tw-date'); }
-      else if (t === '_OK') {
+        dpAnzeige = new Date(dpGewaehlt);
+        dpModus = 'tag';
+        renderDatepicker();
+      } else if (t === '_CLEAR') {
+        uebernehme(''); schliesse('tw-date');
+      } else if (t === '_OK') {
         if (dpGewaehlt) {
-          const y = dpGewaehlt.getFullYear();
-          const m = String(dpGewaehlt.getMonth() + 1).padStart(2, '0');
-          const d = String(dpGewaehlt.getDate()).padStart(2, '0');
-          uebernehme(`${y}-${m}-${d}`);
+          const fmt = (zielInput && zielInput.dataset.format === 'de') ? 'de' : 'iso';
+          uebernehme(dpFormat(dpGewaehlt, fmt));
         }
         schliesse('tw-date');
-      }
-      else if (t === '_ABBR') { schliesse('tw-date'); }
+      } else if (t === '_ABBR') { schliesse('tw-date'); }
     });
   });
   document.getElementById('tw-date').addEventListener('click', e => {
     if (e.target.id === 'tw-date') schliesse('tw-date');
   });
 
-  // ── Auto-Wiring ────────────────────────────────────────────
-  function wireInput(sel, oeffne) {
+  // ── Auto-Wiring (Dual-Mode: Input editierbar, Icon injiziert) ──
+  // Touch-Only (Kiosk): Klasse `touch-only` blockiert native Bearbeitung.
+  function wireInput(sel, oeffne, icon) {
     document.querySelectorAll(sel).forEach(inp => {
       if (inp.dataset.twWired) return;
       inp.dataset.twWired = '1';
-      inp.setAttribute('readonly', 'readonly');
-      inp.addEventListener('focus',    e => { e.preventDefault(); inp.blur(); oeffne(inp); });
-      inp.addEventListener('mousedown', e => { e.preventDefault(); });
-      inp.addEventListener('click',    e => { e.preventDefault(); oeffne(inp); });
+
+      const touchOnly = inp.classList.contains('touch-only');
+
+      if (touchOnly) {
+        inp.setAttribute('readonly', 'readonly');
+        inp.addEventListener('focus',    e => { e.preventDefault(); inp.blur(); oeffne(inp); });
+        inp.addEventListener('mousedown', e => { e.preventDefault(); });
+        inp.addEventListener('click',    e => { e.preventDefault(); oeffne(inp); });
+        return;
+      }
+
+      // Dual-Mode: Input bleibt nativ editierbar; Edit-Icon daneben einfuegen.
+      let wrap = inp.parentNode;
+      if (!wrap.classList.contains('touch-dual-wrap')) {
+        wrap = document.createElement('span');
+        wrap.className = 'touch-dual-wrap';
+        inp.parentNode.insertBefore(wrap, inp);
+        wrap.appendChild(inp);
+      }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'touch-dual-btn';
+      btn.textContent = icon;
+      btn.setAttribute('aria-label', 'Touch-Eingabe öffnen');
+      btn.tabIndex = 0;
+      btn.addEventListener('click', e => { e.preventDefault(); oeffne(inp); });
+      wrap.appendChild(btn);
     });
   }
   function wireAll() {
-    wireInput('.num-touch',   inp => numpadOeffnen(inp, 'dezimal'));
-    wireInput('.tel-touch',   inp => numpadOeffnen(inp, 'tel'));
-    wireInput('.alpha-touch', kbdOeffnen);
-    wireInput('.date-touch',  datePadOeffnen);
+    wireInput('.num-touch',   inp => numpadOeffnen(inp, 'dezimal'), '🔢');
+    wireInput('.tel-touch',   inp => numpadOeffnen(inp, 'tel'),     '🔢');
+    wireInput('.alpha-touch', kbdOeffnen,                           '⌨️');
+    wireInput('.date-touch',  datePadOeffnen,                       '📅');
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', wireAll);
@@ -487,7 +661,6 @@
     wireAll();
   }
 
-  // Exponiere fuer dynamische Bindung
   window.TouchInput = {
     openNumpad:     numpadOeffnen,
     openKeyboard:   kbdOeffnen,

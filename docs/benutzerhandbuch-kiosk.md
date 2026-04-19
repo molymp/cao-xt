@@ -1,7 +1,7 @@
 # Benutzerhandbuch: Kiosk-App
 
-**Version:** 0.4.0
-**Letzte Aktualisierung:** 2026-04-13
+**Version:** 0.5.0
+**Letzte Aktualisierung:** 2026-04-19
 
 ---
 
@@ -100,6 +100,70 @@ Bestellungen anderer Kunden sind nicht sichtbar.
 3. Über **🖥️ Terminal** auf ein anderes Terminal (z.B. 8) wechseln
 
 Kunden können über **← Kundenkarte scannen** von der Login-Seite zurück zum Scan-Bildschirm.
+
+---
+
+## Stempeluhr
+
+Die Stempeluhr ist auf jedem Kiosk-Terminal verfügbar und wird von allen Mitarbeitern für die tägliche Zeiterfassung genutzt — unabhängig vom Login-Nutzer, damit auch während einer aktiven Kassen-Session gestempelt werden kann.
+
+### Buchen mit Mitarbeiterkarte
+
+1. **Karte scannen:** Mitarbeiterausweis (KARTEN.TYP='M') vor den Scanner halten. Die App öffnet automatisch die Stempeluhr-Seite des erkannten Mitarbeiters.
+2. **PIN eingeben:** Numpad erscheint; persönliche 4-stellige PIN eingeben → OK.
+3. **Menü:** Begrüßung mit Namen und aktueller Status (eingestempelt seit / nicht eingestempelt). Darunter die Aktions-Kacheln:
+
+| Kachel | Wirkung |
+|--------|---------|
+| **🟢 Kommen** | Neue Anwesenheit beginnt ab jetzt |
+| **🔴 Gehen** | Aktuelle Anwesenheit endet jetzt |
+| **✏️ Korrektur** | Zeit nachtragen oder korrigieren (mit Datum/Zeit-Picker und Pflicht-Begründung) |
+| **🏥 Abwesenheit** | Krank / Fortbildung / Sonstiges ganztägig melden |
+| **🏖️ Urlaub** | Urlaubsantrag von-bis stellen |
+| **🔑 PIN ändern** | Eigene PIN neu setzen (alte PIN zur Bestätigung) |
+| **📅 Übersicht** | Eigene Stempel-Historie des laufenden Monats |
+
+Jede Aktion zeigt nach dem Speichern eine große grüne Bestätigung („Kommen gebucht um 07:12") und kehrt nach 3 s automatisch auf die Startseite zurück.
+
+### Korrektur
+
+Falls das Kommen/Gehen vergessen wurde oder die Zeit falsch war:
+
+1. **Korrektur** im Menü wählen.
+2. **Typ** auswählen: Kommen / Gehen / Korrekturbuchung (Plus- oder Minusstunden).
+3. **Datum** über Datepicker (Jahr-/Monats-Sprung vorhanden).
+4. **Uhrzeit** über Drum-Wheel-Picker (native Eingabe parallel möglich).
+5. **Begründung** — Pflichtfeld, über QWERTZ-Touch-Tastatur.
+6. **Speichern.** Die Korrektur erscheint in der Mitarbeiter-Stempelhistorie mit deutlicher Kennzeichnung „Korrektur" und dem buchenden Benutzer im Audit-Log.
+
+### Abwesenheit und Urlaub
+
+- **Abwesenheit:** Ganztägige Meldung Krank/Fortbildung/Sonstiges für heute oder einen wählbaren Zeitraum. Die App berechnet die betroffenen Arbeitstage anhand der Wochenverteilung aus dem Arbeitszeitmodell des Mitarbeiters.
+- **Urlaub:** Urlaubsantrag von-bis. Nach dem Absenden hat der Antrag den Status `geplant` — die Ladenleitung genehmigt ihn später im WaWi.
+
+Beide Kacheln nutzen den Dual-Mode-Datepicker (Touch + Tastatur gleichwertig).
+
+### Übersicht
+
+Klick auf **📅 Übersicht** zeigt alle Stempel-Paare des aktuellen Monats:
+
+- Datum, Kommen, Gehen, Dauer
+- Abwesenheits-/Urlaubstage in eigenen Farben
+- Korrekturen mit Hinweis-Badge
+- am Ende: Summe Ist, Soll laut Arbeitszeitmodell, Saldo
+
+Abmelden passiert implizit durch Inaktivität oder **Zurück**-Button → nächste Kartenscan-Erwartung.
+
+### PIN-Selfservice
+
+Die PIN kann jeder Mitarbeiter selbst ändern:
+
+1. **🔑 PIN ändern** im Menü.
+2. Alte PIN eingeben.
+3. Neue PIN 2× eingeben.
+4. **Speichern.**
+
+Bei vergessener PIN setzt die Ladenleitung die PIN im WaWi (Mitarbeiter-Detail) zurück; der Mitarbeiter vergibt dann beim nächsten Stempel-Vorgang eine neue.
 
 ---
 

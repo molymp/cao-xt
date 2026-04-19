@@ -1,0 +1,634 @@
+{% extends 'base.html' %}
+{% block title %}Arbeitszeitkonten{% endblock %}
+
+{% block extra_style %}
+<style>
+.azk-topbar { display: flex; align-items: center; gap: 12px;
+              margin-bottom: 16px; flex-wrap: wrap; }
+.azk-topbar h1 { flex: 1; margin: 0; }
+
+.azk-filter { background: white; padding: 12px 14px;
+              border-radius: var(--radius); box-shadow: var(--schatten);
+              margin-bottom: 16px; display: flex; flex-wrap: wrap;
+              gap: 14px; align-items: center; }
+.azk-filter .seg { display: inline-flex; gap: 0; border: 1px solid var(--creme-dunkel);
+                   border-radius: var(--radius-klein); overflow: hidden; }
+.azk-filter .seg a { padding: 8px 14px; font-size: 13px; font-weight: 700;
+                     color: var(--gruen-dunkel); text-decoration: none;
+                     background: white; }
+.azk-filter .seg a.aktiv { background: var(--gruen-mitte); color: white; }
+.azk-filter .nav-btn { padding: 8px 12px; border: 1px solid var(--creme-dunkel);
+                       border-radius: var(--radius-klein); background: white;
+                       color: var(--gruen-dunkel); text-decoration: none;
+                       font-weight: 700; }
+.azk-filter .nav-btn:hover { background: var(--creme); }
+.azk-filter .label { font-size: 14px; font-weight: 700;
+                     color: var(--gruen-dunkel); }
+
+/* Mitarbeiter-Auswahl: Collapsible */
+details.ma-picker { background: white; padding: 10px 14px;
+                    border-radius: var(--radius); box-shadow: var(--schatten);
+                    margin-bottom: 16px; }
+details.ma-picker summary { cursor: pointer; font-weight: 700;
+                            color: var(--gruen-dunkel);
+                            list-style: none; display: flex;
+                            align-items: center; gap: 8px; }
+details.ma-picker summary::-webkit-details-marker { display: none; }
+details.ma-picker summary::before { content: '▶'; font-size: 11px;
+                                     transition: transform 0.15s; }
+details.ma-picker[open] summary::before { transform: rotate(90deg); }
+details.ma-picker .ma-aktionen { margin: 10px 0; display: flex; gap: 8px; }
+details.ma-picker .ma-aktionen button { padding: 4px 10px; font-size: 12px;
+                                         border: 1px solid var(--creme-dunkel);
+                                         border-radius: var(--radius-klein);
+                                         background: white; cursor: pointer;
+                                         color: var(--gruen-dunkel);
+                                         font-weight: 700; }
+details.ma-picker .ma-liste { display: grid;
+                              grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                              gap: 6px 14px; margin-top: 6px; }
+details.ma-picker label { display: flex; align-items: center; gap: 8px;
+                          font-size: 13px; font-weight: 500;
+                          cursor: pointer; padding: 4px 6px;
+                          border-radius: var(--radius-klein); }
+details.ma-picker label:hover { background: var(--creme); }
+details.ma-picker label input { width: 16px; height: 16px;
+                                accent-color: var(--gruen-mitte); }
+details.ma-picker .submit-row { margin-top: 12px; display: flex; gap: 10px;
+                                align-items: center; }
+details.ma-picker button.apply { padding: 8px 16px; font-size: 13px;
+                                 font-weight: 700; background: var(--gruen-mitte);
+                                 color: white; border: none;
+                                 border-radius: var(--radius-klein);
+                                 cursor: pointer; }
+details.ma-picker button.apply:hover { background: var(--gruen-dunkel); }
+
+/* Eine Karte pro Mitarbeiter */
+.ma-karte { background: white; border-radius: var(--radius);
+            box-shadow: var(--schatten); margin-bottom: 20px;
+            overflow: hidden; }
+.ma-karte .ma-kopf { padding: 12px 16px; display: flex;
+                     align-items: center; gap: 12px;
+                     background: var(--creme); border-bottom: 1px solid var(--creme-dunkel); }
+.ma-karte .ma-kopf h2 { margin: 0; font-size: 17px; color: var(--gruen-dunkel); }
+.ma-karte .ma-kopf .ma-meta { font-size: 12px; color: var(--grau-mitte);
+                              font-weight: 500; }
+.ma-karte .ma-kopf .saldo { margin-left: auto; font-size: 12px;
+                            color: var(--grau-mitte); display: flex;
+                            gap: 16px; flex-wrap: wrap; }
+.ma-karte .ma-kopf .saldo b { color: var(--gruen-dunkel);
+                              font-variant-numeric: tabular-nums; }
+
+/* Tabelle */
+table.azk { width: 100%; border-collapse: collapse; font-size: 13px;
+            font-variant-numeric: tabular-nums; }
+table.azk th, table.azk td { padding: 6px 10px; border-bottom: 1px solid #eee;
+                             text-align: right; white-space: nowrap; }
+table.azk th { background: var(--creme); color: var(--gruen-dunkel);
+               text-transform: uppercase; font-size: 10px; font-weight: 700;
+               letter-spacing: 0.03em; }
+table.azk th.col-periode, table.azk td.col-periode { text-align: left;
+                                                      font-weight: 700;
+                                                      min-width: 180px; }
+table.azk th.col-typ, table.azk td.col-typ { text-align: left; min-width: 110px; }
+table.azk td.col-typ .t-pill { display: inline-block; padding: 1px 8px;
+                                font-size: 11px; font-weight: 700;
+                                border-radius: 10px; color: white; }
+table.azk .t-arbeit     { background: #3c8a4a; }
+table.azk .t-urlaub     { background: #3c8a4a; }
+table.azk .t-krank      { background: #c54646; }
+table.azk .t-kind_krank { background: #d87a3a; }
+table.azk .t-schulung   { background: #3a7cbd; }
+table.azk .t-unbezahlt  { background: #888; }
+table.azk .t-sonstiges  { background: #7a6a50; }
+table.azk .t-feiertag   { background: #c7a640; }
+
+.wert-pos { color: var(--gruen-dunkel); font-weight: 700; }
+.wert-neg { color: #b54646; font-weight: 700; }
+.wert-sum { font-weight: 700; }
+tr.summe-zeile td { background: var(--creme); font-weight: 800;
+                    border-top: 2px solid var(--gruen-dunkel); }
+
+/* Tagesbasierter Urlaubs-Bereich: optisch abgetrennt durch dickeren Rahmen.
+   Gilt fuer alle Zeilen (Periode, Tag, Stempel, Summe). */
+table.azk th.col-urlaub-start,
+table.azk td.col-urlaub-start { border-left: 3px solid var(--gruen-dunkel); }
+table.azk th.col-urlaub,
+table.azk td.col-urlaub { color: var(--gruen-dunkel); }
+
+/* Stunden-Korrektur-Maske (pro MA-Karte) */
+.korr-form { padding: 12px 16px; border-top: 1px solid var(--creme-dunkel);
+             background: #fafaf5; }
+.korr-form summary { cursor: pointer; font-weight: 700;
+                     color: var(--gruen-dunkel); font-size: 13px;
+                     list-style: none; display: flex; gap: 8px;
+                     align-items: center; }
+.korr-form summary::-webkit-details-marker { display: none; }
+.korr-form summary::before { content: '+'; font-size: 16px;
+                              color: var(--gruen-mitte);
+                              transition: transform 0.15s; }
+.korr-form[open] summary::before { content: '−'; }
+.korr-form .felder { display: grid; gap: 8px 12px; margin-top: 10px;
+                      grid-template-columns: 130px 100px 1fr 1fr auto; }
+.korr-form .felder label { font-size: 11px; font-weight: 600;
+                            color: var(--grau-mitte);
+                            text-transform: uppercase; letter-spacing: 0.03em;
+                            display: block; margin-bottom: 2px; }
+.korr-form .felder input[type="date"],
+.korr-form .felder input[type="text"] {
+    padding: 6px 8px; font-size: 13px;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    width: 100%; background: white;
+}
+.korr-form .felder .fg { display: flex; flex-direction: column; }
+.korr-form button.btn { padding: 8px 14px; font-size: 13px; font-weight: 700;
+                         background: var(--gruen-mitte); color: white;
+                         border: none; border-radius: var(--radius-klein);
+                         cursor: pointer; align-self: end; }
+.korr-form button.btn:hover { background: var(--gruen-dunkel); }
+.korr-form .hint { margin-top: 6px; font-size: 11px; color: var(--grau-mitte);
+                    grid-column: 1 / -1; }
+
+/* Drill-down-Mechanik */
+.toggle-btn { background: none; border: 0; cursor: pointer;
+              color: var(--gruen-dunkel); font-size: 12px;
+              width: 18px; height: 18px; padding: 0; margin-right: 4px;
+              display: inline-block; vertical-align: middle;
+              transition: transform 0.15s; }
+.toggle-btn.auf { transform: rotate(90deg); }
+.toggle-btn.leer { color: transparent; cursor: default; pointer-events: none; }
+
+tr.tag-zeile { display: none; background: #fafaf5; }
+tr.tag-zeile.offen { display: table-row; }
+tr.tag-zeile td { font-weight: 400; font-size: 12px;
+                  color: var(--grau-mitte); }
+tr.tag-zeile td.col-periode { padding-left: 34px; font-weight: 600;
+                              color: var(--grau-mitte); }
+tr.tag-zeile.wochenende td { background: #f4f1e3; }
+tr.tag-zeile.feiertag td { background: #fdf5d9; }
+tr.tag-zeile td.col-periode .wochentag { display: inline-block;
+                                          min-width: 22px;
+                                          color: var(--grau-mitte);
+                                          font-weight: 500; margin-right: 4px; }
+
+tr.stempel-zeile { display: none; background: #f4f4ea; }
+tr.stempel-zeile.offen { display: table-row; }
+tr.stempel-zeile td { font-size: 11px; color: var(--grau-mitte);
+                      font-weight: 400; font-style: italic; }
+tr.stempel-zeile td.col-periode { padding-left: 58px; }
+
+.leer-hinweis { text-align: center; padding: 30px; color: var(--grau-mitte);
+                background: white; border-radius: var(--radius);
+                box-shadow: var(--schatten); }
+
+/* Stundenzettel-Leiste (Monats-Auswahl + Batch-Download) */
+.sz-bar { background: white; padding: 12px 14px; border-radius: var(--radius);
+          box-shadow: var(--schatten); margin-bottom: 16px;
+          display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.sz-bar .label { font-size: 13px; font-weight: 700;
+                 color: var(--gruen-dunkel); }
+.sz-bar select, .sz-bar input[type="number"] {
+    padding: 6px 8px; font-size: 13px;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein); background: white; }
+.sz-bar button.btn { padding: 8px 14px; font-size: 13px; font-weight: 700;
+                     background: var(--gruen-mitte); color: white;
+                     border: none; border-radius: var(--radius-klein);
+                     cursor: pointer; }
+.sz-bar button.btn:hover:not(:disabled) { background: var(--gruen-dunkel); }
+.sz-bar button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sz-bar .hint { font-size: 12px; color: var(--grau-mitte); }
+.sz-bar .zahl { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* Einzel-PDF-Button pro MA-Karte */
+.ma-karte .ma-kopf .pdf-btn {
+    margin-left: 10px;
+    padding: 5px 10px; font-size: 12px; font-weight: 700;
+    background: white; color: var(--gruen-dunkel);
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein); text-decoration: none;
+    cursor: pointer; }
+.ma-karte .ma-kopf .pdf-btn:hover { background: var(--creme); }
+.ma-karte.gf-hinweis .ma-kopf { background: #f4f1e3; }
+.gf-badge { display: inline-block; padding: 2px 7px; font-size: 10px;
+            font-weight: 700; background: #888; color: white;
+            border-radius: 8px; margin-left: 6px;
+            text-transform: uppercase; letter-spacing: 0.03em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="azk-topbar">
+  <h1>⏱️ Arbeitszeitkonten {{ jahr }}</h1>
+</div>
+
+<div class="azk-filter">
+  <div class="seg">
+    <a class="{% if modus == 'woche' %}aktiv{% endif %}"
+       href="{{ url_for('wawi_personal.arbeitszeitkonten',
+                        modus='woche', jahr=jahr,
+                        ma_ids=sel_ids|join(',') if sel_ids != alle_ids else none) }}">Woche</a>
+    <a class="{% if modus == 'monat' %}aktiv{% endif %}"
+       href="{{ url_for('wawi_personal.arbeitszeitkonten',
+                        modus='monat', jahr=jahr,
+                        ma_ids=sel_ids|join(',') if sel_ids != alle_ids else none) }}">Monat</a>
+  </div>
+
+  <a class="nav-btn"
+     href="{{ url_for('wawi_personal.arbeitszeitkonten',
+                      modus=modus, jahr=prev_jahr,
+                      ma_ids=sel_ids|join(',') if sel_ids != alle_ids else none) }}">
+    ← {{ prev_jahr }}
+  </a>
+  <span class="label">{{ jahr }}</span>
+  <a class="nav-btn"
+     href="{{ url_for('wawi_personal.arbeitszeitkonten',
+                      modus=modus, jahr=next_jahr,
+                      ma_ids=sel_ids|join(',') if sel_ids != alle_ids else none) }}">
+    {{ next_jahr }} →
+  </a>
+
+  <span style="flex: 1;"></span>
+  <span class="label" style="color: var(--grau-mitte); font-weight: 500;">
+    {{ zeilen|length }} / {{ alle_ids|length }} Mitarbeiter
+  </span>
+</div>
+
+<details class="ma-picker"{% if zeilen|length == 0 %} open{% endif %}>
+  <summary>👥 Mitarbeiter-Auswahl ({{ sel_ids|length }} ausgewählt)</summary>
+  <form method="get" action="{{ url_for('wawi_personal.arbeitszeitkonten') }}">
+    <input type="hidden" name="modus" value="{{ modus }}">
+    <input type="hidden" name="jahr"  value="{{ jahr }}">
+    <div class="ma-aktionen">
+      <button type="button" onclick="azkSelectAll(true)">Alle auswählen</button>
+      <button type="button" onclick="azkSelectAll(false)">Alle abwählen</button>
+    </div>
+    <div class="ma-liste">
+      {% for ma in mitarbeiter %}
+      <label>
+        <input type="checkbox" name="_ma" value="{{ ma.PERS_ID }}"
+               class="azk-ma-check"
+               {% if ma.PERS_ID in sel_ids %}checked{% endif %}>
+        <span>{{ ma.NAME }}, {{ ma.VNAME }}</span>
+        {% if ma.KUERZEL %}
+          <small style="color: var(--grau-mitte); font-weight: 400;">
+            ({{ ma.KUERZEL }})</small>
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="ma_ids" id="azk-ma-ids" value="">
+    <div class="submit-row">
+      <button type="submit" class="apply"
+              onclick="azkCollectIds()">Auswahl übernehmen</button>
+      <span style="color: var(--grau-mitte); font-size: 12px;">
+        Die Auswahl wird für zukünftige Aufrufe gespeichert.
+      </span>
+    </div>
+  </form>
+</details>
+
+{# ── Stundenzettel-Leiste: Monats-Auswahl + Batch-Download ── #}
+{% set monate_de = ['Januar','Februar','März','April','Mai','Juni',
+                    'Juli','August','September','Oktober','November','Dezember'] %}
+<form class="sz-bar" method="post" id="sz-batch-form"
+      action="{{ url_for('wawi_personal.stundenzettel_batch') }}">
+  <span class="label">📄 Stundenzettel als PDF</span>
+  <label>
+    <span class="label" style="font-weight: 500;">Monat:</span>
+    <select name="monat" id="sz-monat">
+      {% for i in range(1, 13) %}
+        <option value="{{ i }}"
+                {% if i == sz_monat_default %}selected{% endif %}>
+          {{ monate_de[i-1] }}
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span class="label" style="font-weight: 500;">Jahr:</span>
+    <input type="number" name="jahr" id="sz-jahr"
+           min="2020" max="2099" step="1"
+           value="{{ sz_jahr_default }}" style="width: 82px;">
+  </label>
+  <input type="hidden" name="ma_ids" id="sz-ma-ids">
+  <button type="submit" class="btn" id="sz-batch-btn" onclick="szBatchVorbereiten()">
+    ZIP aller ausgewählten (<span class="zahl" id="sz-count">0</span>) herunterladen
+  </button>
+  <span class="hint" id="sz-hint"></span>
+</form>
+
+{% if not zeilen %}
+  <div class="leer-hinweis">
+    Keine Mitarbeiter ausgewählt. Bitte oben Mitarbeiter wählen.
+  </div>
+{% endif %}
+
+{% for z in zeilen %}
+{% set mid = z.ma.PERS_ID %}
+<div class="ma-karte{% if not z.in_zeiterfassung %} gf-hinweis{% endif %}"
+     data-pers-id="{{ mid }}" data-in-ze="{{ 1 if z.in_zeiterfassung else 0 }}">
+  <div class="ma-kopf">
+    <h2>
+      <a href="{{ url_for('wawi_personal.detail', pers_id=mid) }}"
+         style="color: var(--gruen-dunkel); text-decoration: none;">
+        {{ z.ma.NAME }}, {{ z.ma.VNAME }}
+      </a>
+      {% if z.ma.KUERZEL %}
+        <small class="ma-meta">({{ z.ma.KUERZEL }})</small>
+      {% endif %}
+      {% if not z.in_zeiterfassung %}
+        <span class="gf-badge" title="Lohnart ohne Zeiterfassung">keine Zeiterfassung</span>
+      {% endif %}
+    </h2>
+    <span class="ma-meta">{{ z.d.regel_az_label }}</span>
+    {% if z.in_zeiterfassung %}
+      <a class="pdf-btn"
+         href="#" onclick="szEinzelPdf({{ mid }}); return false;"
+         title="Stundenzettel als PDF herunterladen (Monat s.o.)">📄 PDF</a>
+    {% endif %}
+    <div class="saldo">
+      <span>Jahressaldo:
+        <b class="{% if z.d.summe.diff_min >= 0 %}wert-pos{% else %}wert-neg{% endif %}">
+          {{ m_hstr(z.d.summe.diff_min) }}
+        </b>
+      </span>
+      <span>Rest Urlaub {{ jahr }}:
+        <b class="{% if z.saldo.rest >= 0 %}wert-pos{% else %}wert-neg{% endif %}">
+          {{ '%.1f'|format(z.saldo.rest) }}
+        </b>
+      </span>
+    </div>
+  </div>
+
+  <table class="azk">
+    <thead>
+      <tr>
+        <th class="col-periode" style="min-width: 200px;">
+          {% if modus == 'woche' %}Woche{% else %}Monat{% endif %}
+        </th>
+        <th class="col-typ">Typ</th>
+        <th title="Sollzeit laut Arbeitszeitmodell">Regel-AZ</th>
+        <th title="Verplante Zeit aus dem Schichtplan">Planzeit</th>
+        <th title="Gestempelte Arbeitszeit">Gebucht</th>
+        <th title="Bezahlte Abwesenheit (Urlaub, Feiertag, Krank) als Stundengutschrift">
+          Bezahlte Abwesenheit
+        </th>
+        <th title="Manuelle Korrekturen">Korrektur</th>
+        <th title="Gebucht + Bezahlte Abwesenheit + Korrektur">Summe</th>
+        <th title="Summe − Regel-AZ">+/-</th>
+        <th class="col-urlaub-start col-urlaub"
+            title="Urlaubsanspruch in Tagen (Jahresbasis)">Anspruch</th>
+        <th class="col-urlaub"
+            title="Genommene Urlaubstage im Zeitraum">Urlaub</th>
+        <th class="col-urlaub"
+            title="Urlaubskorrekturen / Uebertrag (Jahresbasis)">Korrektur</th>
+        <th class="col-urlaub" title="Rest-Urlaub (Jahresbasis)">Rest</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in z.d.perioden %}
+        {% set pid = mid ~ '-p' ~ p.nr ~ '-' ~ (p.iso_jahr if p.iso_jahr is defined else jahr) %}
+        {% set periode_label = p.label ~ ' (' ~ p.von.strftime('%d.%m.') ~ '–' ~ p.bis.strftime('%d.%m.') ~ ')' %}
+        <tr class="periode-zeile" data-pid="{{ pid }}">
+          <td class="col-periode">
+            <button type="button" class="toggle-btn"
+                    data-target=".tag-of-{{ pid }}"
+                    aria-label="Tagesdetails einblenden">▶</button>
+            {{ periode_label }}
+          </td>
+          <td class="col-typ"></td>
+          <td>{{ m_hstr(p.w.regel_min) }}</td>
+          <td>{{ m_hstr(p.w.plan_min) }}</td>
+          <td>{{ m_hstr(p.w.gebucht_min) }}</td>
+          <td>{{ m_hstr(p.w.bezahlt_min) }}</td>
+          <td style="color: var(--grau-mitte);">{{ m_hstr(p.w.korrektur_min) }}</td>
+          <td class="wert-sum">{{ m_hstr(p.w.summe_min) }}</td>
+          <td class="{% if p.w.diff_min >= 0 %}wert-pos{% else %}wert-neg{% endif %}">
+            {{ m_hstr(p.w.diff_min) }}
+          </td>
+          <td class="col-urlaub-start col-urlaub"></td>
+          <td class="col-urlaub">
+            {{ '%.1f'|format(p.w.urlaub_tage) if p.w.urlaub_tage else '' }}
+          </td>
+          <td class="col-urlaub"></td>
+          <td class="col-urlaub"></td>
+        </tr>
+        {% for tg in p.tage %}
+          {% set tid = pid ~ '-t' ~ tg.datum.strftime('%Y%m%d') %}
+          <tr class="tag-zeile tag-of-{{ pid }}{% if tg.wochenende %} wochenende{% endif %}{% if tg.typ == 'feiertag' %} feiertag{% endif %}">
+            <td class="col-periode">
+              {% if tg.stempel_paare %}
+                <button type="button" class="toggle-btn"
+                        data-target=".stempel-of-{{ tid }}"
+                        aria-label="Buchungen einblenden">▶</button>
+              {% else %}
+                <span class="toggle-btn leer">·</span>
+              {% endif %}
+              <span class="wochentag">{{ tg.datum.strftime('%a') }}</span>
+              {{ tg.datum.strftime('%d.%m.%Y') }}
+            </td>
+            <td class="col-typ">
+              {% if tg.typ_label %}
+                <span class="t-pill t-{{ tg.typ }}">{{ tg.typ_label }}</span>
+              {% endif %}
+            </td>
+            <td>{{ m_hstr(tg.regel_min) if tg.regel_min else '' }}</td>
+            <td>{{ m_hstr(tg.plan_min) if tg.plan_min else '' }}</td>
+            <td>{{ m_hstr(tg.gebucht_min) if tg.gebucht_min else '' }}</td>
+            <td>{{ m_hstr(tg.bezahlt_min) if tg.bezahlt_min else '' }}</td>
+            <td style="color: var(--grau-mitte);">
+              {{ m_hstr(tg.korrektur_min) if tg.korrektur_min else '' }}
+            </td>
+            <td>{{ m_hstr(tg.summe_min) if tg.summe_min else '' }}</td>
+            <td></td>
+            <td class="col-urlaub-start col-urlaub"></td>
+            <td class="col-urlaub">
+              {{ '%.1f'|format(tg.urlaub_tag) if tg.urlaub_tag else '' }}
+            </td>
+            <td class="col-urlaub"></td>
+            <td class="col-urlaub"></td>
+          </tr>
+          {% for sp in tg.stempel_paare %}
+            <tr class="stempel-zeile stempel-of-{{ tid }} tag-of-{{ pid }}">
+              <td class="col-periode">
+                ↳ {{ sp.kommen_at.strftime('%H:%M') }} – {{ sp.gehen_at.strftime('%H:%M') }}
+                {% if sp.quelle and sp.quelle != 'kiosk' %}
+                  <small>({{ sp.quelle }})</small>
+                {% endif %}
+                {% if sp.kommentar %}
+                  <small title="{{ sp.kommentar }}">· {{ sp.kommentar|truncate(40) }}</small>
+                {% endif %}
+              </td>
+              <td class="col-typ"></td>
+              <td></td>
+              <td></td>
+              <td>{{ m_hstr(sp.dauer_min) }}</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td class="col-urlaub-start col-urlaub"></td>
+              <td class="col-urlaub"></td>
+              <td class="col-urlaub"></td>
+              <td class="col-urlaub"></td>
+            </tr>
+          {% endfor %}
+        {% endfor %}
+      {% endfor %}
+
+      {# ── Jahres-Summe ── #}
+      <tr class="summe-zeile">
+        <td class="col-periode">Jahr {{ jahr }}</td>
+        <td></td>
+        <td>{{ m_hstr(z.d.summe.regel_min) }}</td>
+        <td>{{ m_hstr(z.d.summe.plan_min) }}</td>
+        <td>{{ m_hstr(z.d.summe.gebucht_min) }}</td>
+        <td>{{ m_hstr(z.d.summe.bezahlt_min) }}</td>
+        <td>{{ m_hstr(z.d.summe.korrektur_min) }}</td>
+        <td>{{ m_hstr(z.d.summe.summe_min) }}</td>
+        <td class="{% if z.d.summe.diff_min >= 0 %}wert-pos{% else %}wert-neg{% endif %}">
+          {{ m_hstr(z.d.summe.diff_min) }}
+        </td>
+        <td class="col-urlaub-start col-urlaub">
+          {{ '%.1f'|format(z.saldo.basis) }}
+        </td>
+        <td class="col-urlaub">
+          {{ '%.1f'|format(z.d.summe.urlaub_tage) }}
+        </td>
+        <td class="col-urlaub {% if z.saldo.korrektur < 0 %}wert-neg{% endif %}">
+          {{ '%.1f'|format(z.saldo.korrektur) if z.saldo.korrektur else '' }}
+        </td>
+        <td class="col-urlaub {% if z.saldo.rest >= 0 %}wert-pos{% else %}wert-neg{% endif %}">
+          {{ '%.1f'|format(z.saldo.rest) }}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <details class="korr-form">
+    <summary>Stunden-Korrektur buchen</summary>
+    <form method="post"
+          action="{{ url_for('wawi_personal.stundenkorrektur_anlegen',
+                             pers_id=mid) }}">
+      <div class="felder">
+        <div class="fg">
+          <label>Datum *</label>
+          <input type="date" name="datum" required
+                 min="{{ jahr }}-01-01" max="{{ jahr }}-12-31">
+        </div>
+        <div class="fg">
+          <label>Stunden *</label>
+          <input type="text" name="stunden" required
+                 placeholder="z.B. +1,75 / -0,5"
+                 class="num-touch" data-touch-titel="Stunden"
+                 inputmode="decimal">
+        </div>
+        <div class="fg">
+          <label>Grund *</label>
+          <input type="text" name="grund" required maxlength="100"
+                 placeholder="z.B. Nachgebucht aus Altsystem"
+                 class="alpha-touch" data-touch-titel="Grund">
+        </div>
+        <div class="fg">
+          <label>Kommentar</label>
+          <input type="text" name="kommentar" maxlength="150"
+                 class="alpha-touch" data-touch-titel="Kommentar">
+        </div>
+        <button type="submit" class="btn">Buchen</button>
+        <div class="hint">
+          Positive Stunden = Gutschrift, negative = Abzug. Wirkt auf das
+          Arbeitszeitkonto in der Zeile des gewaehlten Datums.
+        </div>
+      </div>
+    </form>
+  </details>
+</div>
+{% endfor %}
+
+<script>
+// MA-Auswahl: Checkbox-IDs in hidden-Feld serialisieren, damit die URL
+// nur ma_ids=1,2,3 enthaelt und der Server einfach parsen kann.
+function azkCollectIds() {
+    const checks = document.querySelectorAll('.azk-ma-check');
+    const ids = [];
+    checks.forEach(c => { if (c.checked) ids.push(c.value); });
+    document.getElementById('azk-ma-ids').value = ids.join(',');
+    // _ma-Felder deaktivieren, damit sie nicht im Query-String landen.
+    checks.forEach(c => c.disabled = true);
+    return true;
+}
+function azkSelectAll(state) {
+    document.querySelectorAll('.azk-ma-check').forEach(c => c.checked = state);
+}
+
+// ── Stundenzettel: Monats-Auswahl + Batch-Download ───────────────────────
+function szSichtbareMitZeiterfassung() {
+    // Alle angezeigten MA-Karten, die an der Zeiterfassung teilnehmen.
+    return Array.from(document.querySelectorAll('.ma-karte[data-in-ze="1"]'))
+                .map(el => el.getAttribute('data-pers-id'));
+}
+function szUpdateBatchCount() {
+    const ids = szSichtbareMitZeiterfassung();
+    const n = ids.length;
+    const cnt = document.getElementById('sz-count');
+    const btn = document.getElementById('sz-batch-btn');
+    const hint = document.getElementById('sz-hint');
+    if (cnt) cnt.textContent = n;
+    if (btn) btn.disabled = (n === 0);
+    // Hinweis, wenn unter den angezeigten MAs GF/Leitende sind (nicht im ZIP).
+    const gesamt = document.querySelectorAll('.ma-karte').length;
+    if (hint) {
+        if (gesamt > n) {
+            hint.textContent = `${gesamt - n} ohne Zeiterfassung übersprungen`;
+        } else {
+            hint.textContent = '';
+        }
+    }
+}
+function szBatchVorbereiten() {
+    const ids = szSichtbareMitZeiterfassung();
+    document.getElementById('sz-ma-ids').value = ids.join(',');
+    // Kein preventDefault – das Form submitet ganz normal.
+    return true;
+}
+function szEinzelPdf(pid) {
+    const monat = document.getElementById('sz-monat').value;
+    const jahr = document.getElementById('sz-jahr').value;
+    // Als Link bauen und anklicken, damit der Browser den Download startet.
+    const url = "{{ url_for('wawi_personal.stundenzettel_pdf', pers_id=0) }}"
+                  .replace(/\/0\/stundenzettel$/, '/' + pid + '/stundenzettel')
+                + '?jahr=' + encodeURIComponent(jahr)
+                + '&monat=' + encodeURIComponent(monat);
+    window.location = url;
+}
+// Beim Laden direkt aktualisieren.
+document.addEventListener('DOMContentLoaded', szUpdateBatchCount);
+
+// Drill-down: Periode ↔ Tage ↔ Stempel
+document.addEventListener('click', function(ev) {
+    const btn = ev.target.closest('.toggle-btn');
+    if (!btn || btn.classList.contains('leer')) return;
+    ev.preventDefault();
+    const sel = btn.getAttribute('data-target');
+    if (!sel) return;
+    const isOffen = btn.classList.toggle('auf');
+    document.querySelectorAll(sel).forEach(row => {
+        row.classList.toggle('offen', isOffen);
+    });
+    // Wenn eine Periode zugeklappt wird, auch alle Stempel-Zeilen + ihre
+    // Buttons zuruecksetzen, damit der naechste Aufklapp-Vorgang sauber ist.
+    if (!isOffen) {
+        document.querySelectorAll(sel).forEach(row => {
+            row.querySelectorAll('.toggle-btn.auf').forEach(sub => {
+                sub.classList.remove('auf');
+                const subSel = sub.getAttribute('data-target');
+                if (subSel) document.querySelectorAll(subSel)
+                                    .forEach(r => r.classList.remove('offen'));
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

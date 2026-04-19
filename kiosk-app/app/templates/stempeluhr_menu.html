@@ -1,0 +1,156 @@
+{% extends "kunden_base.html" %}
+{% block title %}Stempeluhr – Menue{% endblock %}
+
+{% block extra_css %}
+<style>
+.ss-wrap { max-width: 900px; margin: 0 auto; padding: 16px 20px 40px; }
+.ss-kopf { display: flex; align-items: center; justify-content: space-between;
+           gap: 12px; margin-bottom: 14px; }
+.ss-kopf h1 { font-size: 1.7rem; margin: 0; }
+.ss-kopf .greet { font-size: 1rem; color: var(--text-mitte); }
+.ss-kopf .btn  { padding: 10px 16px; border-radius: var(--radius-klein);
+                 text-decoration: none; font-weight: 700; }
+.ss-abmelden   { background: #fde8e8; color: var(--rot); }
+
+.ss-stempel-row {
+    background: white; border-radius: var(--radius);
+    padding: 22px 26px; box-shadow: var(--schatten-stark);
+    display: flex; gap: 16px; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+}
+.ss-stempel-row .txt { font-size: 1.2rem; font-weight: 700; }
+.ss-stempel-btn {
+    padding: 20px 36px; font-size: 1.5rem; font-weight: 800;
+    border: none; border-radius: var(--radius); cursor: pointer;
+    color: white; font-family: 'Nunito', sans-serif;
+    box-shadow: var(--schatten);
+}
+.ss-stempel-btn.kommen { background: var(--gruen-hell); }
+.ss-stempel-btn.gehen  { background: var(--gold); }
+
+.ss-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+           gap: 12px; }
+.ss-kachel {
+    background: white; border: 2px solid var(--creme-dunkel);
+    border-radius: var(--radius); padding: 20px 16px;
+    text-decoration: none; color: var(--gruen-dunkel);
+    transition: background 0.1s, border-color 0.1s, transform 0.08s;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 120px; font-weight: 700;
+}
+.ss-kachel:hover  { background: var(--creme); border-color: var(--gruen-hell); }
+.ss-kachel:active { transform: scale(0.98); }
+.ss-kachel .ic    { font-size: 2rem; line-height: 1; }
+.ss-kachel .tt    { font-size: 1.1rem; }
+.ss-kachel .su    { font-size: 0.82rem; color: var(--text-mitte); font-weight: 600; }
+
+/* Overlay nach erfolgtem Stempel */
+.ss-overlay { display: none; position: fixed; inset: 0;
+              background: rgba(26,64,16,0.6); z-index: 999;
+              align-items: center; justify-content: center; }
+.ss-overlay.sichtbar { display: flex; }
+.ss-overlay .box {
+    background: white; border-radius: var(--radius);
+    padding: 36px 52px; text-align: center; min-width: 360px;
+}
+.ss-overlay .box .ic { font-size: 4rem; margin-bottom: 10px; }
+.ss-overlay .box .titel { font-size: 2rem; font-weight: 800; color: var(--gruen-dunkel); }
+.ss-overlay .box .zeit  { font-size: 1.5rem; font-family: monospace; margin-top: 8px; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="ss-wrap">
+    <div class="ss-kopf">
+        <div>
+            <h1>📋 Stempeluhr – Menue</h1>
+            <div class="greet">Angemeldet als: <strong>{{ name }}</strong></div>
+        </div>
+        <a href="/stempeluhr/abmelden" class="btn ss-abmelden">Abmelden</a>
+    </div>
+
+    <div class="ss-stempel-row">
+        <div class="txt">
+            Jetzt stempeln:
+            {% if naechste_richtung == 'kommen' %}
+                <span style="color: var(--gruen-hell);">🟢 Kommen</span>
+            {% else %}
+                <span style="color: var(--gold);">🔴 Gehen</span>
+            {% endif %}
+        </div>
+        <button class="ss-stempel-btn {{ naechste_richtung }}" id="btn-stempel">
+            {% if naechste_richtung == 'kommen' %}👋 Kommen stempeln{% else %}🏠 Gehen stempeln{% endif %}
+        </button>
+    </div>
+
+    <div class="ss-grid">
+        <a href="/stempeluhr/korrektur" class="ss-kachel">
+            <span class="ic">🛠</span>
+            <span class="tt">Buchungen korrigieren</span>
+            <span class="su">Vergessene Stempel nachtragen oder Zeiten anpassen</span>
+        </a>
+        <a href="/stempeluhr/urlaub" class="ss-kachel">
+            <span class="ic">🏖</span>
+            <span class="tt">Neuer Urlaubsantrag</span>
+            <span class="su">Urlaub einreichen (Status geplant)</span>
+        </a>
+        <a href="/stempeluhr/abwesenheit" class="ss-kachel">
+            <span class="ic">🤒</span>
+            <span class="tt">Abwesenheit melden</span>
+            <span class="su">Krankheit, Kind krank, Schulung usw.</span>
+        </a>
+        <a href="/stempeluhr/uebersicht" class="ss-kachel">
+            <span class="ic">📊</span>
+            <span class="tt">Uebersicht</span>
+            <span class="su">Urlaubsantraege und Abwesenheiten einsehen</span>
+        </a>
+        <a href="/stempeluhr/pin-aendern" class="ss-kachel">
+            <span class="ic">🔐</span>
+            <span class="tt">PIN aendern</span>
+            <span class="su">Eigene 4-stellige PIN neu vergeben</span>
+        </a>
+    </div>
+</div>
+
+<div class="ss-overlay" id="overlay">
+    <div class="box">
+        <div class="ic" id="ov-ic">✅</div>
+        <div class="titel" id="ov-titel">Gebucht!</div>
+        <div class="zeit" id="ov-zeit">--:--</div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const btn     = document.getElementById('btn-stempel');
+    const overlay = document.getElementById('overlay');
+    const ovIc    = document.getElementById('ov-ic');
+    const ovTi    = document.getElementById('ov-titel');
+    const ovZe    = document.getElementById('ov-zeit');
+
+    btn.addEventListener('click', async function() {
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/stempeluhr/pin-stempeln', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            if (data.ok) {
+                ovIc.textContent = data.richtung === 'kommen' ? '👋' : '🏠';
+                ovTi.textContent = data.richtung === 'kommen' ? 'Willkommen!' : 'Tschuess!';
+                ovZe.textContent = data.zeit;
+                overlay.classList.add('sichtbar');
+                setTimeout(() => { window.location.href = '/stempeluhr/abmelden'; }, 2500);
+            } else {
+                alert(data.fehler || 'Fehler beim Stempeln');
+                btn.disabled = false;
+            }
+        } catch (e) {
+            alert('Verbindungsfehler');
+            btn.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}

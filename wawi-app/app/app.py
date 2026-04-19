@@ -4,7 +4,7 @@ Starten: cd wawi-app/app && python3 app.py
 """
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, send_from_directory
 from jinja2 import ChoiceLoader, FileSystemLoader
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import base64
 import io
 import os
@@ -27,6 +27,9 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
+# Fuer Blueprints (z.B. Stundenzettel-PDF im wawi/personal-Modul), die den
+# Firmennamen via current_app.config lesen moechten.
+app.config['FIRMA_NAME'] = config.FIRMA_NAME
 
 # Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Widgets
 # (Touch-Numpad/Keyboard/Datepicker). Wird mit App-eigenen Templates
@@ -81,6 +84,13 @@ try:
     log.info("WaWi-Personal-Blueprint registriert.")
 except Exception as e:
     log.warning("WaWi-Personal-Blueprint konnte nicht geladen werden: %s", e)
+
+try:
+    from modules.haccp import create_blueprint as _haccp_bp
+    app.register_blueprint(_haccp_bp(), url_prefix='/wawi/haccp')
+    log.info("HACCP-Blueprint registriert.")
+except Exception as e:
+    log.warning("HACCP-Blueprint konnte nicht geladen werden: %s", e)
 
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
@@ -253,11 +263,28 @@ def dashboard():
     monatsumsatz   = _monatsumsatz_6_monate()
     tageseinnahmen = _tageseinnahmen_heute()
     offene_vorgaenge = _offene_vorgaenge()
+    # HACCP-Ampeln: Temperaturstatus + Sichtkontrolle.
+    # Bei Fehler (DB weg, HACCP-Tabellen fehlen) nicht das Dashboard sprengen.
+    try:
+        from modules.haccp import models as haccp_models
+        haccp = haccp_models.status_fuer_dashboard(datetime.now(timezone.utc).replace(tzinfo=None))
+    except Exception as e:
+        log.warning('HACCP-Status fuer Dashboard nicht ladbar: %s', e)
+        haccp = None
+    # Personal-Widget: Abwesenheiten heute + offene Urlaubsantraege.
+    try:
+        from modules.wawi.personal import models as personal_models
+        personal = personal_models.status_fuer_dashboard(date.today())
+    except Exception as e:
+        log.warning('Personal-Status fuer Dashboard nicht ladbar: %s', e)
+        personal = None
     return render_template(
         'dashboard.html',
         monatsumsatz=monatsumsatz,
         tageseinnahmen=tageseinnahmen,
         offene_vorgaenge=offene_vorgaenge,
+        haccp=haccp,
+        personal=personal,
         heute=date.today().strftime('%d.%m.%Y'),
     )
 

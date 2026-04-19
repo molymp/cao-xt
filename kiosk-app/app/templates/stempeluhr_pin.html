@@ -1,0 +1,195 @@
+{% extends "kunden_base.html" %}
+{% block title %}Stempeluhr – PIN{% endblock %}
+
+{% block extra_css %}
+<style>
+.ss-wrap { max-width: 900px; margin: 0 auto; padding: 16px 20px 40px; }
+.ss-kopf { display: flex; align-items: center; justify-content: space-between;
+           gap: 12px; margin-bottom: 14px; }
+.ss-kopf h1 { font-size: 1.8rem; margin: 0; }
+.ss-kopf .btn { padding: 10px 16px; border-radius: var(--radius-klein);
+                background: var(--creme-dunkel); color: var(--gruen-dunkel);
+                text-decoration: none; font-weight: 700; }
+
+.ss-hinweis { background: white; border-radius: var(--radius);
+              padding: 14px 18px; color: var(--text-mitte);
+              box-shadow: var(--schatten); margin-bottom: 14px; }
+
+.ma-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+           gap: 10px; margin-bottom: 18px; }
+.ma-kachel {
+    background: white; border: 2px solid var(--creme-dunkel);
+    border-radius: var(--radius); padding: 16px 10px; text-align: center;
+    cursor: pointer; font-weight: 700; color: var(--gruen-dunkel);
+    transition: background 0.12s, border-color 0.12s, transform 0.08s;
+    min-height: 72px;
+}
+.ma-kachel:hover   { background: var(--creme); border-color: var(--gruen-hell); }
+.ma-kachel:active  { transform: scale(0.97); }
+.ma-kachel.aktiv   { background: var(--gruen-hell); color: white;
+                     border-color: var(--gruen-dunkel); }
+.ma-kachel .vname  { font-size: 1.05rem; }
+.ma-kachel .nname  { font-size: 0.82rem; color: var(--grau-mitte); font-weight: 600; }
+.ma-kachel.aktiv .nname { color: rgba(255,255,255,0.78); }
+
+.pin-zone { display: none; background: white; border-radius: var(--radius);
+            box-shadow: var(--schatten-stark); padding: 18px;
+            margin-bottom: 12px; max-width: 360px; margin-left: auto; margin-right: auto;
+            text-align: center; }
+.pin-zone.sichtbar { display: block; }
+.pin-zone h2 { font-size: 1.3rem; margin-bottom: 8px; }
+.pin-anzeige {
+    display: flex; justify-content: center; gap: 10px; margin: 12px 0 18px;
+}
+.pin-dot {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid var(--grau-mitte); background: var(--creme);
+}
+.pin-dot.voll { background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); }
+
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad button {
+    padding: 18px 0; font-size: 1.6rem; font-weight: 800;
+    border: 1px solid var(--creme-dunkel); background: var(--creme);
+    color: var(--gruen-dunkel); border-radius: var(--radius-klein);
+    cursor: pointer; font-family: 'Nunito', sans-serif;
+    transition: background 0.1s;
+}
+.keypad button:active { background: var(--creme-warm); transform: scale(0.95); }
+.keypad .kb-cancel { grid-column: 1; background: #fde8e8; color: var(--rot); }
+.keypad .kb-ok { grid-column: 3; background: var(--gruen-hell); color: white; }
+
+.pin-fehler { color: var(--rot); font-weight: 700; margin-top: 10px; min-height: 1.2em; }
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="ss-wrap">
+    <div class="ss-kopf">
+        <h1>🔢 Anmeldung per PIN</h1>
+        <a href="/stempeluhr" class="btn">&#x2190; Zur Karte</a>
+    </div>
+
+    <div class="ss-hinweis">
+        Bitte tippe zuerst deinen Namen an und anschliessend deine 4-stellige PIN.
+        {% if mitarbeiter|length == 0 %}
+        <br><br><strong>Hinweis:</strong> Es ist noch keine PIN hinterlegt.
+        Wende dich bitte an die Ladenleitung.
+        {% endif %}
+    </div>
+
+    <div class="ma-grid" id="ma-grid">
+        {% for ma in mitarbeiter %}
+        <div class="ma-kachel" data-pers-id="{{ ma.PERS_ID }}">
+            <div class="vname">{{ ma.VNAME }}</div>
+            <div class="nname">{{ ma.NAME }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="pin-zone" id="pin-zone">
+        <h2>PIN fuer <span id="pin-name"></span></h2>
+        <div class="pin-anzeige" id="pin-anzeige">
+            <div class="pin-dot"></div><div class="pin-dot"></div>
+            <div class="pin-dot"></div><div class="pin-dot"></div>
+        </div>
+        <div class="keypad">
+            <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+            <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+            <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+            <button class="kb-cancel" data-k="cancel">Abbr.</button>
+            <button data-k="0">0</button>
+            <button class="kb-ok" data-k="ok">OK</button>
+        </div>
+        <div class="pin-fehler" id="pin-fehler"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const grid     = document.getElementById('ma-grid');
+    const zone     = document.getElementById('pin-zone');
+    const nameSpan = document.getElementById('pin-name');
+    const dots     = document.querySelectorAll('#pin-anzeige .pin-dot');
+    const fehler   = document.getElementById('pin-fehler');
+    let aktivePers = null;
+    let pin        = '';
+
+    function zeigDots() {
+        dots.forEach((el, i) => {
+            el.classList.toggle('voll', i < pin.length);
+        });
+    }
+
+    function reset() {
+        pin = '';
+        fehler.textContent = '';
+        zeigDots();
+    }
+
+    grid.addEventListener('click', function(e) {
+        const k = e.target.closest('.ma-kachel');
+        if (!k) return;
+        document.querySelectorAll('.ma-kachel').forEach(el => el.classList.remove('aktiv'));
+        k.classList.add('aktiv');
+        aktivePers = parseInt(k.dataset.persId);
+        nameSpan.textContent = k.querySelector('.vname').textContent + ' ' +
+                               k.querySelector('.nname').textContent;
+        reset();
+        zone.classList.add('sichtbar');
+    });
+
+    document.querySelectorAll('.keypad button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const k = this.dataset.k;
+            if (k === 'cancel') { reset(); return; }
+            if (k === 'ok')     { pruefen(); return; }
+            if (pin.length >= 4) return;
+            pin += k;
+            zeigDots();
+            if (pin.length === 4) setTimeout(pruefen, 120);
+        });
+    });
+
+    async function pruefen() {
+        if (!aktivePers || pin.length !== 4) {
+            fehler.textContent = 'Bitte 4 Ziffern eingeben.';
+            return;
+        }
+        fehler.textContent = '';
+        try {
+            const res = await fetch('/api/stempeluhr/pin-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pers_id: aktivePers, pin: pin }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                window.location.href = '/stempeluhr/menu';
+            } else {
+                fehler.textContent = data.fehler || 'PIN falsch.';
+                reset();
+            }
+        } catch (e) {
+            fehler.textContent = 'Verbindungsfehler.';
+            reset();
+        }
+    }
+
+    // Zahlen-Tastatur als Fallback (Touchscreen hat meist keine)
+    document.addEventListener('keydown', function(e) {
+        if (!aktivePers) return;
+        if (e.key >= '0' && e.key <= '9') {
+            if (pin.length < 4) { pin += e.key; zeigDots(); }
+            if (pin.length === 4) setTimeout(pruefen, 120);
+        } else if (e.key === 'Backspace') {
+            pin = pin.slice(0, -1); zeigDots();
+        } else if (e.key === 'Enter') {
+            pruefen();
+        } else if (e.key === 'Escape') {
+            reset();
+        }
+    });
+})();
+</script>
+{% endblock %}

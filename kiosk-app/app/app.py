@@ -1931,6 +1931,397 @@ def terminal_einstellung_setzen():
     return resp
 
 
+# ── Stempeluhr (P3) ───────────────────────────────────────────
+#
+# Oeffentliche Route (kein Login): der Karten-Scan ist die Authentifizierung.
+# Kommen/Gehen wird aus dem letzten Stempel des MA abgeleitet (siehe
+# modules.wawi.personal.models.stempel_naechste_richtung).
+
+@app.route("/stempeluhr")
+def stempeluhr():
+    """Scan-Screen fuer die Stempeluhr. Public, kein Login.
+
+    Bietet zusaetzlich den Einstieg ins PIN-Self-Service unter /stempeluhr/pin.
+    """
+    return render_template("stempeluhr.html", terminal_nr=get_terminal_nr())
+
+
+@app.route("/api/stempeluhr/scan", methods=["POST"])
+def api_stempeluhr_scan():
+    """Nimmt den gescannten Barcode entgegen und stempelt den MA ein/aus."""
+    data = request.get_json(silent=True) or {}
+    guid = str(data.get("barcode", "")).strip()
+    try:
+        from modules.wawi.personal.models import stempeln_karte
+        ergebnis = stempeln_karte(guid, get_terminal_nr())
+    except Exception as exc:
+        return jsonify({"ok": False, "fehler": f"Serverfehler: {exc}"}), 500
+    if not ergebnis.get("ok"):
+        return jsonify({"ok": False, "fehler": ergebnis.get("msg", "Fehler")}), 400
+    zeit = ergebnis["zeitpunkt"]
+    return jsonify({
+        "ok":        True,
+        "richtung":  ergebnis["richtung"],
+        "vname":     ergebnis["vname"],
+        "name":      ergebnis["name"],
+        "zeit":      zeit.strftime("%H:%M:%S"),
+        "msg":       ergebnis["msg"],
+    })
+
+
+# ── Stempeluhr Self-Service (PIN-Authentifizierung) ─────────────────────────
+#
+# Flow: MA waehlt auf /stempeluhr/pin seine Kachel, tippt 4-stellige PIN,
+# gelangt ins Menue /stempeluhr/menu. Die Session ist auf 10 Minuten begrenzt;
+# bei Inaktivitaet muss neu authentifiziert werden. Kein CAO-Login noetig –
+# Self-Service ist bewusst als separate Vertrauenszone modelliert.
+
+_SS_TIMEOUT_MIN = 10
+
+
+def _ss_ist_auth() -> bool:
+    if not session.get('ss_pers_id'):
+        return False
+    auth_iso = session.get('ss_auth_at')
+    if not auth_iso:
+        return False
+    try:
+        auth_at = datetime.fromisoformat(auth_iso)
+    except ValueError:
+        return False
+    return (datetime.now() - auth_at) <= timedelta(minutes=_SS_TIMEOUT_MIN)
+
+
+def _ss_logout():
+    session.pop('ss_pers_id', None)
+    session.pop('ss_auth_at', None)
+    session.pop('ss_name', None)
+
+
+def _ss_auth_required(f):
+    @wraps(f)
+    def _wrapper(*args, **kwargs):
+        if not _ss_ist_auth():
+            _ss_logout()
+            return redirect(url_for('stempeluhr_pin'))
+        # Bei jedem Call Zeitstempel erneuern (rolling timeout).
+        session['ss_auth_at'] = datetime.now().isoformat(timespec='seconds')
+        return f(*args, **kwargs)
+    return _wrapper
+
+
+def _ss_pers_id() -> int:
+    return int(session['ss_pers_id'])
+
+
+@app.route("/stempeluhr/pin")
+def stempeluhr_pin():
+    """Kachel-Auswahl der MA (mit PIN) + PIN-Keypad."""
+    from modules.wawi.personal import models as pm
+    mas = pm.ma_mit_pin_liste()
+    return render_template("stempeluhr_pin.html",
+                           terminal_nr=get_terminal_nr(), mitarbeiter=mas)
+
+
+@app.route("/api/stempeluhr/pin-auth", methods=["POST"])
+def api_stempeluhr_pin_auth():
+    """Prueft PERS_ID + PIN; bei Erfolg wird Session gesetzt."""
+    data = request.get_json(silent=True) or {}
+    try:
+        pers_id = int(data.get("pers_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "fehler": "Mitarbeiter fehlt."}), 400
+    pin = str(data.get("pin", "")).strip()
+    from modules.wawi.personal import models as pm
+    ma = pm.authentifiziere_pers_pin(pers_id, pin)
+    if not ma:
+        return jsonify({"ok": False, "fehler": "PIN stimmt nicht."}), 401
+    session['ss_pers_id']  = int(ma['PERS_ID'])
+    session['ss_auth_at']  = datetime.now().isoformat(timespec='seconds')
+    session['ss_name']     = f"{ma['VNAME']} {ma['NAME']}"
+    return jsonify({"ok": True, "pers_id": int(ma['PERS_ID']),
+                    "name": session['ss_name']})
+
+
+@app.route("/stempeluhr/abmelden", methods=["GET", "POST"])
+def stempeluhr_abmelden():
+    _ss_logout()
+    return redirect(url_for('stempeluhr'))
+
+
+@app.route("/stempeluhr/menu")
+@_ss_auth_required
+def stempeluhr_menu():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    naechste = pm.stempel_naechste_richtung(pers_id)
+    return render_template("stempeluhr_menu.html",
+                           pers_id=pers_id,
+                           name=session.get('ss_name', ''),
+                           naechste_richtung=naechste,
+                           terminal_nr=get_terminal_nr())
+
+
+@app.route("/api/stempeluhr/pin-stempeln", methods=["POST"])
+@_ss_auth_required
+def api_stempeluhr_pin_stempeln():
+    """Loest Stempel (Kommen/Gehen) fuer den authentifizierten MA aus."""
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    richtung = pm.stempel_naechste_richtung(pers_id)
+    zeitpunkt = datetime.now().replace(microsecond=0)
+    tnr = get_terminal_nr() or None
+    try:
+        with db.get_db_transaction() as cur:
+            cur.execute(
+                """INSERT INTO XT_PERSONAL_STEMPEL
+                     (PERS_ID, RICHTUNG, ZEITPUNKT, QUELLE, TERMINAL_NR)
+                   VALUES (%s, %s, %s, 'kiosk', %s)""",
+                (pers_id, richtung, zeitpunkt, tnr),
+            )
+    except Exception as exc:
+        return jsonify({"ok": False, "fehler": f"Serverfehler: {exc}"}), 500
+    return jsonify({
+        "ok": True,
+        "richtung": richtung,
+        "zeit": zeitpunkt.strftime("%H:%M:%S"),
+        "name": session.get('ss_name', ''),
+    })
+
+
+# ── Stempeluhr Self-Service: Korrektur eigener Stempel ─────────────────────
+
+_KORREKTUR_MAX_TAGE = 14
+
+
+@app.route("/stempeluhr/korrektur")
+@_ss_auth_required
+def stempeluhr_korrektur():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    bis = date.today()
+    von = bis - timedelta(days=_KORREKTUR_MAX_TAGE)
+    stempel = pm.stempel_ma_zeitraum(pers_id, von, bis)
+    return render_template("stempeluhr_korrektur.html",
+                           pers_id=pers_id,
+                           name=session.get('ss_name', ''),
+                           stempel=stempel, von=von, bis=bis,
+                           max_tage=_KORREKTUR_MAX_TAGE)
+
+
+def _ss_benutzer_ma_id(pers_id: int) -> int:
+    """MA_ID fuers Log. Faellt auf PERS_ID zurueck, wenn CAO nicht verknuepft."""
+    from modules.wawi.personal import models as pm
+    ma = pm.ma_by_id(pers_id) or {}
+    return int(ma.get('CAO_MA_ID') or 0) or int(pers_id)
+
+
+def _parse_hhmm_auf_datum(tag: date, hhmm: str) -> datetime:
+    """Parst 'HH:MM' auf das uebergebene Datum. Wirft ValueError."""
+    std, min_ = hhmm.strip().split(':', 1)
+    return datetime.combine(tag, datetime.min.time()).replace(
+        hour=int(std), minute=int(min_))
+
+
+@app.route("/stempeluhr/korrektur/neu", methods=["POST"])
+@_ss_auth_required
+def stempeluhr_korrektur_neu():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    try:
+        tag = date.fromisoformat(request.form.get("tag", "").strip())
+    except ValueError:
+        return redirect(url_for('stempeluhr_korrektur'))
+    richtung = request.form.get("richtung", "").strip()
+    grund    = request.form.get("grund", "").strip()
+    try:
+        zeitpunkt = _parse_hhmm_auf_datum(tag, request.form.get("zeit", ""))
+    except (ValueError, TypeError):
+        return redirect(url_for('stempeluhr_korrektur'))
+    try:
+        pm.stempel_korrektur_insert(
+            pers_id=pers_id, richtung=richtung, zeitpunkt=zeitpunkt,
+            grund=grund, benutzer_ma_id=_ss_benutzer_ma_id(pers_id),
+        )
+    except ValueError:
+        pass
+    return redirect(url_for('stempeluhr_korrektur'))
+
+
+@app.route("/stempeluhr/korrektur/<int:rec_id>", methods=["POST"])
+@_ss_auth_required
+def stempeluhr_korrektur_update(rec_id: int):
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    # Nur eigene Stempel korrigierbar.
+    with db.get_db() as cur:
+        cur.execute(
+            "SELECT PERS_ID, ZEITPUNKT FROM XT_PERSONAL_STEMPEL WHERE REC_ID = %s",
+            (int(rec_id),),
+        )
+        alt = cur.fetchone()
+    if not alt or int(alt['PERS_ID']) != pers_id:
+        return redirect(url_for('stempeluhr_korrektur'))
+    richtung = request.form.get("richtung", "").strip()
+    grund    = request.form.get("grund", "").strip()
+    try:
+        zeitpunkt = _parse_hhmm_auf_datum(
+            alt['ZEITPUNKT'].date(), request.form.get("zeit", ""))
+    except (ValueError, TypeError):
+        return redirect(url_for('stempeluhr_korrektur'))
+    try:
+        pm.stempel_korrektur_update(
+            rec_id=int(rec_id), richtung=richtung, zeitpunkt=zeitpunkt,
+            grund=grund, benutzer_ma_id=_ss_benutzer_ma_id(pers_id),
+        )
+    except ValueError:
+        pass
+    return redirect(url_for('stempeluhr_korrektur'))
+
+
+# ── Stempeluhr Self-Service: Urlaubsantrag einreichen ─────────────────────
+
+@app.route("/stempeluhr/urlaub")
+@_ss_auth_required
+def stempeluhr_urlaub_neu():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    jahr = date.today().year
+    saldo = pm.urlaub_saldo(pers_id, jahr)
+    return render_template("stempeluhr_urlaub.html",
+                           pers_id=pers_id,
+                           name=session.get('ss_name', ''),
+                           saldo=saldo, jahr=jahr,
+                           heute=date.today().isoformat())
+
+
+@app.route("/stempeluhr/urlaub", methods=["POST"])
+@_ss_auth_required
+def stempeluhr_urlaub_speichern():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    try:
+        von = date.fromisoformat(request.form.get("von", "").strip())
+        bis = date.fromisoformat(request.form.get("bis", "").strip())
+    except ValueError:
+        return redirect(url_for('stempeluhr_urlaub_neu'))
+    kommentar = (request.form.get("kommentar", "").strip() or None)
+    try:
+        pm.urlaub_antrag_anlegen(
+            pers_id=pers_id, von=von, bis=bis,
+            kommentar=kommentar,
+            benutzer_ma_id=_ss_benutzer_ma_id(pers_id),
+            status='geplant',
+        )
+        zeitraum = (f'{von.strftime("%d.%m.%Y")}'
+                    if von == bis
+                    else f'{von.strftime("%d.%m.%Y")} bis {bis.strftime("%d.%m.%Y")}')
+        details = f'Zeitraum: {zeitraum}'
+        if kommentar:
+            details += f'\nKommentar: {kommentar}'
+        pm.benachrichtigung_antrag_senden(
+            bereich='urlaub_antrag', pers_id=pers_id,
+            titel='Neuer Urlaubsantrag', details=details,
+        )
+    except ValueError:
+        pass
+    return redirect(url_for('stempeluhr_uebersicht'))
+
+
+# ── Stempeluhr Self-Service: Abwesenheit (Krankheit etc.) melden ───────────
+
+@app.route("/stempeluhr/abwesenheit")
+@_ss_auth_required
+def stempeluhr_abwesenheit_neu():
+    from modules.wawi.personal import models as pm
+    return render_template("stempeluhr_abwesenheit.html",
+                           pers_id=_ss_pers_id(),
+                           name=session.get('ss_name', ''),
+                           heute=date.today().isoformat(),
+                           typen=pm.ABWESENHEIT_TYP_LABELS)
+
+
+@app.route("/stempeluhr/abwesenheit", methods=["POST"])
+@_ss_auth_required
+def stempeluhr_abwesenheit_speichern():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    typ = request.form.get("typ", "").strip()
+    try:
+        von = date.fromisoformat(request.form.get("von", "").strip())
+        bis = date.fromisoformat(request.form.get("bis", "").strip())
+    except ValueError:
+        return redirect(url_for('stempeluhr_abwesenheit_neu'))
+    bemerkung = (request.form.get("bemerkung", "").strip() or None)
+    try:
+        pm.abwesenheit_anlegen(
+            pers_id=pers_id, typ=typ, von=von, bis=bis,
+            bemerkung=bemerkung,
+            status='beantragt',
+            benutzer_ma_id=_ss_benutzer_ma_id(pers_id),
+        )
+        typ_label = pm.ABWESENHEIT_TYP_LABELS.get(typ, typ)
+        zeitraum = (f'{von.strftime("%d.%m.%Y")}'
+                    if von == bis
+                    else f'{von.strftime("%d.%m.%Y")} bis {bis.strftime("%d.%m.%Y")}')
+        details = f'Typ: {typ_label}\nZeitraum: {zeitraum}'
+        if bemerkung:
+            details += f'\nBemerkung: {bemerkung}'
+        pm.benachrichtigung_antrag_senden(
+            bereich='abwesenheit_antrag', pers_id=pers_id,
+            titel='Neuer Abwesenheitsantrag', details=details,
+        )
+    except ValueError:
+        pass
+    return redirect(url_for('stempeluhr_uebersicht'))
+
+
+# ── Stempeluhr Self-Service: Uebersicht eigener Urlaube + Abwesenheiten ───
+
+@app.route("/stempeluhr/uebersicht")
+@_ss_auth_required
+def stempeluhr_uebersicht():
+    from modules.wawi.personal import models as pm
+    pers_id = _ss_pers_id()
+    jahr = date.today().year
+    saldo = pm.urlaub_saldo(pers_id, jahr)
+    antraege = pm.urlaub_antraege(pers_id, jahr)
+    abwesenheiten = pm.abwesenheiten_ma(pers_id, jahr=jahr)
+    return render_template("stempeluhr_uebersicht.html",
+                           pers_id=pers_id,
+                           name=session.get('ss_name', ''),
+                           jahr=jahr, saldo=saldo,
+                           antraege=antraege,
+                           abwesenheiten=abwesenheiten,
+                           typen=pm.ABWESENHEIT_TYP_LABELS)
+
+
+# ── Stempeluhr Self-Service: Eigene PIN aendern ────────────────────────────
+
+@app.route("/stempeluhr/pin-aendern")
+@_ss_auth_required
+def stempeluhr_pin_aendern_seite():
+    return render_template("stempeluhr_pin_aendern.html",
+                           pers_id=_ss_pers_id(),
+                           name=session.get('ss_name', ''))
+
+
+@app.route("/api/stempeluhr/pin-aendern", methods=["POST"])
+@_ss_auth_required
+def api_stempeluhr_pin_aendern():
+    from modules.wawi.personal import models as pm
+    data = request.get_json(silent=True) or {}
+    alte = str(data.get("alte_pin", "")).strip()
+    neue = str(data.get("neue_pin", "")).strip()
+    try:
+        ok = pm.pin_aendern_self(_ss_pers_id(), alte, neue)
+    except ValueError as exc:
+        return jsonify({"ok": False, "fehler": str(exc)}), 400
+    if not ok:
+        return jsonify({"ok": False, "fehler": "Alte PIN stimmt nicht."}), 401
+    return jsonify({"ok": True})
+
+
 # ── Systemstatus ──────────────────────────────────────────────
 
 @app.route("/status")

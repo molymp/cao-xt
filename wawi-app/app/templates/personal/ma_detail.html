@@ -85,6 +85,85 @@
   transition: opacity 0.2s; pointer-events: none;
 }
 .form-group.saved .saved-ok { opacity: 1; }
+
+/* ── Abwesenheiten: Touch-optimiertes Layout ─────────────────────────── */
+.abw-typ-chip { display: inline-block; padding: 3px 10px; border-radius: 10px;
+                font-size: 11px; font-weight: 800; text-transform: uppercase;
+                letter-spacing: 0.04em; }
+.abw-typ-krank       { background: #fde8e8; color: #a83232; }
+.abw-typ-kind_krank  { background: #fdf1d8; color: #8a5e1a; }
+.abw-typ-schulung    { background: #e0ebf5; color: #2e5a7a; }
+.abw-typ-unbezahlt   { background: #e8e8e8; color: #555; }
+.abw-typ-sonstiges   { background: #f0e8fd; color: #5b3e7a; }
+
+/* Kompakte, aber Touch-taugliche Tabelle (Zeilenhoehe 44px) */
+.abw-table { width: 100%; border-collapse: collapse; font-size: 13px;
+             margin-bottom: 14px; }
+.abw-table th { background: var(--grau-hell); padding: 8px 10px; text-align: left;
+                font-size: 10px; font-weight: 800; text-transform: uppercase;
+                letter-spacing: 0.04em; color: var(--text-mitte); }
+.abw-table td { padding: 10px; border-top: 1px solid var(--creme-dunkel);
+                vertical-align: middle; }
+.abw-table tr.storniert { opacity: 0.5; }
+.abw-table .col-datum { font-variant-numeric: tabular-nums; color: var(--text-mitte);
+                        white-space: nowrap; }
+.abw-table .btn-touch { min-height: 36px; padding: 6px 14px; font-size: 12px; }
+
+/* Typ-Buttons als gross angelegte Umschalter (Touch) */
+.abw-typ-wahl { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.abw-typ-wahl label { flex: 1 1 120px; min-height: 48px; display: flex;
+                      align-items: center; justify-content: center;
+                      padding: 8px 10px; border: 2px solid var(--creme-dunkel);
+                      border-radius: var(--radius-klein); background: white;
+                      cursor: pointer; font-weight: 700; font-size: 13px;
+                      color: var(--text-mitte); transition: border-color .12s,
+                      background .12s; -webkit-tap-highlight-color: transparent;
+                      user-select: none; }
+.abw-typ-wahl label:hover { border-color: var(--gruen-mitte); }
+.abw-typ-wahl input { position: absolute; opacity: 0; pointer-events: none; }
+.abw-typ-wahl label.sel { background: var(--gruen-blass);
+                          border-color: var(--gruen-mitte); color: var(--gruen-dunkel); }
+
+/* Grosse Toggle-Schalter fuer ganztags/bezahlt/AU (Touch) */
+.abw-toggles { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.abw-toggle { flex: 1 1 180px; min-height: 56px; display: flex; align-items: center;
+              gap: 10px; padding: 10px 14px; border: 2px solid var(--creme-dunkel);
+              border-radius: var(--radius-klein); background: white; cursor: pointer;
+              user-select: none; -webkit-tap-highlight-color: transparent; }
+.abw-toggle input { width: 22px; height: 22px; accent-color: var(--gruen-mitte);
+                    flex-shrink: 0; }
+.abw-toggle .abw-toggle-text { display: flex; flex-direction: column; gap: 2px;
+                               font-size: 13px; font-weight: 700;
+                               color: var(--text-mitte); }
+.abw-toggle .abw-toggle-text small { font-weight: 500; font-size: 11px;
+                                     color: var(--grau-mitte); }
+.abw-toggle.akt { background: var(--gruen-blass); border-color: var(--gruen-mitte); }
+.abw-toggle.akt .abw-toggle-text { color: var(--gruen-dunkel); }
+
+/* Datums- und Stunden-Felder gross genug fuer Touch */
+.abw-form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+                 margin-bottom: 10px; }
+.abw-form-grid .form-group input { min-height: 44px; font-size: 14px;
+                                   padding: 8px 10px; }
+.abw-form-grid .form-group input[type="date"] { min-height: 44px; }
+@media (max-width: 700px) { .abw-form-grid { grid-template-columns: 1fr; } }
+
+.abw-form-actions { display: flex; gap: 10px; justify-content: flex-end;
+                    margin-top: 10px; }
+.abw-form-actions .btn { min-height: 44px; padding: 10px 18px; font-size: 14px; }
+
+/* Zusammenklappbare "Neu"-Sektion mit grossem Summary */
+details.abw-neu > summary { cursor: pointer; padding: 10px 14px;
+                            background: var(--creme); border-radius: var(--radius-klein);
+                            font-weight: 800; font-size: 14px;
+                            color: var(--gruen-dunkel); list-style: none;
+                            user-select: none; -webkit-tap-highlight-color: transparent; }
+details.abw-neu > summary::-webkit-details-marker { display: none; }
+details.abw-neu[open] > summary { background: var(--gruen-blass);
+                                  border-radius: var(--radius-klein) var(--radius-klein) 0 0; }
+details.abw-neu > .abw-neu-body { padding: 14px; border: 1px solid var(--gruen-mitte);
+                                  border-top: none;
+                                  border-radius: 0 0 var(--radius-klein) var(--radius-klein); }
 </style>
 {% endblock %}
 
@@ -103,6 +182,10 @@
   {% if ma.AUSTRITT %}
     <span class="msg msg-info" style="margin: 0;">Ausgetreten am {{ ma.AUSTRITT.strftime('%d.%m.%Y') }}</span>
   {% endif %}
+  <a class="btn-secondary btn"
+     href="{{ url_for('wawi_personal.stempel_ma', pers_id=ma.PERS_ID) }}">
+     &#x1F570;&#xFE0F; Stempel
+  </a>
   <a class="btn-secondary btn" href="{{ url_for('wawi_personal.uebersicht') }}">← Zurück</a>
 </div>
 
@@ -376,7 +459,16 @@
       {% for a in urlaub_antraege %}
       <tr>
         <td>{{ a.VON.strftime('%d.%m.%Y') }} – {{ a.BIS.strftime('%d.%m.%Y') }}</td>
-        <td>{{ ('%.1f'|format(a.ARBEITSTAGE))|replace('.', ',') }}</td>
+        <td>
+          {{ ('%.1f'|format(a.ARBEITSTAGE))|replace('.', ',') }}
+          {% if a.FEIERTAGE_ANZAHL and a.FEIERTAGE_ANZAHL > 0 %}
+            <div style="font-size: 11px; color: var(--grau-mitte); line-height: 1.2;"
+                 title="{{ a.FEIERTAG_NAMEN|join(', ') }}">
+              davon {{ a.FEIERTAGE_ANZAHL }}&nbsp;Feiertag{% if a.FEIERTAGE_ANZAHL > 1 %}e{% endif %}
+              → {{ ('%.1f'|format(a.ARBEITSTAGE_NETTO))|replace('.', ',') }}&nbsp;angerechnet
+            </div>
+          {% endif %}
+        </td>
         <td>
           {% set st = a.STATUS %}
           {% set cls = 'pill-sonst' %}
@@ -450,7 +542,7 @@
   {% if urlaub_korrekturen %}
   <table class="az-historie">
     <thead>
-      <tr><th>Datum</th><th>Tage</th><th>Grund</th><th>Kommentar</th><th>Erfasst von</th></tr>
+      <tr><th>Datum</th><th>Tage</th><th>Grund</th><th>Kommentar</th><th>Verfällt</th><th>Erfasst von</th></tr>
     </thead>
     <tbody>
       {% for k in urlaub_korrekturen %}
@@ -459,6 +551,14 @@
         <td><strong style="color: {% if k.TAGE < 0 %}var(--rot){% else %}var(--gruen-dunkel){% endif %};">{{ ('%+.1f'|format(k.TAGE))|replace('.', ',') }}</strong></td>
         <td>{{ k.GRUND }}</td>
         <td class="tage">{{ k.KOMMENTAR or '—' }}</td>
+        <td class="tage">
+          {% if k.VERFAELLT_AM %}
+            <span style="color: var(--rot); font-weight: 600;"
+                  title="Bis zu diesem Stichtag muss der Uebertrag genommen sein.">
+              {{ k.VERFAELLT_AM.strftime('%d.%m.%Y') }}
+            </span>
+          {% else %}—{% endif %}
+        </td>
         <td class="tage">{{ k.ERSTELLT_NAME or ('MA-ID ' ~ k.ERSTELLT_VON) }}</td>
       </tr>
       {% endfor %}
@@ -468,12 +568,31 @@
   <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 10px;">Keine Korrekturen in {{ urlaub_jahr }}.</p>
   {% endif %}
 
+  {% if urlaub_saldo.verfallen and urlaub_saldo.verfallen > 0 %}
+  <p style="color: var(--rot); font-size: 13px; margin-bottom: 10px;">
+    ⚠ {{ ('%.1f'|format(urlaub_saldo.verfallen))|replace('.', ',') }} Tag(e)
+    Uebertrag sind nach dem Stichtag ersatzlos verfallen.
+  </p>
+  {% endif %}
+
   <details style="margin-bottom: 6px;">
     <summary>+ Neue Korrekturbuchung</summary>
     <form method="post" action="{{ url_for('wawi_personal.urlaub_korrektur_anlegen', pers_id=ma.PERS_ID) }}"
           style="margin-top: 10px;">
-      <input type="hidden" name="jahr" value="{{ urlaub_jahr }}">
       <div class="form-grid">
+        <div class="form-group">
+          <label>Jahr *</label>
+          <select name="jahr" required
+                  style="padding: 6px 8px; font-size: 13px;
+                         border: 1px solid var(--creme-dunkel);
+                         border-radius: var(--radius-klein); width: 100%;
+                         background: white;">
+            {% for j in [urlaub_jahr - 1, urlaub_jahr, urlaub_jahr + 1] %}
+              <option value="{{ j }}"
+                      {% if j == urlaub_jahr %}selected{% endif %}>{{ j }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <div class="form-group">
           <label>Tage (+/−) *</label>
           <input type="text" name="tage" class="num-touch" required
@@ -491,12 +610,252 @@
                  data-touch-titel="Kommentar">
         </div>
       </div>
+      <div style="margin: 10px 0; padding: 10px; background: #fdf5d9;
+                  border-radius: var(--radius-klein);
+                  border-left: 3px solid #c7a640;">
+        <label style="display: flex; align-items: flex-start; gap: 8px;
+                      cursor: pointer; font-size: 13px;">
+          <input type="checkbox" name="uebertrag_vorjahr" value="1"
+                 style="width: 16px; height: 16px; margin-top: 2px;
+                        accent-color: var(--gruen-mitte); flex: 0 0 auto;">
+          <span>
+            <strong>Urlaubsübertrag aus Vorjahr</strong>
+            — verfällt ersatzlos, falls nicht bis zum
+            <strong>{{ urlaub_uebertrag_stichtag.strftime('%d.%m.') }}</strong>
+            des gewählten Jahres genommen (konfigurierbar in der Verwaltung).
+            Nur anhaken, wenn es sich um einen Übertrag handelt und der Wert positiv ist.
+          </span>
+        </label>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn">Korrektur buchen</button>
       </div>
     </form>
   </details>
 </div>
+
+{# ── Abwesenheiten (Krankheit etc.) ────────────────────────────────────── #}
+<div class="card card-section" data-pers-id="{{ ma.PERS_ID }}" id="abwesenheit-card">
+  <h2 style="display: flex; justify-content: space-between; align-items: center;">
+    <span>Abwesenheiten</span>
+    <span style="font-size: 11px; color: var(--grau-mitte); font-weight: 400;">
+      Jahr {{ urlaub_jahr }} &middot; {{ abwesenheiten|length }} Eintrag{% if abwesenheiten|length != 1 %}e{% endif %}
+    </span>
+  </h2>
+
+  {% if abwesenheiten %}
+  <table class="abw-table">
+    <thead>
+      <tr>
+        <th style="width: 160px;">Typ</th>
+        <th style="width: 220px;">Zeitraum</th>
+        <th style="width: 100px;">Umfang</th>
+        <th style="width: 170px;">Status</th>
+        <th>Bemerkung</th>
+        <th style="width: 130px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in abwesenheiten %}
+      <tr class="{% if a.STORNIERT %}storniert{% endif %}">
+        <td><span class="abw-typ-chip abw-typ-{{ a.TYP }}">{{ abwesenheit_typ_labels[a.TYP] }}</span></td>
+        <td class="col-datum">
+          {{ a.VON.strftime('%d.%m.%Y') }}
+          {% if a.VON != a.BIS %} – {{ a.BIS.strftime('%d.%m.%Y') }}{% endif %}
+        </td>
+        <td class="col-datum">
+          {% if a.GANZTAGS %}ganztags
+          {% else %}{{ ('%.1f'|format(a.STUNDEN))|replace('.', ',') }}&nbsp;h{% endif %}
+        </td>
+        <td>
+          {% if a.STORNIERT %}
+            <span class="pill pill-sonst">storniert</span>
+          {% else %}
+            {% if a.STATUS == 'beantragt' %}
+              <span class="pill pill-minijob" title="Antrag vom Mitarbeiter – bitte entscheiden">beantragt</span>
+            {% elif a.STATUS == 'abgelehnt' %}
+              <span class="pill pill-sonst" title="Antrag abgelehnt">abgelehnt</span>
+            {% endif %}
+            {% if a.STATUS != 'abgelehnt' %}
+              {% if a.BEZAHLT %}
+                <span class="pill pill-vollzeit" title="Lohnfortzahlung">bezahlt</span>
+              {% else %}
+                <span class="pill pill-sonst" title="keine Lohnfortzahlung">unbezahlt</span>
+              {% endif %}
+              {% if a.TYP == 'krank' %}
+                {% if a.AU_VORGELEGT %}
+                  <span class="pill pill-teilzeit" title="AU eingegangen">AU&nbsp;✓</span>
+                {% else %}
+                  <span class="pill pill-minijob" title="AU noch offen">AU&nbsp;offen</span>
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        </td>
+        <td style="font-size: 12px;">{{ a.BEMERKUNG or '' }}</td>
+        <td>
+          {% if not a.STORNIERT and a.STATUS == 'beantragt' %}
+            <form method="post"
+                  action="{{ url_for('wawi_personal.abwesenheit_status', pers_id=ma.PERS_ID, rec_id=a.REC_ID) }}"
+                  style="display: inline;">
+              <input type="hidden" name="status" value="genehmigt">
+              <button type="submit" class="btn btn-touch" title="Antrag genehmigen">Genehmigen</button>
+            </form>
+            <form method="post"
+                  action="{{ url_for('wawi_personal.abwesenheit_status', pers_id=ma.PERS_ID, rec_id=a.REC_ID) }}"
+                  style="display: inline;"
+                  onsubmit="return confirm('Antrag wirklich ablehnen?');">
+              <input type="hidden" name="status" value="abgelehnt">
+              <button type="submit" class="btn btn-secondary btn-touch">Ablehnen</button>
+            </form>
+          {% elif not a.STORNIERT %}
+            <form method="post"
+                  action="{{ url_for('wawi_personal.abwesenheit_stornieren', pers_id=ma.PERS_ID, rec_id=a.REC_ID) }}"
+                  style="display: inline;"
+                  onsubmit="return confirm('Abwesenheit wirklich stornieren?');">
+              <button type="submit" class="btn btn-secondary btn-touch">Stornieren</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--grau-mitte); font-size: 13px; margin-bottom: 14px;">
+    Keine Abwesenheiten in {{ urlaub_jahr }}.
+  </p>
+  {% endif %}
+
+  <details class="abw-neu" style="margin-top: 10px;">
+    <summary>+ Neue Abwesenheit eintragen</summary>
+    <div class="abw-neu-body">
+      <form method="post"
+            action="{{ url_for('wawi_personal.abwesenheit_anlegen', pers_id=ma.PERS_ID) }}"
+            id="abwesenheit-form">
+        {# ── Typ als Touch-Chips ────────────────────────────────────── #}
+        <label style="display: block; font-size: 10px; font-weight: 800;
+                      color: var(--text-mitte); text-transform: uppercase;
+                      letter-spacing: 0.04em; margin-bottom: 6px;">Typ</label>
+        <div class="abw-typ-wahl" id="abw-typ-wahl">
+          {% for t in abwesenheit_typen %}
+          <label class="{% if loop.first %}sel{% endif %}"
+                 data-typ="{{ t }}"
+                 data-bezahlt-default="{{ abwesenheit_bezahlt_default[t] }}">
+            <input type="radio" name="typ" value="{{ t }}" required
+                   {% if loop.first %}checked{% endif %}>
+            <span>{{ abwesenheit_typ_labels[t] }}</span>
+          </label>
+          {% endfor %}
+        </div>
+
+        {# ── Zeitraum + Stunden ────────────────────────────────────── #}
+        <div class="abw-form-grid">
+          <div class="form-group">
+            <label>Von</label>
+            <input type="date" name="von" required class="datum-touch"
+                   data-touch-titel="Abwesenheit von">
+          </div>
+          <div class="form-group">
+            <label>Bis</label>
+            <input type="date" name="bis" required class="datum-touch"
+                   data-touch-titel="Abwesenheit bis">
+          </div>
+          <div class="form-group">
+            <label>Stunden <small>(falls nicht ganztags)</small></label>
+            <input type="text" name="stunden" id="abw-stunden" class="num-touch"
+                   inputmode="decimal" placeholder="z.B. 4,0"
+                   disabled data-touch-titel="Stunden">
+          </div>
+        </div>
+
+        {# ── Ganztags / Bezahlt / AU als Touch-Toggles ─────────────── #}
+        <div class="abw-toggles">
+          <label class="abw-toggle akt" id="abw-toggle-ganztags">
+            <input type="checkbox" name="ganztags" value="1" checked>
+            <span class="abw-toggle-text">
+              <strong>Ganztags</strong>
+              <small>komplette Arbeitszeit</small>
+            </span>
+          </label>
+          <label class="abw-toggle akt" id="abw-toggle-bezahlt">
+            <input type="checkbox" name="bezahlt" value="1" checked>
+            <span class="abw-toggle-text">
+              <strong>Bezahlte Abwesenheit</strong>
+              <small>Lohnfortzahlung</small>
+            </span>
+          </label>
+          <label class="abw-toggle" id="abw-toggle-au"
+                 style="display: none;">
+            <input type="checkbox" name="au_vorgelegt" value="1">
+            <span class="abw-toggle-text">
+              <strong>AU vorgelegt</strong>
+              <small>Krankenschein eingegangen</small>
+            </span>
+          </label>
+        </div>
+
+        {# ── Bemerkung ─────────────────────────────────────────────── #}
+        <div class="form-group" style="margin-bottom: 4px;">
+          <label>Bemerkung</label>
+          <input type="text" name="bemerkung" class="alpha-touch"
+                 maxlength="500" data-touch-titel="Bemerkung"
+                 style="min-height: 44px; font-size: 14px; padding: 8px 10px;">
+        </div>
+
+        <div class="abw-form-actions">
+          <button type="submit" class="btn">Abwesenheit eintragen</button>
+        </div>
+      </form>
+    </div>
+  </details>
+</div>
+
+<script>
+(function () {
+  const wahl = document.getElementById('abw-typ-wahl');
+  if (!wahl) return;
+  const bezahlt = document.querySelector('#abw-toggle-bezahlt input');
+  const bezahltLabel = document.getElementById('abw-toggle-bezahlt');
+  const auLabel = document.getElementById('abw-toggle-au');
+  const ganztags = document.querySelector('#abw-toggle-ganztags input');
+  const ganztagsLabel = document.getElementById('abw-toggle-ganztags');
+  const stunden = document.getElementById('abw-stunden');
+
+  function typWechsel(label) {
+    wahl.querySelectorAll('label').forEach(l => l.classList.remove('sel'));
+    label.classList.add('sel');
+    // Bezahlt-Default pro TYP vorbefuellen
+    const def = label.dataset.bezahltDefault === '1';
+    bezahlt.checked = def;
+    bezahltLabel.classList.toggle('akt', def);
+    // AU-Toggle nur bei TYP=krank zeigen
+    const istKrank = label.dataset.typ === 'krank';
+    auLabel.style.display = istKrank ? '' : 'none';
+    if (!istKrank) auLabel.querySelector('input').checked = false;
+    auLabel.classList.remove('akt');
+  }
+
+  wahl.addEventListener('change', e => {
+    if (e.target.name !== 'typ') return;
+    typWechsel(e.target.closest('label'));
+  });
+
+  // Sync "akt"-Klasse bei Checkbox-Toggle
+  [bezahltLabel, ganztagsLabel, auLabel].forEach(lbl => {
+    if (!lbl) return;
+    lbl.addEventListener('change', e => {
+      if (e.target.type !== 'checkbox') return;
+      lbl.classList.toggle('akt', e.target.checked);
+    });
+  });
+
+  ganztags.addEventListener('change', () => {
+    stunden.disabled = ganztags.checked;
+    if (ganztags.checked) stunden.value = '';
+  });
+})();
+</script>
 
 {# ── Audit / Änderungsprotokoll ─────────────────────────────────────────── #}
 <div class="card card-section" style="margin-top: 30px;">
@@ -511,6 +870,7 @@
     <thead>
       <tr>
         <th style="width: 130px;">Zeitpunkt</th>
+        <th style="width: 100px;">Bereich</th>
         <th style="width: 110px;">Benutzer</th>
         <th style="width: 70px;">Aktion</th>
         <th>Felder / Änderung</th>
@@ -520,7 +880,8 @@
       {% for e in ma_log %}
       <tr>
         <td class="tage">{{ e.GEAEND_AT.strftime('%d.%m.%Y %H:%M') }}</td>
-        <td class="tage">{{ e.GEAEND_NAME or ('MA-ID ' ~ e.GEAEND_VON) }}</td>
+        <td class="tage">{{ e.BEREICH or 'Stammdaten' }}</td>
+        <td class="tage">{% if e.GEAEND_VON is none %}<em style="color: var(--grau-mitte);">System</em>{% else %}{{ e.GEAEND_NAME or ('MA-ID ' ~ e.GEAEND_VON) }}{% endif %}</td>
         <td>
           {% if e.OPERATION == 'INSERT' %}<span class="pill pill-vollzeit">Anlage</span>
           {% elif e.OPERATION == 'UPDATE' %}<span class="pill pill-teilzeit">Änderung</span>
@@ -528,15 +889,22 @@
         </td>
         <td style="font-size: 11px;">
           {% if e.OPERATION == 'INSERT' %}
-            <em style="color: var(--grau-mitte);">Erfassung aller Felder</em>
+            {% set neu = (e.FELDER_NEU_JSON or '{}')|fromjson %}
+            {% if neu %}
+              {% for feld, v_neu in neu.items() %}
+                <div><strong>{{ feld }}:</strong> {{ v_neu if v_neu is not none else '∅' }}</div>
+              {% endfor %}
+            {% else %}
+              <em style="color: var(--grau-mitte);">Erfassung aller Felder</em>
+            {% endif %}
           {% else %}
             {% set alt = (e.FELDER_ALT_JSON or '{}')|fromjson %}
             {% set neu = (e.FELDER_NEU_JSON or '{}')|fromjson %}
             {% for feld, v_neu in neu.items() %}
               <div>
                 <strong>{{ feld }}:</strong>
-                <span style="color: var(--grau-mitte); text-decoration: line-through;">{{ alt.get(feld) or '∅' }}</span>
-                → <strong>{{ v_neu or '∅' }}</strong>
+                <span style="color: var(--grau-mitte); text-decoration: line-through;">{{ alt.get(feld) if alt.get(feld) is not none else '∅' }}</span>
+                → <strong>{{ v_neu if v_neu is not none else '∅' }}</strong>
               </div>
             {% endfor %}
           {% endif %}
