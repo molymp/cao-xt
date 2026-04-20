@@ -209,10 +209,10 @@
     {% for a in letzte_abschluesse %}
     <div style="display:flex; justify-content:space-between; align-items:center;
                 padding:10px 0; border-bottom:1px solid var(--border); font-size:14px;">
-      <span style="font-family:'Lobster',Georgia,serif; font-weight:400; font-size:17px; color:var(--gold);">Z-{{ a.Z_NR }}</span>
+      <span style="font-family:'Fraunces',Georgia,serif; font-weight:400; font-size:17px; color:var(--gold);">Z-{{ a.Z_NR }}</span>
       <span style="color:var(--text-dim);">{{ a.DATUM }}</span>
       <span>{{ a.ANZAHL_BELEGE }} Belege</span>
-      <span style="font-family:'Lobster',Georgia,serif; font-weight:400; color:var(--gold);">{{ "%.2f"|format(a.UMSATZ_BRUTTO/100) }} €</span>
+      <span style="font-family:'Fraunces',Georgia,serif; font-weight:400; color:var(--gold);">{{ "%.2f"|format(a.UMSATZ_BRUTTO/100) }} €</span>
       <span style="font-size:11px; color:var(--text-dim);">
         {{ '✅' if a.TSE_SIGNATUR else '⚠️ keine TSE' }}
       </span>

@@ -50,7 +50,7 @@
   <!-- Saldo -->
   <div class="saldo-karte">
     <div class="label">Aktueller Saldo Nebenkasse</div>
-    <div style="font-family:'Lobster',Georgia,serif; font-size:52px; color:var(--gruen-hell);">
+    <div style="font-family:'Fraunces',Georgia,serif; font-size:52px; color:var(--gruen-hell);">
       {{ "%.2f"|format(info.saldo_neben/100) }} €
     </div>
     <div style="font-size:13px; color:var(--text-dim); margin-top:4px;">
@@ -90,7 +90,7 @@
         {% if btext %}<div class="meta">{{ btext }}</div>{% endif %}
         <div class="meta">{{ e.BUCHUNGSDATUM[:16] if e.BUCHUNGSDATUM is string else '' }}</div>
       </div>
-      <div style="font-family:'Lobster',serif; font-size:20px;
+      <div style="font-family:'Fraunces',serif; font-size:20px;
                   color:{{ 'var(--gruen-status)' if e.BETRAG >= 0 else 'var(--rot)' }};">
         {{ "%.2f"|format(e.BETRAG/100) }} €
       </div>

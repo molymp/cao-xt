@@ -41,7 +41,7 @@
 - Python 3.11+ → Aufruf: python3 / pip3
 - Abhängigkeiten: flask, mysql-connector-python (kein python-escpos!)
 - Architektur: Flask (Port 5001) + Chromium Kiosk
-- Schriften: Lobster (Überschriften/Preise), Nunito (Rest), via Google Fonts
+- Schriften: Fraunces (Überschriften/Preise), Nunito (Rest), via Google Fonts
 - Farben: Habacher Dorfladen Grün/Gold-Schema
 
 ---
