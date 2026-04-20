@@ -12,11 +12,11 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
       <div>
         <div style="color:var(--text-dim); font-size:13px;">Belege heute</div>
-        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gruen-dunkel);">{{ daten.anzahl_belege }}</div>
+        <div style="font-family:'Fraunces',Georgia,serif; font-size:36px; font-weight:400; color:var(--gruen-dunkel);">{{ daten.anzahl_belege }}</div>
       </div>
       <div>
         <div style="color:var(--text-dim); font-size:13px;">Umsatz brutto</div>
-        <div style="font-family:'Lobster',Georgia,serif; font-size:36px; font-weight:400; color:var(--gold);">
+        <div style="font-family:'Fraunces',Georgia,serif; font-size:36px; font-weight:400; color:var(--gold);">
           {{ "%.2f"|format(daten.umsatz_brutto/100) }} €
         </div>
       </div>
@@ -71,7 +71,7 @@
     <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:15px;">
       <span>Entnahmen</span><span>− {{ "%.2f"|format(daten.entnahmen/100) }} €</span>
     </div>
-    <div style="display:flex; justify-content:space-between; padding:10px 0; font-family:'Lobster',Georgia,serif; font-size:24px; font-weight:400; color:var(--gold); border-top:2px solid var(--border); margin-top:4px;">
+    <div style="display:flex; justify-content:space-between; padding:10px 0; font-family:'Fraunces',Georgia,serif; font-size:24px; font-weight:400; color:var(--gold); border-top:2px solid var(--border); margin-top:4px;">
       <span>Kassenstand Ende</span><span>{{ "%.2f"|format(daten.kassenbestand_ende/100) }} €</span>
     </div>
   </div>
