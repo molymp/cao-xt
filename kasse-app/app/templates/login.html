@@ -26,9 +26,13 @@ html, body {
   min-height: 100%; gap: 28px; padding: 24px;
 }
 .login-logo {
+  display: flex; flex-direction: column; align-items: center;
   font-family: 'Fraunces', Georgia, serif;
   font-size: 48px; font-weight: 400;
   color: #d4e8c2; text-align: center; line-height: 1.1;
+}
+.login-logo .logo-icon {
+  width: 96px; height: 96px; color: #d4e8c2; margin-bottom: 14px;
 }
 .login-logo span {
   display: block; font-family: 'Nunito', sans-serif;
@@ -152,8 +156,19 @@ html, body {
 {% if git_commit_short %}<span style="position:fixed;top:2px;left:4px;font-size:9px;font-weight:700;color:#e8970e;font-family:monospace;pointer-events:none;z-index:9999;opacity:0.75;letter-spacing:0.02em;">{{ git_commit_short }}</span>{% endif %}
 <div class="login-wrap">
   <div class="login-logo">
-    🌾 Kasse
-    <span>Habacher Dorfladen</span>
+    <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" aria-label="Habacher Dorfladen">
+      <path d="M 3 19 L 20 3 L 37 19 L 37 37 L 3 37 Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+      <g fill="currentColor">
+        <circle cx="11" cy="22" r="1.5"/>
+        <circle cx="20" cy="22" r="1.5"/>
+        <circle cx="29" cy="22" r="1.5"/>
+        <circle cx="11" cy="29" r="1.5"/>
+        <circle cx="29" cy="29" r="1.5"/>
+      </g>
+      <circle cx="20" cy="30" r="2.4" fill="#e8970e"/>
+    </svg>
+    Habacher Dorfladen
+    <span>Kasse</span>
   </div>
   <div class="login-card">
     <h2>Anmeldung</h2>
