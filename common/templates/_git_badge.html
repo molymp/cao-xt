@@ -1,0 +1,11 @@
+{#-
+  Git-Commit-Short-SHA-Badge oben links.
+  Wird nur gerendert, wenn der Flask-Context `git_commit_short` setzt.
+
+  Parameter (via Context oder `{% set %}` vor dem Include):
+    git_badge_farbe   CSS-Farbwert fuer die SHA-Schrift.
+                      Default: Dorfkern-Terracotta-Light (#e8970e).
+                      Admin-App setzt 'var(--akzent-hell)'.
+-#}
+{% set _gb_farbe = git_badge_farbe|default('#e8970e') -%}
+{% if git_commit_short %}<span style="position:fixed;top:2px;left:4px;font-size:9px;font-weight:700;color:{{ _gb_farbe }};font-family:monospace;pointer-events:none;z-index:9999;opacity:0.75;letter-spacing:0.02em;">{{ git_commit_short }}</span>{% endif %}

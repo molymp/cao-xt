@@ -4,6 +4,7 @@ Starten: cd admin-app/app && python3 app.py
 """
 from flask import (Flask, render_template, request, jsonify,
                    redirect, url_for, session, send_from_directory)
+from jinja2 import ChoiceLoader, FileSystemLoader
 from functools import wraps
 from datetime import datetime
 import base64
@@ -29,6 +30,17 @@ app.config['JSON_ENSURE_ASCII'] = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DOKU_DIR = os.path.join(BASE_DIR, 'doku')
+
+# Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Bausteine
+# (Navbar, Toast, Touch-Widgets, Login-Shell). Wird mit App-eigenen Templates
+# ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).
+_COMMON_TEMPLATES = os.path.normpath(
+    os.path.join(BASE_DIR, '..', '..', 'common', 'templates')
+)
+app.jinja_loader = ChoiceLoader([
+    app.jinja_loader,
+    FileSystemLoader(_COMMON_TEMPLATES),
+])
 
 
 # ── DB-Migrationen ──────────────────────────────────────────────

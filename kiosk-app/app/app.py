@@ -4,6 +4,7 @@ Starten: cd app && python3 app.py
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
+from jinja2 import ChoiceLoader, FileSystemLoader
 from datetime import datetime, timedelta, date
 import base64
 import os
@@ -23,6 +24,17 @@ import mittagstisch as mt
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
+
+# Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Bausteine
+# (Navbar, Toast, Touch-Widgets, Login-Shell). Wird mit App-eigenen Templates
+# ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).
+_COMMON_TEMPLATES = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'templates')
+)
+app.jinja_loader = ChoiceLoader([
+    app.jinja_loader,
+    FileSystemLoader(_COMMON_TEMPLATES),
+])
 
 
 @app.context_processor
