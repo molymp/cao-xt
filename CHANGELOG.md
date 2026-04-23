@@ -7,6 +7,92 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+## [2.0.0] – Dorfkern v2 (Multi-Shop-Vorbereitung)
+
+**Architektur- und Konfigurations-Release**, keine neuen Fachfunktionen.
+Bereitet die bestehende Appsammlung auf den Einsatz in weiteren Dorfläden vor.
+Produktname = **Dorfkern**, Laden-Name kommt aus CAO-DB (`FIRMA_NAME`).
+
+### Hinzugefügt
+- **App-Rename**: `verwaltung-app/` → `admin-app/` (Port 5004, ⚙️) und
+  `wawi-app/` → `orga-app/` (Port 5003, 📦). URL-Slugs, systemd-Unit-Namen
+  und Env-Var-Prefixe folgen; 301-Redirects `/wawi/*` → `/orga/*` und
+  `/verwaltung/*` → `/admin/*` bis v3.
+- **Common-Templates**: Navbar (inkl. Git-Badge + Uhrzeit), App-Switcher,
+  Toast-Widget, Touch-Tastatur-Partials unter `/common/templates/`;
+  `ChoiceLoader` jetzt in allen vier Apps.
+- **`DORFKERN_KONFIG`-Tabelle** (Key/Value/Typ/Kategorie) ersetzt
+  `caoxt.ini` als Konfigurations-Speicher (bis auf DB-Verbindung + Master-
+  Key). `common/konfig.py` mit TTL-Cache, typisierten Gettern/Settern.
+  Admin-UI unter `/dorfkern/konfig` mit Filter, SECRET-Maskierung,
+  `INSERT IGNORE`-Migration beim ersten Start.
+- **`TERMINAL`-Tabelle** ersetzt Kiosk-Cookie-Terminal-ID. `common/terminal.py`
+  erkennt Host per **MAC-first** mit Hostname-Fallback. Admin-UI unter
+  `/dorfkern/terminals` mit „Aktuellen Host übernehmen"-Button.
+- **Rechtemodell** (`DORFKERN_PERMISSION_OBJEKT` + `DORFKERN_ROLLE_PERMISSION`):
+  10 Permission-Objekte (kiosk.zugriff/backwaren/bestellverwaltung/
+  mittagstisch/stempeluhr, kasse.zugriff/storno/einstellungen,
+  orga.zugriff/schichtplan); Rollen aus CAO-`BENUTZERRECHTE`;
+  `common/permission.py` mit `hat_recht()` und `erlaubte_objekte()`;
+  **fail-closed** (kein Eintrag = kein Zugriff), Administratoren implizit
+  voll berechtigt. Strikt: `PFLEGEN` deckt `LESEN` **nicht** ab – dafür
+  gibt es `BEIDES`. `orga.schichtplan` mit `LESE_PFLEGE`-Unterscheidung.
+- **App-Aktivierungen** (`DORFKERN_APP_AKTIVIERUNG`): Feature-Gating für
+  den App-Switcher. `common/aktivierung.py` mit TTL-Cache. ADMIN ist
+  hart nicht-deaktivierbar (Schutz vor Selbst-Aussperrung). Optional
+  `LIZENZ_BIS` als Ablaufdatum. Admin-UI unter `/dorfkern/aktivierungen`.
+- **Backwaren-Datenquellen-Adapter** (`common/backwaren/`): abstrakte
+  `BackwarenDatenquelle` mit `Artikel`-Dataclass; `CaoMysqlQuelle`
+  (existierende CAO-Integration, gekapselt) + `CsvQuelle` (NEU);
+  `ExcelQuelle` und `GoogleSheetQuelle` als Stubs für v3.
+  Factory `get_quelle()` liest Adapter-Typ aus `DORFKERN_KONFIG`
+  (`backwaren.quelle.typ`). In v2 **read-only** — Verkaufs-Schreiben
+  frühestens v3.
+- **Multi-Host-Installer** (`installer/install.py`): neuer `--role terminal`-
+  Modus mit `--terminal-typ KIOSK|KASSE|ORGA`. Terminal-Rollout überspringt
+  DB-Init, startet nur die eine zuständige App.
+- **Terminal-Selbstregistrierung** (`common/terminal_selbstregistrierung.py`):
+  Flask-Apps tragen sich beim Start automatisch in `TERMINAL` ein
+  (Hostname + MAC + IP + Typ) oder aktualisieren `LETZTER_KONTAKT`.
+  Fail-soft: Registry-Ausfall blockiert den App-Start nicht.
+- **Dokumentation**: `docs/handbuch-admin.md` (Admin-UI, Rechte,
+  Troubleshooting) und `docs/handbuch-betreiber.md` (Installation,
+  Multi-Host-Rollout, Inbetriebnahme-Checkliste).
+
+### Geändert
+- `caoxt.ini` ist nur noch Bootstrap (DB-Verbindung + Master-Key +
+  Umgebung + aktive Apps). Alles andere liegt in `DORFKERN_KONFIG`.
+- App-Switcher zeigt inaktive Apps (`AKTIV=0` oder `LIZENZ_BIS` abgelaufen)
+  ausgegraut und nicht klickbar.
+- `dorfkern-ctl` akzeptiert Legacy-Aliase `wawi`/`verwaltung` und mappt sie
+  auf `orga`/`admin` — vorübergehend bis v3.
+
+### Breaking Changes
+- Verzeichnisnamen: `wawi-app/` → `orga-app/`, `verwaltung-app/` → `admin-app/`
+  (Git-History über `git mv` erhalten).
+- URL-Pfade: `/wawi/*` → `/orga/*`, `/verwaltung/*` → `/admin/*`
+  (301-Redirects bis v3).
+- Kiosk-Terminal-ID: Cookie durch DB-Eintrag in `TERMINAL` ersetzt; erkennt
+  sich per MAC/Hostname beim ersten Start.
+- Env-Var-Prefixe: `WAWI_*` → `ORGA_*`, `VERWALTUNG_*` → `ADMIN_*`
+  (alte Namen als Fallback für 1 Release).
+
+### Architektur-Prinzipien
+- **Single Source of Truth = Datenbank** (caoxt.ini nur Bootstrap).
+- **Common-First**: UI-Patterns in ≥ 2 Apps → `/common/templates/`.
+- **Fail-closed** bei Rechten.
+- **Adapter vor Direktzugriff** (Backwaren-Datenquelle).
+- **Keine Breaking Changes ohne Migrationspfad** (mindestens 1 Release
+  Übergangs-Fallback).
+
+Alle unten genannten „Unreleased"-Einträge sind fachlich Teil von
+v2.0.0 (sie wurden seit 0.2.0 erarbeitet und nicht separat veröffentlicht)
+und werden beim nächsten Changelog-Schnitt konsolidiert.
+
+---
+
+## [Unreleased]
+
 ### Hinzugefügt
 - WaWi Personal · Stundenzettel-PDF: Monatlicher Stundenzettel als PDF-Export pro Mitarbeiter mit Tages-Tabelle (Arbeit/Abwesenheit/Urlaub/Krank/Abbau/Feiertag/Bemerkung) inklusive **Summenzeile** als letzter Tabelleneintrag; Summary-Block rechts mit `Gesamt − Soll + Korrekturen = Saldo aktueller Monat`, neuer Zeile `Saldo Vormonate` und `Saldo kumuliert` (fett mit starker Linie); 1-Zeilen-Abstand vor „Arbeitszeit an Sonntagen/Feiertagen". Abhängigkeit: `reportlab>=4.0` in `wawi-app/app/requirements.txt`
 - WaWi HACCP-Modul: Vollständige Temperaturüberwachung via TFA.me-Cloud-Sensoren — Multi-Sensor-Chart auf der Hauptseite, Gerätedetails mit Zeitreihen-Chart (Temperatur + Feuchte, Datumsfilter, 24h-Format), Alarm-Historie pro Gerät, CSV-Export, Einzel- und Massen-Backfill (API-Limit 7 Tage, chunked); **5 Alarm-Typen** (`temp_hoch`, `temp_tief`, `drift`, `offline`, `battery`) mit Absolut-Vorrang vor Drift, 3-stufige Eskalationskette (Stufe 1/2/3 mit individuellem DELAY_MIN) und Auto-Schließen erst nach `ABSCHLUSS_KARENZ_MIN`=10 Minuten durchgängig im Soll; Pflicht-Korrekturmaßnahme pro geschlossenem Alarm; **Drift-Check** (optional pro Gerät) vergleicht aktuellen Wert gegen rolling Median der letzten `DRIFT_FENSTER_H` Stunden (Default 24h), Alarm bei Abweichung > `DRIFT_K` für ≥ `KARENZ_MIN`; versionierte Grenzwerte pro Gerät (neue Version bei jeder Änderung); tägliche Sichtkontrolle als geführter Workflow mit Sammel-Quittierung; 2 Dashboard-Widgets auf der WaWi-Startseite (Temperaturstatus-Ampel, Sichtkontrolle-Status). Hintergrund-Daemon `modules.haccp.poller` (Default 120 s), Watchdog `modules.haccp.watchdog` (cron-tauglich) und Auto-Backfill nach Ausfall (Heartbeat-basiert, 7-Tages-Chunks). Auto-Discovery: neue Sensoren werden beim ersten Messwert automatisch angelegt
