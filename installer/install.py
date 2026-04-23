@@ -248,6 +248,21 @@ def phase5_start_and_report(selected_apps: list[str]) -> None:
     print()
 
 
+def phase4b_terminal_apps(terminal_typ: str) -> list[str]:
+    """Phase 4 (Terminal-Rolle): nur EINE App auswaehlen.
+
+    KIOSK → kiosk-app, KASSE → kasse-app, ORGA → orga-app. Admin-App
+    laeuft nur auf dem Admin-Host.
+    """
+    mapping = {'KIOSK': 'kiosk', 'KASSE': 'kasse', 'ORGA': 'orga'}
+    app = mapping.get(terminal_typ.upper())
+    if app is None:
+        print(f"  ✗ Unbekannter Terminal-Typ: {terminal_typ}")
+        sys.exit(1)
+    print(f"  ✓ Terminal-Rolle: {terminal_typ} → startet {app}-App")
+    return [app]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description='CAO-XT Installationsroutine',
@@ -257,10 +272,44 @@ def main() -> None:
         '--non-interactive', action='store_true',
         help='Nicht-interaktiver Modus (nutzt Umgebungsvariablen / bestehende caoxt.ini)'
     )
+    parser.add_argument(
+        '--role', choices=['admin', 'terminal'], default='admin',
+        help='admin: Vollinstallation (Default). terminal: nur eine '
+             'Terminal-App (Kiosk/Kasse/Orga); setzt --non-interactive voraus.'
+    )
+    parser.add_argument(
+        '--terminal-typ', default='',
+        help='Bei --role terminal: KIOSK | KASSE | ORGA.'
+    )
     args = parser.parse_args()
 
     print(_BANNER)
 
+    # ── Terminal-Rolle: Schnell-Pfad fuer Mass-Rollout ─────────
+    if args.role == 'terminal':
+        if not args.non_interactive:
+            print("  ✗ --role terminal erfordert --non-interactive")
+            sys.exit(1)
+        if not args.terminal_typ:
+            print("  ✗ --role terminal erfordert --terminal-typ")
+            sys.exit(1)
+        host, port, name, user, password = phase1_db_config(True)
+        # KEINE DB-Init (das ist Sache des Admin-Hosts).
+        environment = phase3_environment(True)
+        selected_apps = phase4b_terminal_apps(args.terminal_typ)
+        _section("Konfiguration speichern")
+        write_ini(
+            _INI_PATH,
+            host=host, port=port, name=name,
+            user=user, password=password,
+            environment=environment,
+            active_apps=selected_apps,
+        )
+        print(f"  ✓ caoxt.ini gespeichert: {_INI_PATH}")
+        phase5_start_and_report(selected_apps)
+        return
+
+    # ── Admin-Rolle (Vollinstallation, Default) ──────────────
     # Phase 1: DB-Verbindung
     host, port, name, user, password = phase1_db_config(args.non_interactive)
 

@@ -2379,4 +2379,10 @@ if __name__ == "__main__":
     print(f"DB:      {config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}")
     print(f"Bilder:  {len(_bild_cache)} Produktbilder gefunden")
     print(f"Starte Flask auf {config.HOST}:{config.PORT}")
+    # Terminal-Selbstregistrierung (Phase 9).
+    try:
+        from common.terminal_selbstregistrierung import selbst_registrieren
+        selbst_registrieren('KIOSK')
+    except Exception:
+        pass
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

@@ -836,4 +836,10 @@ def _legacy_wawi_redirect(pfad):
 
 if __name__ == '__main__':
     log.info("Orga-App startet auf %s:%s (debug=%s)", config.HOST, config.PORT, config.DEBUG)
+    # Terminal-Selbstregistrierung (Phase 9).
+    try:
+        from common.terminal_selbstregistrierung import selbst_registrieren
+        selbst_registrieren('ORGA')
+    except Exception:
+        pass
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

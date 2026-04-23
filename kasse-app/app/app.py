@@ -1859,4 +1859,11 @@ if __name__ == '__main__':
              config.HOST, config.PORT, config.TERMINAL_NR)
     if not db_modul.test_verbindung():
         log.error("Datenbankverbindung fehlgeschlagen! Bitte config.py prüfen.")
+    # Terminal-Selbstregistrierung (Phase 9): Host in TERMINAL-Tabelle
+    # eintragen / Kontakt aktualisieren. Fail-soft.
+    try:
+        from common.terminal_selbstregistrierung import selbst_registrieren
+        selbst_registrieren('KASSE')
+    except Exception as _exc:
+        log.debug("Terminal-Selbstregistrierung uebersprungen: %s", _exc)
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
