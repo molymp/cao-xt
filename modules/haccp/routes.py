@@ -1,6 +1,6 @@
-"""HACCP-Flask-Blueprint (UI im WaWi-App-Host).
+"""HACCP-Flask-Blueprint (UI im Orga-App-Host).
 
-URL-Praefix: ``/wawi/haccp``.
+URL-Praefix: ``/orga/haccp``.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from . import models as m
 from . import backfill as bf
 from .tfa_client import TFAClient
-from modules.wawi.personal.auth import backoffice_required
+from modules.orga.personal.auth import backoffice_required
 
 
 bp = Blueprint('haccp', __name__, template_folder=None)
@@ -28,7 +28,7 @@ def _tfa_client() -> TFAClient | None:
     """Baut einen Client anhand des globalen App-Configs (selber Weg wie
     der Poller). None wenn kein Key konfiguriert."""
     try:
-        import config as wc  # wawi-app/app/config.py
+        import config as wc  # orga-app/app/config.py
     except ImportError:
         return None
     key = getattr(wc, 'TFA_API_KEY', '') or ''

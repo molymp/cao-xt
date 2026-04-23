@@ -35,8 +35,8 @@ _BANNER = r"""
 """
 
 _APP_LABELS = {
-    'verwaltung':   'Verwaltungs-App    (Port 5004)',
-    'wawi':         'WaWi-App           (Port 5003)',
+    'admin':   'Admin-App    (Port 5004)',
+    'orga':         'Orga-App           (Port 5003)',
     'kasse':        'Kassen-App         (Port 5002)',
     'kiosk':        'Kiosk-App          (Port 5001)',
     'haccp-poller': 'HACCP-Poller       (TFA-Temperatursensoren, Daemon)',
@@ -162,11 +162,11 @@ def phase3_environment(non_interactive: bool = False) -> str:
 
 def _tfa_key_vorhanden() -> bool:
     """True, wenn TFA_API_KEY in config/Env gesetzt ist (-> Poller sinnvoll)."""
-    # Env-Var hat Vorrang, dann wawi-app/app/config.py
+    # Env-Var hat Vorrang, dann orga-app/app/config.py
     if os.environ.get('TFA_API_KEY'):
         return True
     try:
-        sys.path.insert(0, os.path.join(_REPO_ROOT, 'wawi-app', 'app'))
+        sys.path.insert(0, os.path.join(_REPO_ROOT, 'orga-app', 'app'))
         import config as wc  # noqa: WPS433
         return bool(getattr(wc, 'TFA_API_KEY', ''))
     except Exception:
@@ -184,13 +184,13 @@ def phase4_app_selection(non_interactive: bool = False) -> list[str]:
         return auswahl
 
     print("  Welche Apps sollen gestartet werden?")
-    print("  (Verwaltungs-App wird immer gestartet)")
+    print("  (Admin-App wird immer gestartet)")
     print()
 
-    selected = ['verwaltung']  # immer
-    print(f"  ✓ verwaltung      – Verwaltungs-App (Pflicht)")
+    selected = ['admin']  # immer
+    print(f"  ✓ admin           – Admin-App (Pflicht)")
 
-    for app in ['wawi', 'kasse', 'kiosk']:
+    for app in ['orga', 'kasse', 'kiosk']:
         label = _APP_LABELS[app]
         if _ask_yes_no(f"  {label} starten?", True):
             selected.append(app)
@@ -201,8 +201,8 @@ def phase4_app_selection(non_interactive: bool = False) -> list[str]:
     if _tfa_key_vorhanden():
         label = _APP_LABELS['haccp-poller']
         if _ask_yes_no(f"  {label} starten?", True):
-            # nach 'wawi' einsortieren (Tabellen existieren dann)
-            idx = selected.index('wawi') + 1 if 'wawi' in selected \
+            # nach 'orga' einsortieren (Tabellen existieren dann)
+            idx = selected.index('orga') + 1 if 'orga' in selected \
                   else len(selected)
             selected.insert(idx, 'haccp-poller')
     else:

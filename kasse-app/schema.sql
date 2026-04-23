@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS XT_KASSE_TSE_GERAETE (
     SWISSBIT_PFAD       VARCHAR(200) COMMENT 'Gerätepfad, z.B. /dev/sda1 oder /media/swissbit',
     SWISSBIT_ADMIN_PIN  VARCHAR(100),
     SWISSBIT_ADMIN_PUK  VARCHAR(100),
-    -- Verwaltung / Historie
+    -- Admin / Historie
     IN_BETRIEB_SEIT     DATE         COMMENT 'Datum der Erstinbetriebnahme',
     AUSSER_BETRIEB      DATE         COMMENT 'Außerbetriebnahme (NULL = noch aktiv)',
     BEMERKUNG           TEXT         COMMENT 'Freitext: Grund für Wechsel, Ablaufdatum-Hinweis, etc.',

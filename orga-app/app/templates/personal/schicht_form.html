@@ -1,0 +1,229 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Schicht bearbeiten' if modus == 'edit' else 'Neue Schicht' }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.form-card { background: white; border-radius: var(--radius); padding: 24px;
+             box-shadow: var(--schatten); max-width: 640px; }
+.form-row { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+.form-field { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 6px; }
+.form-field label { font-size: 12px; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: 0.04em; color: var(--text-mitte); }
+.form-field input[type=text], .form-field input[type=number],
+.form-field input[type=time], .form-field input[type=color] {
+  font: inherit; padding: 12px 12px; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein); background: white; font-size: 15px;
+  min-height: 44px; box-sizing: border-box;
+}
+.form-field input[type=color] { height: 48px; padding: 2px; cursor: pointer; }
+
+/* Dual-Mode: text-Input (24h, HH:MM) bleibt nativ editierbar; 🕐-Button
+   oeffnet Drum-Picker. type=text statt type=time, weil Chrome/Safari das
+   Format ueber OS-Locale bestimmen – auf en-US-Systemen zeigen sie sonst
+   12h/AM-PM. Unsere Apps laufen nur in DE → immer 24h erzwingen. */
+.zeit-dual-wrap { position: relative; display: block; }
+.zeit-dual-wrap > input.zeit-24h { padding-right: 48px !important; width: 100%;
+                                    box-sizing: border-box;
+                                    font-variant-numeric: tabular-nums;
+                                    letter-spacing: 0.04em; }
+.zeit-dual-btn { position: absolute; top: 50%; right: 4px;
+                 transform: translateY(-50%); width: 40px; height: 40px;
+                 border: none; background: transparent; cursor: pointer;
+                 font-size: 20px; border-radius: 8px; padding: 0;
+                 display: flex; align-items: center; justify-content: center;
+                 color: var(--gruen-dunkel); opacity: 0.7;
+                 transition: opacity 0.1s, background 0.1s; }
+.zeit-dual-btn:hover { opacity: 1; background: var(--creme); }
+.zeit-dual-btn:focus-visible { outline: 2px solid var(--gruen-mitte);
+                               outline-offset: 1px; opacity: 1; }
+
+.typ-wahl { display: flex; gap: 8px; margin-bottom: 16px; }
+.typ-btn { flex: 1; padding: 14px 12px; border: 2px solid var(--creme-dunkel);
+           background: white; border-radius: var(--radius-klein); cursor: pointer;
+           font-family: inherit; font-size: 14px; font-weight: 700;
+           transition: border-color 0.15s, background 0.15s; min-height: 56px; }
+.typ-btn.aktiv { border-color: var(--gruen-mitte); background: var(--gruen-blass); }
+.typ-btn small { display: block; font-weight: 500; color: var(--grau-mitte);
+                 font-size: 11px; margin-top: 2px; }
+.typ-btn.aktiv small { color: var(--gruen-dunkel); }
+
+.checkbox-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
+.checkbox-row input { width: 22px; height: 22px; }
+.checkbox-row label { font-size: 14px; }
+
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 14px 22px; font-weight: 700;
+       cursor: pointer; font-family: inherit; font-size: 15px;
+       min-height: 48px; display: inline-flex; align-items: center; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel);
+                 border: 1px solid var(--gruen-mitte); text-decoration: none; }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.form-buttons { display: flex; gap: 12px; margin-top: 24px; }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+.hint { font-size: 12px; color: var(--grau-mitte); }
+h1 { margin-bottom: 18px; }
+.zeit-gruppe { transition: opacity 0.2s; }
+.zeit-gruppe.deaktiviert { opacity: 0.35; pointer-events: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% include '_touch_picker.html' %}
+
+{% macro zeitstr(t) -%}
+  {%- if t is none or not t -%}
+  {%- elif t.__class__.__name__ == 'timedelta' -%}
+    {%- set total = (t.total_seconds()|int) -%}
+    {{ '%02d:%02d'|format(total // 3600, (total % 3600) // 60) }}
+  {%- elif t is string -%}{{ t[:5] }}
+  {%- else -%}{{ '%02d:%02d'|format(t.hour, t.minute) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<h1>{{ 'Schicht bearbeiten' if modus == 'edit' else 'Neue Schicht anlegen' }}</h1>
+
+<form method="post" class="form-card" onsubmit="return submitPruefen(event);">
+  <label class="hint" style="text-transform:uppercase;font-weight:700;letter-spacing:0.04em;">Typ</label>
+  <div class="typ-wahl">
+    {% for t, beschreibung in [
+        ('fix',     'Fixe Zeiten'),
+        ('flex',    'Flexibel (Dauer pro Zuordnung)'),
+        ('aufgabe', 'Aufgabe ohne Zeit')
+    ] %}
+    <button type="button" class="typ-btn {% if werte.TYP == t %}aktiv{% endif %}"
+            data-typ="{{ t }}" onclick="setzeTyp('{{ t }}')">
+      {{ t|capitalize }}<small>{{ beschreibung }}</small>
+    </button>
+    {% endfor %}
+  </div>
+  <input type="hidden" name="typ" id="typ-input" value="{{ werte.TYP or 'fix' }}">
+
+  <div class="form-row">
+    <div class="form-field" style="flex: 2;">
+      <label for="bezeichnung">Bezeichnung *</label>
+      <input id="bezeichnung" name="bezeichnung" type="text" required
+             value="{{ werte.BEZEICHNUNG or '' }}"
+             placeholder="z.B. Frühschicht">
+    </div>
+    <div class="form-field" style="max-width: 130px;">
+      <label for="kuerzel">Kürzel *</label>
+      <input id="kuerzel" name="kuerzel" type="text" maxlength="10" required
+             value="{{ werte.KUERZEL or '' }}"
+             style="text-transform: uppercase;" placeholder="F">
+    </div>
+  </div>
+
+  <div class="zeit-gruppe" id="zeit-gruppe">
+    <div class="form-row">
+      <div class="form-field">
+        <label for="startzeit">Startzeit * <span class="hint">(24h, HH:MM)</span></label>
+        <span class="zeit-dual-wrap">
+          <input id="startzeit" name="startzeit" type="text" class="zeit-24h"
+                 inputmode="numeric" maxlength="5"
+                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                 placeholder="08:00" data-zeit24h="1"
+                 value="{{ zeitstr(werte.STARTZEIT) }}">
+          <button type="button" class="zeit-dual-btn" tabindex="0"
+                  aria-label="Touch-Uhrzeit öffnen"
+                  onclick="oeffneZeitPicker('startzeit')">🕐</button>
+        </span>
+      </div>
+      <div class="form-field">
+        <label for="endzeit">Endzeit * <span class="hint">(24h, HH:MM)</span></label>
+        <span class="zeit-dual-wrap">
+          <input id="endzeit" name="endzeit" type="text" class="zeit-24h"
+                 inputmode="numeric" maxlength="5"
+                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                 placeholder="16:00" data-zeit24h="1"
+                 value="{{ zeitstr(werte.ENDZEIT) }}">
+          <button type="button" class="zeit-dual-btn" tabindex="0"
+                  aria-label="Touch-Uhrzeit öffnen"
+                  onclick="oeffneZeitPicker('endzeit')">🕐</button>
+        </span>
+        <span class="hint" id="nachtschicht-hint" style="display:none;color:var(--gruen-dunkel);">
+          Nachtschicht (Übergang +1 Tag)
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-row">
+    <div class="form-field" style="max-width: 140px;">
+      <label for="farbe">Farbe</label>
+      <input id="farbe" name="farbe" type="color"
+             value="{{ werte.FARBE or '#4A7C3A' }}">
+    </div>
+    <div class="form-field" style="max-width: 120px;">
+      <label for="sort">Sortierung</label>
+      <input id="sort" name="sort" type="number" min="0"
+             value="{{ werte.SORT if werte.SORT is not none else 0 }}">
+    </div>
+  </div>
+
+  <div class="checkbox-row">
+    <input id="aktiv" name="aktiv" type="checkbox"
+           {% if werte.AKTIV %}checked{% endif %}>
+    <label for="aktiv">Aktiv (erscheint im Schichtplaner)</label>
+  </div>
+
+  <div class="form-buttons">
+    <button type="submit" class="btn">
+      {{ 'Änderungen speichern' if modus == 'edit' else 'Schicht anlegen' }}
+    </button>
+    <a class="btn btn-secondary"
+       href="{{ url_for('orga_personal.schicht_uebersicht') }}">Abbrechen</a>
+  </div>
+</form>
+
+<script>
+  function setzeTyp(t) {
+    document.getElementById('typ-input').value = t;
+    document.querySelectorAll('.typ-btn').forEach(b => {
+      b.classList.toggle('aktiv', b.dataset.typ === t);
+    });
+    document.getElementById('zeit-gruppe').classList.toggle('deaktiviert', t !== 'fix');
+    pruefeNacht();
+  }
+  function pruefeNacht() {
+    const s = document.getElementById('startzeit').value;
+    const e = document.getElementById('endzeit').value;
+    const hint = document.getElementById('nachtschicht-hint');
+    hint.style.display = (s && e && e <= s) ? '' : 'none';
+  }
+  // Dual-Mode: sowohl native Tastatur-Eingabe (input/change) als auch
+  // Drum-Picker (change via uebernehme) loesen Nacht-Pruefung aus.
+  ['startzeit', 'endzeit'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input',  pruefeNacht);
+    el.addEventListener('change', pruefeNacht);
+  });
+
+  function submitPruefen(ev) {
+    const typ = document.getElementById('typ-input').value;
+    if (typ === 'fix') {
+      const sz = document.getElementById('startzeit');
+      const ez = document.getElementById('endzeit');
+      if (!sz.value || !ez.value) {
+        alert('Bei Typ "fix" sind Start- und Endzeit Pflicht.');
+        ev.preventDefault();
+        return false;
+      }
+    } else {
+      document.getElementById('startzeit').value = '';
+      document.getElementById('endzeit').value = '';
+    }
+    return true;
+  }
+  pruefeNacht();
+</script>
+{% endblock %}

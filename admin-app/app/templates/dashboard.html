@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:24px;">⚙️ Admin</h1>
+
+<div class="card-grid">
+  <a href="/db-config" class="kpi-card" style="text-decoration:none;cursor:pointer;">
+    <div class="kpi-label">Datenbank</div>
+    <div class="kpi-wert" style="font-size:28px;">🗄️</div>
+    <div style="font-size:13px;color:var(--text-mitte);margin-top:8px;">Zugangsdaten &amp; Verbindungstest</div>
+  </a>
+  <a href="/drucker" class="kpi-card" style="text-decoration:none;cursor:pointer;">
+    <div class="kpi-label">Bondrucker</div>
+    <div class="kpi-wert" style="font-size:28px;">🖨️</div>
+    <div style="font-size:13px;color:var(--text-mitte);margin-top:8px;">Drucker verwalten &amp; testen</div>
+  </a>
+  <a href="/terminals" class="kpi-card" style="text-decoration:none;cursor:pointer;">
+    <div class="kpi-label">Terminals</div>
+    <div class="kpi-wert" style="font-size:28px;">💻</div>
+    <div style="font-size:13px;color:var(--text-mitte);margin-top:8px;">Terminal-IDs zuweisen</div>
+  </a>
+  <a href="/tse" class="kpi-card" style="text-decoration:none;cursor:pointer;">
+    <div class="kpi-label">TSE-Geräte</div>
+    <div class="kpi-wert" style="font-size:28px;">🔐</div>
+    <div style="font-size:13px;color:var(--text-mitte);margin-top:8px;">TSE-Geräteverwaltung</div>
+  </a>
+  <a href="/artikel" class="kpi-card" style="text-decoration:none;cursor:pointer;">
+    <div class="kpi-label">Backwaren</div>
+    <div class="kpi-wert" style="font-size:28px;">🥐</div>
+    <div style="font-size:13px;color:var(--text-mitte);margin-top:8px;">Backwaren-Artikelverwaltung</div>
+  </a>
+  <a href="/funktionen" class="kpi-card" style="text-decoration:none;cursor:pointer;">
+    <div class="kpi-label">Funktionen</div>
+    <div class="kpi-wert" style="font-size:28px;">🔧</div>
+    <div style="font-size:13px;color:var(--text-mitte);margin-top:8px;">Kasse- &amp; Kiosk-Funktionen ein/ausschalten</div>
+  </a>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h3 style="margin-bottom:12px;font-size:18px;">ℹ️ Über diese App</h3>
+  <p style="color:var(--text-mitte);font-size:14px;line-height:1.6;">
+    Die Admin-App bündelt systemweite Konfigurationen für alle CAO-XT-Anwendungen:
+    Datenbank-Einstellungen, Bondrucker-Admin, Terminal-Zuweisungen, TSE-Geräte und Backwaren-Stammdaten.
+  </p>
+</div>
+{% endblock %}

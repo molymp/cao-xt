@@ -1,5 +1,5 @@
 """
-Unit-Tests fuer modules/wawi/personal/models.py und tools/import_csv.py.
+Unit-Tests fuer modules/orga/personal/models.py und tools/import_csv.py.
 
 Kein DB-Zugriff – DB-abhaengige Funktionen werden gemockt.
 """
@@ -14,9 +14,9 @@ _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from modules.wawi.personal import models as m
-from modules.wawi.personal import routes as r
-from modules.wawi.personal.tools import import_csv as ic
+from modules.orga.personal import models as m
+from modules.orga.personal import routes as r
+from modules.orga.personal.tools import import_csv as ic
 
 
 class TestNormalisiere(unittest.TestCase):
@@ -74,7 +74,7 @@ class TestMaUpdateDiff(unittest.TestCase):
         mock_ctx = MagicMock()
         mock_ctx.__enter__.return_value = cur
         mock_ctx.__exit__.return_value = False
-        with patch('modules.wawi.personal.models.get_db_rw',
+        with patch('modules.orga.personal.models.get_db_rw',
                    return_value=mock_ctx):
             anz = m.ma_update(1, {'VNAME': 'Maria', 'EMAIL': 'm@x.de'}, 2)
         self.assertEqual(anz, 0)
@@ -86,7 +86,7 @@ class TestMaUpdateDiff(unittest.TestCase):
         mock_ctx = MagicMock()
         mock_ctx.__enter__.return_value = cur
         mock_ctx.__exit__.return_value = False
-        with patch('modules.wawi.personal.models.get_db_rw',
+        with patch('modules.orga.personal.models.get_db_rw',
                    return_value=mock_ctx):
             anz = m.ma_update(1, {'EMAIL': 'neu@x.de'}, 2)
         self.assertEqual(anz, 1)
@@ -188,7 +188,7 @@ class TestAzModellBearbeiten(unittest.TestCase):
         ctx = MagicMock()
         ctx.__enter__.return_value = cur
         ctx.__exit__.return_value = False
-        return cur, patch('modules.wawi.personal.models.get_db_rw',
+        return cur, patch('modules.orga.personal.models.get_db_rw',
                           return_value=ctx)
 
     def test_gueltig_ab_wird_gesetzt_und_vorgaenger_gekuerzt(self):
@@ -826,7 +826,7 @@ class TestZeigeAlleAusArgsOderSession(unittest.TestCase):
 
     def setUp(self):
         import flask
-        from modules.wawi.personal.routes import _zeige_alle_aus_args_oder_session
+        from modules.orga.personal.routes import _zeige_alle_aus_args_oder_session
         self.helper = _zeige_alle_aus_args_oder_session
         self.app = flask.Flask(__name__)
         self.app.secret_key = 'test'

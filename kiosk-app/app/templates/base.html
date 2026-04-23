@@ -293,35 +293,15 @@
 
 <header>
     <a class="logo" href="/">
-        <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" aria-label="Habacher Dorfladen">
-          <path d="M6 28 L 40 4 L 74 28" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="miter" stroke-linecap="square"/>
-          <path d="M6 28 L 11 28" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-          <path d="M69 28 L 74 28" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-          <circle cx="31" cy="34" r="2.4" fill="currentColor"/>
-          <circle cx="40" cy="34" r="2.4" fill="currentColor"/>
-          <circle cx="49" cy="34" r="2.4" fill="currentColor"/>
-          <circle cx="22" cy="43" r="2.4" fill="currentColor"/>
-          <circle cx="31" cy="43" r="2.4" fill="currentColor"/>
-          <circle cx="40" cy="43" r="2.4" fill="currentColor"/>
-          <circle cx="49" cy="43" r="2.4" fill="currentColor"/>
-          <circle cx="58" cy="43" r="2.4" fill="currentColor"/>
-          <circle cx="22" cy="52" r="2.4" fill="currentColor"/>
-          <circle cx="31" cy="52" r="2.4" fill="currentColor"/>
-          <circle cx="40" cy="52" r="2.4" fill="#b65c3a"/>
-          <circle cx="49" cy="52" r="2.4" fill="currentColor"/>
-          <circle cx="58" cy="52" r="2.4" fill="currentColor"/>
-          <circle cx="31" cy="61" r="2.4" fill="currentColor"/>
-          <circle cx="40" cy="61" r="2.4" fill="currentColor"/>
-          <circle cx="49" cy="61" r="2.4" fill="currentColor"/>
-          <path d="M10 72 L 70 72" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-        </svg>
+        <!-- Dorfkern-Mark via gemeinsames JS-Embed (common/brand/dorfkern-logo.js) -->
+        <span data-dorfkern-logo="mark" data-size="56" data-autoplay="false"></span>
         <div class="logo-text">
             {{ firma_name }}
             <span>Kiosk · {{ db_name }}</span>
         </div>
     </a>
 
-    <!-- App-Switcher: Kiosk → Kasse → WaWi (feste Reihenfolge) -->
+    <!-- App-Switcher: Kiosk → Kasse → Orga (feste Reihenfolge) -->
     <div class="app-switcher">
         <a href="/" class="nav-app-aktiv">🖥️ Kiosk</a>
         {% if kasse_url %}
@@ -329,13 +309,13 @@
         {% else %}
         <span class="nav-app-inaktiv">🛒 Kasse</span>
         {% endif %}
-        {% if wawi_url %}
-        <a href="{{ wawi_url }}" class="nav-app-switch">📦 WaWi</a>
+        {% if orga_url %}
+        <a href="{{ orga_url }}" class="nav-app-switch">📦 Orga</a>
         {% else %}
-        <span class="nav-app-inaktiv">📦 WaWi</span>
+        <span class="nav-app-inaktiv">📦 Orga</span>
         {% endif %}
-        {% if verwaltung_url %}
-        <a href="{{ verwaltung_url }}" class="nav-app-switch">⚙️ Verwaltung</a>
+        {% if admin_url %}
+        <a href="{{ admin_url }}" class="nav-app-switch">⚙️ Admin</a>
         {% endif %}
     </div>
 
@@ -590,6 +570,7 @@ setInterval(aktualisiereBestellBadge, 30000);
 })();
 </script>
 
+<script src="/brand/dorfkern-logo.js" defer></script>
 {% block extra_js %}{% endblock %}
 </body>
 </html>

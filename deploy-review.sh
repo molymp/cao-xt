@@ -6,7 +6,7 @@
 # und startet alle vier Apps neu:
 #   Kiosk  → Port 5001
 #   Kasse  → Port 5002
-#   WaWi   → Port 5003
+#   Orga   → Port 5003
 #   Verw.  → Port 5004
 #
 # Usage:
@@ -64,7 +64,7 @@ EOF
 # ── Konfigurationsdateien prüfen ─────────────────────────────
 echo "🔍 Konfiguration prüfen..."
 MISSING_CONFIGS=()
-for APP_DIR in kiosk-app kasse-app wawi-app verwaltung-app; do
+for APP_DIR in kiosk-app kasse-app orga-app admin-app; do
     CFG="$REVIEW/$APP_DIR/app/config_local.py"
     if [ ! -f "$CFG" ]; then
         MISSING_CONFIGS+=("$APP_DIR")
@@ -132,21 +132,21 @@ start_app() {
 echo ""
 start_app "Kiosk"      "$REVIEW/kiosk-app/app"      5001 "/tmp/kiosk-review.log"
 start_app "Kasse"      "$REVIEW/kasse-app/app"      5002 "/tmp/kasse-review.log"
-start_app "WaWi"       "$REVIEW/wawi-app/app"       5003 "/tmp/wawi-review.log"
-start_app "Verwaltung" "$REVIEW/verwaltung-app/app" 5004 "/tmp/verwaltung-review.log"
+start_app "Orga"       "$REVIEW/orga-app/app"       5003 "/tmp/orga-review.log"
+start_app "Admin" "$REVIEW/admin-app/app" 5004 "/tmp/admin-review.log"
 
 echo ""
 echo "══════════════════════════════════════════════════════════"
 echo "  Worktree: $REVIEW"
 echo "  Kiosk:    http://localhost:5001"
 echo "  Kasse:    http://localhost:5002"
-echo "  WaWi:     http://localhost:5003"
+echo "  Orga:     http://localhost:5003"
 echo "  Verw.:    http://localhost:5004"
 echo ""
 echo "  Logs:"
 echo "    /tmp/kiosk-review.log"
 echo "    /tmp/kasse-review.log"
-echo "    /tmp/wawi-review.log"
-echo "    /tmp/verwaltung-review.log"
+echo "    /tmp/orga-review.log"
+echo "    /tmp/admin-review.log"
 echo "══════════════════════════════════════════════════════════"
 echo ""

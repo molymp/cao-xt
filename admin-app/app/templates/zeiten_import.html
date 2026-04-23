@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Zeiten-Import{% endblock %}
+
+{% block extra_style %}
+<style>
+.zit-form label { display: block; font-size: 13px; font-weight: 700;
+                  color: var(--text-mitte); margin-bottom: 6px; }
+.zit-form input[type=file] { font-size: 14px; padding: 8px 12px;
+    background: var(--bg-dunkel); color: var(--text-hell);
+    border: 1px solid var(--border); border-radius: var(--radius-klein);
+    width: 100%; max-width: 520px; }
+.zit-form .zeile { margin-bottom: 16px; }
+.zit-form .check { display: flex; align-items: center; gap: 10px; }
+.zit-form .check input { width: 18px; height: 18px; accent-color: var(--akzent); }
+.zit-form .check label { margin: 0; color: var(--text-hell); font-weight: 600; }
+.zit-form .btn-row { display: flex; gap: 12px; align-items: center;
+                     margin-top: 20px; flex-wrap: wrap; }
+.zit-form .btn-row .hint { color: var(--text-dim); font-size: 13px; }
+
+.zit-fehler { background: rgba(192, 64, 64, 0.15);
+              color: #e09898; border: 1px solid var(--rot);
+              padding: 12px 16px; border-radius: var(--radius-klein);
+              margin-bottom: 16px; font-weight: 600; }
+
+.zit-stats { display: grid; grid-template-columns: 1fr auto; gap: 6px 20px;
+             font-size: 14px; font-variant-numeric: tabular-nums;
+             max-width: 560px; }
+.zit-stats dt { color: var(--text-mitte); }
+.zit-stats dd { margin: 0; font-weight: 700; color: var(--text-hell); }
+.zit-stats dd.warn { color: var(--gold-hell); }
+.zit-stats hr { grid-column: 1 / -1; border: none;
+                border-top: 1px solid var(--border); margin: 6px 0; }
+
+.zit-hinweis-warn { margin-top: 16px; padding: 10px 14px;
+                    background: rgba(200, 120, 10, 0.12);
+                    border: 1px solid var(--gold);
+                    border-radius: var(--radius-klein);
+                    font-size: 13px; color: var(--text-hell); }
+
+details.format-info { background: var(--bg-dunkel); padding: 12px 16px;
+                      border-radius: var(--radius-klein);
+                      border: 1px solid var(--border); margin-top: 16px; }
+details.format-info > summary { cursor: pointer; font-weight: 700;
+                                color: var(--akzent-hell); font-size: 14px;
+                                list-style: none; }
+details.format-info > summary::-webkit-details-marker { display: none; }
+details.format-info > summary::before { content: '▶ ';
+                                font-size: 10px; margin-right: 4px; }
+details.format-info[open] > summary::before { content: '▼ '; }
+details.format-info[open] > summary { margin-bottom: 12px; }
+details.format-info table { border-collapse: collapse; font-size: 13px;
+                            margin-top: 6px; width: 100%;
+                            color: var(--text-hell); }
+details.format-info th, details.format-info td { padding: 6px 10px;
+                            border-bottom: 1px solid var(--border);
+                            text-align: left; vertical-align: top; }
+details.format-info th { background: var(--bg-mitte);
+                         color: var(--text-mitte);
+                         font-weight: 700; font-size: 11px;
+                         text-transform: uppercase; letter-spacing: 0.04em; }
+details.format-info code { background: var(--bg-mitte); padding: 1px 6px;
+                           border-radius: 4px; font-size: 12px;
+                           color: var(--akzent-hell); }
+details.format-info h4 { margin: 18px 0 6px 0; font-size: 13px;
+                         font-family: 'Nunito', sans-serif;
+                         color: var(--text-mitte); font-weight: 800;
+                         text-transform: uppercase; letter-spacing: 0.05em; }
+details.format-info .hinweise { margin-top: 14px; font-size: 13px;
+                                color: var(--text-mitte); }
+details.format-info .hinweise ul { margin: 6px 0 0 22px; padding: 0; }
+details.format-info .hinweise li { margin-bottom: 4px; }
+details.format-info .hinweise strong { color: var(--text-hell); }
+
+.back-link { display: inline-block; margin-top: 16px;
+             color: var(--akzent-hell); font-weight: 700; }
+.back-link:hover { color: var(--akzent); }
+
+h2.result-title { font-family: 'Nunito', sans-serif; font-size: 18px;
+                  font-weight: 800; color: var(--text-hell);
+                  margin-bottom: 14px; }
+h2.result-title small { font-weight: 400; color: var(--text-dim);
+                        font-size: 13px; font-family: 'Nunito', sans-serif; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">📥 Zeiten-Import</h1>
+<p style="color: var(--text-dim); margin-bottom: 20px; font-size: 14px;">
+  Import einer ShiftJuggler-Attendance-CSV: Arbeitszeiten (Kommen/Gehen),
+  Abwesenheiten (Urlaub, Krankmeldung) und Stunden-Korrekturen werden in
+  die Personal-Tabellen eingespielt. Rein administrativer Vorgang –
+  typischerweise einmal pro Abrechnungszeitraum.
+</p>
+
+{% if fehler %}
+  <div class="zit-fehler">{{ fehler }}</div>
+{% endif %}
+
+{# ── Ergebnis-Karte nach einem Lauf ── #}
+{% if stats is not none %}
+<div class="card">
+  <h2 class="result-title">
+    {% if dry_run %}🔍 Vorschau (Dry-Run){% else %}✅ Import abgeschlossen{% endif %}
+    {% if dateiname %}<small>– {{ dateiname }}</small>{% endif %}
+  </h2>
+  <dl class="zit-stats">
+    <dt>Arbeits-Tage (Kommen + Gehen)</dt><dd>{{ stats.arbeit_stempel }}</dd>
+    {% if stats.arbeit_zeilen_skip %}
+      <dt>Arbeits-Zeilen unplausibel (uebersprungen)</dt>
+      <dd class="warn">{{ stats.arbeit_zeilen_skip }}</dd>
+    {% endif %}
+    <hr>
+    <dt>Urlaubsantraege angelegt</dt><dd>{{ stats.urlaub_angelegt }}</dd>
+    <dt>Urlaubsantraege bereits vorhanden</dt><dd>{{ stats.urlaub_schon_da }}</dd>
+    {% if stats.urlaub_ueberlapp %}
+      <dt>Urlaubsantraege ueberlappend (Hand pruefen)</dt>
+      <dd class="warn">{{ stats.urlaub_ueberlapp }}</dd>
+    {% endif %}
+    <hr>
+    <dt>Abwesenheiten angelegt</dt><dd>{{ stats.abw_angelegt }}</dd>
+    <dt>Abwesenheiten bereits vorhanden</dt><dd>{{ stats.abw_schon_da }}</dd>
+    {% if stats.abw_ueberlapp %}
+      <dt>Abwesenheiten ueberlappend (Hand pruefen)</dt>
+      <dd class="warn">{{ stats.abw_ueberlapp }}</dd>
+    {% endif %}
+    <hr>
+    <dt>Stunden-Korrekturen angelegt</dt><dd>{{ stats.korrektur_angelegt }}</dd>
+    {% if stats.korrektur_skip %}
+      <dt>Korrekturen unparsbar (uebersprungen)</dt>
+      <dd class="warn">{{ stats.korrektur_skip }}</dd>
+    {% endif %}
+    <hr>
+    <dt>Feiertage (uebersprungen, laufen ueber Stammdaten)</dt>
+    <dd>{{ stats.feiertag_skip }}</dd>
+    {% if stats.unbekannt_skip %}
+      <dt>Unbekannte Art (uebersprungen)</dt>
+      <dd class="warn">{{ stats.unbekannt_skip }}</dd>
+    {% endif %}
+  </dl>
+  {% if stats.ma_fehlend %}
+  <div class="zit-hinweis-warn">
+    ⚠️ <strong>Personalnummern ohne zugeordneten Mitarbeiter:</strong>
+    {{ stats.ma_fehlend|sort|join(', ') }}.
+    Diese Zeilen wurden komplett uebersprungen. Bitte Stammdaten in der
+    Orga-App pflegen (Feld PERSONALNUMMER) und erneut importieren.
+  </div>
+  {% endif %}
+  <a href="{{ url_for('zeiten_import') }}" class="back-link">
+    ← Weiteren Import starten
+  </a>
+</div>
+{% endif %}
+
+{# ── Upload-Form ── #}
+{% if stats is none %}
+<div class="card">
+  <h2 class="result-title">Datei hochladen</h2>
+  <form class="zit-form" method="post" enctype="multipart/form-data">
+    <div class="zeile">
+      <label for="csv">CSV-Datei (ShiftJuggler Attendance-Export)</label>
+      <input type="file" id="csv" name="csv" accept=".csv,text/csv" required>
+    </div>
+    <div class="zeile check">
+      <input type="checkbox" id="dry_run" name="dry_run" value="1" checked>
+      <label for="dry_run">
+        Zunaechst nur Vorschau (Dry-Run, keine DB-Aenderungen)
+      </label>
+    </div>
+    <div class="btn-row">
+      <button type="submit" class="btn btn-primary">📥 Import starten</button>
+      <span class="hint">
+        Tipp: Erst den Dry-Run laufen lassen, dann Haken entfernen und scharf
+        importieren.
+      </span>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{# ── Format-Info (aufklappbar) ── #}
+<details class="format-info"{% if stats is none and not fehler %} open{% endif %}>
+  <summary>Welches CSV-Format wird erwartet?</summary>
+  <p style="margin: 8px 0 12px 0; font-size: 13px; color: var(--text-mitte);">
+    Akzeptiert wird der <strong style="color: var(--text-hell);">ShiftJuggler
+    „Employee Shift List – Attendance Time"-Export</strong>: <code>UTF-8</code>,
+    semikolon-separiert (<code>;</code>), Header in Zeile&nbsp;1. Dateiname
+    typischerweise
+    <code>YYYYMMDD-HHMMSS-report-employee-shift-list-attendance-time.csv</code>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 260px;">CSV-Spalte</th>
+        <th style="width: 110px;">Pflicht?</th>
+        <th>Verwendung</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Personal-Nr.</code></td>
+          <td>ja</td>
+          <td>Matching ueber <code>XT_PERSONAL_MA.PERSONALNUMMER</code>.
+              Fehlende Nummern werden uebersprungen.</td></tr>
+      <tr><td><code>Art</code></td>
+          <td>ja</td>
+          <td>Siehe Tabelle unten.</td></tr>
+      <tr><td><code>Startdatum</code>, <code>Enddatum</code></td>
+          <td>ja</td>
+          <td>Format <code>TT.MM.JJJJ</code>.</td></tr>
+      <tr><td><code>Startzeit</code>, <code>Endzeit</code></td>
+          <td>bei Art=Arbeit</td>
+          <td>Format <code>HH:MM</code>. Bei Abwesenheiten leer.</td></tr>
+      <tr><td><code>Arbeitszeit (Stunden)</code></td>
+          <td>bei Art=„Korrektur Arbeitszeit"</td>
+          <td>Delta in Stunden mit Punkt als Dezimaltrenner, z.&nbsp;B.
+              <code>-9.12</code>. Vorzeichen wird uebernommen.</td></tr>
+      <tr><td><code>Standort</code>, <code>Arbeitsbereich</code>,
+              <code>Schichtgruppe</code>, <code>Schichtname</code>,
+              <code>Pause (Minuten)</code>,
+              <code>Arbeitszeit (Stunden) (formatiert)</code>,
+              <code>Grund Mehrzeit</code>,
+              <code>zuletzt bearbeitet von</code></td>
+          <td>optional</td>
+          <td>Aktuell nicht importiert (kann bei Bedarf ergaenzt werden).</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Wie die Spalte „Art" verarbeitet wird</h4>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 220px;">Art</th>
+        <th style="width: 300px;">Ziel-Tabelle</th>
+        <th>Anmerkung</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Arbeit</code></td>
+          <td><code>XT_PERSONAL_STEMPEL</code>
+              (QUELLE=<code>'import'</code>)</td>
+          <td>Pro Zeile je ein Kommen- und ein Gehen-Stempel.</td></tr>
+      <tr><td><code>Urlaub</code></td>
+          <td><code>XT_PERSONAL_URLAUB_ANTRAG</code>
+              (STATUS=<code>genommen</code>)</td>
+          <td>Mehrtaegige Urlaube werden automatisch zusammengefasst.
+              Arbeitstage werden per AZ-Modell berechnet.</td></tr>
+      <tr><td><code>Krankmeldung</code></td>
+          <td><code>XT_PERSONAL_ABWESENHEIT</code>
+              (TYP=<code>krank</code>, STATUS=<code>genehmigt</code>)</td>
+          <td>Mehrtaegig wird zusammengefasst.</td></tr>
+      <tr><td><code>Korrektur Arbeitszeit</code></td>
+          <td><code>XT_PERSONAL_STUNDEN_KORREKTUR</code>
+              (QUELLE=<code>'import'</code>)</td>
+          <td>Delta in Minuten, vorzeichenbehaftet.</td></tr>
+      <tr><td><code>… (Feiertag)</code></td>
+          <td>—</td>
+          <td><strong style="color: var(--gold-hell);">uebersprungen:</strong>
+              Feiertage werden in CAO-XT ueber die Feiertags-Stammdaten
+              gepflegt, nicht aus dem Export dupliziert.</td></tr>
+      <tr><td>andere Arten</td>
+          <td>—</td>
+          <td>uebersprungen; erscheinen im Report als
+              „Unbekannte Art".</td></tr>
+    </tbody>
+  </table>
+
+  <div class="hinweise">
+    <strong>Idempotenz</strong> (wiederholtes Importieren erzeugt keine
+    Duplikate):
+    <ul>
+      <li><strong>Arbeits-Stempel:</strong> Vor dem Neu-Einspielen werden
+        pro Mitarbeiter im betroffenen Datums-Range alle Stempel mit
+        <code>QUELLE='import'</code> geloescht. Kiosk-Selbststempel und
+        Backoffice-Korrekturen bleiben unveraendert.</li>
+      <li><strong>Urlaubsantraege / Abwesenheiten:</strong> Ein Eintrag
+        mit gleichem (Mitarbeiter, [Typ,] Von, Bis) wird nicht ein zweites
+        Mal angelegt. Stornierte/abgelehnte Antraege werden ignoriert.
+        Ueberlappungen mit anderen Zeitraeumen werden gemeldet, aber nicht
+        automatisch zusammengefuehrt.</li>
+      <li><strong>Stunden-Korrekturen:</strong> Alle Import-Zeilen im Range
+        werden ersetzt; manuell angelegte Korrekturen bleiben erhalten.</li>
+    </ul>
+  </div>
+</details>
+{% endblock %}

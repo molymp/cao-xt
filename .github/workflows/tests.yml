@@ -27,8 +27,8 @@ jobs:
         working-directory: kasse-app
         run: pytest tests/ -v --tb=short --cov=kasse_logik --cov-report=term-missing
 
-  wawi-app:
-    name: wawi-app Tests
+  orga-app:
+    name: orga-app Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,5 +41,5 @@ jobs:
         run: pip install flask pytest pytest-cov
 
       - name: Tests ausführen mit Coverage
-        working-directory: wawi-app
+        working-directory: orga-app
         run: pytest tests/ -v --tb=short --cov=models --cov-report=term-missing

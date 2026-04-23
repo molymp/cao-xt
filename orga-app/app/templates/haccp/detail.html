@@ -1,0 +1,429 @@
+{% extends 'base.html' %}
+{% block title %}HACCP: {{ geraet.NAME }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+          flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 10px 18px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       min-height: 48px; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.btn-danger { background: var(--rot); color: white; }
+
+.card { background: white; border-radius: var(--radius); box-shadow: var(--schatten);
+        padding: 16px 18px; margin-bottom: 18px; }
+.card h2 { margin: 0 0 12px 0; font-size: 17px; color: var(--gruen-dunkel); }
+
+.form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+             margin-bottom: 10px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 11px; font-weight: 800;
+                    text-transform: uppercase; letter-spacing: 0.05em;
+                    color: var(--gruen-dunkel); }
+.form-group input, .form-group select, .form-group textarea {
+  padding: 10px 12px; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein); font-size: 15px;
+  font-family: inherit; background: white; min-height: 44px; box-sizing: border-box;
+}
+.form-group input[type=checkbox] { min-height: 22px; width: 22px; height: 22px;
+                                    margin-right: 6px; vertical-align: middle; }
+.form-group label.inline { display: flex; align-items: center;
+                            font-size: 14px; text-transform: none;
+                            letter-spacing: 0; padding-top: 18px; }
+.form-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;
+                align-items: center; }
+
+.chart-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;
+                 align-items: flex-end; }
+.chart-toolbar label { font-size: 11px; font-weight: 800;
+                       text-transform: uppercase; letter-spacing: 0.05em;
+                       color: var(--gruen-dunkel);
+                       display: flex; flex-direction: column; gap: 4px; }
+.chart-toolbar input { padding: 10px 12px; border: 1px solid var(--creme-dunkel);
+                       border-radius: var(--radius-klein); font-size: 15px;
+                       font-family: inherit; background: white; min-height: 44px;
+                       box-sizing: border-box; }
+.chart-toolbar .datum-feld { width: 160px; }
+.chart-toolbar .zeit-btn { padding: 8px 14px; font-size: 13px;
+                           border: 1px solid var(--creme-dunkel); background: white;
+                           border-radius: var(--radius-klein); cursor: pointer;
+                           font-family: inherit; min-height: 40px; }
+.chart-toolbar .zeit-btn:hover { background: var(--gruen-blass); }
+#chart-container { position: relative; height: 360px; }
+
+.history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.history-table th, .history-table td { padding: 8px 10px; text-align: left;
+                                       border-bottom: 1px solid var(--creme-dunkel); }
+.history-table th { color: var(--gruen-dunkel); font-size: 11px;
+                    text-transform: uppercase; font-weight: 800; }
+.history-table .zeit { font-variant-numeric: tabular-nums; white-space: nowrap;
+                        color: var(--text-mitte); }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
+        font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.pill-offen   { background: #fde8e8; color: var(--rot); }
+.pill-zu      { background: #e8f5e0; color: #2e7a2e; }
+
+.msg { padding: 10px 14px; border-radius: var(--radius-klein); margin-bottom: 14px;
+       font-weight: 600; font-size: 14px; }
+.msg-ok    { background: #e8f5e0; color: #2e7a2e; }
+.msg-error { background: #fde8e8; color: var(--rot); }
+.msg-info  { background: var(--grau-hell); color: var(--text-mitte); }
+
+.api-info { display: grid; gap: 6px 18px; margin-top: 14px; padding-top: 12px;
+            border-top: 1px solid var(--creme-dunkel); font-size: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.api-info .api-label { display: inline-block; color: var(--text-mitte);
+                       font-weight: 700; text-transform: uppercase;
+                       letter-spacing: 0.04em; font-size: 10px; margin-right: 6px; }
+.api-info .api-val { color: var(--text-dunkel); }
+.api-info .mono    { font-family: 'SF Mono', Consolas, monospace;
+                     font-size: 11px; }
+.backfill-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+                margin-top: 10px; font-size: 12px; color: var(--text-mitte); }
+.battery-warn { display: inline-block; padding: 2px 8px; border-radius: 10px;
+                font-size: 11px; font-weight: 700; background: #fef1db;
+                color: #8a5e1a; margin-left: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with ms = get_flashed_messages(with_categories=true) %}
+  {% for cat, text in ms %}<div class="msg msg-{{ cat }}">{{ text }}</div>{% endfor %}
+{% endwith %}
+
+<div class="topbar">
+  <h1>🧼 {{ geraet.NAME }}</h1>
+  <a class="btn-secondary btn" href="{{ url_for('haccp.dashboard') }}">← Dashboard</a>
+</div>
+
+{# Stammdaten — alle Text-Felder mit alpha-touch, Datum mit date-touch #}
+<div class="card">
+  <h2>Stammdaten</h2>
+  <form method="post" action="{{ url_for('haccp.geraet_update', geraet_id=geraet.GERAET_ID) }}">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" name="NAME" class="alpha-touch" required maxlength="100"
+               value="{{ geraet.NAME }}" data-touch-titel="Name">
+      </div>
+      <div class="form-group">
+        <label>Standort</label>
+        <input type="text" name="STANDORT" class="alpha-touch" maxlength="100"
+               value="{{ geraet.STANDORT or '' }}" data-touch-titel="Standort">
+      </div>
+      <div class="form-group">
+        <label>Warengruppe</label>
+        <input type="text" name="WARENGRUPPE" class="alpha-touch" maxlength="80"
+               value="{{ geraet.WARENGRUPPE or '' }}"
+               placeholder="z.B. Hackfleisch, TK, Milchprodukte"
+               data-touch-titel="Warengruppe">
+      </div>
+      <div class="form-group">
+        <label>Letzte Kalibrierung</label>
+        <input type="text" name="LETZTE_KALIBRIERUNG" class="date-touch"
+               data-format="de" placeholder="TT.MM.JJJJ"
+               value="{{ geraet.LETZTE_KALIBRIERUNG.strftime('%d.%m.%Y') if geraet.LETZTE_KALIBRIERUNG else '' }}"
+               data-touch-titel="Letzte Kalibrierung">
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Bemerkung</label>
+        <input type="text" name="BEMERKUNG" class="alpha-touch" maxlength="500"
+               value="{{ geraet.BEMERKUNG or '' }}" data-touch-titel="Bemerkung">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn">Speichern</button>
+    </div>
+  </form>
+  {# API-Metadaten aus der TFA-Cloud (read-only, zur Diagnose) #}
+  <div class="api-info">
+    <div><span class="api-label">Device-ID</span><span class="api-val mono">{{ geraet.TFA_DEVICE_ID }}</span></div>
+    <div><span class="api-label">Sensor-Index</span><span class="api-val mono">{{ geraet.TFA_SENSOR_INDEX }}</span></div>
+    {% if geraet.TFA_INTERNAL_ID %}
+    <div><span class="api-label">Internal-ID</span><span class="api-val mono">{{ geraet.TFA_INTERNAL_ID }}</span></div>
+    {% endif %}
+    {% if geraet.TFA_NAME %}
+    <div><span class="api-label">API-Name</span><span class="api-val">{{ geraet.TFA_NAME }}</span></div>
+    {% endif %}
+    {% if geraet.TFA_MESSINTERVALL_S %}
+    <div><span class="api-label">Messintervall</span><span class="api-val">{{ geraet.TFA_MESSINTERVALL_S }} s</span></div>
+    {% endif %}
+    {% if letzter_mw and letzter_mw.TRANSMISSION_COUNTER is not none %}
+    <div><span class="api-label">Letzter TX#</span><span class="api-val mono">{{ letzter_mw.TRANSMISSION_COUNTER }}</span></div>
+    {% endif %}
+    {% if letzter_mw and letzter_mw.BATTERY_LOW %}
+    <div><span class="battery-warn">🔋 Batterie schwach</span></div>
+    {% endif %}
+  </div>
+</div>
+
+{# Grenzwerte — numerische Felder mit num-touch #}
+<div class="card">
+  <h2>Grenzwerte {% if grenz %}<small style="font-weight: 500; color: var(--text-mitte);">
+    (gültig ab {{ grenz.GUELTIG_AB.strftime('%d.%m.%Y %H:%M') }})</small>{% endif %}</h2>
+  <form method="post" action="{{ url_for('haccp.grenzwerte_setzen', geraet_id=geraet.GERAET_ID) }}">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Temp Min (°C)</label>
+        <input type="text" name="temp_min" class="num-touch" required inputmode="decimal"
+               value="{{ grenz.TEMP_MIN_C if grenz else '' }}" placeholder="z.B. 4"
+               data-touch-titel="Temp Min (°C)">
+      </div>
+      <div class="form-group">
+        <label>Temp Max (°C)</label>
+        <input type="text" name="temp_max" class="num-touch" required inputmode="decimal"
+               value="{{ grenz.TEMP_MAX_C if grenz else '' }}" placeholder="z.B. 8"
+               data-touch-titel="Temp Max (°C)">
+      </div>
+      <div class="form-group">
+        <label>Karenz (min)</label>
+        <input type="text" name="karenz_min" class="num-touch" inputmode="numeric" required
+               value="{{ grenz.KARENZ_MIN if grenz else 15 }}"
+               data-touch-titel="Karenz (Minuten)">
+      </div>
+      <div class="form-group">
+        <label>Offline nach (min)</label>
+        <input type="text" name="stale_min" class="num-touch" inputmode="numeric" required
+               value="{{ grenz.STALE_MIN if grenz else 30 }}"
+               data-touch-titel="Offline nach (Minuten)">
+      </div>
+      <div class="form-group">
+        <label class="inline">
+          <input type="checkbox" name="drift_aktiv" value="1"
+                 {% if grenz and grenz.DRIFT_AKTIV %}checked{% endif %}>
+          Drift-Alarm aktiv
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Drift-Schwelle (K)</label>
+        <input type="text" name="drift_k" class="num-touch" inputmode="decimal"
+               value="{{ grenz.DRIFT_K if grenz and grenz.DRIFT_K else '2' }}"
+               placeholder="z.B. 2" data-touch-titel="Drift-Schwelle (K)">
+      </div>
+      <div class="form-group">
+        <label>Drift-Fenster (h)</label>
+        <input type="text" name="drift_fenster_h" class="num-touch" inputmode="numeric"
+               value="{{ grenz.DRIFT_FENSTER_H if grenz else 24 }}"
+               data-touch-titel="Drift-Fenster (Stunden)">
+      </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label>Bemerkung (Begründung für Änderung — HACCP-Audit)</label>
+        <input type="text" name="bemerkung" class="alpha-touch" maxlength="500"
+               placeholder="z.B. Sommerbetrieb, Warengruppenwechsel"
+               data-touch-titel="Begründung">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn">Neue Version speichern</button>
+    </div>
+  </form>
+</div>
+
+{# Sichtkontrolle heute #}
+<div class="card">
+  <h2>Tägliche Sichtkontrolle</h2>
+  {% if heute_quittung %}
+    <p>✓ Heute quittiert von <strong>{{ heute_quittung.LOGIN_NAME or 'MA_ID ' ~ heute_quittung.QUITTIERT_VON }}</strong>
+       um {{ heute_quittung.QUITTIERT_AT.strftime('%H:%M') }}.
+       {% if heute_quittung.BEMERKUNG %}<em>„{{ heute_quittung.BEMERKUNG }}"</em>{% endif %}
+    </p>
+  {% else %}
+    <form method="post" action="{{ url_for('haccp.sichtkontrolle', geraet_id=geraet.GERAET_ID) }}">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label>Bemerkung (optional)</label>
+          <input type="text" name="bemerkung" class="alpha-touch" maxlength="500"
+                 placeholder="z.B. Optik ok, sauber"
+                 data-touch-titel="Bemerkung Sichtkontrolle">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">✓ Heute quittieren</button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+
+{# Chart — Von/Bis als date-touch mit deutschem Format #}
+<div class="card">
+  <h2>Temperaturverlauf</h2>
+  <div class="chart-toolbar">
+    <label>Von
+      <input type="text" id="chart-von" class="date-touch datum-feld"
+             data-format="de" placeholder="TT.MM.JJJJ" data-touch-titel="Von">
+    </label>
+    <label>Bis
+      <input type="text" id="chart-bis" class="date-touch datum-feld"
+             data-format="de" placeholder="TT.MM.JJJJ" data-touch-titel="Bis">
+    </label>
+    <button type="button" class="zeit-btn" onclick="chartRange('24h')">24 h</button>
+    <button type="button" class="zeit-btn" onclick="chartRange('7d')">7 Tage</button>
+    <button type="button" class="zeit-btn" onclick="chartRange('30d')">30 Tage</button>
+    <button type="button" class="btn" onclick="chartRefresh()">Anzeigen</button>
+    <a class="btn btn-secondary" id="csv-link" href="#">CSV</a>
+  </div>
+  <div id="chart-container"><canvas id="temp-chart"></canvas></div>
+  <div class="backfill-row">
+    <form method="post" action="{{ url_for('haccp.backfill_geraet', geraet_id=geraet.GERAET_ID) }}" style="display:inline;">
+      <input type="hidden" name="tage" value="7">
+      <button type="submit" class="btn btn-secondary">⟲ 7-Tage-Historie aus TFA-Cloud nachladen</button>
+    </form>
+    <small>Holt alle Messwerte der letzten 7 Tage aus der Cloud (Idempotent – keine
+    Duplikate). Für Initialisierung oder nach Stromausfall.</small>
+  </div>
+</div>
+
+{# Alarm-Historie #}
+<div class="card">
+  <h2>Alarm-Historie</h2>
+  {% if alarme %}
+  <table class="history-table">
+    <thead>
+      <tr><th>Start</th><th>Ende</th><th>Typ</th><th>Wert</th>
+          <th>Korrekturmaßnahme</th><th>Bearbeiter</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for a in alarme %}
+      <tr>
+        <td class="zeit">{{ a.START_AT.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td class="zeit">{% if a.ENDE_AT %}{{ a.ENDE_AT.strftime('%d.%m.%Y %H:%M') }}
+                       {% else %}<span class="pill pill-offen">offen</span>{% endif %}</td>
+        <td>{{ a.TYP }}</td>
+        <td>{{ '%.1f'|format(a.MAX_WERT) if a.MAX_WERT is not none else '—' }} °C</td>
+        <td>{{ a.KORREKTUR_TEXT or '—' }}</td>
+        <td>{{ a.KORREKTUR_VON_NAME or '—' }}</td>
+        <td>
+          {% if not a.KORREKTUR_TEXT %}
+          <details>
+            <summary style="cursor: pointer; font-size: 12px;">eintragen</summary>
+            <form method="post" action="{{ url_for('haccp.alarm_korrektur', alarm_id=a.ALARM_ID) }}"
+                  style="margin-top: 6px;">
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <input type="text" name="text" class="alpha-touch" required maxlength="500"
+                     placeholder="z.B. Tür war offen, ok" style="width: 220px;"
+                     data-touch-titel="Korrekturmaßnahme">
+              <button type="submit" class="btn" style="font-size: 12px; padding: 6px 10px; min-height: auto;">OK</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p style="color: var(--grau-mitte);">Keine Alarme bisher. 🎉</p>
+  {% endif %}
+</div>
+
+{# Touch-Widgets (alpha-/num-/date-touch) #}
+{% include 'touch/widgets.html' %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const GERAET_ID = {{ geraet.GERAET_ID }};
+let chartInstance = null;
+
+// Datumsformatierung: Anzeige deutsch (TT.MM.JJJJ), Wire an Server ISO.
+function fmtDeDate(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}.${d.getFullYear()}`;
+}
+function parseDeDate(s) {
+  // Akzeptiert "TT.MM.JJJJ" und (Fallback) "YYYY-MM-DD".
+  const m1 = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return s;
+  return null;
+}
+
+function chartRange(range) {
+  const bis = new Date();
+  const von = new Date(bis);
+  if      (range === '24h') von.setDate(bis.getDate() - 1);
+  else if (range === '7d')  von.setDate(bis.getDate() - 7);
+  else                      von.setDate(bis.getDate() - 30);
+  document.getElementById('chart-von').value = fmtDeDate(von);
+  document.getElementById('chart-bis').value = fmtDeDate(bis);
+  chartRefresh();
+}
+
+async function chartRefresh() {
+  const vonDe = document.getElementById('chart-von').value;
+  const bisDe = document.getElementById('chart-bis').value;
+  const von = parseDeDate(vonDe);
+  const bis = parseDeDate(bisDe);
+  if (!von || !bis) { alert('Datum im Format TT.MM.JJJJ angeben.'); return; }
+  const url = `/orga/haccp/${GERAET_ID}/messwerte.json?von=${von}T00:00:00&bis=${bis}T23:59:59`;
+  const r = await fetch(url);
+  if (!r.ok) { alert('Fehler beim Laden.'); return; }
+  const data = await r.json();
+
+  document.getElementById('csv-link').href =
+    `/orga/haccp/${GERAET_ID}/export.csv?von=${von}T00:00:00&bis=${bis}T23:59:59`;
+
+  const ctx = document.getElementById('temp-chart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  const grenz = data.grenz || {};
+  const zeitpunkte = data.labels.map(s => new Date(s));
+
+  const datasets = [{
+    label: 'Temperatur (°C)',
+    data: data.temp, borderColor: '#3a7a3a', backgroundColor: 'rgba(58,122,58,0.1)',
+    borderWidth: 2, pointRadius: 0, tension: 0.2, spanGaps: true, fill: true,
+  }];
+  if (grenz.max !== null && grenz.max !== undefined) {
+    datasets.push({
+      label: `Max ${grenz.max} °C`,
+      data: new Array(data.temp.length).fill(grenz.max),
+      borderColor: '#b22', borderDash: [6, 4], borderWidth: 1.5,
+      pointRadius: 0, fill: false,
+    });
+  }
+  if (grenz.min !== null && grenz.min !== undefined) {
+    datasets.push({
+      label: `Min ${grenz.min} °C`,
+      data: new Array(data.temp.length).fill(grenz.min),
+      borderColor: '#226', borderDash: [6, 4], borderWidth: 1.5,
+      pointRadius: 0, fill: false,
+    });
+  }
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels: zeitpunkte, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        x: { type: 'time',
+             time: { tooltipFormat: 'dd.MM.yyyy HH:mm',
+                     displayFormats: { minute: 'HH:mm', hour: 'HH:mm',
+                                       day: 'dd.MM.', week: 'dd.MM.' } },
+             grid: { color: 'rgba(0,0,0,0.05)' } },
+        y: { title: { display: true, text: '°C' },
+             grid: { color: 'rgba(0,0,0,0.05)' },
+             ticks: { callback: (v) => (+v).toFixed(1) } },
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { mode: 'index', intersect: false },
+      },
+    },
+  });
+}
+
+const adapter = document.createElement('script');
+adapter.src = 'https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js';
+adapter.onload = () => chartRange('7d');
+document.head.appendChild(adapter);
+</script>
+{% endblock %}

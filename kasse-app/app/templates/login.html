@@ -41,58 +41,7 @@ html, body {
   letter-spacing: 0.1em; text-transform: uppercase; margin-top: 6px;
 }
 
-/* ── Logo-Aufbauskript (einmalig, kein Loop) ───────────── */
-.logo-build .lb-roof {
-  stroke-dasharray: 85; stroke-dashoffset: 85;
-  animation: lb-draw 0.8s cubic-bezier(0.2,0.9,0.3,1) 0.1s forwards;
-}
-.logo-build .lb-eave {
-  stroke-dasharray: 6; stroke-dashoffset: 6;
-  animation: lb-draw 0.25s ease-out 0.85s forwards;
-}
-.logo-build .lb-floor {
-  stroke-dasharray: 60; stroke-dashoffset: 60;
-  animation: lb-draw 0.6s cubic-bezier(0.2,0.9,0.3,1) 1.05s forwards;
-}
-.logo-build .lb-dot {
-  opacity: 0; transform: scale(0);
-  transform-origin: center; transform-box: fill-box;
-  animation: lb-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) var(--d,1.5s) forwards;
-}
-.logo-build .lb-core {
-  opacity: 0; transform: scale(0);
-  transform-origin: center; transform-box: fill-box;
-  animation: lb-core 0.6s cubic-bezier(0.34,1.56,0.64,1) 2.2s forwards;
-}
-.logo-build .lb-glow {
-  opacity: 0;
-  transform-origin: center; transform-box: fill-box;
-  animation: lb-glow 1.4s ease-out 2.4s forwards;
-}
-@keyframes lb-draw { to { stroke-dashoffset: 0; } }
-@keyframes lb-pop {
-  0%   { opacity: 0; transform: scale(0); }
-  70%  { opacity: 1; transform: scale(1.25); }
-  100% { opacity: 1; transform: scale(1); }
-}
-@keyframes lb-core {
-  0%   { opacity: 0; transform: scale(0); }
-  55%  { opacity: 1; transform: scale(1.5); }
-  100% { opacity: 1; transform: scale(1); }
-}
-@keyframes lb-glow {
-  0%   { opacity: 0.35; transform: scale(1); }
-  100% { opacity: 0;    transform: scale(3.2); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .logo-build * {
-    animation: none !important;
-    stroke-dashoffset: 0 !important;
-    opacity: 1 !important;
-    transform: none !important;
-  }
-  .logo-build .lb-glow { opacity: 0 !important; }
-}
+/* Aufbauanimation liefert common/brand/dorfkern-logo.js mit. */
 .login-card {
   background: white; border-radius: 16px;
   padding: 32px; width: min(440px, 100%);
@@ -210,29 +159,8 @@ html, body {
 {% if git_commit_short %}<span style="position:fixed;top:2px;left:4px;font-size:9px;font-weight:700;color:#e8970e;font-family:monospace;pointer-events:none;z-index:9999;opacity:0.75;letter-spacing:0.02em;">{{ git_commit_short }}</span>{% endif %}
 <div class="login-wrap">
   <div class="login-logo">
-    <svg class="logo-icon logo-build" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" aria-label="Habacher Dorfladen">
-      <path class="lb-roof"  d="M6 28 L 40 4 L 74 28" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="miter" stroke-linecap="square"/>
-      <path class="lb-eave"  d="M6 28 L 11 28"  stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-      <path class="lb-eave"  d="M69 28 L 74 28" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-      <path class="lb-floor" d="M10 72 L 70 72" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-      <circle class="lb-dot" style="--d:1.50s" cx="40" cy="43" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:1.64s" cx="31" cy="43" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:1.71s" cx="49" cy="43" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:1.78s" cx="31" cy="52" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:1.85s" cx="49" cy="52" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:1.92s" cx="40" cy="34" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:1.99s" cx="40" cy="61" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.06s" cx="31" cy="34" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.13s" cx="49" cy="34" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.20s" cx="31" cy="61" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.27s" cx="49" cy="61" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.34s" cx="22" cy="43" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.41s" cx="58" cy="43" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.48s" cx="22" cy="52" r="2.4" fill="currentColor"/>
-      <circle class="lb-dot" style="--d:2.55s" cx="58" cy="52" r="2.4" fill="currentColor"/>
-      <circle class="lb-core" cx="40" cy="52" r="2.4" fill="#e08a66"/>
-      <circle class="lb-glow" cx="40" cy="52" r="2.4" fill="#e08a66"/>
-    </svg>
+    <!-- Dorfkern-Mark mit Aufbau-Animation via common/brand/dorfkern-logo.js -->
+    <span data-dorfkern-logo="mark" data-size="160" data-theme="dark"></span>
     Habacher Dorfladen
     <span>Kasse</span>
   </div>
@@ -481,5 +409,6 @@ html, body {
   });
 })();
 </script>
+<script src="/brand/dorfkern-logo.js" defer></script>
 </body>
 </html>

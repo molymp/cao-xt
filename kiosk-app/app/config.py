@@ -41,12 +41,20 @@ EAN_SAMMELARTIKEL = "7408"   # CAO-Sammelartikel Backwaren
 FIRMA_NAME = os.environ.get('FIRMA_NAME', 'Habacher Dorfladen')
 
 # ── Verknüpfte Apps ───────────────────────────────────────────
+# Legacy-Fallback: alte WAWI_*/VERWALTUNG_*-Variablen weiter beruecksichtigen.
+def _env(new: str, old: str | None = None, default: str = '') -> str:
+    if new in os.environ:
+        return os.environ[new]
+    if old and old in os.environ:
+        return os.environ[old]
+    return default
+
 KASSE_URL  = os.environ.get('KASSE_URL',  '')   # oder z.B. http://192.168.1.x:5002
 KASSE_PORT = int(os.environ.get('KASSE_PORT', '5002'))  # Fallback: gleicher Host, Port 5002
-WAWI_URL        = os.environ.get('WAWI_URL',  '')
-WAWI_PORT       = int(os.environ.get('WAWI_PORT',  '5003'))
-VERWALTUNG_URL  = os.environ.get('VERWALTUNG_URL', '')
-VERWALTUNG_PORT = int(os.environ.get('VERWALTUNG_PORT', '5004'))
+ORGA_URL        = _env('ORGA_URL',  'WAWI_URL',  '')
+ORGA_PORT       = int(_env('ORGA_PORT',  'WAWI_PORT',  '5003'))
+ADMIN_URL  = _env('ADMIN_URL', 'VERWALTUNG_URL', '')
+ADMIN_PORT = int(_env('ADMIN_PORT', 'VERWALTUNG_PORT', '5004'))
 
 # ── Lokale Overrides (config_local.py, nicht in git) ──────────
 # Datei anlegen um die obigen Werte zu überschreiben, z.B.:

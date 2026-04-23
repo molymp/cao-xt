@@ -91,24 +91,24 @@ def init_cao_db(host: str, port: int, name: str,
 
     errors = []
 
-    # Verwaltungs-App Init
+    # Admin-App Init
     try:
-        from verwaltung_app_init import run_migrations  # noqa: F401
-        print_fn("  ✓  verwaltung: Tabellen angelegt")
+        from admin_app_init import run_migrations  # noqa: F401
+        print_fn("  ✓  admin: Tabellen angelegt")
     except ImportError:
         # Kein separates Init-Modul – Flask legt Tabellen beim Start an
-        print_fn("  –  verwaltung: Init via App-Start")
+        print_fn("  –  admin: Init via App-Start")
     except Exception as e:
-        errors.append(f"verwaltung: {e}")
+        errors.append(f"admin: {e}")
 
-    # WaWi Init
+    # Orga Init
     try:
-        from wawi_app_init import run_migrations  # noqa: F401
-        print_fn("  ✓  wawi: Tabellen angelegt")
+        from orga_app_init import run_migrations  # noqa: F401
+        print_fn("  ✓  orga: Tabellen angelegt")
     except ImportError:
-        print_fn("  –  wawi: Init via App-Start")
+        print_fn("  –  orga: Init via App-Start")
     except Exception as e:
-        errors.append(f"wawi: {e}")
+        errors.append(f"orga: {e}")
 
     # Kasse Init
     try:

@@ -41,11 +41,11 @@ _cfg_mod.FIRMA_NAME = 'Testladen'
 _cfg_mod.EAN_BEREICH = '21'
 _cfg_mod.EAN_SAMMELARTIKEL = '7408'
 _cfg_mod.KASSE_PORT = 5002
-_cfg_mod.WAWI_PORT = 5003
-_cfg_mod.VERWALTUNG_PORT = 5004
+_cfg_mod.ORGA_PORT = 5003
+_cfg_mod.ADMIN_PORT = 5004
 _cfg_mod.KASSE_URL = ''
-_cfg_mod.WAWI_URL = ''
-_cfg_mod.VERWALTUNG_URL = ''
+_cfg_mod.ORGA_URL = ''
+_cfg_mod.ADMIN_URL = ''
 sys.modules.setdefault('config', _cfg_mod)
 
 # Stub für druck-Modul

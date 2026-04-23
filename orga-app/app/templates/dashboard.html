@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">📊 Dashboard</h1>
+<p style="color:var(--text-hell);font-size:13px;margin-bottom:24px;">Stand: {{ heute }}</p>
+
+<!-- KPI-Karten -->
+<div class="card-grid">
+
+  <div class="kpi-card gruen">
+    <div class="kpi-label">Tageseinnahmen heute</div>
+    <div class="kpi-wert">{{ tageseinnahmen|eur }} €</div>
+    <div class="kpi-sub">Brutto, alle Buchungen</div>
+  </div>
+
+  <div class="kpi-card {% if offene_vorgaenge > 0 %}rot{% else %}gruen{% endif %}">
+    <div class="kpi-label">Offene Vorgänge</div>
+    <div class="kpi-wert">{{ offene_vorgaenge }}</div>
+    <div class="kpi-sub">Lieferscheine ohne Rechnung</div>
+  </div>
+
+  {% if personal %}
+  <div class="kpi-card {{ personal.ampel }} personal-widget">
+    <div class="kpi-label">👥 Personal heute</div>
+    <div class="pers-zeile">
+      <span class="pers-nr {{ 'gelb' if personal.abw_heute_count else 'gruen' }}">
+        {{ personal.abw_heute_count }}
+      </span>
+      <div class="pers-text">
+        <div class="haupt">{% if personal.abw_heute_count == 0 %}Niemand abwesend
+                           {% elif personal.abw_heute_count == 1 %}1 Abwesenheit
+                           {% else %}{{ personal.abw_heute_count }} Abwesenheiten{% endif %}</div>
+        {% if personal.abw_heute_preview %}
+          <div class="detail">
+            {% for a in personal.abw_heute_preview -%}
+              {{ a.VNAME }} {{ a.NAME }} ({{ a.TYP_LABEL }}){% if not loop.last %}, {% endif %}
+            {%- endfor %}
+            {% if personal.abw_heute_count > personal.abw_heute_preview|length %}
+              …
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="pers-zeile">
+      <span class="pers-nr {{ 'rot' if personal.antraege_offen_count else 'gruen' }}">
+        {{ personal.antraege_offen_count }}
+      </span>
+      <div class="pers-text">
+        <div class="haupt">{% if personal.antraege_offen_count == 0 %}Keine offenen Urlaubsanträge
+                           {% elif personal.antraege_offen_count == 1 %}1 offener Urlaubsantrag
+                           {% else %}{{ personal.antraege_offen_count }} offene Urlaubsanträge{% endif %}</div>
+        {% if personal.antraege_offen_preview %}
+          <ul class="pers-liste">
+            {% for a in personal.antraege_offen_preview %}
+              <li><a href="{{ url_for('orga_personal.detail', pers_id=a.PERS_ID) }}">
+                {{ a.VNAME }} {{ a.NAME }}</a> ·
+                {{ a.VON.strftime('%d.%m.') }}–{{ a.BIS.strftime('%d.%m.%y') }}
+                ({{ '%g'|format(a.ARBEITSTAGE) }} Tage)</li>
+            {% endfor %}
+            {% if personal.antraege_offen_count > personal.antraege_offen_preview|length %}
+              <li class="mehr">… {{ personal.antraege_offen_count - personal.antraege_offen_preview|length }} weitere</li>
+            {% endif %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+    <a class="ampel-cta{% if personal.ampel == 'rot' %} rot{% endif %}"
+       href="{{ url_for('orga_personal.abwesenheiten_uebersicht') }}">Abwesenheiten →</a>
+  </div>
+  {% endif %}
+
+  {% if haccp %}
+  <div class="kpi-card {{ haccp.temp_ampel }}">
+    <div class="kpi-label">🌡️ Temperaturstatus</div>
+    <div class="ampel-widget">
+      <span class="ampel-kugel {{ haccp.temp_ampel }}"></span>
+      <div class="ampel-text">
+        {% if haccp.temp_ampel == 'rot' %}
+          <div class="haupt">{{ haccp.alarme_offen }} offene Alarme</div>
+          <div class="detail">Bitte Temperatur prüfen</div>
+        {% elif haccp.temp_ampel == 'gelb' %}
+          <div class="haupt">
+            {% if haccp.offline_count %}{{ haccp.offline_count }} offline{% endif %}
+            {% if haccp.offline_count and haccp.batt_low_count %} · {% endif %}
+            {% if haccp.batt_low_count %}{{ haccp.batt_low_count }} × 🔋{% endif %}
+          </div>
+          <div class="detail">{{ haccp.geraete_total }} Sensoren überwacht</div>
+        {% elif haccp.temp_ampel == 'gruen' %}
+          <div class="haupt">Alles im Soll</div>
+          <div class="detail">{{ haccp.geraete_total }} Sensoren OK</div>
+        {% else %}
+          <div class="haupt">Keine Sensoren</div>
+          <div class="detail">HACCP nicht konfiguriert</div>
+        {% endif %}
+      </div>
+    </div>
+    <a class="ampel-cta{% if haccp.temp_ampel == 'rot' %} rot{% endif %}"
+       href="{{ url_for('haccp.dashboard') }}">HACCP öffnen →</a>
+  </div>
+
+  <div class="kpi-card {{ haccp.sicht_ampel }}">
+    <div class="kpi-label">✅ Sichtkontrolle heute</div>
+    <div class="ampel-widget">
+      <span class="ampel-kugel {{ haccp.sicht_ampel }}"></span>
+      <div class="ampel-text">
+        {% if haccp.sicht_ampel == 'rot' %}
+          <div class="haupt">{{ haccp.unquittiert_count }} offen</div>
+          <div class="detail">{{ haccp.quittiert_count }} von {{ haccp.geraete_total }} erledigt</div>
+        {% elif haccp.sicht_ampel == 'gruen' %}
+          <div class="haupt">Alle quittiert ✓</div>
+          <div class="detail">{{ haccp.geraete_total }} Sensoren kontrolliert</div>
+        {% else %}
+          <div class="haupt">Keine Sensoren</div>
+          <div class="detail">Nichts zu quittieren</div>
+        {% endif %}
+      </div>
+    </div>
+    {% if haccp.sicht_ampel == 'rot' %}
+    <a class="ampel-cta rot"
+       href="{{ url_for('haccp.sichtkontrolle_dashboard') }}">Jetzt quittieren →</a>
+    {% elif haccp.sicht_ampel == 'gruen' %}
+    <a class="ampel-cta"
+       href="{{ url_for('haccp.sichtkontrolle_dashboard') }}">Übersicht →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Monatsumsatz -->
+<div class="card" style="max-width:700px;">
+  <h2 style="margin-bottom:16px;font-size:20px;">Monatsumsatz – letzte 6 Monate (Brutto)</h2>
+  {% if monatsumsatz %}
+  <table style="width:100%;border-collapse:collapse;font-size:14px;">
+    <thead>
+      <tr style="border-bottom:2px solid var(--creme-dunkel);">
+        <th style="text-align:left;padding:8px 12px;color:var(--text-hell);font-size:11px;text-transform:uppercase;letter-spacing:.08em;">Monat</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--text-hell);font-size:11px;text-transform:uppercase;letter-spacing:.08em;">Umsatz (€)</th>
+        <th style="padding:8px 12px;width:40%;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set max_brutto = monatsumsatz|map(attribute='brutto')|list|max %}
+      {% for row in monatsumsatz %}
+      <tr style="border-bottom:1px solid var(--grau-hell);">
+        <td style="padding:10px 12px;font-weight:600;">{{ row.label }}</td>
+        <td style="padding:10px 12px;text-align:right;font-family:'Fraunces',Georgia,serif;font-size:18px;color:var(--gold);">
+          {{ row.brutto|eur }} €
+        </td>
+        <td style="padding:10px 12px;">
+          {% if max_brutto > 0 %}
+          <div style="background:var(--grau-hell);border-radius:4px;height:10px;overflow:hidden;">
+            <div style="background:var(--gruen-mitte);height:100%;width:{{ (row.brutto / max_brutto * 100)|int }}%;border-radius:4px;"></div>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert alert-warn">
+    ⚠️ Keine Umsatzdaten verfügbar. Bitte Datenbankverbindung prüfen.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

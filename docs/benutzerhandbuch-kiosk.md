@@ -46,8 +46,8 @@ sudo systemctl start kiosk-app
 Die Navigationsleiste am oberen Rand zeigt:
 
 - **Links:** Logo mit Firmenname und Mandantname
-- **App-Switcher:** Schnellzugriff auf Kiosk / Kasse / WaWi (aktive App hervorgehoben). Klick auf „Kiosk" führt zur Startseite.
-- **Mitte:** Navigationsmenü (Artikelauswahl, Geparkt, Journal, Verwaltung, …)
+- **App-Switcher:** Schnellzugriff auf Kiosk / Kasse / Orga (aktive App hervorgehoben). Klick auf „Kiosk" führt zur Startseite.
+- **Mitte:** Navigationsmenü (Artikelauswahl, Geparkt, Journal, Admin, …)
 - **Rechts:** Angemeldeter Nutzer, Uhrzeit, Datum
 
 ---
@@ -59,13 +59,13 @@ Die Navigationsleiste am oberen Rand zeigt:
 | Artikelauswahl | Anzeige und Auswahl aller verfügbaren Artikel |
 | Geparkt | Geparkte Warenkörbe einsehen und fortsetzen (nur wenn Parken aktiviert) |
 | Journal | Buchungshistorie |
-| Verwaltung | Artikel- und Systemverwaltung |
-| Bestellungen | Bestelleingang und -verwaltung |
+| Admin | Artikel- und Systemverwaltung |
+| Bestellungen | Bestelleingang und -admin |
 | Mittagstisch | Mittagsangebote verwalten |
 
 ### Parken ein-/ausschalten
 
-Die Parken-Funktion kann in der **Verwaltungs-App** unter **Funktionen** deaktiviert werden.
+Die Parken-Funktion kann in der **Admin-App** unter **Funktionen** deaktiviert werden.
 Wenn deaktiviert:
 - Die Buttons „Parken" und „Geparkt" werden ausgeblendet
 - „Abbrechen" wandert neben „Buchen & Drucken" (breiteres Layout)
@@ -139,7 +139,7 @@ Falls das Kommen/Gehen vergessen wurde oder die Zeit falsch war:
 ### Abwesenheit und Urlaub
 
 - **Abwesenheit:** Ganztägige Meldung Krank/Fortbildung/Sonstiges für heute oder einen wählbaren Zeitraum. Die App berechnet die betroffenen Arbeitstage anhand der Wochenverteilung aus dem Arbeitszeitmodell des Mitarbeiters.
-- **Urlaub:** Urlaubsantrag von-bis. Nach dem Absenden hat der Antrag den Status `geplant` — die Ladenleitung genehmigt ihn später im WaWi.
+- **Urlaub:** Urlaubsantrag von-bis. Nach dem Absenden hat der Antrag den Status `geplant` — die Ladenleitung genehmigt ihn später im Orga.
 
 Beide Kacheln nutzen den Dual-Mode-Datepicker (Touch + Tastatur gleichwertig).
 
@@ -163,7 +163,7 @@ Die PIN kann jeder Mitarbeiter selbst ändern:
 3. Neue PIN 2× eingeben.
 4. **Speichern.**
 
-Bei vergessener PIN setzt die Ladenleitung die PIN im WaWi (Mitarbeiter-Detail) zurück; der Mitarbeiter vergibt dann beim nächsten Stempel-Vorgang eine neue.
+Bei vergessener PIN setzt die Ladenleitung die PIN im Orga (Mitarbeiter-Detail) zurück; der Mitarbeiter vergibt dann beim nächsten Stempel-Vorgang eine neue.
 
 ---
 

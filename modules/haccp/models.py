@@ -1,7 +1,7 @@
 """HACCP – DB-Layer (Geraete, Messwerte, Grenzwerte, Alarme, Sichtkontrolle).
 
-Alle Funktionen arbeiten gegen den pool ``wawi_pool`` (gemeinsam mit den
-anderen WaWi-Modulen, selber CAO-Datenbank).
+Alle Funktionen arbeiten gegen den pool ``orga_pool`` (gemeinsam mit den
+anderen Orga-Modulen, selber CAO-Datenbank).
 """
 from __future__ import annotations
 
@@ -424,7 +424,7 @@ def sichtkontrolle_heute_alle() -> dict[int, dict]:
 # ── Dashboard-Aggregat ────────────────────────────────────────────────
 
 def status_fuer_dashboard(jetzt: datetime) -> dict:
-    """Aggregat-Status fuer das WaWi-Hauptdashboard (Temperatur- und
+    """Aggregat-Status fuer das Orga-Hauptdashboard (Temperatur- und
     Sichtkontroll-Ampel).
 
     Ampel-Logik Temperatur:

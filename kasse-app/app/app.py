@@ -143,12 +143,12 @@ def _globals():
         'kiosk_url':           config.KIOSK_URL or (
                                    f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
                                    if config.KIOSK_PORT else ''),
-        'wawi_url':            config.WAWI_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
-                                   if config.WAWI_PORT else ''),
-        'verwaltung_url':      config.VERWALTUNG_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
-                                   if config.VERWALTUNG_PORT else ''),
+        'orga_url':            config.ORGA_URL or (
+                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
+                                   if config.ORGA_PORT else ''),
+        'admin_url':      config.ADMIN_URL or (
+                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
+                                   if config.ADMIN_PORT else ''),
         'ma_login_name':       session.get('login_name', ''),
         'update_verfuegbar':   _update_status["verfuegbar"],
         'git_commit_short':    GIT_COMMIT_SHORT,
@@ -1389,7 +1389,7 @@ def admin_trainings_modus():
     return redirect(url_for('admin_index'))
 
 
-# ── TSE-Verwaltung ────────────────────────────────────────────
+# ── TSE-Admin ────────────────────────────────────────────
 
 @app.get('/admin/tse')
 @_login_required
@@ -1679,6 +1679,18 @@ _DOKU_DIR = os.path.join(os.path.dirname(__file__), 'doku')
 def kasse_doku_datei(dateiname):
     """Statische Dateien aus dem doku/-Verzeichnis (Bilder für Handbuch)."""
     return send_from_directory(os.path.abspath(_DOKU_DIR), dateiname)
+
+
+# ── Gemeinsame Brand-Assets (common/brand/*) ──────────────────
+_BRAND_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'brand')
+)
+
+
+@app.route('/brand/<path:dateiname>')
+def _brand_asset(dateiname):
+    """Liefert Dorfkern-Logo-Assets (dorfkern-logo.js etc.) aus common/brand/."""
+    return send_from_directory(_BRAND_DIR, dateiname, max_age=60 * 60 * 24)
 
 
 @app.get('/kasse/handbuch')
