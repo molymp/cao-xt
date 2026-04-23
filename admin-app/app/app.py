@@ -1105,6 +1105,61 @@ def admin_handbuch_upload():
     return jsonify({'ok': True, 'filename': f'/admin/doku/{dateiname}'})
 
 
+# ── System: CAO-Rechte (read-only) ──────────────────────────────
+
+@app.route('/rechte')
+@_login_required
+def rechte_seite():
+    """Read-only Uebersicht der CAO-BENUTZERRECHTE.
+
+    Pflege ausschliesslich in cao_admin.exe. Die Ansicht zeigt
+    Gruppen, Modul-Baum mit Rechte-Bits und User-Zuordnungen/Overrides.
+    """
+    import cao_rechte as _cr
+    return render_template('rechte.html',
+                           gruppen=_cr.gruppen_laden())
+
+
+@app.get('/api/rechte/baum')
+@_login_required
+def api_rechte_baum():
+    """Modul-Baum fuer eine Gruppe (query-param ``gruppe``)."""
+    import cao_rechte as _cr
+    try:
+        gruppe_id = int(request.args.get('gruppe', '0'))
+    except ValueError:
+        return jsonify(ok=False, msg='Ungueltige gruppe'), 400
+    baum = _cr.modul_baum(gruppe_id)
+    # Bits pro Eintrag aufloesen, damit das Template simpel bleibt.
+    for kat in baum:
+        for modul in kat['module']:
+            modul['bits'] = _cr.rechte_zu_bits(modul['rechte'],
+                                               modul['modul_id'])
+            for sub in modul['submodule']:
+                sub['bits'] = _cr.rechte_zu_bits(sub['rechte'],
+                                                 sub['modul_id'])
+    return jsonify(ok=True, baum=baum)
+
+
+@app.get('/api/rechte/benutzer')
+@_login_required
+def api_rechte_benutzer():
+    """Mitarbeiter-Liste mit Gruppen-Zuordnung."""
+    import cao_rechte as _cr
+    return jsonify(ok=True, benutzer=_cr.mitarbeiter_mit_gruppen())
+
+
+@app.get('/api/rechte/benutzer/<int:ma_id>/overrides')
+@_login_required
+def api_rechte_benutzer_overrides(ma_id: int):
+    """User-spezifische Rechte-Overrides."""
+    import cao_rechte as _cr
+    overrides = _cr.benutzer_overrides(ma_id)
+    for o in overrides:
+        o['bits'] = _cr.rechte_zu_bits(o['rechte'], o['modul_id'])
+    return jsonify(ok=True, overrides=overrides)
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
