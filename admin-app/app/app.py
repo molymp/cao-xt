@@ -162,7 +162,29 @@ def _migrationen_ausfuehren():
         log.warning("Migration fehlgeschlagen (DB evtl. nicht erreichbar): %s", e)
 
 
+def _dorfkern_konfig_initialisieren():
+    """Legt DORFKERN_KONFIG an und saet initial aus caoxt.ini.
+
+    Die Admin-App ist Eigentuemer dieser Tabelle (Phase 3). INSERT IGNORE
+    sorgt dafuer, dass nachtraegliche Admin-UI-Aenderungen nicht
+    ueberschrieben werden, wenn der Seed beim naechsten Start erneut laeuft.
+    """
+    try:
+        from common import konfig
+    except Exception as exc:
+        log.warning("DORFKERN_KONFIG-Init: Modul-Import fehlgeschlagen: %s", exc)
+        return
+    konfig.run_migration()
+    try:
+        n = konfig.seed_aus_ini()
+        if n:
+            log.info("DORFKERN_KONFIG: %d Werte aus caoxt.ini uebernommen.", n)
+    except Exception as exc:
+        log.warning("DORFKERN_KONFIG-Seed fehlgeschlagen: %s", exc)
+
+
 _migrationen_ausfuehren()
+_dorfkern_konfig_initialisieren()
 
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
