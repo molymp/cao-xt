@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Dorfkern-Terminals{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:8px;">💻 Terminal-Registry</h1>
+<p style="color:var(--text-dim); margin-bottom:20px;">
+  Alle Dorfkern-Terminals (Kasse, Kiosk, Admin, Orga) – Zuordnung ueber Hostname oder MAC-Adresse.
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+  <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <div style="font-size:12px; color:var(--text-dim);">Dieser Host</div>
+      <div><strong>Hostname:</strong> <code>{{ host_hostname or '–' }}</code></div>
+      <div><strong>MAC:</strong> <code>{{ host_mac or '–' }}</code></div>
+      <div><strong>IP:</strong> <code>{{ host_ip or '–' }}</code></div>
+    </div>
+    <button class="btn btn-primary" onclick="oeffneNeu()">➕ Terminal anlegen</button>
+    <button class="btn" onclick="fuelleAktuellenHost()">📍 Aktuellen Host uebernehmen</button>
+    <button class="btn" onclick="load()">🔄 Neu laden</button>
+  </div>
+</div>
+
+<div class="card">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Bezeichnung</th>
+        <th>Typ</th>
+        <th>Hostname</th>
+        <th>MAC-Adresse</th>
+        <th>Letzte IP</th>
+        <th>Aktiv</th>
+        <th>Letzter Kontakt</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody id="termBody"></tbody>
+  </table>
+  <div id="leer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+    Keine Terminals registriert.
+  </div>
+</div>
+
+<!-- Editor-Dialog -->
+<div id="editDlg" class="hidden"
+     style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000;
+            display:flex; align-items:center; justify-content:center;">
+  <div class="card" style="width:min(560px,90vw); background:var(--bg); padding:24px;">
+    <h2 id="dlgTitel" style="margin-bottom:16px;">Terminal</h2>
+    <input type="hidden" id="edId">
+    <div style="display:flex; gap:12px;">
+      <div class="form-group" style="flex:2;">
+        <label>Bezeichnung</label>
+        <input class="form-control" id="edBezeichnung" placeholder="z.B. Kasse 1">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Typ</label>
+        <select class="form-control" id="edTyp">
+          <option value="KASSE">KASSE</option>
+          <option value="KIOSK">KIOSK</option>
+          <option value="ADMIN">ADMIN</option>
+          <option value="ORGA">ORGA</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Hostname</label>
+      <input class="form-control" id="edHostname">
+    </div>
+    <div class="form-group">
+      <label>MAC-Adresse (AA:BB:CC:DD:EE:FF)</label>
+      <input class="form-control" id="edMac">
+    </div>
+    <div class="form-group">
+      <label>
+        <input type="checkbox" id="edAktiv" checked> Aktiv
+      </label>
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn" onclick="schliesseDlg()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="speichern()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_script %}
+<script>
+const HOST = {{ (host_hostname or '')|tojson }};
+const MAC = {{ (host_mac or '')|tojson }};
+let eintraege = [];
+let bearbeiteId = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+
+async function load() {
+  const r = await api('GET', '/api/dorfkern/terminals');
+  if (!r.ok) { toast(r.msg || 'Fehler beim Laden', 'err'); return; }
+  eintraege = r.eintraege || [];
+  render();
+}
+
+function render() {
+  const body = document.getElementById('termBody');
+  const leer = document.getElementById('leer');
+  if (!eintraege.length) {
+    body.innerHTML = '';
+    leer.classList.remove('hidden');
+    return;
+  }
+  leer.classList.add('hidden');
+  body.innerHTML = eintraege.map(e => `
+    <tr>
+      <td>${e.TERMINAL_ID}</td>
+      <td><strong>${esc(e.BEZEICHNUNG)}</strong></td>
+      <td><span class="tag">${esc(e.TYP)}</span></td>
+      <td><code>${esc(e.HOSTNAME || '')}</code></td>
+      <td><code>${esc(e.MAC_ADRESSE || '')}</code></td>
+      <td><code>${esc(e.IP_LETZTE || '')}</code></td>
+      <td>${e.AKTIV ? '✅' : '❌'}</td>
+      <td style="font-size:13px;">${esc(e.LETZTER_KONTAKT || '–')}</td>
+      <td>
+        <button class="btn btn-sm" onclick="oeffneBearbeiten(${e.TERMINAL_ID})">Bearbeiten</button>
+        <button class="btn btn-sm btn-danger" onclick="loeschen(${e.TERMINAL_ID})">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function oeffneNeu() {
+  bearbeiteId = null;
+  document.getElementById('dlgTitel').textContent = 'Neues Terminal';
+  document.getElementById('edId').value = '';
+  document.getElementById('edBezeichnung').value = '';
+  document.getElementById('edTyp').value = 'KASSE';
+  document.getElementById('edHostname').value = '';
+  document.getElementById('edMac').value = '';
+  document.getElementById('edAktiv').checked = true;
+  document.getElementById('editDlg').classList.remove('hidden');
+}
+
+function fuelleAktuellenHost() {
+  oeffneNeu();
+  document.getElementById('edHostname').value = HOST;
+  document.getElementById('edMac').value = MAC;
+}
+
+function oeffneBearbeiten(id) {
+  const e = eintraege.find(x => x.TERMINAL_ID === id);
+  if (!e) return;
+  bearbeiteId = id;
+  document.getElementById('dlgTitel').textContent = 'Terminal bearbeiten';
+  document.getElementById('edId').value = id;
+  document.getElementById('edBezeichnung').value = e.BEZEICHNUNG;
+  document.getElementById('edTyp').value = e.TYP;
+  document.getElementById('edHostname').value = e.HOSTNAME || '';
+  document.getElementById('edMac').value = e.MAC_ADRESSE || '';
+  document.getElementById('edAktiv').checked = !!e.AKTIV;
+  document.getElementById('editDlg').classList.remove('hidden');
+}
+
+function schliesseDlg() {
+  document.getElementById('editDlg').classList.add('hidden');
+}
+
+async function speichern() {
+  const body = {
+    bezeichnung: document.getElementById('edBezeichnung').value.trim(),
+    typ:         document.getElementById('edTyp').value,
+    hostname:    document.getElementById('edHostname').value.trim() || null,
+    mac_adresse: document.getElementById('edMac').value.trim().toUpperCase() || null,
+    aktiv:       document.getElementById('edAktiv').checked ? 1 : 0,
+  };
+  if (!body.bezeichnung) { toast('Bezeichnung ist Pflicht.', 'err'); return; }
+
+  let r;
+  if (bearbeiteId) {
+    r = await api('PUT', '/api/dorfkern/terminals/' + bearbeiteId, body);
+  } else {
+    r = await api('POST', '/api/dorfkern/terminals', body);
+  }
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) { schliesseDlg(); load(); }
+}
+
+async function loeschen(id) {
+  if (!confirm('Terminal wirklich loeschen?')) return;
+  const r = await api('DELETE', '/api/dorfkern/terminals/' + id);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) load();
+}
+
+load();
+</script>
+{% endblock %}

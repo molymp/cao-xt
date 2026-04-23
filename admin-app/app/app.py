@@ -1258,6 +1258,144 @@ def _legacy_verwaltung_redirect(pfad):
     return redirect(ziel, code=301)
 
 
+# ── Dorfkern v2: Konfiguration + Terminal-Registry ────────────
+
+from common import konfig as _konfig  # noqa: E402
+from common import terminal as _terminal  # noqa: E402
+
+_KONFIG_TYPEN = ('STRING', 'INT', 'BOOL', 'JSON', 'SECRET')
+
+
+@app.route('/dorfkern/konfig')
+@_login_required
+def dorfkern_konfig():
+    kategorien = sorted({e['KATEGORIE'] for e in _konfig.alle()
+                         if e.get('KATEGORIE')})
+    return render_template('dorfkern_konfig.html',
+                           kategorien=kategorien,
+                           typen=_KONFIG_TYPEN)
+
+
+@app.get('/api/dorfkern/konfig')
+@_login_required
+def api_dorfkern_konfig_list():
+    kategorie = request.args.get('kategorie') or None
+    try:
+        eintraege = _konfig.alle(kategorie=kategorie)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    # SECRET-Werte maskieren
+    for e in eintraege:
+        if e.get('TYP') == 'SECRET' and e.get('WERT'):
+            w = str(e['WERT'])
+            e['WERT'] = (w[:2] + '…' + w[-1:]) if len(w) > 4 else '…'
+    return jsonify(ok=True, eintraege=eintraege)
+
+
+@app.post('/api/dorfkern/konfig')
+@_login_required
+def api_dorfkern_konfig_upsert():
+    d = request.get_json(force=True) or {}
+    schluessel = (d.get('schluessel') or '').strip()
+    if not schluessel:
+        return jsonify(ok=False, msg='SCHLUESSEL darf nicht leer sein.'), 400
+    typ = (d.get('typ') or 'STRING').upper()
+    if typ not in _KONFIG_TYPEN:
+        return jsonify(ok=False, msg=f'Ungueltiger TYP: {typ}'), 400
+    try:
+        _konfig.set(
+            schluessel,
+            d.get('wert', ''),
+            typ=typ,
+            kategorie=(d.get('kategorie') or 'ALLGEMEIN').strip(),
+            beschreibung=(d.get('beschreibung') or None),
+            ma_id=session.get('ma_id'),
+        )
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, msg='Konfiguration gespeichert.')
+
+
+@app.delete('/api/dorfkern/konfig/<path:schluessel>')
+@_login_required
+def api_dorfkern_konfig_delete(schluessel):
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("DELETE FROM DORFKERN_KONFIG WHERE SCHLUESSEL = %s",
+                        (schluessel,))
+        _konfig.invalidate(schluessel)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, msg='Eintrag geloescht.')
+
+
+@app.route('/dorfkern/terminals')
+@_login_required
+def dorfkern_terminals():
+    return render_template(
+        'dorfkern_terminals.html',
+        host_hostname=_terminal.hostname(),
+        host_mac=_terminal.mac_adresse(),
+        host_ip=_terminal.lokale_ip(),
+    )
+
+
+@app.get('/api/dorfkern/terminals')
+@_login_required
+def api_dorfkern_terminals_list():
+    typ = request.args.get('typ') or None
+    try:
+        # DATETIME-Felder als ISO-String fuer JSON-Kompatibilitaet
+        eintraege = _terminal.alle(typ=typ)
+        for e in eintraege:
+            kontakt = e.get('LETZTER_KONTAKT')
+            if kontakt and hasattr(kontakt, 'isoformat'):
+                e['LETZTER_KONTAKT'] = kontakt.isoformat(sep=' ',
+                                                        timespec='seconds')
+        return jsonify(ok=True, eintraege=eintraege)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/dorfkern/terminals')
+@_login_required
+def api_dorfkern_terminals_create():
+    d = request.get_json(force=True) or {}
+    try:
+        tid = _terminal.anlegen(
+            bezeichnung=(d.get('bezeichnung') or '').strip(),
+            typ=(d.get('typ') or '').upper(),
+            hostname_=(d.get('hostname') or None),
+            mac=(d.get('mac_adresse') or None),
+        )
+    except ValueError as e:
+        return jsonify(ok=False, msg=str(e)), 400
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, terminal_id=tid, msg='Terminal angelegt.')
+
+
+@app.put('/api/dorfkern/terminals/<int:terminal_id>')
+@_login_required
+def api_dorfkern_terminals_update(terminal_id):
+    d = request.get_json(force=True) or {}
+    try:
+        _terminal.aktualisieren(terminal_id, **d)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, msg='Terminal aktualisiert.')
+
+
+@app.delete('/api/dorfkern/terminals/<int:terminal_id>')
+@_login_required
+def api_dorfkern_terminals_delete(terminal_id):
+    try:
+        _terminal.loeschen(terminal_id)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, msg='Terminal geloescht.')
+
+
 # ── App starten ──────────────────────────────────────────────────
 
 if __name__ == '__main__':

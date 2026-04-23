@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Dorfkern-Konfiguration{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:8px;">⚙️ Dorfkern-Konfiguration</h1>
+<p style="color:var(--text-dim); margin-bottom:20px;">
+  Zentrale Key-Value-Konfiguration (DORFKERN_KONFIG). SECRET-Werte werden maskiert angezeigt.
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label style="display:block; font-size:12px; color:var(--text-dim);">Kategorie-Filter</label>
+      <select id="fltKategorie" class="form-control" style="min-width:180px;">
+        <option value="">– alle –</option>
+        {% for k in kategorien %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="oeffneNeu()">➕ Neuer Eintrag</button>
+    <button class="btn" onclick="load()">🔄 Neu laden</button>
+  </div>
+</div>
+
+<div class="card">
+  <table class="tbl" id="konfTbl">
+    <thead>
+      <tr>
+        <th>Schluessel</th>
+        <th>Wert</th>
+        <th>Typ</th>
+        <th>Kategorie</th>
+        <th>Beschreibung</th>
+        <th>Geaendert</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody id="konfBody"></tbody>
+  </table>
+  <div id="leer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+    Keine Eintraege.
+  </div>
+</div>
+
+<!-- Editor-Dialog -->
+<div id="editDlg" class="hidden"
+     style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000;
+            display:flex; align-items:center; justify-content:center;">
+  <div class="card" style="width:min(560px,90vw); background:var(--bg); padding:24px;">
+    <h2 id="dlgTitel" style="margin-bottom:16px;">Eintrag bearbeiten</h2>
+    <div class="form-group">
+      <label>Schluessel</label>
+      <input class="form-control" id="edSchluessel" placeholder="z.B. email.smtp_host">
+    </div>
+    <div class="form-group">
+      <label>Wert</label>
+      <input class="form-control" id="edWert">
+    </div>
+    <div style="display:flex; gap:12px;">
+      <div class="form-group" style="flex:1;">
+        <label>Typ</label>
+        <select class="form-control" id="edTyp">
+          {% for t in typen %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Kategorie</label>
+        <input class="form-control" id="edKategorie" placeholder="DB / EMAIL / HACCP / ...">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Beschreibung</label>
+      <input class="form-control" id="edBeschreibung">
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn" onclick="schliesseDlg()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="speichern()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_script %}
+<script>
+let eintraege = [];
+let bearbeitetSchluessel = null;  // null = neuer Eintrag
+
+async function load() {
+  const kat = document.getElementById('fltKategorie').value;
+  const url = '/api/dorfkern/konfig' + (kat ? '?kategorie=' + encodeURIComponent(kat) : '');
+  const r = await api('GET', url);
+  if (!r.ok) { toast(r.msg || 'Fehler beim Laden', 'err'); return; }
+  eintraege = r.eintraege || [];
+  render();
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+
+function render() {
+  const body = document.getElementById('konfBody');
+  const leer = document.getElementById('leer');
+  if (!eintraege.length) {
+    body.innerHTML = '';
+    leer.classList.remove('hidden');
+    return;
+  }
+  leer.classList.add('hidden');
+  body.innerHTML = eintraege.map(e => `
+    <tr>
+      <td><code>${esc(e.SCHLUESSEL)}</code></td>
+      <td>${esc(e.WERT)}</td>
+      <td><span class="tag">${esc(e.TYP)}</span></td>
+      <td>${esc(e.KATEGORIE)}</td>
+      <td style="color:var(--text-dim); font-size:13px;">${esc(e.BESCHREIBUNG || '')}</td>
+      <td style="font-size:13px;">${esc(e.GEAENDERT_AM || '')}</td>
+      <td>
+        <button class="btn btn-sm" onclick="oeffneBearbeiten('${esc(e.SCHLUESSEL)}')">Bearbeiten</button>
+        <button class="btn btn-sm btn-danger" onclick="loeschen('${esc(e.SCHLUESSEL)}')">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function oeffneNeu() {
+  bearbeitetSchluessel = null;
+  document.getElementById('dlgTitel').textContent = 'Neuer Eintrag';
+  document.getElementById('edSchluessel').value = '';
+  document.getElementById('edSchluessel').readOnly = false;
+  document.getElementById('edWert').value = '';
+  document.getElementById('edTyp').value = 'STRING';
+  document.getElementById('edKategorie').value = 'ALLGEMEIN';
+  document.getElementById('edBeschreibung').value = '';
+  document.getElementById('editDlg').classList.remove('hidden');
+}
+
+function oeffneBearbeiten(schluessel) {
+  const e = eintraege.find(x => x.SCHLUESSEL === schluessel);
+  if (!e) return;
+  bearbeitetSchluessel = schluessel;
+  document.getElementById('dlgTitel').textContent = 'Eintrag bearbeiten';
+  document.getElementById('edSchluessel').value = e.SCHLUESSEL;
+  document.getElementById('edSchluessel').readOnly = true;
+  // SECRET-Werte sind maskiert → Feld leer zum Neueingeben
+  document.getElementById('edWert').value = e.TYP === 'SECRET' ? '' : (e.WERT ?? '');
+  document.getElementById('edTyp').value = e.TYP;
+  document.getElementById('edKategorie').value = e.KATEGORIE;
+  document.getElementById('edBeschreibung').value = e.BESCHREIBUNG || '';
+  document.getElementById('editDlg').classList.remove('hidden');
+}
+
+function schliesseDlg() {
+  document.getElementById('editDlg').classList.add('hidden');
+}
+
+async function speichern() {
+  const body = {
+    schluessel:   document.getElementById('edSchluessel').value.trim(),
+    wert:         document.getElementById('edWert').value,
+    typ:          document.getElementById('edTyp').value,
+    kategorie:    document.getElementById('edKategorie').value.trim(),
+    beschreibung: document.getElementById('edBeschreibung').value.trim() || null,
+  };
+  if (!body.schluessel) { toast('Schluessel ist Pflicht.', 'err'); return; }
+  const r = await api('POST', '/api/dorfkern/konfig', body);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) { schliesseDlg(); load(); }
+}
+
+async function loeschen(schluessel) {
+  if (!confirm(`Eintrag "${schluessel}" wirklich loeschen?`)) return;
+  const r = await api('DELETE', '/api/dorfkern/konfig/' + encodeURIComponent(schluessel));
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) load();
+}
+
+document.getElementById('fltKategorie').addEventListener('change', load);
+load();
+</script>
+{% endblock %}

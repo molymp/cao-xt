@@ -446,6 +446,18 @@ a { text-decoration: none; color: inherit; }
 
       <hr class="sidebar-divider">
 
+      <div class="sidebar-section-title">Dorfkern</div>
+      <div class="sidebar-section">
+        <a href="/dorfkern/konfig" class="sidebar-item {% if request.path == '/dorfkern/konfig' %}aktiv{% endif %}">
+          <span class="icon">🔧</span> Konfiguration
+        </a>
+        <a href="/dorfkern/terminals" class="sidebar-item {% if request.path == '/dorfkern/terminals' %}aktiv{% endif %}">
+          <span class="icon">📟</span> Registry
+        </a>
+      </div>
+
+      <hr class="sidebar-divider">
+
       <div class="sidebar-section-title">Daten</div>
       <div class="sidebar-section">
         <a href="/artikel" class="sidebar-item {% if request.path == '/artikel' %}aktiv{% endif %}">
