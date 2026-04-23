@@ -183,8 +183,19 @@ def _dorfkern_konfig_initialisieren():
         log.warning("DORFKERN_KONFIG-Seed fehlgeschlagen: %s", exc)
 
 
+def _terminal_registry_initialisieren():
+    """Legt die TERMINAL-Tabelle an (Phase 4). Admin-App ist Eigentuemer."""
+    try:
+        from common import terminal as _terminal
+    except Exception as exc:
+        log.warning("TERMINAL-Init: Modul-Import fehlgeschlagen: %s", exc)
+        return
+    _terminal.run_migration()
+
+
 _migrationen_ausfuehren()
 _dorfkern_konfig_initialisieren()
+_terminal_registry_initialisieren()
 
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
