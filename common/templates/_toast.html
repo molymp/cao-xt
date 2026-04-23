@@ -1,0 +1,27 @@
+{#-
+  Toast-Notification: dezentes Banner unten mittig, 2.5s sichtbar.
+
+  Verwendung im JS:
+      toast('Gespeichert');                // Default-Typ 'ok'
+      toast('Fehler', 'err');              // Rot
+      toast('Hinweis', 'ok', 5000);        // 5s
+
+  Voraussetzungen in der jeweiligen base.html:
+    * CSS fuer #toast, #toast.show, #toast.ok, #toast.err
+      (Farb-Tokens sind app-spezifisch; Markup + JS sind gemeinsam).
+    * Wird ueblicherweise am Body-Ende eingebunden.
+
+  Kiosk verwendet aus historischen Gruenden ein separates Widget
+  (`zeigToast` + `.sichtbar`); die Angleichung erfolgt in Phase 2.3.
+-#}
+<div id="toast"></div>
+
+<script>
+function toast(msg, typ = 'ok', dauer = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + typ;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', dauer);
+}
+</script>

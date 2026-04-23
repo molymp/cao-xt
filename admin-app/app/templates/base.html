@@ -498,17 +498,9 @@ a { text-decoration: none; color: inherit; }
   </div>
 </div>
 
-<div id="toast"></div>
+{% include '_toast.html' %}
 
 <script>
-function toast(msg, typ = 'ok', dauer = 2500) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'show ' + typ;
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.className = '', dauer);
-}
-
 async function api(method, url, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);

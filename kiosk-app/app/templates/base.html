@@ -192,7 +192,9 @@
             box-shadow: var(--schatten-stark); z-index: 9999;
             transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none;
         }
-        #toast.sichtbar { transform: translateX(-50%) translateY(0); }
+        /* .show kommt aus dem gemeinsamen _toast.html; .sichtbar-Alias
+           fuer bestehenden JS-Code, wird in Folge-Phase entfernt. */
+        #toast.show, #toast.sichtbar { transform: translateX(-50%) translateY(0); }
 
         /* ── Bestätigungs-Overlay ── */
         #bestaetigung-overlay {
@@ -348,7 +350,7 @@
 
 {% block inhalt %}{% endblock %}
 
-<div id="toast"></div>
+{% include '_toast.html' %}
 
 <!-- ── Buchen-Bestätigung ── -->
 <!-- ── Lade-Overlay ── -->
@@ -407,11 +409,11 @@ window.addEventListener('pageshow', () => {
     if (overlay) overlay.classList.remove('sichtbar');
 });
 
+// Alias auf das gemeinsame toast()-Widget (aus _toast.html). Erhaelt die
+// bestehende Kiosk-Signatur (text, dauer) mit implizitem Typ 'ok'. Neue
+// Call-Sites koennen direkt toast(msg, 'ok'|'err', dauer) verwenden.
 function zeigToast(text, dauer = 2500) {
-    const t = document.getElementById('toast');
-    t.textContent = text;
-    t.classList.add('sichtbar');
-    setTimeout(() => t.classList.remove('sichtbar'), dauer);
+    toast(text, 'ok', dauer);
 }
 
 async function apiFetch(url, optionen = {}) {
