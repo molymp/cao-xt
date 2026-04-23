@@ -193,9 +193,26 @@ def _terminal_registry_initialisieren():
     _terminal.run_migration()
 
 
+def _permission_initialisieren():
+    """Legt DORFKERN_PERMISSION_* an und saet den Objekt-Katalog (Phase 6)."""
+    try:
+        from common import permission
+    except Exception as exc:
+        log.warning("Permission-Init: Modul-Import fehlgeschlagen: %s", exc)
+        return
+    permission.run_migration()
+    try:
+        n = permission.seed_objekte()
+        if n:
+            log.info("DORFKERN_PERMISSION_OBJEKT: %d Eintraege angelegt.", n)
+    except Exception as exc:
+        log.warning("Permission-Seed fehlgeschlagen: %s", exc)
+
+
 _migrationen_ausfuehren()
 _dorfkern_konfig_initialisieren()
 _terminal_registry_initialisieren()
+_permission_initialisieren()
 
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
