@@ -1,8 +1,10 @@
 # Release „Dorfkern v2" – Multi-Shop-Fähigkeit
 
-**Status:** Planungsentwurf (Stand 2026-04-23) — noch nicht freigegeben.
+**Status:** Freigegeben 2026-04-23 — Phase 1 startbereit.
 **Scope-Typ:** Architektur- und Konfigurations-Release, **keine neuen Fachfunktionen**.
 **Ziel:** Die bestehende Appsammlung so vorbereiten, dass sie in anderen Dorfläden und ähnlichen Geschäften eingesetzt werden kann.
+**Produktname:** **Dorfkern** (System-Name) — abgegrenzt vom Laden-Namen (hier „Habacher Dorfladen", konfiguriert via CAO-DB `FIRMA_NAME`).
+**Versionsnummer:** **2.0.0** (zu setzen in `caoxt/caoxt.ini [Version]`).
 
 ---
 
@@ -229,23 +231,26 @@ CREATE TABLE IF NOT EXISTS DORFKERN_APP_AKTIVIERUNG (
 
 ---
 
-## 7. Offene Entscheidungen (vor Phase 1)
+## 7. Entscheidungen (freigegeben 2026-04-23)
 
-Bitte beantworten, damit Phase 1 starten kann:
+| # | Thema | Entscheidung |
+|---|---|---|
+| 1 | **Produktname / Laden-Name-Trennung** | „**Dorfkern**" = System/Produkt (fix im Code). „**Habacher Dorfladen**" = Laden-Instanz, kommt aus CAO-DB (`FIRMA_NAME`). Bei anderen Installationen wird dort der jeweilige Laden-Name konfiguriert. UI nutzt durchgängig `{{ firma_name }}` für Laden-Text, „Dorfkern" steht nur als Produkt-Marker (z.B. in Fußzeile/About/Admin-Titel). |
+| 2 | **Mandantenfähigkeit** | **Variante A:** Eine Instanz = ein Laden. Eine Installation pro Dorfladen. Keine Tenant-ID in Tabellen. |
+| 3 | **Rechte-Quelle** | CAO ist Wahrheit für Mitarbeiter + Rollen (`MITARBEITER`, `BENUTZERRECHTE`). Dorfkern-eigene Tabellen: `DORFKERN_PERMISSION_OBJEKT`, `DORFKERN_ROLLE_PERMISSION`. Mapping Rolle → Objekte liegt vollständig in Dorfkern. |
+| 4 | **URL-Redirects** | `/wawi/*` → `/orga/*` und `/verwaltung/*` → `/admin/*` als 301-Redirect **bis einschließlich nächste Major-Version** (v3). |
+| 5 | **Icons Admin/Orga** | ⚙️ (Admin) und 📦 (Orga) bleiben erstmal. Keine neuen Icons in v2.0.0. |
+| 6 | **Service-Control Netzwerk** | In v2: **SSH mit hinterlegtem Key** (Admin-Host ssh → Terminal-Host). Agent-Dienst optional in v3. |
+| 7 | **Datenquellen-Adapter** | In v2 **nur lesend** (Artikel-Stammdaten, Bestände). Schreiben (Verkäufe/Inventur) frühestens v3. |
+| 8 | **TSE-Relevanz-Checkliste** | Ja — jede Phase hat am PR-Kopf eine TSE-Checkliste. Zertifizierungs-relevante Felder bleiben in Kasse-App, nicht über Admin-UI editierbar. |
+| 9 | **Produktname ≠ Ladenname** | (Siehe #1.) In Code/Templates strikt trennen: `PRODUKT_NAME = "Dorfkern"` (konstant), `firma_name` (Laden aus CAO) bleibt pro Instanz. |
+| 10 | **Versionsnummer** | **v2.0.0** für diese Release-Linie. In `caoxt/caoxt.ini [Version]` zu setzen; angezeigt in About-Dialog und Navbar-Tooltip. |
 
-1. **Produktname:** Ist „Dorfkern" der offizielle Produktname (erscheint z.B. in Fußzeilen, Admin-Titel)? Oder nur internes Arbeitswort?
-2. **Mandantenfähigkeit:**
-   - **Variante A:** Eine Instanz = ein Laden (eine DB, eine Code-Installation pro Laden). Skalierung durch mehrere Installationen. *(Einfacher, aktuelles Modell.)*
-   - **Variante B:** Eine Instanz = viele Läden (Tenant-ID in allen Tabellen). *(Aufwendiger, ermöglicht SaaS-Modell.)*
-   - Mein Vorschlag: **A**, solange kein konkretes SaaS-Szenario verfolgt wird.
-3. **Rechte-Quelle:** Ist CAO **die** Wahrheit für Benutzer + Rollen, oder führen wir eine eigene Benutzer-Tabelle und synchronisieren? Mein Vorschlag: CAO bleibt Wahrheit für Mitarbeiter, Permission-Objekte sind Dorfkern-eigene Tabelle, Mapping Rolle → Objekte auch Dorfkern-eigen.
-4. **App-Umbenennung — URL-Redirects:** Wie lange sollen `/wawi/*` und `/verwaltung/*` noch als 301-Redirect erhalten bleiben? Vorschlag: bis einschließlich nächste Major-Version.
-5. **Icons Admin/Orga:** Ersetzen wir ⚙️/📦 im App-Switcher durch Eigene, oder reichen die bestehenden Emojis zunächst?
-6. **Service-Control über Netzwerk (Phase 5):** Über SSH mit hinterlegtem Key, oder über einen eigenen kleinen Agent-Dienst auf jedem Host? Vorschlag: SSH in v2, Agent optional in v3.
-7. **Datenquellen-Schreibrichtung (Phase 8):** Sollen Google-Sheet-/CSV-Adapter **schreibend** sein (Verkäufe zurückschreiben) oder nur **lesend** (Bestand importieren)? Schreibend ist deutlich heikler (Konflikte, Format).
-8. **TSE-Relevanz prüfen:** Alle Konfigurations-Änderungen daraufhin prüfen, ob sie zertifizierungsrelevant sind? Vorschlag: Ja, Checkliste bei jedem Phase-Merge; Zertifizierungs-relevante Felder bleiben in Kasse und werden nicht über Admin-UI editierbar.
-9. **Rollout-Strategie Habacher Dorfladen vs. neue Läden:** Erst bei Habacher durchlaufen lassen, dann neue Läden? Oder Dev-Line für neue Läden, Habacher bleibt auf v1? Vorschlag: Habacher als Referenz-Installation auf v2 migrieren, dann Rollout an weitere.
-10. **Release-Nummerierung:** Wie wird diese Release-Linie versioniert (z.B. `v2.0.0`)? Nutzung in `caoxt.ini [Version]`?
+### Klarstellung zum Rollout
+
+Da #9 als Produkt/Laden-Namens-Trennung beantwortet wurde (statt als Rollout-Frage), hier die Default-Rollout-Annahme für das Release (bitte bei Abweichung stoppen):
+- **Habacher Dorfladen** ist die Referenz-Installation: v2.0.0 wird dort zuerst in Betrieb gehen.
+- Nach Stabilitätsphase (≥ 4 Wochen produktiv) → Rollout an weitere Dorfläden.
 
 ---
 
