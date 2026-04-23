@@ -53,6 +53,28 @@ def init_pool(
         _pool = None  # Reset → wird beim naechsten _get_pool() neu erstellt
 
 
+def _pruefe_db_whitelist(db_name: str) -> None:
+    """Blockt harte Writes gegen bekannte Produktions-DBs aus Dev-Instanzen.
+
+    Liest ``[Sicherheit] verbotene_db_namen`` aus ``caoxt.ini`` (oder
+    ``XT_FORBIDDEN_DB_NAMES``-Env-Var). Passt ``db_name`` auf einen dieser
+    Werte (case-insensitiv), wird der App-Start mit ``RuntimeError``
+    abgebrochen – bevor eine Verbindung entsteht.
+
+    Leere Blacklist (Default) = kein Check, kein Verhaltensunterschied zu v2.0.
+    """
+    from common.config import load_security_config
+    sec = load_security_config()
+    verboten = sec.get('verbotene_db_namen') or []
+    if db_name and db_name.lower() in verboten:
+        raise RuntimeError(
+            f"DB-Sicherheits-Sperre: Verbindung zu '{db_name}' ist in dieser "
+            f"Instanz verboten (caoxt.ini [Sicherheit] verbotene_db_namen). "
+            f"Korrigiere [Datenbank] db_name auf eine Entwicklungs-DB, "
+            f"oder entferne den Eintrag aus der Blacklist."
+        )
+
+
 def _get_pool() -> pooling.MySQLConnectionPool:
     global _pool, _pool_config
     if _pool is None:
@@ -62,6 +84,7 @@ def _get_pool() -> pooling.MySQLConnectionPool:
                 if cfg is None:
                     from common.config import load_db_config
                     cfg = load_db_config()
+                _pruefe_db_whitelist(cfg.get('name', ''))
                 _pool = pooling.MySQLConnectionPool(
                     pool_name=_pool_name,
                     pool_size=_pool_size,
@@ -83,6 +106,7 @@ def _get_conn() -> mysql.connector.MySQLConnection:
         return _get_pool().get_connection()
     except Exception:
         cfg = _pool_config or {}
+        _pruefe_db_whitelist(cfg.get('name', ''))
         return mysql.connector.connect(
             host=cfg.get('host', 'localhost'),
             port=cfg.get('port', 3306),
