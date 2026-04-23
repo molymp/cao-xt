@@ -41,6 +41,22 @@ app.jinja_loader = ChoiceLoader([
 def _inject_globals():
     """Stellt terminal_nr und update_verfuegbar in allen Templates bereit."""
     tnr = get_terminal_nr()
+    kasse_url = config.KASSE_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
+        if config.KASSE_PORT else '')
+    orga_url = config.ORGA_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
+        if config.ORGA_PORT else '')
+    admin_url = config.ADMIN_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
+        if config.ADMIN_PORT else '')
+    # Feature-Gating (Phase 7): deaktivierte Apps aus Switcher ausblenden.
+    try:
+        from common import aktivierung as _akt
+        if not _akt.ist_aktiv('KASSE'): kasse_url = ''
+        if not _akt.ist_aktiv('ORGA'):  orga_url  = ''
+    except Exception:
+        pass
     return {
         "terminal_nr":        tnr,
         "ist_kundenterminal": (tnr == 9),
@@ -50,15 +66,9 @@ def _inject_globals():
         "firma_name":         config.FIRMA_NAME,
         "db_name":            config.DB_NAME,
         "ma_login_name":      session.get('login_name', ''),
-        "kasse_url":          config.KASSE_URL or (
-                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
-                                  if config.KASSE_PORT else ''),
-        "orga_url":           config.ORGA_URL or (
-                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
-                                  if config.ORGA_PORT else ''),
-        "admin_url":     config.ADMIN_URL or (
-                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
-                                  if config.ADMIN_PORT else ''),
+        "kasse_url":          kasse_url,
+        "orga_url":           orga_url,
+        "admin_url":          admin_url,
         "git_commit_short":   GIT_COMMIT_SHORT,
     }
 

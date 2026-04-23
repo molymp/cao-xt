@@ -143,6 +143,23 @@ def _globals():
         ec_tagesabschluss   = ts['ec_tagesabschluss']
     except Exception:
         pass
+    kiosk_url = config.KIOSK_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
+        if config.KIOSK_PORT else '')
+    orga_url = config.ORGA_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
+        if config.ORGA_PORT else '')
+    admin_url = config.ADMIN_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
+        if config.ADMIN_PORT else '')
+    # Feature-Gating (Phase 7): deaktivierte Apps aus Switcher ausblenden.
+    try:
+        from common import aktivierung as _akt
+        if not _akt.ist_aktiv('KIOSK'): kiosk_url = ''
+        if not _akt.ist_aktiv('ORGA'):  orga_url  = ''
+        # ADMIN ist immer aktiv – kein Gating.
+    except Exception:
+        pass
     return {
         'terminal_nr':         config.TERMINAL_NR,
         'firma_name':          config.FIRMA_NAME,
@@ -152,15 +169,9 @@ def _globals():
         'tse_nicht_produktiv': tse_nicht_produktiv,
         'ec_modus':            ec_modus,
         'ec_tagesabschluss':   ec_tagesabschluss,
-        'kiosk_url':           config.KIOSK_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
-                                   if config.KIOSK_PORT else ''),
-        'orga_url':            config.ORGA_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
-                                   if config.ORGA_PORT else ''),
-        'admin_url':      config.ADMIN_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
-                                   if config.ADMIN_PORT else ''),
+        'kiosk_url':           kiosk_url,
+        'orga_url':            orga_url,
+        'admin_url':           admin_url,
         'ma_login_name':       session.get('login_name', ''),
         'update_verfuegbar':   _update_status["verfuegbar"],
         'git_commit_short':    GIT_COMMIT_SHORT,

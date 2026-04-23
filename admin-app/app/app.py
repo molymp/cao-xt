@@ -209,10 +209,27 @@ def _permission_initialisieren():
         log.warning("Permission-Seed fehlgeschlagen: %s", exc)
 
 
+def _aktivierung_initialisieren():
+    """Legt DORFKERN_APP_AKTIVIERUNG an und saet die 4 Default-Apps (Phase 7)."""
+    try:
+        from common import aktivierung
+    except Exception as exc:
+        log.warning("Aktivierung-Init: Modul-Import fehlgeschlagen: %s", exc)
+        return
+    aktivierung.run_migration()
+    try:
+        n = aktivierung.seed_defaults()
+        if n:
+            log.info("DORFKERN_APP_AKTIVIERUNG: %d Eintraege angelegt.", n)
+    except Exception as exc:
+        log.warning("Aktivierung-Seed fehlgeschlagen: %s", exc)
+
+
 _migrationen_ausfuehren()
 _dorfkern_konfig_initialisieren()
 _terminal_registry_initialisieren()
 _permission_initialisieren()
+_aktivierung_initialisieren()
 
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
@@ -270,6 +287,16 @@ def _inject_globals():
     orga_url = config.ORGA_URL or (
         f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
         if config.ORGA_PORT else '')
+    # Feature-Gating (Phase 7): deaktivierte Apps werden aus dem Switcher
+    # ausgeblendet, indem die URL auf leer gesetzt wird → Template rendert
+    # "app-inaktiv".
+    try:
+        from common import aktivierung as _akt
+        if not _akt.ist_aktiv('KASSE'): kasse_url = ''
+        if not _akt.ist_aktiv('KIOSK'): kiosk_url = ''
+        if not _akt.ist_aktiv('ORGA'):  orga_url  = ''
+    except Exception as _exc:
+        log.debug("Feature-Gating uebersprungen: %s", _exc)
     return {
         "firma_name":       config.FIRMA_NAME,
         "kasse_url":        kasse_url,
@@ -1279,6 +1306,7 @@ def _legacy_verwaltung_redirect(pfad):
 
 from common import konfig as _konfig  # noqa: E402
 from common import terminal as _terminal  # noqa: E402
+from common import aktivierung as _aktivierung  # noqa: E402
 
 _KONFIG_TYPEN = ('STRING', 'INT', 'BOOL', 'JSON', 'SECRET')
 
@@ -1411,6 +1439,49 @@ def api_dorfkern_terminals_delete(terminal_id):
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
     return jsonify(ok=True, msg='Terminal geloescht.')
+
+
+# ── Dorfkern v2: App-Aktivierungen (Phase 7) ──────────────────
+
+@app.route('/dorfkern/aktivierungen')
+@_login_required
+def dorfkern_aktivierungen():
+    return render_template('dorfkern_aktivierungen.html')
+
+
+@app.get('/api/dorfkern/aktivierungen')
+@_login_required
+def api_dorfkern_aktivierungen_list():
+    try:
+        eintraege = _aktivierung.alle()
+        for e in eintraege:
+            g = e.get('GEAENDERT_AM')
+            if g and hasattr(g, 'isoformat'):
+                e['GEAENDERT_AM'] = g.isoformat(sep=' ', timespec='seconds')
+            lb = e.get('LIZENZ_BIS')
+            if lb and hasattr(lb, 'isoformat'):
+                e['LIZENZ_BIS'] = lb.isoformat()
+        return jsonify(ok=True, eintraege=eintraege)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/dorfkern/aktivierungen/<app_name>')
+@_login_required
+def api_dorfkern_aktivierungen_upsert(app_name):
+    d = request.get_json(force=True) or {}
+    try:
+        _aktivierung.set_aktiv(
+            app_name,
+            aktiv=bool(d.get('aktiv')),
+            lizenz_bis=(d.get('lizenz_bis') or None),
+            hinweis=(d.get('hinweis') or None),
+        )
+    except ValueError as e:
+        return jsonify(ok=False, msg=str(e)), 400
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    return jsonify(ok=True, msg='Aktivierung gespeichert.')
 
 
 # ── App starten ──────────────────────────────────────────────────
