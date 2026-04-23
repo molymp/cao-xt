@@ -439,21 +439,10 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% elif tse_nicht_produktiv %}
   <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
   {% endif %}
-  <!-- App-Switcher: Kiosk → Kasse → Orga (feste Reihenfolge) -->
-  {% if kiosk_url %}
-  <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
-  {% else %}
-  <span class="nav-btn nav-btn-app-inaktiv">🖥️ Kiosk</span>
-  {% endif %}
-  <a href="/kasse" class="nav-btn nav-btn-app-aktiv">🛒 Kasse</a>
-  {% if orga_url %}
-  <a href="{{ orga_url }}" class="nav-btn nav-btn-switch">📦 Orga</a>
-  {% else %}
-  <span class="nav-btn nav-btn-app-inaktiv">📦 Orga</span>
-  {% endif %}
-  {% if admin_url %}
-  <a href="{{ admin_url }}" class="nav-btn nav-btn-switch">⚙️ Admin</a>
-  {% endif %}
+  {# App-Switcher: Kiosk → Kasse → Orga → Admin #}
+  {% set aktive_app = 'kasse' %}
+  {% set aktive_app_url = '/kasse' %}
+  {% include '_app_switcher.html' %}
   <div style="flex:1"></div>
   {% block nav_extra %}{% endblock %}
   {% if update_verfuegbar %}
@@ -462,11 +451,8 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/logout"           class="nav-btn danger">Abmelden</a>
-  <div class="navbar-uhrzeit" id="navbar-uhrzeit">
-    {% if ma_login_name %}<span class="uhr-user">👤 {{ ma_login_name }}</span>{% endif %}
-    <span class="uhr-zeit">--:--</span>
-    <span class="uhr-datum">--</span>
-  </div>
+  {% set navbar_user_name = ma_login_name %}
+  {% include '_navbar_uhrzeit.html' %}
 </div>
 
 {% block content %}{% endblock %}

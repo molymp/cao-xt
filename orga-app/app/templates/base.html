@@ -411,21 +411,10 @@ a { text-decoration: none; color: inherit; }
         <span class="logo-sub">Orga</span>
       </span>
     </span>
-    <!-- App-Switcher: Kiosk → Kasse → Orga (feste Reihenfolge) -->
-    {% if kiosk_url %}
-    <a href="{{ kiosk_url }}" class="nav-btn nav-btn-switch">🖥️ Kiosk</a>
-    {% else %}
-    <span class="nav-btn nav-btn-app-inaktiv">🖥️ Kiosk</span>
-    {% endif %}
-    {% if kasse_url %}
-    <a href="{{ kasse_url }}" class="nav-btn nav-btn-switch">🛒 Kasse</a>
-    {% else %}
-    <span class="nav-btn nav-btn-app-inaktiv">🛒 Kasse</span>
-    {% endif %}
-    <a href="/" class="nav-btn nav-btn-app-aktiv">📦 Orga</a>
-    {% if admin_url %}
-    <a href="{{ admin_url }}" class="nav-btn nav-btn-switch">⚙️ Admin</a>
-    {% endif %}
+    {# App-Switcher: Kiosk → Kasse → Orga → Admin #}
+    {% set aktive_app = 'orga' %}
+    {% set aktive_app_url = '/' %}
+    {% include '_app_switcher.html' %}
     <div class="spacer"></div>
     {% if db_ok %}
     <span class="db-badge ok">DB ✓</span>
@@ -435,11 +424,8 @@ a { text-decoration: none; color: inherit; }
     {% if current_user %}
     <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
     {% endif %}
-    <div class="navbar-uhrzeit" id="navbar-uhrzeit">
-      {% if current_user %}<span class="uhr-user">👤 {{ current_user.login_name }}</span>{% endif %}
-      <span class="uhr-zeit">--:--</span>
-      <span class="uhr-datum">--</span>
-    </div>
+    {% set navbar_user_name = current_user.login_name if current_user else '' %}
+    {% include '_navbar_uhrzeit.html' %}
   </div>
 
   <!-- Body -->
