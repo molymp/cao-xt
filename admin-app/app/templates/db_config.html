@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Datenbank{% endblock %}
 {% block content %}
-<h1 style="margin-bottom:24px;">🗄️ Datenbank-Konfiguration</h1>
+<h1 style="margin-bottom:8px;">🗄️ Datenbank-Konfiguration</h1>
+<p style="color:var(--text-dim); margin-bottom:20px; max-width:600px;">
+  Bootstrap-Zugangsdaten der MariaDB-Verbindung (Host, Port, DB-Name, User,
+  Passwort). Diese werden in <code>caoxt.ini</code> gespeichert, weil sie
+  gebraucht werden, <em>bevor</em> eine DB-Verbindung steht.
+  Alle anderen Konfigurationswerte (E-Mail, HACCP, Feature-Flags …) liegen
+  in der Tabelle <code>DORFKERN_KONFIG</code> und werden unter
+  <a href="/dorfkern/konfig">Dorfkern → Konfiguration</a> gepflegt.
+</p>
 
 <div class="card" style="max-width:600px;">
   <form id="dbForm" onsubmit="return saveConfig(event)">
