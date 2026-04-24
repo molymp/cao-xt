@@ -1877,6 +1877,11 @@ def _brand_asset(dateiname):
                                max_age=60 * 60 * 24)
 
 
+# ── Gemeinsame Statik (common/static/*) – dorfkern.css et al. ──
+from common.static_serving import register_common_static as _reg_common_static  # noqa: E402
+_reg_common_static(app)
+
+
 # ── Legacy-Redirects (Dorfkern v2 Rename /verwaltung → /admin) ─
 # Bestehende Bookmarks / Druck-QR-Codes treffen weiterhin auf /verwaltung/...
 # Wir antworten 301 auf /admin/...  Soll in Dorfkern v2.1 entfernt werden.
