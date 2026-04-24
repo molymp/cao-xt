@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}App-Steuerung{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+  .apps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 14px;
+  }
+  .app-karte {
+    padding: 14px 16px;
+    background: var(--bg-hell);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .app-karte .kopf {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .status-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-dot.running { background: #34d399;
+                        box-shadow: 0 0 8px #34d39980; }
+  .status-dot.stopped { background: #f87171; }
+  .app-name {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .app-typ {
+    color: var(--text-dim);
+    font-family: monospace;
+    font-size: 11px;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  .app-karte .beschreibung {
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .app-karte .meta {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 4px;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .app-karte .meta .lbl { color: var(--text-dim); }
+  .app-karte .meta .val {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-hell);
+    word-break: break-all;
+  }
+  .app-karte .aktionen {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .btn-aktion {
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    font-family: inherit;
+  }
+  .btn-aktion:hover:not(:disabled) { background: var(--bg-hell); }
+  .btn-aktion:disabled {
+    opacity: 0.4; cursor: not-allowed;
+  }
+  .btn-aktion.start { border-color: #34d399; color: #34d399; }
+  .btn-aktion.stop  { border-color: #f87171; color: #f87171; }
+  .btn-aktion.restart { border-color: #fbbf24; color: #fbbf24; }
+  .btn-aktion.log   { border-color: var(--border);
+                      color: var(--text-dim); }
+
+  .log-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #0a0a0a;
+    color: #cbd5e1;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: none;
+  }
+  .app-karte.log-auf .log-box { display: block; }
+
+  .hinweis {
+    margin-top: 10px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    display: none;
+  }
+  .hinweis.ok   { background: #1f2937; color: #86efac; display: block; }
+  .hinweis.fehler { background: #3b1f1a; color: #fecaca; display: block; }
+
+  .auto-refresh {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">🎛️ App-Steuerung</h1>
+<div class="info-banner">
+  Start/Stop/Restart aller CAO-XT-Apps. Identisch zu
+  <code>./dorfkern-ctl [start|stop|restart] &lt;app&gt;</code> auf
+  der Shell. Die Admin-App selbst kann nicht von hier aus neu
+  gestartet werden (würde sich selbst stoppen).
+</div>
+
+<div class="auto-refresh">
+  <label>
+    <input type="checkbox" id="chk-auto" checked> Status automatisch
+    aktualisieren (3 s)
+  </label>
+</div>
+
+<div id="apps-grid" class="apps-grid">
+  <div style="color: var(--text-dim); padding: 24px;">Lade…</div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _apps = [];
+let _auto = true;
+let _interval = null;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function render() {
+  const box = document.getElementById('apps-grid');
+  if (!_apps.length) {
+    box.innerHTML = '<div style="color:var(--text-dim);padding:24px;">Keine Apps registriert.</div>';
+    return;
+  }
+  box.innerHTML = _apps.map(renderKarte).join('');
+  _apps.forEach(a => bindAktionen(a.name));
+}
+
+function renderKarte(a) {
+  const kann_restart = a.name !== 'admin';
+  return `
+    <div class="app-karte" data-name="${escapeHtml(a.name)}">
+      <div class="kopf">
+        <div class="status-dot ${a.running ? 'running' : 'stopped'}"></div>
+        <div class="app-name">${escapeHtml(a.name)}</div>
+        <div class="app-typ">${escapeHtml(a.type)}</div>
+      </div>
+      <div class="beschreibung">${escapeHtml(a.beschreibung)}</div>
+      <div class="meta">
+        <div class="lbl">Status</div>
+        <div class="val">${a.running ? 'läuft' : 'gestoppt'}</div>
+        ${a.port != null ? `
+          <div class="lbl">Port</div>
+          <div class="val">${a.port}</div>` : ''}
+        ${a.pid ? `
+          <div class="lbl">PID</div>
+          <div class="val">${a.pid}</div>` : ''}
+        ${a.log ? `
+          <div class="lbl">Log</div>
+          <div class="val">${escapeHtml(a.log)}</div>` : ''}
+      </div>
+      <div class="aktionen">
+        <button class="btn-aktion start"  data-aktion="start"
+                ${a.running ? 'disabled' : ''}>Starten</button>
+        <button class="btn-aktion stop"   data-aktion="stop"
+                ${a.running ? '' : 'disabled'}>Stoppen</button>
+        <button class="btn-aktion restart" data-aktion="restart"
+                ${kann_restart ? '' : 'disabled'}
+                title="${kann_restart ? ''
+                  : 'Admin-App kann sich nicht selbst restarten.'}">
+          Restart</button>
+        <button class="btn-aktion log"    data-aktion="log-toggle">
+          Log</button>
+      </div>
+      <div class="hinweis"></div>
+      <div class="log-box">(Log noch nicht geladen)</div>
+    </div>`;
+}
+
+function bindAktionen(name) {
+  const karte = document.querySelector(`.app-karte[data-name="${name}"]`);
+  if (!karte) return;
+  karte.querySelectorAll('.btn-aktion').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const aktion = btn.dataset.aktion;
+      if (aktion === 'log-toggle') return toggleLog(name, karte);
+      await aktionAusfuehren(name, aktion, karte);
+    });
+  });
+}
+
+function hinweis(karte, typ, msg) {
+  const el = karte.querySelector('.hinweis');
+  el.className = 'hinweis ' + typ;
+  el.textContent = msg;
+}
+
+async function aktionAusfuehren(name, aktion, karte) {
+  const btns = karte.querySelectorAll('.btn-aktion');
+  btns.forEach(b => b.disabled = true);
+  hinweis(karte, 'ok', `${aktion}: läuft…`);
+  try {
+    const r = await fetch(`/api/system/apps/${name}/${aktion}`,
+      {method: 'POST'}).then(r => r.json());
+    if (r.ok) {
+      hinweis(karte, 'ok', `${aktion}: erfolgreich.`);
+    } else {
+      hinweis(karte, 'fehler', r.msg || `${aktion}: fehlgeschlagen.`);
+    }
+  } catch (e) {
+    hinweis(karte, 'fehler', String(e));
+  }
+  // Status nach 1s aktualisieren (dem Daemon Zeit geben)
+  setTimeout(laden, 1000);
+}
+
+async function toggleLog(name, karte) {
+  const box = karte.querySelector('.log-box');
+  if (karte.classList.contains('log-auf')) {
+    karte.classList.remove('log-auf');
+    return;
+  }
+  karte.classList.add('log-auf');
+  box.textContent = '(lade Log…)';
+  try {
+    const r = await fetch(`/api/system/apps/${name}/log?zeilen=80`)
+      .then(r => r.json());
+    if (r.ok) {
+      box.textContent = (r.zeilen || []).join('\n') || '(leeres Log)';
+      box.scrollTop = box.scrollHeight;
+    } else {
+      box.textContent = 'Fehler: ' + (r.msg || '?');
+    }
+  } catch (e) {
+    box.textContent = 'Fehler: ' + String(e);
+  }
+}
+
+async function laden() {
+  try {
+    const r = await fetch('/api/system/apps').then(r => r.json());
+    if (!r.ok) return;
+    _apps = r.apps || [];
+    render();
+  } catch (e) {
+    console.error('laden fehlgeschlagen', e);
+  }
+}
+
+function autoSetup() {
+  if (_interval) clearInterval(_interval);
+  if (_auto) _interval = setInterval(laden, 3000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('chk-auto').addEventListener('change', (e) => {
+    _auto = e.target.checked;
+    autoSetup();
+  });
+  laden();
+  autoSetup();
+});
+</script>
+{% endblock %}

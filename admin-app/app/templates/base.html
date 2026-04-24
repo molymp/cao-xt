@@ -488,6 +488,12 @@ a { text-decoration: none; color: inherit; }
         <a href="/system/updates" class="sidebar-item {% if request.path == '/system/updates' %}aktiv{% endif %}">
           <span class="icon">⬆️</span> Updates
         </a>
+        <a href="/system/apps" class="sidebar-item {% if request.path == '/system/apps' %}aktiv{% endif %}">
+          <span class="icon">🎛️</span> App-Steuerung
+        </a>
+        <a href="/system/haccp-poller" class="sidebar-item {% if request.path == '/system/haccp-poller' %}aktiv{% endif %}">
+          <span class="icon">🌡️</span> HACCP-Poller
+        </a>
       </div>
 
       <hr class="sidebar-divider">
@@ -562,6 +568,17 @@ a { text-decoration: none; color: inherit; }
             </a>
             <a href="/stammdaten/exporte" class="sidebar-item {% if request.path == '/stammdaten/exporte' %}aktiv{% endif %}">
               <span class="icon">📊</span> Export-Queries
+            </a>
+          </div>
+        </div>
+
+        <div class="sidebar-subgroup" data-sg="extras">
+          <div class="sidebar-subgroup-title">
+            <span class="caret">▾</span> Zusätzliches
+          </div>
+          <div class="sidebar-subgroup-items">
+            <a href="/stammdaten/mittagstisch" class="sidebar-item {% if request.path == '/stammdaten/mittagstisch' %}aktiv{% endif %}">
+              <span class="icon">🍽️</span> Mittagstisch
             </a>
           </div>
         </div>
