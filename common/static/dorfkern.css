@@ -2,41 +2,69 @@
    Dorfkern – Shared Base CSS
    ------------------------------------------------------------------------
    Wird von allen vier Apps (admin, kasse, kiosk, orga) via
-   /common-static/dorfkern.css geladen. Liefert:
-     - Dorfkern-Gruen-Theme als Default (--gruen-*, --bg-dunkel etc.)
-     - Typografie-Grundsatz (Nunito fuer UI, Fraunces fuer Headlines)
-     - Wiederverwendbare Komponenten: .card, .info-banner, .stat-zeile +
-       .chip, .sidebar-section-title, .sidebar-item, .sidebar-divider,
-       .sidebar-subgroup (klappbar).
-   Admin-App ueberschreibt die Farb-Variablen mit dorfkern-admin.css
-   (duenner Theme-Override, laedt NACH dieser Datei).
-   App-spezifische Styles bleiben in der jeweiligen base.html und
-   gewinnen weil sie spaeter im <head> stehen (Kaskaden-Reihenfolge).
+   /common-static/dorfkern.css geladen. Offizielles Dorfkern-Brand aus
+   common/brand/dorfkern-logo.js + Logo-Final-Exploration (A2 W2):
+
+     Tokens        Hex        Rolle
+     ------------  ---------  -----------------------------------
+     --brand-ink           #141414    Hauptschrift auf hell
+     --brand-cream         #f2ede3    Warmes Creme (Text auf dunkel,
+                                      Default-Hintergrund)
+     --brand-paper         #faf7f0    Helleres Papier (Card/Section-BG)
+     --brand-sage          #d9dcc9    Sage-Gruen (Akzent Neutral,
+                                      Hover-Flaechen, Subtil-Variante)
+     --brand-terracotta    #b65c3a    PRIMAERER Akzent (Kern-Punkt,
+                                      Buttons, Highlights)
+     --brand-terracotta-light  #e08a66  Helle Variante fuer Dark-Mode
+     --brand-night-ink     #1b2027    Sehr dunkles Nachtblau fuer
+                                      Dark-Mode-Hintergrund
+
+     Body-BG gemaess Logo-Final: #f0eee9 (Zwischen cream und paper).
+
+   Admin-App laedt zusaetzlich dorfkern-admin.css (Dark-Mode-Override
+   mit nightInk/cream).
+
+   Fonts (aus dorfkern-logo.js + Logo-Final-HTML):
+     - Fraunces           Display/Wortmarke/H1-H4
+     - Nunito/Inter       UI-Sans (Nunito ist Bestandsstandard, Inter
+                          ist Brand-Alternative)
+     - JetBrains Mono     Monospace (Tabellen, Code, Key-Werte)
+
+   App-spezifische Styles in ihren base.html bleiben unveraendert und
+   gewinnen durch CSS-Kaskade (sie stehen spaeter im <head>).
    ======================================================================== */
 
 
-/* ── Dorfkern-Gruen-Theme (Default) ───────────────────────────── */
+/* ── Offizielle Brand-Tokens ──────────────────────────────────── */
 
 :root {
-  /* Brand-Farben */
-  --gruen-dunkel:  #1a4010;
-  --gruen-mitte:   #2e6e1a;
-  --gruen-hell:    #4a9428;
-  --gruen-blass:   #d4e8c2;
-  --gruen-status:  #2e7a2e;
-  --rot:           #b83030;
-  --gold:          #d4a030;
+  --brand-ink:              #141414;
+  --brand-cream:            #f2ede3;
+  --brand-paper:            #faf7f0;
+  --brand-sage:             #d9dcc9;
+  --brand-terracotta:       #b65c3a;
+  --brand-terracotta-light: #e08a66;
+  --brand-night-ink:        #1b2027;
+  --brand-body-bg:          #f0eee9;
 
-  /* Layer-Variablen (werden von Komponenten genutzt) */
-  --bg-dunkel:     var(--gruen-dunkel);
-  --bg-mitte:      var(--gruen-mitte);
-  --bg-hell:       rgba(255, 255, 255, 0.08);
-  --text-hell:     var(--gruen-blass);
-  --text-dim:      rgba(212, 232, 194, 0.65);
-  --text-mitte:    rgba(212, 232, 194, 0.85);
-  --akzent:        var(--gruen-hell);
-  --akzent-hell:   var(--gruen-blass);
-  --border:        rgba(212, 232, 194, 0.18);
+  /* Ampeln / Status (nicht im Brand, aber Basis-UI braucht's) */
+  --status-gruen: #2e7a2e;
+  --status-rot:   #b83030;
+  --status-gelb:  #d4a030;
+
+
+  /* ── Light-Theme (Default) ──────────────────────────────────
+     Die Layer-Variablen werden von den Komponenten unten genutzt.
+     Apps / Admin ueberschreiben sie bei Bedarf. */
+  --bg-dunkel:     var(--brand-body-bg);      /* Seiten-Hintergrund */
+  --bg-mitte:      var(--brand-paper);        /* Card/Sidebar-BG */
+  --bg-hell:       var(--brand-sage);         /* Hover-Flaechen */
+  --text-hell:     var(--brand-ink);
+  --text-mitte:    rgba(20, 20, 20, 0.80);
+  --text-dim:      rgba(20, 20, 20, 0.55);
+  --akzent:        var(--brand-terracotta);
+  --akzent-hell:   var(--brand-terracotta-light);
+  --border:        rgba(20, 20, 20, 0.12);
 
   /* Geometrie */
   --radius-klein:  4px;
@@ -44,6 +72,16 @@
   --radius-gross:  10px;
   --sidebar-w:     220px;
   --navbar-h:      56px;
+
+  /* Legacy-Aliase: bestehende lokale Styles in den Apps nutzen
+     '--gruen-*' und '--rot'. Solange sie nicht migriert sind, liefern
+     wir neutrale Brand-Tokens als Fallback, damit neue Templates, die
+     NUR Shared-CSS laden, nicht ungestylt bleiben. */
+  --gruen-dunkel:  var(--brand-ink);
+  --gruen-mitte:   var(--brand-terracotta);
+  --gruen-hell:    var(--brand-terracotta-light);
+  --gruen-blass:   var(--brand-cream);
+  --rot:           var(--status-rot);
 }
 
 
@@ -57,7 +95,8 @@ html, body {
 }
 
 body {
-  font-family: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Nunito", "Inter", system-ui, -apple-system,
+               "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.45;
   background: var(--bg-dunkel);
@@ -68,21 +107,24 @@ body {
 
 h1, h2, h3, h4 {
   font-family: "Fraunces", Georgia, serif;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-code, pre, .mono {
+code, pre, .mono, .monospace {
   font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
+
+a { color: var(--akzent); }
+a:hover { color: var(--akzent-hell); }
 
 
 /* ── Generic Container ────────────────────────────────────────── */
 
 .card {
   padding: 18px 20px;
-  background: var(--bg-hell);
+  background: var(--bg-mitte);
   border: 1px solid var(--border);
   border-radius: var(--radius-mittel);
   margin-bottom: 16px;
@@ -92,30 +134,30 @@ code, pre, .mono {
 /* ── Banner (Info / Warn / Fehler) ────────────────────────────── */
 
 .info-banner {
-  background: #1a2b3b;
-  border-left: 3px solid #60a5fa;
+  background: var(--brand-sage);
+  border-left: 3px solid var(--akzent);
   padding: 10px 14px;
   border-radius: var(--radius-klein);
   margin-bottom: 16px;
-  color: #dbeafe;
+  color: var(--brand-ink);
   font-size: 14px;
 }
 .warn-banner {
-  background: #3b2f1a;
-  border-left: 3px solid #fbbf24;
+  background: #f6ecd0;
+  border-left: 3px solid var(--status-gelb);
   padding: 10px 14px;
   border-radius: var(--radius-klein);
   margin-bottom: 16px;
-  color: #fde68a;
+  color: #4b3a12;
   font-size: 14px;
 }
 .error-banner {
-  background: #3b1f1a;
-  border-left: 3px solid #f87171;
+  background: #f6d8ce;
+  border-left: 3px solid var(--status-rot);
   padding: 10px 14px;
   border-radius: var(--radius-klein);
   margin-bottom: 16px;
-  color: #fecaca;
+  color: #4b1a10;
   font-size: 14px;
 }
 
@@ -135,6 +177,7 @@ code, pre, .mono {
   padding: 2px 10px;
   border-radius: 10px;
   background: var(--bg-hell);
+  color: var(--text-hell);
 }
 
 
@@ -168,11 +211,11 @@ code, pre, .mono {
 }
 .sidebar-item:hover {
   background: var(--bg-hell);
-  color: var(--text-hell);
+  color: var(--brand-ink);
 }
 .sidebar-item.aktiv {
-  background: rgba(58, 124, 189, 0.2);
-  color: var(--akzent-hell);
+  background: var(--brand-sage);
+  color: var(--akzent);
   font-weight: 700;
 }
 .sidebar-item .icon {
@@ -187,7 +230,7 @@ code, pre, .mono {
 }
 
 
-/* ── Klappbare Sidebar-Untergruppen (aus Admin-App verallgemeinert) ── */
+/* ── Klappbare Sidebar-Untergruppen ─────────────────────────── */
 
 .sidebar-subgroup { padding: 0; }
 .sidebar-subgroup-title {
@@ -206,7 +249,7 @@ code, pre, .mono {
 }
 .sidebar-subgroup-title:hover { color: var(--text-hell); }
 .sidebar-subgroup-title .caret {
-  font-family: monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 9px;
   width: 10px;
   display: inline-block;
@@ -231,33 +274,43 @@ code, pre, .mono {
 button.btn {
   padding: 8px 16px;
   background: var(--akzent);
-  color: white;
+  color: var(--brand-cream);
   border: none;
   border-radius: var(--radius-klein);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background 0.12s, transform 0.06s;
 }
-.btn:hover:not(:disabled) { background: var(--akzent-hell); color: var(--bg-dunkel); }
+.btn:hover:not(:disabled) {
+  background: var(--akzent-hell);
+  color: var(--brand-ink);
+}
+.btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-danger {
   background: transparent;
-  color: var(--rot);
-  border: 1px solid var(--rot);
+  color: var(--status-rot);
+  border: 1px solid var(--status-rot);
 }
-.btn-danger:hover:not(:disabled) { background: var(--rot); color: white; }
+.btn-danger:hover:not(:disabled) {
+  background: var(--status-rot);
+  color: var(--brand-cream);
+}
 
 .btn-ghost {
   background: transparent;
   color: var(--text-dim);
   border: 1px solid var(--border);
 }
-.btn-ghost:hover:not(:disabled) { color: var(--text-hell); background: var(--bg-hell); }
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text-hell);
+  background: var(--bg-hell);
+}
 
 
-/* ── Form-Inputs (Default – Apps duerfen groesser/kleiner stylen) ── */
+/* ── Form-Inputs (Default, via Klasse) ────────────────────────── */
 
 .dorfkern-input,
 input[type="text"].dorfkern-input,
@@ -267,14 +320,19 @@ select.dorfkern-input,
 textarea.dorfkern-input {
   padding: 8px 12px;
   border: 1px solid var(--border);
-  background: var(--bg-dunkel);
-  color: var(--text-hell);
+  background: var(--brand-paper);
+  color: var(--brand-ink);
   border-radius: var(--radius-klein);
   font: inherit;
 }
+.dorfkern-input:focus {
+  outline: 2px solid var(--akzent);
+  outline-offset: -1px;
+  border-color: var(--akzent);
+}
 
 
-/* ── Generische Badges (Permission-Badges, App-Labels, Quellen) ── */
+/* ── Generische Badges ────────────────────────────────────────── */
 
 .badge {
   display: inline-block;
@@ -283,6 +341,16 @@ textarea.dorfkern-input {
   font-size: 10px;
   letter-spacing: 0.03em;
   background: var(--bg-hell);
-  color: var(--text-dim);
+  color: var(--text-mitte);
   white-space: nowrap;
 }
+.badge.akzent { color: var(--akzent); border: 1px solid var(--akzent); }
+.badge.muted  { color: var(--text-dim); border: 1px solid var(--border); }
+
+
+/* ── Dorfkern-Mark-Container ──────────────────────────────────── */
+
+/* Wird von common/brand/dorfkern-logo.js gesteuert. Wir liefern nur
+   den default-Akzent als CSS-Variable, damit die Marke sich ans
+   aktuelle Theme anpasst (Light -> terracotta, Dark -> terracottaLight). */
+.dk-logo { --dk-accent: var(--akzent); }

@@ -35,9 +35,20 @@ class TestCommonStatic(unittest.TestCase):
             r = c.get('/common-static/dorfkern-admin.css')
             self.assertEqual(r.status_code, 200)
             body = r.data.decode('utf-8')
-            # Admin-Theme: dunkel-blau ueber blau-ueberschriebene Variablen
+            # Admin-Theme: Dark-Mode mit nightInk-BG + cream-Text
+            # (offizielles Dorfkern-Dark-Theme aus dorfkern-logo.js)
             self.assertIn('--bg-dunkel', body)
-            self.assertIn('#1a2332', body)
+            self.assertIn('brand-night-ink', body)
+
+    def test_dorfkern_css_nutzt_offizielle_brand_tokens(self):
+        """Sanity: die shared CSS enthaelt die offiziellen Dorfkern-Farben
+        (aus common/brand/dorfkern-logo.js / dk-brand.jsx)."""
+        app = self._app()
+        with app.test_client() as c:
+            body = c.get('/common-static/dorfkern.css').data.decode('utf-8')
+        for hex_wert in ['#141414', '#f2ede3', '#b65c3a', '#d9dcc9']:
+            self.assertIn(hex_wert, body,
+                          f'Offizielles Brand-Token {hex_wert} fehlt')
 
     def test_fehlende_datei_gibt_404(self):
         app = self._app()

@@ -1,28 +1,58 @@
 /* ========================================================================
-   Dorfkern – Admin-Theme-Override
+   Dorfkern – Admin-Theme (Dark-Mode)
    ------------------------------------------------------------------------
    Wird von der Admin-App zusaetzlich zu dorfkern.css geladen.
-   Ueberschreibt die Farb-Variablen fuer ein dunkel-blaues Theme
-   (Admin/Verwaltungs-Signal, unterscheidet sich optisch von den
-   User-Apps mit gruenem Theme).
-   Struktur + Komponenten-Regeln aus dorfkern.css bleiben unveraendert.
+   Schaltet von Light-Mode (cream/ink/terracotta) auf Dark-Mode
+   (nightInk/cream/terracottaLight), passend zum offiziellen
+   Dorfkern-Dark-Theme in common/brand/dorfkern-logo.js (THEMES.dark).
+
+   Struktur + Komponenten aus dorfkern.css bleiben unveraendert; hier
+   nur die Layer-Variablen, die die Hintergrund- und Textfarben
+   steuern.
    ======================================================================== */
 
 :root {
-  /* Blaue Admin-Farben – ueberschreibt das Gruen aus dorfkern.css */
-  --bg-dunkel:     #1a2332;
-  --bg-mitte:      #232e42;
-  --bg-hell:       #2a3650;
-  --text-hell:     #e0e8f0;
-  --text-dim:      #8896a8;
-  --text-mitte:    #b0bccb;
-  --akzent:        #3a7cbd;
-  --akzent-hell:   #4a9ae0;
-  --border:        #2a3650;
+  /* Dark-Mode: NightInk-BG + Cream-Text, TerracottaLight als Akzent */
+  --bg-dunkel:     var(--brand-night-ink);               /* #1b2027 */
+  --bg-mitte:      #242a33;                              /* leichter aufgehellt */
+  --bg-hell:       #2e3640;                              /* Hover-Flaechen */
+  --text-hell:     var(--brand-cream);                   /* #f2ede3 */
+  --text-mitte:    rgba(242, 237, 227, 0.80);
+  --text-dim:      rgba(242, 237, 227, 0.55);
+  --akzent:        var(--brand-terracotta-light);        /* #e08a66 */
+  --akzent-hell:   var(--brand-cream);
+  --border:        rgba(242, 237, 227, 0.15);
 
-  /* Admin-spezifische Alias-Variablen (Legacy, von bestehenden
-     lokalen Styles verwendet) */
-  --gruen:         #2e9e5a;
+  /* Legacy-Aliase – uebernommen von den bestehenden lokalen
+     Admin-Styles, damit diese kein Re-Styling brauchen. */
+  --gruen-dunkel:  #2e9e5a;
   --gruen-hell:    #3ab870;
-  --rot:           #c04040;
+}
+
+
+/* Dark-Mode: Banner weniger aggressiv, passend zum Hintergrund */
+.info-banner {
+  background: rgba(224, 138, 102, 0.12);
+  border-left-color: var(--brand-terracotta-light);
+  color: var(--brand-cream);
+}
+.warn-banner {
+  background: rgba(212, 160, 48, 0.15);
+  border-left-color: var(--status-gelb);
+  color: #fde68a;
+}
+.error-banner {
+  background: rgba(184, 48, 48, 0.18);
+  border-left-color: var(--status-rot);
+  color: #fecaca;
+}
+
+/* Sidebar-Item im Dark-Mode: cream auf hover */
+.sidebar-item:hover {
+  background: var(--bg-hell);
+  color: var(--brand-cream);
+}
+.sidebar-item.aktiv {
+  background: rgba(224, 138, 102, 0.18);
+  color: var(--akzent);
 }
