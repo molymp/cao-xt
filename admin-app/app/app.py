@@ -1134,10 +1134,11 @@ def api_rechte_baum():
     for kat in baum:
         for modul in kat['module']:
             modul['bits'] = _cr.rechte_zu_bits(modul['rechte'],
-                                               modul['modul_id'])
+                                               modul['modul_id'], 0)
             for sub in modul['submodule']:
                 sub['bits'] = _cr.rechte_zu_bits(sub['rechte'],
-                                                 sub['modul_id'])
+                                                 sub['modul_id'],
+                                                 sub['submodul_id'])
     return jsonify(ok=True, baum=baum)
 
 
@@ -1156,7 +1157,8 @@ def api_rechte_benutzer_overrides(ma_id: int):
     import cao_rechte as _cr
     overrides = _cr.benutzer_overrides(ma_id)
     for o in overrides:
-        o['bits'] = _cr.rechte_zu_bits(o['rechte'], o['modul_id'])
+        o['bits'] = _cr.rechte_zu_bits(o['rechte'], o['modul_id'],
+                                       o['submodul_id'])
     return jsonify(ok=True, overrides=overrides)
 
 
