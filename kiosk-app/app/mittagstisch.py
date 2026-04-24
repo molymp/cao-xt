@@ -8,14 +8,22 @@ Sheet-Struktur (je Tab, z.B. "KW13_2026"):
   A10, C10    : "Jetzt neu:"        | Text
   A12         : Telefon (fest)
   A13         : Hinweis (fest)
+
+Konfig-Quellen (erste greift):
+  1. DORFKERN_KONFIG (Admin-App -> Stammdaten -> Mittagstisch)
+       mittagstisch.spreadsheet_id   STRING
+       mittagstisch.credentials_json SECRET (Service-Account-JSON als Text)
+  2. config_local.py (MITTAGSTISCH_SPREADSHEET_ID,
+                      MITTAGSTISCH_CREDENTIALS_FILE)
 """
+import json
 import os
 from datetime import date, timedelta
 
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ── Konfiguration ─────────────────────────────────────────────
+# ── Fallback-Konfiguration ───────────────────────────────────
 
 SPREADSHEET_ID   = "<SPREADSHEET_ID>"   # Google Sheets ID aus der URL
 CREDENTIALS_FILE = os.path.join(
@@ -34,6 +42,36 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+
+def _db_konfig():
+    """Liest Mittagstisch-Konfig aus DORFKERN_KONFIG.
+
+    Liefert ``(spreadsheet_id, credentials_dict_or_none)``. Fehler
+    (DB nicht erreichbar, Modul nicht importierbar) werden in leere
+    Werte uebersetzt; Aufrufer faellt dann auf config_local zurueck.
+    """
+    try:
+        from common import konfig as _k
+    except Exception:
+        return '', None
+    sid = _k.get('mittagstisch.spreadsheet_id', default=None) or ''
+    raw = _k.get('mittagstisch.credentials_json', default=None)
+    cd = None
+    if raw:
+        try:
+            cd = json.loads(raw)
+        except (TypeError, ValueError):
+            cd = None
+    return sid.strip(), cd
+
+
+def _aktive_spreadsheet_id() -> str:
+    """DB zuerst, dann config_local-Wert. '' wenn nichts konfiguriert."""
+    db_sid, _ = _db_konfig()
+    if db_sid:
+        return db_sid
+    return SPREADSHEET_ID or ''
+
 # Feste Zeilennummern
 _Z_TITEL    = 1
 _Z_MO       = 3   # Montag – Freitag: Zeilen 3–7
@@ -51,7 +89,18 @@ HINWEIS    = "Angebot immer nur solange der Vorrat reicht. Änderungen vorbehalt
 # ── Hilfsfunktionen ───────────────────────────────────────────
 
 def _gc():
-    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+    """gspread-Client. Credentials-Prioritaet: DB > Datei (config_local).
+
+    Aus der DB kommt ein dict (Service-Account-JSON parsed), verwendet
+    per ``from_service_account_info``. Sonst Fallback auf
+    ``from_service_account_file`` wie frueher.
+    """
+    _, db_cred = _db_konfig()
+    if db_cred is not None:
+        creds = Credentials.from_service_account_info(db_cred, scopes=SCOPES)
+    else:
+        creds = Credentials.from_service_account_file(
+            CREDENTIALS_FILE, scopes=SCOPES)
     return gspread.authorize(creds)
 
 
@@ -119,7 +168,7 @@ def _schreiben(ws, montag: date, daten: dict):
 def woche_laden(montag: date) -> dict | None:
     """Lädt eine Woche. Gibt None zurück wenn der Tab nicht existiert."""
     gc = _gc()
-    ss = gc.open_by_key(SPREADSHEET_ID)
+    ss = gc.open_by_key(_aktive_spreadsheet_id())
     try:
         ws = ss.worksheet(kw_name(montag))
         return _lesen(ws)
@@ -133,7 +182,7 @@ def woche_laden_oder_anlegen(montag: date) -> dict:
     Beim Anlegen werden die Inhalte der Vorwoche als Vorlage kopiert.
     """
     gc = _gc()
-    ss = gc.open_by_key(SPREADSHEET_ID)
+    ss = gc.open_by_key(_aktive_spreadsheet_id())
     name = kw_name(montag)
 
     try:
@@ -160,7 +209,7 @@ def woche_laden_oder_anlegen(montag: date) -> dict:
 def woche_speichern(montag: date, daten: dict):
     """Speichert eine Woche in Sheets. Legt den Tab an falls er nicht existiert."""
     gc = _gc()
-    ss = gc.open_by_key(SPREADSHEET_ID)
+    ss = gc.open_by_key(_aktive_spreadsheet_id())
     name = kw_name(montag)
 
     try:

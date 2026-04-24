@@ -49,21 +49,57 @@ def _stop_handler(signum, frame):
     _LAUFT = False
 
 
+def _haccp_konfig() -> dict:
+    """Liest TFA-Konfig aus der DB (DORFKERN_KONFIG), faellt auf die
+    Werte aus orga-app/config.py (Env + config_local) zurueck.
+
+    Kein Cache-Problem: wir rufen das nur beim Start auf.
+    """
+    try:
+        from common import konfig as _konfig
+    except Exception:
+        _konfig = None
+
+    def get_db(key, default):
+        if _konfig is None:
+            return default
+        try:
+            v = _konfig.get(key, default=None)
+            return v if v not in (None, '') else default
+        except Exception:
+            return default
+
+    return {
+        'api_key':      get_db('haccp.tfa_api_key',     wc.TFA_API_KEY),
+        'base_url':     get_db('haccp.tfa_base_url',    wc.TFA_BASE_URL),
+        'intervall_s':  int(get_db('haccp.poll_intervall_s',
+                                   wc.HACCP_POLL_INTERVALL_S)),
+    }
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s %(levelname)-5s %(name)s: %(message)s',
     )
-    if not wc.TFA_API_KEY:
-        log.error('TFA_API_KEY nicht konfiguriert. Siehe config_local.py.')
-        return 2
 
+    # DB-Pool VOR der Konfig-Leseabfrage initialisieren, weil common.konfig
+    # die DB braucht. Werte fuer den Pool kommen aus orga-config (caoxt.ini).
     init_pool('haccp_poller_pool', pool_size=3, db_config={
         'host': wc.DB_HOST, 'port': wc.DB_PORT,
         'name': wc.DB_NAME, 'user': wc.DB_USER, 'password': wc.DB_PASSWORD,
     })
 
-    client = TFAClient(wc.TFA_API_KEY, base_url=wc.TFA_BASE_URL)
+    hc = _haccp_konfig()
+    if not hc['api_key']:
+        log.error(
+            'TFA_API_KEY nicht konfiguriert. Setze ihn im Admin unter '
+            'System -> HACCP-Poller oder ueber die TFA_API_KEY-Env-Var.')
+        return 2
+    log.info('HACCP-Konfig: base_url=%s, intervall=%ss',
+             hc['base_url'], hc['intervall_s'])
+
+    client = TFAClient(hc['api_key'], base_url=hc['base_url'])
     if not client.ping():
         log.error('TFA-API nicht erreichbar (Ping fehlgeschlagen). Abbruch.')
         return 3
@@ -78,7 +114,7 @@ def main() -> int:
     except Exception:
         log.exception('Auto-Backfill fehlgeschlagen — Poller laeuft weiter.')
 
-    log.info('Poller gestartet. Intervall %s s.', wc.HACCP_POLL_INTERVALL_S)
+    log.info('Poller gestartet. Intervall %s s.', hc['intervall_s'])
     while _LAUFT:
         start = time.monotonic()
         try:
@@ -86,7 +122,7 @@ def main() -> int:
         except Exception:
             log.exception('Fehler im Poll-Zyklus.')
         dauer = time.monotonic() - start
-        warte = max(5, wc.HACCP_POLL_INTERVALL_S - int(dauer))
+        warte = max(5, hc['intervall_s'] - int(dauer))
         for _ in range(warte):
             if not _LAUFT:
                 break
