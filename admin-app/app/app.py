@@ -1189,6 +1189,30 @@ def api_einstellungen_registry():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Mengeneinheiten ───────────────────────────────────
+
+@app.route('/stammdaten/mengeneinheiten')
+@_login_required
+def stammdaten_mengeneinheit_seite():
+    """Read-only Liste der CAO-``MENGENEINHEIT``-Tabelle.
+
+    Spiegelt die cao_admin.exe-Seite *Einstellungen → Mengeneinheiten*.
+    """
+    return render_template('stammdaten_mengeneinheit.html')
+
+
+@app.get('/api/stammdaten/mengeneinheiten')
+@_login_required
+def api_stammdaten_mengeneinheit():
+    """JSON-Liste der Mengeneinheiten inkl. EN16931-Klarnamen."""
+    import stammdaten_mengeneinheit as _me
+    try:
+        return jsonify(ok=True, eintraege=_me.liste())
+    except Exception as e:
+        log.exception('MENGENEINHEIT laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')

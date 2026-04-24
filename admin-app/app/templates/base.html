@@ -452,6 +452,15 @@ a { text-decoration: none; color: inherit; }
 
       <hr class="sidebar-divider">
 
+      <div class="sidebar-section-title">CAO-Stammdaten</div>
+      <div class="sidebar-section">
+        <a href="/stammdaten/mengeneinheiten" class="sidebar-item {% if request.path == '/stammdaten/mengeneinheiten' %}aktiv{% endif %}">
+          <span class="icon">📐</span> Mengeneinheiten
+        </a>
+      </div>
+
+      <hr class="sidebar-divider">
+
       <div class="sidebar-section-title">Dorfkern</div>
       <div class="sidebar-section">
         <a href="/dorfkern/konfig" class="sidebar-item {% if request.path == '/dorfkern/konfig' %}aktiv{% endif %}">
