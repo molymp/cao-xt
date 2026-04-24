@@ -7,7 +7,9 @@ Tests decken ab:
 - Parent-Werte 0 und -1 werden als 'keine Parent' behandelt
 - Kinder-Zaehlung stimmt
 - Y/N-Flag fuer DURCHSUCHEN
-- SQL_STATEMENT-Dekodierung (Bytes) und hat_sql-Flag
+- SQL_TEXT-Dekodierung (Bytes) und hat_sql-Flag
+- GLOBALRABATT als float
+- VORGABEN-INI-Parsing fuer erechnung_typ
 """
 import importlib.util
 import os
@@ -146,17 +148,17 @@ class TestListe(unittest.TestCase):
         self.assertFalse(by_id[2]['durchsuchen'])
         self.assertFalse(by_id[3]['durchsuchen'])
 
-    def test_sql_statement_flag_und_bytes(self):
+    def test_sql_text_flag_und_bytes(self):
         mod = _lade_modul(_FakeCursor(
-            ['REC_ID', 'NAME', 'SQL_STATEMENT'],
+            ['REC_ID', 'NAME', 'SQL_TEXT'],
             [
                 {'REC_ID': 1, 'NAME': 'Dynamisch',
-                 'SQL_STATEMENT': 'ORT = "Berlin"'},
+                 'SQL_TEXT': 'ORT = "Berlin"'},
                 {'REC_ID': 2, 'NAME': 'Statisch',
-                 'SQL_STATEMENT': ''},
+                 'SQL_TEXT': ''},
                 {'REC_ID': 3, 'NAME': 'Blob',
-                 'SQL_STATEMENT': 'PLZ LIKE "1%"'.encode('utf-8')},
-                {'REC_ID': 4, 'NAME': 'None', 'SQL_STATEMENT': None},
+                 'SQL_TEXT': 'PLZ LIKE "1%"'.encode('utf-8')},
+                {'REC_ID': 4, 'NAME': 'None', 'SQL_TEXT': None},
             ],
         ))
         by_id = {e['id']: e for e in mod.liste()['eintraege']}
@@ -165,19 +167,48 @@ class TestListe(unittest.TestCase):
         self.assertTrue(by_id[3]['hat_sql'])
         self.assertFalse(by_id[4]['hat_sql'])
 
-    def test_rabatt_wird_float(self):
+    def test_globalrabatt_wird_float(self):
         mod = _lade_modul(_FakeCursor(
-            ['REC_ID', 'NAME', 'RABATT'],
+            ['REC_ID', 'NAME', 'GLOBALRABATT'],
             [
-                {'REC_ID': 1, 'NAME': 'a', 'RABATT': 2.5},
-                {'REC_ID': 2, 'NAME': 'b', 'RABATT': None},
-                {'REC_ID': 3, 'NAME': 'c', 'RABATT': 0},
+                {'REC_ID': 1, 'NAME': 'a', 'GLOBALRABATT': 2.5},
+                {'REC_ID': 2, 'NAME': 'b', 'GLOBALRABATT': None},
+                {'REC_ID': 3, 'NAME': 'c', 'GLOBALRABATT': 0},
             ],
         ))
         by_id = {e['id']: e for e in mod.liste()['eintraege']}
-        self.assertEqual(by_id[1]['rabatt'], 2.5)
-        self.assertIsNone(by_id[2]['rabatt'])
-        self.assertEqual(by_id[3]['rabatt'], 0.0)
+        self.assertEqual(by_id[1]['globalrabatt'], 2.5)
+        self.assertIsNone(by_id[2]['globalrabatt'])
+        self.assertEqual(by_id[3]['globalrabatt'], 0.0)
+
+    def test_vorgaben_erechnung_typ(self):
+        vorgaben_xr = 'erechnung_typ=xrechnung\nweitere_option=42\n'
+        vorgaben_zf = '[section]\nERECHNUNG_TYP = ZUGFeRD\n'
+        vorgaben_deakt = 'erechnung_typ=deaktiviert'
+        vorgaben_leer = ''
+        vorgaben_muell = 'erechnung_typ=foo\n'
+        mod = _lade_modul(_FakeCursor(
+            ['REC_ID', 'NAME', 'VORGABEN'],
+            [
+                {'REC_ID': 1, 'NAME': 'XR',    'VORGABEN': vorgaben_xr},
+                {'REC_ID': 2, 'NAME': 'ZF',    'VORGABEN': vorgaben_zf},
+                {'REC_ID': 3, 'NAME': 'Deakt', 'VORGABEN': vorgaben_deakt},
+                {'REC_ID': 4, 'NAME': 'Leer',  'VORGABEN': vorgaben_leer},
+                {'REC_ID': 5, 'NAME': 'Muell', 'VORGABEN': vorgaben_muell},
+                {'REC_ID': 6, 'NAME': 'Null',  'VORGABEN': None},
+                # BLOB-Variante
+                {'REC_ID': 7, 'NAME': 'Blob',
+                 'VORGABEN': b'erechnung_typ=xrechnung'},
+            ],
+        ))
+        by_id = {e['id']: e for e in mod.liste()['eintraege']}
+        self.assertEqual(by_id[1]['erechnung_typ'], 'xrechnung')
+        self.assertEqual(by_id[2]['erechnung_typ'], 'zugferd')
+        self.assertEqual(by_id[3]['erechnung_typ'], 'deaktiviert')
+        self.assertIsNone(by_id[4]['erechnung_typ'])
+        self.assertIsNone(by_id[5]['erechnung_typ'])  # unbekannter Wert
+        self.assertIsNone(by_id[6]['erechnung_typ'])
+        self.assertEqual(by_id[7]['erechnung_typ'], 'xrechnung')
 
 
 if __name__ == '__main__':
