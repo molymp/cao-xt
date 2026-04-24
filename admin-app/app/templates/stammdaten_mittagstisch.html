@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Mittagstisch{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+  .karte {
+    padding: 14px 18px;
+    background: var(--bg-hell);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 14px;
+  }
+  .karte h2 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .zeile {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+  }
+  .zeile .lbl { color: var(--text-dim); font-size: 12px; }
+  .zeile .val { color: var(--text-hell); word-break: break-all; }
+  .zeile .val.mono {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .zeile .val.leer { color: var(--text-dim); font-style: italic; }
+  .status-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .status-pill.ok  { background: #14532d; color: #86efac; }
+  .status-pill.fehlt { background: #3b1f1a; color: #fecaca; }
+
+  .hinweis-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #3b2f1a;
+    border-left: 3px solid #fbbf24;
+    color: #fde68a;
+    font-size: 12px;
+    border-radius: 3px;
+  }
+  .karte a { color: #60a5fa; text-decoration: none; }
+  .karte a:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">🍽️ Mittagstisch</h1>
+<div class="info-banner">
+  Der Mittagstisch wird aus einem <strong>Google Sheet</strong> gelesen
+  und im <strong>Kiosk</strong> angezeigt. Die Anzeige selbst lebt in
+  der Kiosk-App unter <code>/mittagstisch</code>. Hier nur eine
+  Übersicht: wo sind die Zugangsdaten konfiguriert, sind sie lesbar?
+</div>
+
+<div id="box">
+  <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+    Lade…
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function render(d) {
+  const sid = d.spreadsheet_id;
+  const sid_row = sid
+    ? `<a href="${escapeHtml(d.spreadsheet_url)}" target="_blank"
+           rel="noopener" title="Spreadsheet in neuem Tab öffnen">
+          <span class="val mono">${escapeHtml(sid)}</span> ↗</a>`
+    : '<span class="val leer">– nicht konfiguriert –</span>';
+
+  const cred = d.credentials;
+  const cred_pill = cred.existiert
+    ? '<span class="status-pill ok">vorhanden</span>'
+    : '<span class="status-pill fehlt">fehlt</span>';
+
+  const karte_config = `
+    <div class="karte">
+      <h2>Konfiguration</h2>
+      <div class="zeile">
+        <span class="lbl">Config-Datei</span>
+        <span class="val mono">${escapeHtml(d.config_local_pfad)}
+          ${d.config_local_exists ? '' :
+            ' <span style="color:#f87171;">(fehlt)</span>'}</span>
+      </div>
+      <div class="zeile">
+        <span class="lbl">Spreadsheet-ID</span>
+        <span class="val">${sid_row}</span>
+      </div>
+    </div>`;
+
+  const karte_creds = `
+    <div class="karte">
+      <h2>Service-Account-Credentials</h2>
+      <div class="zeile">
+        <span class="lbl">Datei-Pfad</span>
+        ${cred.pfad_roh
+          ? `<span class="val mono">${escapeHtml(cred.pfad_roh)}</span>`
+          : '<span class="val leer">– nicht konfiguriert –</span>'}
+      </div>
+      <div class="zeile">
+        <span class="lbl">Aufgelöst zu</span>
+        <span class="val mono">${escapeHtml(cred.pfad_absolut) || '–'}
+          </span>
+      </div>
+      <div class="zeile">
+        <span class="lbl">Status</span>
+        <span class="val">${cred_pill}</span>
+      </div>
+      ${cred.existiert ? `
+        <div class="zeile">
+          <span class="lbl">Größe</span>
+          <span class="val mono">${escapeHtml(fmtBytes(cred.groesse))}
+            </span>
+        </div>
+        <div class="zeile">
+          <span class="lbl">Zuletzt geändert</span>
+          <span class="val mono">${escapeHtml(cred.mtime)}
+            ${cred.alter_tage != null
+              ? `<span style="color:var(--text-dim);">
+                  (vor ${cred.alter_tage} Tag${cred.alter_tage === 1
+                   ? '' : 'en'})</span>` : ''}
+          </span>
+        </div>` : ''}
+      ${!cred.existiert ? `
+        <div class="hinweis-box">
+          Ohne Credentials kann der Kiosk das Google Sheet nicht lesen.
+          Service-Account-JSON via Google Cloud Console erstellen und
+          unter <code>${escapeHtml(cred.pfad_absolut || cred.pfad_roh)}
+          </code> ablegen.
+        </div>` : ''}
+    </div>`;
+
+  const karte_kiosk = `
+    <div class="karte">
+      <h2>Anzeige im Kiosk</h2>
+      <div class="zeile">
+        <span class="lbl">Kiosk-Basis</span>
+        <span class="val mono">${escapeHtml(d.kiosk_url)}</span>
+      </div>
+      <div class="zeile">
+        <span class="lbl">Mittagstisch-View</span>
+        <span class="val">
+          <a href="${escapeHtml(d.kiosk_mittagstisch_url)}"
+             target="_blank" rel="noopener">
+            ${escapeHtml(d.kiosk_mittagstisch_url)} ↗
+          </a>
+        </span>
+      </div>
+      <div class="hinweis-box">
+        Änderungen an der Konfiguration werden per SSH/Editor direkt
+        in <code>kiosk-app/app/config_local.py</code> gepflegt – die
+        Datei ist bewusst <em>nicht</em> in Git.
+      </div>
+    </div>`;
+
+  return karte_config + karte_creds + karte_kiosk;
+}
+
+async function laden() {
+  const box = document.getElementById('box');
+  try {
+    const r = await fetch('/api/stammdaten/mittagstisch').then(r => r.json());
+    if (!r.ok) {
+      box.innerHTML = `<div style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+      return;
+    }
+    box.innerHTML = render(r);
+  } catch (e) {
+    box.innerHTML = `<div style="color:#f08080;padding:12px;">
+      ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', laden);
+</script>
+{% endblock %}

@@ -1497,6 +1497,91 @@ def api_stammdaten_binaer():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── System: App-Steuerung ────────────────────────────────────────
+
+@app.route('/system/apps')
+@_login_required
+def system_apps_seite():
+    """Status + Start/Stop/Restart aller Apps."""
+    return render_template('system_apps.html')
+
+
+@app.get('/api/system/apps')
+@_login_required
+def api_system_apps():
+    import system_apps as _sa
+    try:
+        return jsonify(ok=True, apps=_sa.liste())
+    except Exception as e:
+        log.exception('system_apps liste fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/system/apps/<name>/<aktion>')
+@_login_required
+def api_system_apps_aktion(name: str, aktion: str):
+    """``aktion`` = 'start' | 'stop' | 'restart'."""
+    import system_apps as _sa
+    if aktion == 'start':
+        return jsonify(_sa.start(name))
+    if aktion == 'stop':
+        return jsonify(_sa.stop(name))
+    if aktion == 'restart':
+        return jsonify(_sa.restart(name))
+    return jsonify(ok=False, msg=f'Unbekannte Aktion: {aktion}'), 400
+
+
+@app.get('/api/system/apps/<name>/log')
+@_login_required
+def api_system_apps_log(name: str):
+    import system_apps as _sa
+    try:
+        zeilen = int(request.args.get('zeilen', '80'))
+    except (TypeError, ValueError):
+        zeilen = 80
+    return jsonify(_sa.log_tail(name, zeilen=zeilen))
+
+
+# ── System: HACCP-Poller ─────────────────────────────────────────
+
+@app.route('/system/haccp-poller')
+@_login_required
+def system_haccp_poller_seite():
+    """Status + Konfig-Uebersicht fuer den HACCP-Poller-Daemon."""
+    return render_template('system_haccp_poller.html')
+
+
+@app.get('/api/system/haccp-poller')
+@_login_required
+def api_system_haccp_poller():
+    import system_haccp_poller as _hp
+    try:
+        return jsonify(ok=True, **_hp.status())
+    except Exception as e:
+        log.exception('system_haccp_poller status fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# ── Stammdaten: Mittagstisch ─────────────────────────────────────
+
+@app.route('/stammdaten/mittagstisch')
+@_login_required
+def stammdaten_mittagstisch_seite():
+    """Read-only Uebersicht der Mittagstisch-Konfiguration."""
+    return render_template('stammdaten_mittagstisch.html')
+
+
+@app.get('/api/stammdaten/mittagstisch')
+@_login_required
+def api_stammdaten_mittagstisch():
+    import system_mittagstisch as _mt
+    try:
+        return jsonify(ok=True, **_mt.status())
+    except Exception as e:
+        log.exception('stammdaten_mittagstisch status fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
