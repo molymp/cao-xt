@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Binärdaten{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+
+  table.bin {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.bin th, table.bin td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  table.bin thead th {
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  table.bin td.num {
+    font-family: monospace;
+    color: var(--text-dim);
+    width: 50px;
+  }
+  table.bin td.name {
+    font-weight: 600;
+  }
+  table.bin td.zahl, table.bin th.zahl {
+    text-align: right;
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    width: 120px;
+  }
+  table.bin td.leer {
+    color: var(--text-dim);
+    font-style: italic;
+    font-weight: normal;
+  }
+  table.bin td.balken {
+    width: 180px;
+  }
+  .balken-bar {
+    height: 8px;
+    background: var(--bg-hell);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .balken-fuell {
+    height: 100%;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa);
+    transition: width 0.3s;
+  }
+  table.bin pre.json {
+    margin: 4px 0 0 0;
+    padding: 6px 8px;
+    background: var(--bg-dunkel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-dim);
+    font-family: monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow: auto;
+    display: none;
+  }
+  table.bin tr.offen pre.json {
+    display: block;
+  }
+  .toggle-json {
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-decoration: underline dotted;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">📎 Binärdaten</h1>
+<div class="info-banner">
+  <strong>Read-only.</strong> Pflege in
+  <code>cao_admin.exe → Einstellungen → Binärdaten</code>. Die
+  Dateien (PDF, Bilder, ...) liegen in
+  <code>BINAERDATEN</code>, die Typ-Konfiguration in
+  <code>BINAER_KATEGORIE</code>. BLOB-Inhalte werden hier <em>nicht</em>
+  angezeigt – nur Anzahl und Speicherbedarf pro Typ.
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Typen: <span id="stat-typen">–</span></span>
+  <span class="chip">Dateien gesamt: <span id="stat-anz">–</span></span>
+  <span class="chip">Speicher gesamt: <span id="stat-bytes">–</span></span>
+</div>
+
+<div class="card">
+  <div id="box">
+    <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+      Lade…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+let _total_bytes = 0;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fmtBytes(n) {
+  if (!n) return '0';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + ' MB';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function balken(bytes) {
+  if (!_total_bytes || !bytes) return '';
+  const proz = Math.max(1, Math.round(bytes / _total_bytes * 100));
+  return `<div class="balken-bar">
+    <div class="balken-fuell" style="width:${proz}%"></div>
+  </div>
+  <div style="font-size:10px;color:var(--text-dim);
+              margin-top:2px;font-family:monospace;">
+    ${proz} %
+  </div>`;
+}
+
+function render() {
+  const box = document.getElementById('box');
+  if (!_alle.length) {
+    box.innerHTML = `<div style="color:var(--text-dim);padding:16px;
+      text-align:center;">Keine Kategorien.</div>`;
+    return;
+  }
+  // Sortieren: viele Dateien zuerst
+  const liste = [..._alle].sort((a, b) => b.anzahl - a.anzahl);
+  box.innerHTML = `
+    <table class="bin">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Typ / Name</th>
+          <th class="zahl">Dateien</th>
+          <th class="zahl">Speicher</th>
+          <th class="zahl">Größte</th>
+          <th>Anteil</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${liste.map(k => `
+          <tr data-id="${escapeHtml(k.id == null ? 'null' : k.id)}">
+            <td class="num">
+              ${k.id == null ? '–' : '#' + escapeHtml(k.id)}</td>
+            <td class="${k.name ? 'name' : 'leer'}">
+              ${escapeHtml(k.name) || '(ohne Name)'}
+              ${k.jsondaten
+                ? `<span class="toggle-json"
+                       onclick="this.parentNode.parentNode.classList.toggle('offen')">
+                     · JSON</span>
+                   <pre class="json">${escapeHtml(k.jsondaten)}</pre>`
+                : ''}
+            </td>
+            <td class="zahl">
+              ${k.anzahl.toLocaleString('de-DE')}</td>
+            <td class="zahl">${escapeHtml(fmtBytes(k.gesamt_bytes))}</td>
+            <td class="zahl">${escapeHtml(fmtBytes(k.groesste_byte))}</td>
+            <td class="balken">${balken(k.gesamt_bytes)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function laden() {
+  const r = await api('GET', '/api/stammdaten/binaerdaten');
+  if (!r.ok) {
+    document.getElementById('box').innerHTML =
+      `<div style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+    return;
+  }
+  _alle = r.kategorien || [];
+  _total_bytes = r.total_bytes || 0;
+
+  document.getElementById('stat-typen').textContent = _alle.length;
+  document.getElementById('stat-anz').textContent =
+    (r.total_anzahl || 0).toLocaleString('de-DE');
+  document.getElementById('stat-bytes').textContent =
+    fmtBytes(_total_bytes);
+
+  render();
+}
+
+document.addEventListener('DOMContentLoaded', laden);
+</script>
+{% endblock %}

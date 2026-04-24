@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}Export-Queries{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+  .exp-such {
+    width: 100%;
+    max-width: 420px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 6px;
+    font: inherit;
+  }
+  .kategorien {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .kat-tab {
+    padding: 6px 12px;
+    background: none;
+    color: var(--text-dim);
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+  }
+  .kat-tab:hover { color: var(--text-hell); background: var(--bg-hell); }
+  .kat-tab.aktiv {
+    color: var(--text-hell);
+    background: var(--bg-dunkel);
+    border-color: var(--border);
+    border-bottom: 1px solid var(--bg-dunkel);
+    margin-bottom: -1px;
+    font-weight: 600;
+  }
+  .kat-tab .zahl {
+    color: var(--text-dim);
+    font-size: 11px;
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .exp-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .exp-zeile {
+    padding: 10px 14px;
+    background: var(--bg-hell);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .exp-zeile:hover { border-color: #60a5fa; }
+  .exp-zeile .kopf {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .exp-zeile .id {
+    font-family: monospace;
+    color: var(--text-dim);
+    font-size: 12px;
+    min-width: 40px;
+  }
+  .exp-zeile .kurzbez {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .exp-zeile .meta {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .exp-zeile .info {
+    margin-top: 4px;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .exp-zeile .details {
+    display: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .exp-zeile.offen .details { display: block; }
+  .exp-zeile pre {
+    margin: 6px 0;
+    padding: 10px 12px;
+    background: var(--bg-dunkel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-hell);
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 260px;
+    overflow: auto;
+  }
+  .exp-zeile .lbl {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 8px 0 2px 0;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .badge.format  { color: #60a5fa; border: 1px solid #60a5fa;
+                   font-family: monospace; }
+  .badge.stat    { color: #34d399; border: 1px solid #34d399; }
+  .badge.owner   { color: var(--text-dim);
+                   border: 1px solid var(--border); }
+  .badge.form    { color: #fbbf24; border: 1px solid #fbbf24; }
+  .badge.global  { color: #a78bfa; border: 1px solid #a78bfa; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">📊 Export-Queries</h1>
+<div class="info-banner">
+  <strong>Read-only.</strong> Pflege in
+  <code>cao_admin.exe → Einstellungen → Export / Berichte</code>.
+  Jeder Eintrag ist eine <strong>SQL-Query</strong> plus optional
+  FastReport-Template (<span class="badge form">FORM</span>). Klick
+  zeigt die Query und Felder-Definition im Detail. BLOB-Templates
+  werden nicht ausgeliefert – nur ihre Groesse.
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Reports: <span id="stat-total">–</span></span>
+  <span class="chip">Kategorien: <span id="stat-kat">–</span></span>
+  <span class="chip">In Statistik: <span id="stat-stat">–</span></span>
+  <span class="chip">Mit Template: <span id="stat-form">–</span></span>
+</div>
+
+<div class="card">
+  <input type="text" id="such-feld" class="exp-such"
+         placeholder="🔍 Filter (Kurzbez, SQL, Dateiname)">
+  <div id="kategorien" class="kategorien"></div>
+  <div id="box">
+    <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+      Lade…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+let _kategorien = [];
+let _aktive_kat = 'alle';
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fmtBytes(n) {
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function renderKategorien() {
+  const box = document.getElementById('kategorien');
+  const total = _alle.length;
+  const tabs = [{id: 'alle', name: 'Alle', anzahl: total}]
+    .concat(_kategorien.map(k => ({
+      id: k.id == null ? 'null' : String(k.id),
+      name: k.name,
+      anzahl: k.anzahl,
+    })));
+  box.innerHTML = tabs.map(t => `
+    <button class="kat-tab ${t.id === _aktive_kat ? 'aktiv' : ''}"
+            data-id="${escapeHtml(t.id)}">
+      ${escapeHtml(t.name)}<span class="zahl">(${t.anzahl})</span>
+    </button>`).join('');
+  box.querySelectorAll('.kat-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      _aktive_kat = t.dataset.id;
+      renderKategorien();
+      renderListe(document.getElementById('such-feld').value);
+    });
+  });
+}
+
+function renderEintrag(e) {
+  const badges = [];
+  if (e.format) {
+    badges.push(`<span class="badge format">${escapeHtml(e.format)}</span>`);
+  }
+  if (e.hat_formular) {
+    badges.push(`<span class="badge form"
+      title="FastReport-Template: ${escapeHtml(fmtBytes(e.formular_bytes))}">
+      FORM ${escapeHtml(fmtBytes(e.formular_bytes))}</span>`);
+  }
+  if (e.statistik) {
+    badges.push(`<span class="badge stat"
+      title="in Statistik-Menue">STAT</span>`);
+  }
+  if (e.ma_id == null || e.ma_id === -1) {
+    badges.push(`<span class="badge global"
+      title="global (alle Mitarbeiter)">GLOBAL</span>`);
+  } else {
+    badges.push(`<span class="badge owner"
+      title="privat fuer Mitarbeiter-ID ${e.ma_id}">
+      MA #${e.ma_id}</span>`);
+  }
+  return `
+    <div class="exp-zeile" data-id="${e.id}">
+      <div class="kopf">
+        <span class="id">#${escapeHtml(e.id)}</span>
+        <span class="kurzbez">
+          ${escapeHtml(e.kurzbez) || '<em>(ohne Bezeichnung)</em>'}</span>
+        <span class="meta">${badges.join('')}</span>
+      </div>
+      ${e.info
+        ? `<div class="info">${escapeHtml(e.info)}</div>`
+        : ''}
+      <div class="details">
+        ${e.filename ? `
+          <div class="lbl">Dateiname</div>
+          <div style="font-family:monospace;font-size:12px;">
+            ${escapeHtml(e.filename)}</div>` : ''}
+        ${e.subkategorie ? `
+          <div class="lbl">Subkategorie</div>
+          <div style="font-size:12px;">${escapeHtml(e.subkategorie)}</div>`
+          : ''}
+        ${e.query_kurz ? `
+          <div class="lbl">SQL-Query (gekürzt)</div>
+          <pre>${escapeHtml(e.query_kurz)}</pre>` : ''}
+        ${e.felder_kurz ? `
+          <div class="lbl">Felder</div>
+          <pre>${escapeHtml(e.felder_kurz)}</pre>` : ''}
+        ${e.last_change ? `
+          <div class="lbl">Zuletzt geändert</div>
+          <div style="font-size:12px;color:var(--text-dim);">
+            ${escapeHtml(e.last_change)}
+            ${e.change_name ? ' durch ' + escapeHtml(e.change_name) : ''}
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderListe(filter) {
+  const box = document.getElementById('box');
+  const f = (filter || '').trim().toLowerCase();
+  let liste = _alle;
+  if (_aktive_kat !== 'alle') {
+    const id = _aktive_kat === 'null' ? null : parseInt(_aktive_kat, 10);
+    liste = liste.filter(e => (e.kategorie_id ?? null) === id);
+  }
+  if (f) {
+    liste = liste.filter(e =>
+      (e.kurzbez || '').toLowerCase().includes(f)
+      || (e.query_kurz || '').toLowerCase().includes(f)
+      || (e.filename || '').toLowerCase().includes(f)
+      || (e.info || '').toLowerCase().includes(f));
+  }
+  if (!liste.length) {
+    box.innerHTML = `<div style="color:var(--text-dim);padding:16px;
+      text-align:center;">Keine Reports.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="exp-liste">`
+    + liste.map(renderEintrag).join('')
+    + `</div>`;
+  box.querySelectorAll('.exp-zeile').forEach(row => {
+    row.addEventListener('click', () => row.classList.toggle('offen'));
+  });
+}
+
+async function laden() {
+  const r = await api('GET', '/api/stammdaten/exporte');
+  if (!r.ok) {
+    document.getElementById('box').innerHTML =
+      `<div style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+    return;
+  }
+  _alle = r.eintraege || [];
+  _kategorien = r.kategorien || [];
+
+  document.getElementById('stat-total').textContent = _alle.length;
+  document.getElementById('stat-kat').textContent   = _kategorien.length;
+  document.getElementById('stat-stat').textContent  =
+    _alle.filter(e => e.statistik).length;
+  document.getElementById('stat-form').textContent  =
+    _alle.filter(e => e.hat_formular).length;
+
+  renderKategorien();
+  renderListe('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('such-feld').addEventListener('input', (e) => {
+    renderListe(e.target.value);
+  });
+  laden();
+});
+</script>
+{% endblock %}
