@@ -16,17 +16,33 @@
   --bg-dunkel:     var(--brand-night-ink);               /* #1b2027 */
   --bg-mitte:      #242a33;                              /* leichter aufgehellt */
   --bg-hell:       #2e3640;                              /* Hover-Flaechen */
+  --bg-karte:      #2a3038;                              /* Karte (etwas dunkler) */
   --text-hell:     var(--brand-cream);                   /* #f2ede3 */
   --text-mitte:    rgba(242, 237, 227, 0.80);
   --text-dim:      rgba(242, 237, 227, 0.55);
   --akzent:        var(--brand-terracotta-light);        /* #e08a66 */
   --akzent-hell:   var(--brand-cream);
   --border:        rgba(242, 237, 227, 0.15);
+  --border-hell:   rgba(242, 237, 227, 0.25);
 
-  /* Legacy-Aliase – uebernommen von den bestehenden lokalen
-     Admin-Styles, damit diese kein Re-Styling brauchen. */
-  --gruen-dunkel:  #2e9e5a;
+  /* Schatten + Radii – Admin nutzt grosszuegigere Rundungen als
+     die User-Apps, da Desktop-Maus-Bedienung laessige Rundungen
+     sehen darf. */
+  --schatten:         0 2px 12px rgba(0, 0, 0, 0.25);
+  --schatten-stark:   0 4px 24px rgba(0, 0, 0, 0.4);
+  --radius:           12px;
+  --radius-klein:     8px;       /* Admin-Override (Shared: 4px) */
+
+  /* Status-Akzente fuer besondere Admin-Buttons (nicht im Brand,
+     aber historisch in Admin-UI verwendet). */
+  --gold:          #c8780a;
+  --gold-hell:     #e8970e;
+  --gruen:         #2e9e5a;
   --gruen-hell:    #3ab870;
+
+  /* Legacy-Alias auf 'Seiten-Hintergrund' (einzelne Stylesheets
+     nutzen --bg statt --bg-dunkel). */
+  --bg:            var(--bg-dunkel);
 }
 
 
