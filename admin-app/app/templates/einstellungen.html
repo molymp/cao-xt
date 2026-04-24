@@ -175,7 +175,7 @@ function renderKatListe() {
   el.innerHTML = _kategorien.map(k => {
     const aktiv = k.mainkey === _aktiveKategorie ? 'aktiv' : '';
     return `
-      <div class="kat-eintrag ${aktiv}" onclick="waehleKategorie(${JSON.stringify(k.mainkey)})">
+      <div class="kat-eintrag ${aktiv}" data-mainkey="${escapeHtml(k.mainkey)}">
         <span class="icon">${k.icon}</span>
         <span>
           ${escapeHtml(k.label)}
@@ -185,12 +185,15 @@ function renderKatListe() {
       </div>
     `;
   }).join('');
-}
-
-function waehleKategorie(mainkey) {
-  _aktiveKategorie = mainkey;
-  renderKatListe();
-  renderEintraege();
+  // Event-Delegation: ein einziger Listener, robust gegen Backslashes /
+  // Anfuehrungszeichen in MAINKEYs (kein inline-onclick-Escaping noetig).
+  el.querySelectorAll('.kat-eintrag').forEach(node => {
+    node.addEventListener('click', () => {
+      _aktiveKategorie = node.dataset.mainkey;
+      renderKatListe();
+      renderEintraege();
+    });
+  });
 }
 
 function renderEintraege() {
