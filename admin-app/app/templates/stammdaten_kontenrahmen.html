@@ -132,6 +132,87 @@
   .badge.nk       { color: #f472b6; border: 1px solid #f472b6; }
   .badge.kontoart { color: var(--text-dim); border: 1px solid var(--border);
                     font-variant-numeric: tabular-nums; }
+
+  /* Gruppen-Navigation */
+  .gruppen-zeile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .gruppen-zeile button {
+    background: none;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .gruppen-zeile button:hover {
+    color: var(--text-hell);
+    background: var(--bg-hell);
+  }
+
+  /* Sektionen */
+  .sek-haupt {
+    margin-top: 18px;
+  }
+  .sek-haupt:first-of-type { margin-top: 0; }
+  .sek-haupt-titel {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .sek-unter {
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .sek-kopf {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-hell);
+    cursor: pointer;
+    user-select: none;
+  }
+  .sek-kopf:hover { background: var(--border); }
+  .sek-kopf .caret {
+    font-family: monospace;
+    color: var(--text-dim);
+    font-size: 11px;
+    width: 12px;
+  }
+  .sek-kopf .titel {
+    font-weight: 600;
+    color: var(--text-hell);
+  }
+  .sek-kopf .count {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+  .sek-kopf.leer { opacity: 0.5; cursor: default; }
+  .sek-inhalt.zu { display: none; }
+
+  .farbe-erloese           { border-left: 3px solid #34d399; }
+  .farbe-aufwand           { border-left: 3px solid #f87171; }
+  .farbe-forderungen       { border-left: 3px solid #60a5fa; }
+  .farbe-verbindlichkeiten { border-left: 3px solid #a78bfa; }
+  .farbe-sonstige          { border-left: 3px solid var(--border); }
+  .farbe-vorsteuer         { border-left: 3px solid #fbbf24; }
+  .farbe-umsatzsteuer      { border-left: 3px solid #fb923c; }
+  .farbe-kasse             { border-left: 3px solid #facc15; }
+  .farbe-bank              { border-left: 3px solid #22d3ee; }
 </style>
 {% endblock %}
 
@@ -140,23 +221,29 @@
 <div class="info-banner">
   <strong>Read-only.</strong> Pflege in
   <code>cao_admin.exe → Einstellungen → Fibu → Kontenrahmen</code>.
-  Jedes Konto hat eine <strong>Kontoart</strong> (roh: 3=Kasse, 20=Bank,
-  10=Erloese/Skonti, 12=Wareneingang, 99=sonst. Finanzkonto, …).
-  Konten mit hinterlegter IBAN/Bank-Info sind <strong>Bankkonten</strong>.
+  Konten werden klassifiziert aus <strong>KONTOART</strong> (Kasse/Bank/
+  Vor-/Umsatzsteuer) und der <strong>Konto-Nummer</strong> im jeweiligen
+  Standard-Rahmen (SKR03/SKR04). Fremde Rahmen nutzen nur die
+  KONTOART – der Rest landet in <em>„Nicht zugeordnet"</em>.
 </div>
 
 <div class="stat-zeile">
   <span class="chip">Rahmen: <span id="stat-rahmen">–</span></span>
   <span class="chip">Konten gesamt: <span id="stat-gesamt">–</span></span>
-  <span class="chip">Bilanzkonten: <span id="stat-bilanz">–</span></span>
-  <span class="chip">Mit Steuersatz: <span id="stat-steuer">–</span></span>
-  <span class="chip">Bankkonten: <span id="stat-bank">–</span></span>
+  <span class="chip">Erlöskonten: <span id="stat-erloese">–</span></span>
+  <span class="chip">Aufwandskonten: <span id="stat-aufwand">–</span></span>
+  <span class="chip">Steuerkonten: <span id="stat-steuerkto">–</span></span>
+  <span class="chip">Geldkonten: <span id="stat-geld">–</span></span>
 </div>
 
 <div class="card">
   <div id="rahmen-tabs" class="rahmen-tabs"></div>
   <input type="text" id="such-feld" class="kr-such"
          placeholder="🔍 Filter (Konto-Nr. oder Name)">
+  <div class="gruppen-zeile">
+    <button id="btn-auf">Alle aufklappen</button>
+    <button id="btn-zu">Alle zuklappen</button>
+  </div>
   <div id="konten-box">
     <div style="color: var(--text-dim); padding: 24px; text-align: center;">
       Lade…
@@ -170,6 +257,31 @@
 let _alle = [];
 let _rahmen = [];
 let _aktiver = null;
+let _zu = new Set();   // zugeklappte Unter-Sektionen (slug)
+
+// Reihenfolge der Gruppen-Ueberschriften + Labels
+const HAUPT = [
+  { slug: 'konten', label: 'Konten' },
+  { slug: 'steuer', label: 'Steuerkonten' },
+  { slug: 'geld',   label: 'Geldkonten' },
+];
+const UNTER = {
+  konten: [
+    { slug: 'erloese',           label: 'Erlöskonten' },
+    { slug: 'aufwand',           label: 'Aufwandskonten' },
+    { slug: 'forderungen',       label: 'Forderungen' },
+    { slug: 'verbindlichkeiten', label: 'Verbindlichkeiten' },
+    { slug: 'sonstige',          label: 'Nicht zugeordnet' },
+  ],
+  steuer: [
+    { slug: 'umsatzsteuer', label: 'Umsatzsteuerkonten' },
+    { slug: 'vorsteuer',    label: 'Vorsteuerkonten' },
+  ],
+  geld: [
+    { slug: 'kasse', label: 'Kasse' },
+    { slug: 'bank',  label: 'Bank' },
+  ],
+};
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -245,6 +357,35 @@ function renderTabs() {
   });
 }
 
+function renderTabelleFuer(konten) {
+  // Sub-Renderer: nackte Tabelle fuer eine Unter-Sektion
+  return `
+    <table class="konten">
+      <thead>
+        <tr>
+          <th>Konto</th>
+          <th>Name</th>
+          <th>Kennzeichen</th>
+          <th>UStVA / BWA / NK</th>
+          <th>Bank-Info</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${konten.map(e => `
+          <tr>
+            <td class="konto-num">${escapeHtml(e.konto)}</td>
+            <td>${escapeHtml(e.name) || '<em>(ohne Name)</em>'}
+                ${e.info ? `<div style="color:var(--text-dim);
+                  font-size:11px;margin-top:2px;">
+                  ${escapeHtml(e.info)}</div>` : ''}</td>
+            <td class="meta"><div class="badges">${badges(e)}</div></td>
+            <td class="ustva">${escapeHtml(ustvaText(e))}</td>
+            <td class="bank">${bankText(e)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
 function renderTabelle(filter) {
   const box = document.getElementById('konten-box');
   const f = (filter || '').trim().toLowerCase();
@@ -259,31 +400,83 @@ function renderTabelle(filter) {
       text-align: center;">Keine Konten.</div>`;
     return;
   }
-  box.innerHTML = `
-    <table class="konten">
-      <thead>
-        <tr>
-          <th>Konto</th>
-          <th>Name</th>
-          <th>Kennzeichen</th>
-          <th>UStVA / BWA / NK</th>
-          <th>Bank-Info</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${gefiltert.map(e => `
-          <tr>
-            <td class="konto-num">${escapeHtml(e.konto)}</td>
-            <td>${escapeHtml(e.name) || '<em>(ohne Name)</em>'}
-                ${e.info ? `<div style="color:var(--text-dim);
-                  font-size:11px;margin-top:2px;">
-                  ${escapeHtml(e.info)}</div>` : ''}</td>
-            <td class="meta"><div class="badges">${badges(e)}</div></td>
-            <td class="ustva">${escapeHtml(ustvaText(e))}</td>
-            <td class="bank">${bankText(e)}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+
+  // Gruppieren
+  const buckets = new Map();
+  for (const e of gefiltert) {
+    const key = `${e.gruppe}::${e.unter}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(e);
+  }
+  // Innerhalb der Sektion nach Konto-Nr. sortieren
+  for (const arr of buckets.values()) {
+    arr.sort((a, b) => (a.konto || 0) - (b.konto || 0));
+  }
+
+  let html = '';
+  for (const h of HAUPT) {
+    // Gesamtzahl aller Unter-Sektionen dieser Hauptgruppe
+    let gesamt = 0;
+    for (const u of UNTER[h.slug]) {
+      gesamt += (buckets.get(`${h.slug}::${u.slug}`) || []).length;
+    }
+    // Beim aktiven Filter: Hauptgruppen ohne Treffer weglassen
+    if (f && gesamt === 0) continue;
+
+    html += `<div class="sek-haupt">`;
+    html += `<div class="sek-haupt-titel">`
+      + `${escapeHtml(h.label)} <span style="color:var(--text-dim);`
+      + `font-weight:normal;">(${gesamt})</span></div>`;
+
+    for (const u of UNTER[h.slug]) {
+      const key = `${h.slug}::${u.slug}`;
+      const liste = buckets.get(key) || [];
+      // Beim aktiven Filter: leere Unter-Sektionen weglassen
+      if (f && !liste.length) continue;
+      const zu = _zu.has(key);
+      const leer = liste.length === 0;
+      html += `<div class="sek-unter farbe-${u.slug}">`;
+      html += `<div class="sek-kopf ${leer ? 'leer' : ''}" `
+        + `data-key="${key}">`
+        + `<span class="caret">${leer ? ' ' : (zu ? '▸' : '▾')}</span>`
+        + `<span class="titel">${escapeHtml(u.label)}</span>`
+        + `<span class="count">(${liste.length})</span>`
+        + `</div>`;
+      if (!leer) {
+        html += `<div class="sek-inhalt ${zu ? 'zu' : ''}">`
+          + renderTabelleFuer(liste) + `</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  box.innerHTML = html;
+
+  // Klick-Handler fuer Sektions-Toggles
+  box.querySelectorAll('.sek-kopf').forEach(kopf => {
+    if (kopf.classList.contains('leer')) return;
+    kopf.addEventListener('click', () => {
+      const key = kopf.dataset.key;
+      if (_zu.has(key)) _zu.delete(key);
+      else _zu.add(key);
+      renderTabelle(document.getElementById('such-feld').value);
+    });
+  });
+}
+
+function alleAufklappen() {
+  _zu.clear();
+  renderTabelle(document.getElementById('such-feld').value);
+}
+
+function alleZuklappen() {
+  _zu.clear();
+  for (const h of HAUPT) {
+    for (const u of UNTER[h.slug]) {
+      _zu.add(`${h.slug}::${u.slug}`);
+    }
+  }
+  renderTabelle(document.getElementById('such-feld').value);
 }
 
 async function laden() {
@@ -301,12 +494,14 @@ async function laden() {
   // Statistiken (ueber alle Rahmen)
   document.getElementById('stat-rahmen').textContent  = _rahmen.length;
   document.getElementById('stat-gesamt').textContent  = _alle.length;
-  document.getElementById('stat-bilanz').textContent =
-    _alle.filter(e => e.bilanzkonto).length;
-  document.getElementById('stat-steuer').textContent =
-    _alle.filter(e => e.steuersatz != null).length;
-  document.getElementById('stat-bank').textContent =
-    _alle.filter(e => e.bank).length;
+  document.getElementById('stat-erloese').textContent =
+    _alle.filter(e => e.unter === 'erloese').length;
+  document.getElementById('stat-aufwand').textContent =
+    _alle.filter(e => e.unter === 'aufwand').length;
+  document.getElementById('stat-steuerkto').textContent =
+    _alle.filter(e => e.gruppe === 'steuer').length;
+  document.getElementById('stat-geld').textContent =
+    _alle.filter(e => e.gruppe === 'geld').length;
 
   renderTabs();
   renderTabelle('');
@@ -316,6 +511,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('such-feld').addEventListener('input', (e) => {
     renderTabelle(e.target.value);
   });
+  document.getElementById('btn-auf').addEventListener('click',
+                                                      alleAufklappen);
+  document.getElementById('btn-zu').addEventListener('click',
+                                                     alleZuklappen);
   laden();
 });
 </script>

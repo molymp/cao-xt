@@ -97,6 +97,93 @@ def _str(wert: Any) -> str:
     return (wert or '').strip() if wert is not None else ''
 
 
+# KONTOART-Signale, die in allen Rahmen zuverlaessig sind
+# (aus FIBU_KONTEN-Initialdaten abgeleitet)
+_KONTOART_KASSE       = {3}
+_KONTOART_BANK        = {20}
+_KONTOART_VORSTEUER   = {5}
+_KONTOART_UMSATZST    = {7}
+
+
+def _kategorie(rahmen: str, konto: int | None,
+               kontoart: int | None) -> tuple[str, str]:
+    """Klassifiziert ein Konto grob.
+
+    Rueckgabe: ``(gruppe, unter)``. Oberkategorien::
+
+        konten  / erloese
+        konten  / aufwand
+        konten  / forderungen
+        konten  / verbindlichkeiten
+        konten  / sonstige
+        steuer  / vorsteuer
+        steuer  / umsatzsteuer
+        geld    / kasse
+        geld    / bank
+
+    Strategie: erst KONTOART-Signal (robust), dann Nummern-Range des
+    jeweiligen Standard-Rahmens (SKR03/SKR04). Fremde Rahmen fallen
+    nach KONTOART oder 'sonstige' durch.
+    """
+    # 1. KONTOART-Signale (rahmenunabhaengig)
+    if kontoart in _KONTOART_KASSE:
+        return ('geld', 'kasse')
+    if kontoart in _KONTOART_BANK:
+        return ('geld', 'bank')
+    if kontoart in _KONTOART_VORSTEUER:
+        return ('steuer', 'vorsteuer')
+    if kontoart in _KONTOART_UMSATZST:
+        return ('steuer', 'umsatzsteuer')
+
+    if konto is None:
+        return ('konten', 'sonstige')
+    k = konto
+    rh = (rahmen or '').upper()
+
+    # 2. SKR03-Nummernsystematik
+    if rh == 'SKR03':
+        if 1000 <= k <= 1099 or 1330 <= k <= 1339:
+            return ('geld', 'kasse')
+        if 1100 <= k <= 1299:
+            return ('geld', 'bank')
+        if 1570 <= k <= 1599:
+            return ('steuer', 'vorsteuer')
+        if 1770 <= k <= 1799:
+            return ('steuer', 'umsatzsteuer')
+        if 1400 <= k <= 1569:
+            return ('konten', 'forderungen')
+        if 1600 <= k <= 1769:
+            return ('konten', 'verbindlichkeiten')
+        if 3000 <= k <= 7999:
+            return ('konten', 'aufwand')
+        if 8000 <= k <= 8999:
+            return ('konten', 'erloese')
+        return ('konten', 'sonstige')
+
+    # 3. SKR04-Nummernsystematik
+    if rh == 'SKR04':
+        if 1400 <= k <= 1499:
+            return ('steuer', 'vorsteuer')
+        if 3800 <= k <= 3899:
+            return ('steuer', 'umsatzsteuer')
+        if 1600 <= k <= 1699:
+            return ('geld', 'kasse')
+        if 1800 <= k <= 1899:
+            return ('geld', 'bank')
+        if 1200 <= k <= 1299:
+            return ('konten', 'forderungen')
+        if 3000 <= k <= 3999:
+            return ('konten', 'verbindlichkeiten')
+        if 4000 <= k <= 4999:
+            return ('konten', 'erloese')
+        if 5000 <= k <= 7999:
+            return ('konten', 'aufwand')
+        return ('konten', 'sonstige')
+
+    # 4. Unbekannter Rahmen: nur KONTOART-Signal war aussagekraeftig
+    return ('konten', 'sonstige')
+
+
 def liste() -> dict[str, Any]:
     """Liefert alle Konten aller Rahmen plus Rahmen-Liste.
 
@@ -126,6 +213,11 @@ def liste() -> dict[str, Any]:
                   'iban':    str,
                   'swift':   str,
               } | None,
+              'gruppe':       str,      # 'konten' | 'steuer' | 'geld'
+              'unter':        str,      # 'erloese' | 'aufwand' | 'forderungen'
+                                        # | 'verbindlichkeiten' | 'sonstige'
+                                        # | 'vorsteuer' | 'umsatzsteuer'
+                                        # | 'kasse' | 'bank'
             },
             ...
           ]
@@ -171,11 +263,15 @@ def liste() -> dict[str, Any]:
         }
         bank = bank_fields if any(bank_fields.values()) else None
 
+        konto = _int_oder_none(r.get('KONTO'))
+        kontoart = _int_oder_none(r.get('KONTOART'))
+        gruppe, unter = _kategorie(rah, konto, kontoart)
+
         eintraege.append({
             'rahmen':      rah,
-            'konto':       _int_oder_none(r.get('KONTO')),
+            'konto':       konto,
             'name':        _str(r.get('KONTONAME')),
-            'kontoart':    _int_oder_none(r.get('KONTOART')),
+            'kontoart':    kontoart,
             'nebenkonto':  neben,
             'steuersatz':  steuer,
             'bilanzkonto': _ja(r.get('BILANZKONTO')),
@@ -185,6 +281,8 @@ def liste() -> dict[str, Any]:
             'bwa_gruppe':  bwa,
             'info':        _memo_text(r.get('INFO')),
             'bank':        bank,
+            'gruppe':      gruppe,
+            'unter':       unter,
         })
 
     return {
