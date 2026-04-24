@@ -178,8 +178,47 @@ def _globals():
     }
 
 
+# TTL-Cache fuer _terminal_settings() – jeder Page-Render triggert sonst
+# einen 2-Tabellen-JOIN ueber die WAN-DB-Strecke (~100-200 ms RTT).
+# Bei 5 s TTL sehen manuelle Settings-Aenderungen (via admin-app) hier
+# spaetestens nach 5 s – akzeptabel fuer die betroffenen Felder
+# (QR-Code, EC-Terminal-Konfig, TSE-Typ). Pro TERMINAL_NR getrennt, weil
+# eine Kasse-Instanz konzeptuell ein Terminal bedient – aber defensiv
+# trotzdem als dict gekeyed.
+_TERMINAL_SETTINGS_TTL = 5.0
+_terminal_settings_cache: dict[int, tuple[float, dict]] = {}
+_terminal_settings_lock = threading.Lock()
+
+
+def _terminal_settings_cache_leeren(terminal_nr: int | None = None) -> None:
+    """Leert den Terminal-Settings-Cache.
+
+    Aufrufen, nachdem dieser Prozess selbst eine Aenderung geschrieben
+    hat (z.B. TSE-Geraet ausser Betrieb, TERMINAL-INSERT), damit die
+    naechste Anfrage im gleichen Prozess frische Daten liest.
+    """
+    with _terminal_settings_lock:
+        if terminal_nr is None:
+            _terminal_settings_cache.clear()
+        else:
+            _terminal_settings_cache.pop(terminal_nr, None)
+
+
 def _terminal_settings(terminal_nr: int) -> dict:
-    """Liest Terminal-Einstellungen inkl. TSE-Typ aus XT_KASSE_TERMINALS + XT_KASSE_TSE_GERAETE."""
+    """Liest Terminal-Einstellungen inkl. TSE-Typ aus XT_KASSE_TERMINALS + XT_KASSE_TSE_GERAETE.
+
+    TTL-cached (5 s) – wird vom Context-Processor und mehr als 10
+    Endpoints aufgerufen, jede Anfrage ueber die WAN-DB-Strecke kostet
+    sonst merklich erste-Byte-Latenz.
+    """
+    jetzt = time.monotonic()
+    with _terminal_settings_lock:
+        eintrag = _terminal_settings_cache.get(terminal_nr)
+        if eintrag is not None and (jetzt - eintrag[0]) < _TERMINAL_SETTINGS_TTL:
+            return eintrag[1]
+
+    # Cache-Miss oder abgelaufen – ausserhalb des Locks abfragen,
+    # damit parallele Requests sich nicht blockieren.
     with get_db() as cur:
         cur.execute(
             """SELECT t.QR_CODE, t.TRAININGS_MODUS, t.SOFORT_DRUCKEN,
@@ -200,7 +239,7 @@ def _terminal_settings(terminal_nr: int) -> dict:
         (tse_typ == 'FISKALY' and fiskaly_env != 'live') or
         tse_typ == 'DEMO'
     )
-    return {
+    result = {
         'qr_code':                bool(row.get('QR_CODE', 0)),
         'trainings_modus':        bool(row.get('TRAININGS_MODUS', 0)),
         'sofort_drucken':         bool(row.get('SOFORT_DRUCKEN', 1)),
@@ -214,6 +253,9 @@ def _terminal_settings(terminal_nr: int) -> dict:
         'ec_tagesabschluss':      (row.get('EC_TAGESABSCHLUSS') or 'manuell').lower(),
         'ec_zvt_passwort':        row.get('EC_ZVT_PASSWORT') or '010203',
     }
+    with _terminal_settings_lock:
+        _terminal_settings_cache[terminal_nr] = (jetzt, result)
+    return result
 
 
 def _einstellung_lesen(cursor, schluessel: str, default: bool = True) -> bool:
@@ -1395,6 +1437,7 @@ def admin_terminal_speichern():
              ec_modus, ec_terminal_ip, ec_terminal_port, ec_tagesabschluss, ec_zvt_passwort)
         )
     tse_modul._token_cache.pop(tnr, None)
+    _terminal_settings_cache_leeren(tnr)
     return redirect(url_for('admin_index'))
 
 
@@ -1499,6 +1542,8 @@ def admin_tse_ausser_betrieb(tse_id: int):
             "UPDATE XT_KASSE_TSE_GERAETE SET AUSSER_BETRIEB=%s WHERE REC_ID=%s",
             (date.today().isoformat(), tse_id)
         )
+    # TSE-Typ ist Teil der _terminal_settings(); Aenderung spiegeln
+    _terminal_settings_cache_leeren()
     session['tse_hinweis'] = f'TSE-Gerät {tse_id} als außer Betrieb markiert.'
     return redirect(url_for('admin_tse_liste'))
 

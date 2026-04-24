@@ -45,8 +45,19 @@ def _get_pool():
 
 
 def _get_conn():
+    """Holt eine Pool-Verbindung und prueft per ping, dass sie lebt.
+
+    NAT-Middleboxes (FritzBox MyFRITZ) droppen idle TCP-Flows nach
+    2-5 Minuten. Pool und MySQL-Server bekommen das nicht mit; der
+    naechste ``cursor.execute()`` blockt auf Kernel-TCP-Retransmits.
+    ``ping(reconnect=True)`` erkennt das billig und repariert.
+    Faellt auch das fehl, oeffnen wir als Fallback eine frische,
+    ungepoolte Verbindung.
+    """
     try:
-        return _get_pool().get_connection()
+        conn = _get_pool().get_connection()
+        conn.ping(reconnect=True, attempts=2, delay=0)
+        return conn
     except Exception:
         return mysql.connector.connect(
             host=config.DB_HOST,
