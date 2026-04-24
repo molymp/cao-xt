@@ -1162,6 +1162,33 @@ def api_rechte_benutzer_overrides(ma_id: int):
     return jsonify(ok=True, overrides=overrides)
 
 
+# ── System: CAO-Einstellungen (read-only) ───────────────────────
+
+@app.route('/einstellungen')
+@_login_required
+def einstellungen_seite():
+    """Read-only Uebersicht der CAO-REGISTRY (Anwendungseinstellungen).
+
+    Pflege ausschliesslich in cao_admin.exe (Menue „Einstellungen").
+    Die Ansicht gruppiert nach MAINKEY-Kategorien und listet je Eintrag
+    Wert, Typ sowie die Flags CACHABLE/READONLY.
+    """
+    return render_template('einstellungen.html')
+
+
+@app.get('/api/einstellungen/registry')
+@_login_required
+def api_einstellungen_registry():
+    """REGISTRY-Eintraege, nach Kategorie gruppiert."""
+    import cao_einstellungen as _ce
+    try:
+        kategorien = _ce.gruppiert_nach_kategorie()
+        return jsonify(ok=True, kategorien=kategorien)
+    except Exception as e:
+        log.exception('REGISTRY laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')

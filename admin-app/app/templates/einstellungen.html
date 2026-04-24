@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen{% endblock %}
+{% block extra_style %}
+<style>
+  .einstellungen-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 1000px) {
+    .einstellungen-layout { grid-template-columns: 1fr; }
+  }
+  .kat-liste {
+    max-height: 75vh;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+  .kat-eintrag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .kat-eintrag:hover { background: var(--bg-hell); }
+  .kat-eintrag.aktiv {
+    background: rgba(58,124,189,0.2);
+    color: var(--akzent-hell);
+    font-weight: 700;
+  }
+  .kat-eintrag .icon { flex-shrink: 0; font-size: 15px; }
+  .kat-eintrag .count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: monospace;
+  }
+  .kat-eintrag .mainkey {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: block;
+  }
+  .einstellungen-tabelle {
+    max-height: 75vh;
+    overflow-y: auto;
+  }
+  .einstellungen-tabelle table { width: 100%; font-size: 13px; }
+  .einstellungen-tabelle th, .einstellungen-tabelle td {
+    padding: 6px 10px;
+    vertical-align: top;
+  }
+  .einstellungen-tabelle td.name {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-hell);
+    white-space: nowrap;
+  }
+  .einstellungen-tabelle td.wert {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--akzent-hell);
+    word-break: break-all;
+    max-width: 500px;
+  }
+  .einstellungen-tabelle td.wert.leer {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  .einstellungen-tabelle td.typ {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .einstellungen-tabelle td.flags {
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  .flag-chip {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+    color: var(--text-dim);
+    margin-right: 3px;
+  }
+  .flag-chip.readonly { background: rgba(200,120,10,0.2); color: var(--gold-hell); }
+  .flag-chip.cachable { background: rgba(46,158,90,0.15); color: var(--gruen-hell); }
+  .suche-feld { margin-bottom: 12px; }
+  .readonly-banner {
+    background: #3b2f1a;
+    border-left: 3px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #fde68a;
+    font-size: 14px;
+  }
+  .kat-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .kat-header h2 { margin: 0; font-size: 18px; }
+  .kat-header .mainkey-display {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+</style>
+{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:8px;">⚙️ CAO-Einstellungen</h1>
+<div class="readonly-banner">
+  <strong>Read-only.</strong> Pflege erfolgt in
+  <code>cao_admin.exe → Einstellungen</code>. Diese Ansicht spiegelt
+  den Stand aus <code>REGISTRY</code>.
+</div>
+
+<div class="einstellungen-layout">
+  <div class="card">
+    <input type="text" id="suchFeld" class="form-control suche-feld"
+           placeholder="🔍 Filter (Key oder Wert)">
+    <div class="kat-liste" id="katListe">
+      <div style="color:var(--text-dim); text-align:center; padding:24px;">Lade…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="kat-header">
+      <h2 id="katTitel">Bitte Kategorie waehlen</h2>
+      <span class="mainkey-display" id="katMainkey"></span>
+    </div>
+    <div class="einstellungen-tabelle" id="eintraege">
+      <div style="color:var(--text-dim); padding:24px; text-align:center;">
+        Waehle links eine Kategorie.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _kategorien = [];
+let _aktiveKategorie = null;
+let _filter = '';
+
+async function ladeRegistry() {
+  const r = await api('GET', '/api/einstellungen/registry');
+  if (!r.ok) {
+    document.getElementById('katListe').innerHTML =
+      '<div style="color:#f08080;padding:12px;">Fehler: ' + escapeHtml(r.msg || '?') + '</div>';
+    return;
+  }
+  _kategorien = r.kategorien || [];
+  if (_kategorien.length && !_aktiveKategorie) {
+    _aktiveKategorie = _kategorien[0].mainkey;
+  }
+  renderKatListe();
+  renderEintraege();
+}
+
+function renderKatListe() {
+  const el = document.getElementById('katListe');
+  if (!_kategorien.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);padding:12px;">Keine Eintraege.</div>';
+    return;
+  }
+  el.innerHTML = _kategorien.map(k => {
+    const aktiv = k.mainkey === _aktiveKategorie ? 'aktiv' : '';
+    return `
+      <div class="kat-eintrag ${aktiv}" onclick="waehleKategorie(${JSON.stringify(k.mainkey)})">
+        <span class="icon">${k.icon}</span>
+        <span>
+          ${escapeHtml(k.label)}
+          <span class="mainkey">${escapeHtml(k.mainkey)}</span>
+        </span>
+        <span class="count">${k.eintraege.length}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function waehleKategorie(mainkey) {
+  _aktiveKategorie = mainkey;
+  renderKatListe();
+  renderEintraege();
+}
+
+function renderEintraege() {
+  const titelEl  = document.getElementById('katTitel');
+  const mkEl     = document.getElementById('katMainkey');
+  const tabEl    = document.getElementById('eintraege');
+  const kat = _kategorien.find(k => k.mainkey === _aktiveKategorie);
+  if (!kat) {
+    titelEl.textContent = 'Bitte Kategorie waehlen';
+    mkEl.textContent    = '';
+    tabEl.innerHTML     = '';
+    return;
+  }
+  titelEl.textContent = `${kat.icon} ${kat.label}`;
+  mkEl.textContent    = `MAINKEY=${kat.mainkey}`;
+
+  const filter = _filter.trim().toLowerCase();
+  const gefiltert = filter
+    ? kat.eintraege.filter(e =>
+        (e.name || '').toLowerCase().includes(filter)
+        || String(e.wert || '').toLowerCase().includes(filter))
+    : kat.eintraege;
+
+  if (!gefiltert.length) {
+    tabEl.innerHTML = `<div style="color:var(--text-dim);padding:16px;">
+      Keine Eintraege ${filter ? '(Filter aktiv)' : ''}.
+    </div>`;
+    return;
+  }
+
+  tabEl.innerHTML = `
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:38%;">Name</th>
+          <th>Wert</th>
+          <th style="width:18%;">Typ</th>
+          <th style="width:14%;">Flags</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${gefiltert.map(e => `
+          <tr>
+            <td class="name">${escapeHtml(e.name)}</td>
+            <td class="wert ${e.wert == null || e.wert === '' ? 'leer' : ''}">${
+              e.wert == null
+                ? '(NULL)'
+                : e.wert === ''
+                  ? '(leer)'
+                  : escapeHtml(String(e.wert))
+            }</td>
+            <td class="typ">${escapeHtml(e.typ || '')}</td>
+            <td class="flags">
+              ${e.readonly  ? '<span class="flag-chip readonly">read-only</span>' : ''}
+              ${e.cachable  ? '<span class="flag-chip cachable">cache</span>'     : ''}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('suchFeld').addEventListener('input', (e) => {
+    _filter = e.target.value;
+    renderEintraege();
+  });
+  ladeRegistry();
+});
+</script>
+{% endblock %}
