@@ -60,6 +60,41 @@
     color: var(--text-hell);
     white-space: nowrap;
   }
+  .einstellungen-tabelle td.titel {
+    color: var(--text-hell);
+    max-width: 320px;
+  }
+  .einstellungen-tabelle td.titel .raw {
+    display: block;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .einstellungen-tabelle td.titel .cao-tab {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+    color: var(--text-dim);
+    vertical-align: middle;
+  }
+  .einstellungen-tabelle td.titel.unbekannt {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  .einstellungen-tabelle td.wert .enum-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--font-sans, sans-serif);
+    font-style: italic;
+  }
   .einstellungen-tabelle td.wert {
     font-family: monospace;
     font-size: 12px;
@@ -214,6 +249,7 @@ function renderEintraege() {
   const gefiltert = filter
     ? kat.eintraege.filter(e =>
         (e.name || '').toLowerCase().includes(filter)
+        || (e.titel || '').toLowerCase().includes(filter)
         || String(e.wert || '').toLowerCase().includes(filter))
     : kat.eintraege;
 
@@ -228,23 +264,35 @@ function renderEintraege() {
     <table class="tbl">
       <thead>
         <tr>
-          <th style="width:38%;">Name</th>
+          <th style="width:38%;">Einstellung</th>
           <th>Wert</th>
-          <th style="width:18%;">Typ</th>
+          <th style="width:14%;">Typ</th>
           <th style="width:14%;">Flags</th>
         </tr>
       </thead>
       <tbody>
         ${gefiltert.map(e => `
-          <tr>
-            <td class="name">${escapeHtml(e.name)}</td>
+          <tr${e.hint ? ` title="${escapeHtml(e.hint)}"` : ''}>
+            ${e.titel
+              ? `<td class="titel">
+                   ${escapeHtml(e.titel)}
+                   ${e.cao_tab ? `<span class="cao-tab">${escapeHtml(e.cao_tab)}</span>` : ''}
+                   <span class="raw">${escapeHtml(e.name)}</span>
+                 </td>`
+              : `<td class="titel unbekannt">${escapeHtml(e.name)}</td>`
+            }
             <td class="wert ${e.wert == null || e.wert === '' ? 'leer' : ''}">${
               e.wert == null
                 ? '(NULL)'
                 : e.wert === ''
                   ? '(leer)'
                   : escapeHtml(String(e.wert))
-            }</td>
+            }${e.enum && e.enum.length
+                ? `<span class="enum-hint">Moeglich: ${
+                     e.enum.map((v,i) => `${i}=${escapeHtml(v)}`).join(', ')
+                   }</span>`
+                : ''
+              }</td>
             <td class="typ">${escapeHtml(e.typ || '')}</td>
             <td class="flags">
               ${e.readonly  ? '<span class="flag-chip readonly">read-only</span>' : ''}
