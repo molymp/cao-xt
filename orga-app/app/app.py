@@ -723,12 +723,24 @@ def ec_umsaetze_export():
 
 # ── Koppelkauf-Analyse ─────────────────────────────────────────
 
-import koppelkauf as koppelkauf_modul
+try:
+    import koppelkauf as koppelkauf_modul
+except ImportError as _koppelkauf_exc:
+    # Koppelkauf-Modul ist optional / WIP. Fehler nur loggen; die Route
+    # selbst antwortet mit Fehlermeldung wenn tatsaechlich aufgerufen.
+    koppelkauf_modul = None
+    log.warning("Koppelkauf-Modul nicht verfuegbar: %s. "
+                "Route /orga/berichte/koppelkauf liefert Platzhalter.",
+                _koppelkauf_exc)
 
 
 @app.get('/orga/berichte/koppelkauf')
 def koppelkauf_seite():
     """Koppelkauf-Analyse: Auswahlseite oder Analyseergebnis."""
+    if koppelkauf_modul is None:
+        flash('Koppelkauf-Modul ist auf diesem Server nicht verfuegbar.',
+              'error')
+        return redirect(url_for('index'))
     artnum     = request.args.get('artnum', '').strip()
     von_str    = request.args.get('von', '')
     bis_str    = request.args.get('bis', '')
