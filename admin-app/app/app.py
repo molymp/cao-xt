@@ -1879,5 +1879,13 @@ def api_dorfkern_aktivierungen_upsert(app_name):
 # ── App starten ──────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    log.info("Admin-App startet auf %s:%s", config.HOST, config.PORT)
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    log.info("Admin-App startet auf %s:%s (debug=%s)",
+             config.HOST, config.PORT, config.DEBUG)
+    if config.DEBUG:
+        # Dev: Werkzeug-Dev-Server mit Auto-Reloader + Debugger
+        app.run(host=config.HOST, port=config.PORT, debug=True)
+    else:
+        # Prod: Waitress (threaded WSGI, kein Reloader, stabil unter Last)
+        from waitress import serve
+        serve(app, host=config.HOST, port=config.PORT,
+              threads=8, ident='cao-xt')

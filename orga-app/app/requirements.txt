@@ -3,5 +3,6 @@
 
 flask>=3.0
 mysql-connector-python>=8.0
+waitress>=3.0           # Prod-WSGI-Server (ersetzt Werkzeug-Dev-Server)
 holidays>=0.40
 reportlab>=4.0          # Stundenzettel-PDF-Export

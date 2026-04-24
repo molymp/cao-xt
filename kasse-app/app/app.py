@@ -1911,4 +1911,13 @@ if __name__ == '__main__':
         selbst_registrieren('KASSE')
     except Exception as _exc:
         log.debug("Terminal-Selbstregistrierung uebersprungen: %s", _exc)
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    if config.DEBUG:
+        # Dev: Werkzeug-Dev-Server mit Auto-Reloader + Debugger
+        app.run(host=config.HOST, port=config.PORT, debug=True)
+    else:
+        # Prod: Waitress – stabiler Threaded-WSGI-Server ohne Reloader.
+        # 8 Threads reichen fuer eine einzelne Kasse (Touchbedienung +
+        # gelegentliche EC-Callbacks + TSE-Signing) mit Puffer.
+        from waitress import serve
+        serve(app, host=config.HOST, port=config.PORT,
+              threads=8, ident='cao-xt')
