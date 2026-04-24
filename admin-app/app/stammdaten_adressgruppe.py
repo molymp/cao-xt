@@ -7,15 +7,19 @@ Darstellung fuer Unter-Gruppen).
 
 Reale Spalten (variieren, wir introspekten)::
 
-    REC_ID        int         PK
-    NAME          varchar     Bezeichnung (in Delphi-DFM als LANGBEZ aliased)
-    DURCHSUCHEN   char(1)     'Y' = Gruppe in Lookups sichtbar
-    TOP_ID        int         Parent-ID fuer Baum (0/NULL = Wurzel);
-                              in manchen DBs PARENT_ID
-    RABATT        float       Standard-Rabatt %
-    SORT          int         Sortier-Reihenfolge
-    VORGABEN      memo        Vorgaben-INI/JSON (nicht angezeigt)
-    SQL_STATEMENT memo        dynamische Gruppe per SQL (selten genutzt)
+    REC_ID         int         PK
+    TOP_ID         int         Parent-ID fuer Baum (-1/0/NULL = Wurzel);
+                               in manchen DBs PARENT_ID
+    NAME           varchar     Bezeichnung (in Delphi-DFM als LANGBEZ aliased)
+    TEXT_KURZ      varchar
+    TEXT_LANG      longtext
+    DURCHSUCHEN    char(1)     'Y' = Gruppe in Lookups sichtbar
+    GLOBALRABATT   float       Standard-Rabatt % (Delphi-Alias: RABATT)
+    SORT           int         Sortier-Reihenfolge
+    VORGABEN       memo        INI-artig; enthaelt u.a. ``erechnung_typ``
+                               (deaktiviert/xrechnung/zugferd)
+    SQL_TEXT       memo        dynamische Gruppe per SQL
+                               (Delphi-Alias: SQL_STATEMENT)
 
 Rueckgabe enthaelt sowohl die flache Liste (mit ``parent_id`` als
 Koordinate) als auch die Anzahl direkter Kinder pro Knoten – den
@@ -32,10 +36,14 @@ log = logging.getLogger(__name__)
 
 _PFLICHT = ('REC_ID', 'NAME')
 _OPTIONAL = (
-    'DURCHSUCHEN', 'RABATT', 'SORT', 'VORGABEN', 'SQL_STATEMENT',
+    'DURCHSUCHEN', 'GLOBALRABATT', 'SORT', 'VORGABEN', 'SQL_TEXT',
+    'TEXT_KURZ', 'TEXT_LANG',
 )
 # Kandidaten fuer die Parent-Spalte (erste vorhandene gewinnt)
 _PARENT_KANDIDATEN = ('TOP_ID', 'PARENT_ID', 'PARENT', 'UP_ID', 'ROOT_ID')
+
+# Gueltige Werte fuer den E-Rechnung-Typ (cbRechnungstyp in cao_admin)
+_ERECHNUNG_TYPEN = {'deaktiviert', 'xrechnung', 'zugferd'}
 
 _spalten_cache: set[str] | None = None
 
@@ -70,6 +78,48 @@ def _int_oder_none(wert: Any) -> int | None:
         return None
 
 
+def _memo_text(roh: Any) -> str:
+    """Dekodiert Memo-/BLOB-Felder zu einem getrimmten String."""
+    if roh is None:
+        return ''
+    if isinstance(roh, (bytes, bytearray)):
+        try:
+            return roh.decode('utf-8', errors='replace').strip()
+        except Exception:
+            return ''
+    return str(roh).strip()
+
+
+def _parse_vorgaben_ini(text: str) -> dict[str, str]:
+    """Parst das VORGABEN-Memo (INI-artig) in ein flaches Dict.
+
+    Sektionen werden ignoriert – CAO nutzt meist nur einen einfachen
+    ``key=value``-Block pro Zeile. Schluessel werden case-insensitive
+    gespeichert.
+    """
+    out: dict[str, str] = {}
+    if not text:
+        return out
+    for zeile in text.splitlines():
+        s = zeile.strip()
+        if not s or s.startswith(';') or s.startswith('#'):
+            continue
+        if s.startswith('[') and s.endswith(']'):
+            continue
+        if '=' not in s:
+            continue
+        k, _, v = s.partition('=')
+        out[k.strip().lower()] = v.strip()
+    return out
+
+
+def _erechnung_typ(vorgaben: dict[str, str]) -> str | None:
+    roh = (vorgaben.get('erechnung_typ') or '').strip().lower()
+    if not roh:
+        return None
+    return roh if roh in _ERECHNUNG_TYPEN else None
+
+
 def liste() -> dict[str, Any]:
     """Liefert die flache Liste der Adressgruppen plus Tree-Metadaten.
 
@@ -79,14 +129,15 @@ def liste() -> dict[str, Any]:
           'parent_spalte': 'TOP_ID' | None,   # Name der Parent-Spalte
           'eintraege': [
             {
-              'id':          int,
-              'parent_id':   int | None,   # None = Wurzel
-              'name':        str,
-              'durchsuchen': bool,
-              'rabatt':      float | None,
-              'sort':        int | None,
-              'hat_sql':     bool,
-              'kinder':      int,          # Anzahl direkter Kinder
+              'id':            int,
+              'parent_id':     int | None,   # None = Wurzel
+              'name':          str,
+              'durchsuchen':   bool,
+              'globalrabatt':  float | None, # Standard-Rabatt %
+              'sort':          int | None,
+              'hat_sql':       bool,
+              'erechnung_typ': str | None,   # deaktiviert/xrechnung/zugferd
+              'kinder':        int,          # Anzahl direkter Kinder
             },
             ...
           ]
@@ -117,29 +168,28 @@ def liste() -> dict[str, Any]:
         if parent_id in (0, -1):
             parent_id = None
 
-        rabatt_roh = r.get('RABATT')
+        rabatt_roh = r.get('GLOBALRABATT')
         try:
-            rabatt = float(rabatt_roh) if rabatt_roh is not None else None
+            globalrabatt = (
+                float(rabatt_roh) if rabatt_roh is not None else None
+            )
         except (TypeError, ValueError):
-            rabatt = None
+            globalrabatt = None
 
-        sql_roh = r.get('SQL_STATEMENT')
-        if isinstance(sql_roh, (bytes, bytearray)):
-            try:
-                sql_text = sql_roh.decode('utf-8', errors='replace').strip()
-            except Exception:
-                sql_text = ''
-        else:
-            sql_text = (sql_roh or '').strip() if sql_roh is not None else ''
+        sql_text = _memo_text(r.get('SQL_TEXT'))
+
+        vorgaben_text = _memo_text(r.get('VORGABEN'))
+        vorgaben = _parse_vorgaben_ini(vorgaben_text)
 
         eintraege.append({
-            'id':          _int_oder_none(r.get('REC_ID')),
-            'parent_id':   parent_id,
-            'name':        (r.get('NAME') or '').strip(),
-            'durchsuchen': _ja(r.get('DURCHSUCHEN')),
-            'rabatt':      rabatt,
-            'sort':        _int_oder_none(r.get('SORT')),
-            'hat_sql':     bool(sql_text),
+            'id':            _int_oder_none(r.get('REC_ID')),
+            'parent_id':     parent_id,
+            'name':          (r.get('NAME') or '').strip(),
+            'durchsuchen':   _ja(r.get('DURCHSUCHEN')),
+            'globalrabatt':  globalrabatt,
+            'sort':          _int_oder_none(r.get('SORT')),
+            'hat_sql':       bool(sql_text),
+            'erechnung_typ': _erechnung_typ(vorgaben),
         })
 
     # Anzahl direkter Kinder pro Knoten zaehlen

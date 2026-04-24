@@ -89,7 +89,7 @@
     border-left: 1px solid var(--border);
   }
 
-  .sql-badge, .kinder-badge {
+  .sql-badge, .kinder-badge, .er-badge, .rab-badge {
     display: inline-block;
     padding: 1px 6px;
     border-radius: 3px;
@@ -100,6 +100,24 @@
     letter-spacing: 0.03em;
   }
   .sql-badge { color: #f59e0b; border: 1px solid #f59e0b; }
+  .rab-badge {
+    color: var(--akzent-hell);
+    border: 1px solid var(--akzent-hell);
+    font-variant-numeric: tabular-nums;
+  }
+  .rab-badge.rab-null {
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+  .er-badge.er-xrechnung {
+    color: #60a5fa; border: 1px solid #60a5fa;
+  }
+  .er-badge.er-zugferd {
+    color: #34d399; border: 1px solid #34d399;
+  }
+  .er-badge.er-deaktiviert {
+    color: var(--text-dim); border: 1px solid var(--border);
+  }
 
   .warnhinweis {
     background: #2b1f3b;
@@ -120,6 +138,11 @@
   <code>cao_admin.exe → Einstellungen → Adressgruppen</code>.
   Gruppen mit <strong>SQL-Filter</strong> sind dynamisch und werden
   zur Laufzeit ausgewertet (Badge <span class="sql-badge">SQL</span>).
+  Der <strong>Globalrabatt</strong> und die <strong>E-Rechnung-Vorgabe</strong>
+  (<span class="er-badge er-xrechnung">XRechnung</span> /
+  <span class="er-badge er-zugferd">ZUGFeRD</span> /
+  <span class="er-badge er-deaktiviert">deaktiviert</span>)
+  gelten fuer <em>neue</em> Adressen in der jeweiligen Gruppe.
 </div>
 
 <div class="stat-zeile">
@@ -127,6 +150,8 @@
   <span class="chip">Wurzeln: <span id="stat-wurzeln">–</span></span>
   <span class="chip">Durchsuchbar: <span id="stat-such">–</span></span>
   <span class="chip">Dynamisch (SQL): <span id="stat-sql">–</span></span>
+  <span class="chip">Mit Rabatt: <span id="stat-rabatt">–</span></span>
+  <span class="chip">E-Rechnung aktiv: <span id="stat-er">–</span></span>
 </div>
 
 <div class="card">
@@ -159,38 +184,56 @@ function escapeHtml(s) {
 }
 
 function fmtRabatt(r) {
-  if (r == null) return '';
-  if (r === 0) return '';
+  if (r == null) return '– %';
   return (Math.round(r * 100) / 100).toString().replace('.', ',') + ' %';
+}
+
+const ER_LABEL = {
+  xrechnung:   'XRechnung',
+  zugferd:     'ZUGFeRD',
+  deaktiviert: 'E-Rg. aus',
+};
+
+function metaHtml(e, hatKinder) {
+  const parts = [];
+  // Globalrabatt: immer anzeigen (auch 0 %), weil er fuer neue Adressen gilt
+  const rabKlasse = (e.globalrabatt != null && e.globalrabatt > 0)
+    ? 'rab-badge' : 'rab-badge rab-null';
+  parts.push(
+    `<span class="${rabKlasse}" title="Globalrabatt fuer neue Adressen"`
+    + `>${escapeHtml(fmtRabatt(e.globalrabatt))}</span>`);
+  // E-Rechnung-Vorgabe (nur wenn gesetzt)
+  if (e.erechnung_typ) {
+    const label = ER_LABEL[e.erechnung_typ] || e.erechnung_typ;
+    parts.push(
+      `<span class="er-badge er-${escapeHtml(e.erechnung_typ)}" `
+      + `title="E-Rechnung-Vorgabe fuer neue Adressen">`
+      + `${escapeHtml(label)}</span>`);
+  }
+  if (e.hat_sql) {
+    parts.push('<span class="sql-badge">SQL</span>');
+  }
+  if (!e.durchsuchen) {
+    parts.push('<span class="nicht-durchsuchbar">nicht listbar</span>');
+  }
+  if (hatKinder) {
+    parts.push(`<span class="kinder-badge">${e.kinder} Unter</span>`);
+  }
+  return parts.join('');
 }
 
 function renderNode(e, tiefe) {
   const hatKinder = (_kinder_map.get(e.id) || []).length > 0;
   const offen = _expandiert.has(e.id);
   const caret = hatKinder ? (offen ? '▾' : '▸') : '';
-
-  const metaParts = [];
-  if (e.rabatt != null && e.rabatt > 0) {
-    metaParts.push(
-      `<span class="rabatt">${escapeHtml(fmtRabatt(e.rabatt))}</span>`);
-  }
-  if (e.hat_sql) {
-    metaParts.push('<span class="sql-badge">SQL</span>');
-  }
-  if (!e.durchsuchen) {
-    metaParts.push('<span class="nicht-durchsuchbar">nicht listbar</span>');
-  }
-  if (hatKinder) {
-    metaParts.push(
-      `<span class="kinder-badge">${e.kinder} Unter</span>`);
-  }
+  const meta = metaHtml(e, hatKinder);
 
   let html = `
     <div class="ag-node ${hatKinder ? '' : 'blatt'}" data-id="${e.id}">
       <span class="caret">${caret}</span>
       <span class="id">#${escapeHtml(e.id)}</span>
       <span class="name">${escapeHtml(e.name) || '(ohne Name)'}</span>
-      <span class="meta">${metaParts.join('')}</span>
+      <span class="meta">${meta}</span>
     </div>`;
 
   if (hatKinder && offen) {
@@ -205,23 +248,13 @@ function renderNode(e, tiefe) {
 
 function renderFlach(liste) {
   return `<div class="ag-tree">` + liste.map(e => {
-    const metaParts = [];
-    if (e.rabatt != null && e.rabatt > 0) {
-      metaParts.push(
-        `<span class="rabatt">${escapeHtml(fmtRabatt(e.rabatt))}</span>`);
-    }
-    if (e.hat_sql) {
-      metaParts.push('<span class="sql-badge">SQL</span>');
-    }
-    if (!e.durchsuchen) {
-      metaParts.push('<span class="nicht-durchsuchbar">nicht listbar</span>');
-    }
+    const hatKinder = (_kinder_map.get(e.id) || []).length > 0;
     return `
       <div class="ag-node blatt">
         <span class="caret"></span>
         <span class="id">#${escapeHtml(e.id)}</span>
         <span class="name">${escapeHtml(e.name) || '(ohne Name)'}</span>
-        <span class="meta">${metaParts.join('')}</span>
+        <span class="meta">${metaHtml(e, hatKinder)}</span>
       </div>`;
   }).join('') + `</div>`;
 }
@@ -310,6 +343,12 @@ async function laden() {
     _alle.filter(e => e.durchsuchen).length;
   document.getElementById('stat-sql').textContent =
     _alle.filter(e => e.hat_sql).length;
+  document.getElementById('stat-rabatt').textContent =
+    _alle.filter(e => e.globalrabatt != null && e.globalrabatt > 0).length;
+  document.getElementById('stat-er').textContent =
+    _alle.filter(e =>
+      e.erechnung_typ === 'xrechnung' || e.erechnung_typ === 'zugferd'
+    ).length;
 
   // Erste Ebene initial aufklappen
   for (const w of _wurzeln) {
