@@ -37,6 +37,10 @@ app.jinja_loader = ChoiceLoader([
     FileSystemLoader(_COMMON_TEMPLATES),
 ])
 
+# Gemeinsame Statik (common/static/*) – dorfkern.css et al.
+from common.static_serving import register_common_static as _reg_common_static  # noqa: E402
+_reg_common_static(app)
+
 # Dorfkern-Permissions: Decorator + Jinja-Helper ``hat_recht``
 _permission_required, _perm_ctx = _perm_flask_helpers()
 app.context_processor(_perm_ctx)

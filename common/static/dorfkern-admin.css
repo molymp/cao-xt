@@ -1,0 +1,28 @@
+/* ========================================================================
+   Dorfkern – Admin-Theme-Override
+   ------------------------------------------------------------------------
+   Wird von der Admin-App zusaetzlich zu dorfkern.css geladen.
+   Ueberschreibt die Farb-Variablen fuer ein dunkel-blaues Theme
+   (Admin/Verwaltungs-Signal, unterscheidet sich optisch von den
+   User-Apps mit gruenem Theme).
+   Struktur + Komponenten-Regeln aus dorfkern.css bleiben unveraendert.
+   ======================================================================== */
+
+:root {
+  /* Blaue Admin-Farben – ueberschreibt das Gruen aus dorfkern.css */
+  --bg-dunkel:     #1a2332;
+  --bg-mitte:      #232e42;
+  --bg-hell:       #2a3650;
+  --text-hell:     #e0e8f0;
+  --text-dim:      #8896a8;
+  --text-mitte:    #b0bccb;
+  --akzent:        #3a7cbd;
+  --akzent-hell:   #4a9ae0;
+  --border:        #2a3650;
+
+  /* Admin-spezifische Alias-Variablen (Legacy, von bestehenden
+     lokalen Styles verwendet) */
+  --gruen:         #2e9e5a;
+  --gruen-hell:    #3ab870;
+  --rot:           #c04040;
+}

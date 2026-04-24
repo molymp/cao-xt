@@ -1,0 +1,288 @@
+/* ========================================================================
+   Dorfkern – Shared Base CSS
+   ------------------------------------------------------------------------
+   Wird von allen vier Apps (admin, kasse, kiosk, orga) via
+   /common-static/dorfkern.css geladen. Liefert:
+     - Dorfkern-Gruen-Theme als Default (--gruen-*, --bg-dunkel etc.)
+     - Typografie-Grundsatz (Nunito fuer UI, Fraunces fuer Headlines)
+     - Wiederverwendbare Komponenten: .card, .info-banner, .stat-zeile +
+       .chip, .sidebar-section-title, .sidebar-item, .sidebar-divider,
+       .sidebar-subgroup (klappbar).
+   Admin-App ueberschreibt die Farb-Variablen mit dorfkern-admin.css
+   (duenner Theme-Override, laedt NACH dieser Datei).
+   App-spezifische Styles bleiben in der jeweiligen base.html und
+   gewinnen weil sie spaeter im <head> stehen (Kaskaden-Reihenfolge).
+   ======================================================================== */
+
+
+/* ── Dorfkern-Gruen-Theme (Default) ───────────────────────────── */
+
+:root {
+  /* Brand-Farben */
+  --gruen-dunkel:  #1a4010;
+  --gruen-mitte:   #2e6e1a;
+  --gruen-hell:    #4a9428;
+  --gruen-blass:   #d4e8c2;
+  --gruen-status:  #2e7a2e;
+  --rot:           #b83030;
+  --gold:          #d4a030;
+
+  /* Layer-Variablen (werden von Komponenten genutzt) */
+  --bg-dunkel:     var(--gruen-dunkel);
+  --bg-mitte:      var(--gruen-mitte);
+  --bg-hell:       rgba(255, 255, 255, 0.08);
+  --text-hell:     var(--gruen-blass);
+  --text-dim:      rgba(212, 232, 194, 0.65);
+  --text-mitte:    rgba(212, 232, 194, 0.85);
+  --akzent:        var(--gruen-hell);
+  --akzent-hell:   var(--gruen-blass);
+  --border:        rgba(212, 232, 194, 0.18);
+
+  /* Geometrie */
+  --radius-klein:  4px;
+  --radius-mittel: 6px;
+  --radius-gross:  10px;
+  --sidebar-w:     220px;
+  --navbar-h:      56px;
+}
+
+
+/* ── Reset + Typografie ───────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  background: var(--bg-dunkel);
+  color: var(--text-hell);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+code, pre, .mono {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ── Generic Container ────────────────────────────────────────── */
+
+.card {
+  padding: 18px 20px;
+  background: var(--bg-hell);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-mittel);
+  margin-bottom: 16px;
+}
+
+
+/* ── Banner (Info / Warn / Fehler) ────────────────────────────── */
+
+.info-banner {
+  background: #1a2b3b;
+  border-left: 3px solid #60a5fa;
+  padding: 10px 14px;
+  border-radius: var(--radius-klein);
+  margin-bottom: 16px;
+  color: #dbeafe;
+  font-size: 14px;
+}
+.warn-banner {
+  background: #3b2f1a;
+  border-left: 3px solid #fbbf24;
+  padding: 10px 14px;
+  border-radius: var(--radius-klein);
+  margin-bottom: 16px;
+  color: #fde68a;
+  font-size: 14px;
+}
+.error-banner {
+  background: #3b1f1a;
+  border-left: 3px solid #f87171;
+  padding: 10px 14px;
+  border-radius: var(--radius-klein);
+  margin-bottom: 16px;
+  color: #fecaca;
+  font-size: 14px;
+}
+
+
+/* ── Statistik-Zeile + Chips ──────────────────────────────────── */
+
+.stat-zeile {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+}
+
+.stat-zeile .chip {
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: var(--bg-hell);
+}
+
+
+/* ── Sidebar-Basis ────────────────────────────────────────────── */
+
+.sidebar-section {
+  padding: 0 12px 8px 12px;
+}
+
+.sidebar-section-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  padding: 8px 8px 4px 8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-klein);
+  color: var(--text-mitte);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-decoration: none;
+}
+.sidebar-item:hover {
+  background: var(--bg-hell);
+  color: var(--text-hell);
+}
+.sidebar-item.aktiv {
+  background: rgba(58, 124, 189, 0.2);
+  color: var(--akzent-hell);
+  font-weight: 700;
+}
+.sidebar-item .icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.sidebar-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 12px;
+}
+
+
+/* ── Klappbare Sidebar-Untergruppen (aus Admin-App verallgemeinert) ── */
+
+.sidebar-subgroup { padding: 0; }
+.sidebar-subgroup-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  margin: 2px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-klein);
+}
+.sidebar-subgroup-title:hover { color: var(--text-hell); }
+.sidebar-subgroup-title .caret {
+  font-family: monospace;
+  font-size: 9px;
+  width: 10px;
+  display: inline-block;
+  transition: transform 0.1s;
+}
+.sidebar-subgroup.zu .caret { transform: rotate(-90deg); }
+.sidebar-subgroup-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 4px;
+  overflow: hidden;
+  max-height: 1000px;
+  transition: max-height 0.15s;
+}
+.sidebar-subgroup.zu .sidebar-subgroup-items { max-height: 0; }
+
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+
+.btn,
+button.btn {
+  padding: 8px 16px;
+  background: var(--akzent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-klein);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btn:hover:not(:disabled) { background: var(--akzent-hell); color: var(--bg-dunkel); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-danger {
+  background: transparent;
+  color: var(--rot);
+  border: 1px solid var(--rot);
+}
+.btn-danger:hover:not(:disabled) { background: var(--rot); color: white; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--text-hell); background: var(--bg-hell); }
+
+
+/* ── Form-Inputs (Default – Apps duerfen groesser/kleiner stylen) ── */
+
+.dorfkern-input,
+input[type="text"].dorfkern-input,
+input[type="number"].dorfkern-input,
+input[type="password"].dorfkern-input,
+select.dorfkern-input,
+textarea.dorfkern-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-dunkel);
+  color: var(--text-hell);
+  border-radius: var(--radius-klein);
+  font: inherit;
+}
+
+
+/* ── Generische Badges (Permission-Badges, App-Labels, Quellen) ── */
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  background: var(--bg-hell);
+  color: var(--text-dim);
+  white-space: nowrap;
+}

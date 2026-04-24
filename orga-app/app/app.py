@@ -43,6 +43,10 @@ app.jinja_loader = ChoiceLoader([
     FileSystemLoader(_COMMON_TEMPLATES),
 ])
 
+# Gemeinsame Statik (common/static/*) – dorfkern.css et al.
+from common.static_serving import register_common_static as _reg_common_static  # noqa: E402
+_reg_common_static(app)
+
 # Dorfkern-Permissions: Decorator + Jinja-Helper ``hat_recht``
 _permission_required, _perm_ctx = _perm_flask_helpers()
 app.context_processor(_perm_ctx)
@@ -715,6 +719,77 @@ def ec_umsaetze_export():
     return send_file(io.BytesIO(inhalt), mimetype='text/csv',
                      as_attachment=True,
                      download_name=f'ec_umsaetze_{von}_{bis}.csv')
+
+
+# ── Koppelkauf-Analyse ─────────────────────────────────────────
+
+import koppelkauf as koppelkauf_modul
+
+
+@app.get('/orga/berichte/koppelkauf')
+def koppelkauf_seite():
+    """Koppelkauf-Analyse: Auswahlseite oder Analyseergebnis."""
+    artnum     = request.args.get('artnum', '').strip()
+    von_str    = request.args.get('von', '')
+    bis_str    = request.args.get('bis', '')
+    stichtag_s = request.args.get('stichtag', '')
+
+    stichtag = _parse_datum(stichtag_s, date.today()) if stichtag_s else None
+
+    try:
+        aktionen = koppelkauf_modul.aktionsartikel_liste(stichtag=stichtag)
+    except Exception as e:
+        log.warning("Aktionsliste fehlgeschlagen: %s", e)
+        aktionen = []
+
+    if not artnum:
+        return render_template('koppelkauf.html',
+                               aktionen=aktionen,
+                               stichtag=stichtag_s,
+                               analyse=None, aktion_info=None)
+
+    try:
+        aktion_info = koppelkauf_modul.aktionszeitraum_holen(artnum, stichtag)
+    except Exception as e:
+        log.exception("Aktionszeitraum-Abfrage fehlgeschlagen")
+        flash(f'Datenbankfehler: {e}', 'error')
+        return render_template('koppelkauf.html',
+                               aktionen=aktionen,
+                               stichtag=stichtag_s,
+                               analyse=None, aktion_info=None)
+
+    if not aktion_info and not (von_str and bis_str):
+        flash('Kein Aktionszeitraum gefunden. Bitte Zeitraum manuell angeben.', 'warn')
+        return render_template('koppelkauf.html',
+                               aktionen=aktionen,
+                               stichtag=stichtag_s,
+                               analyse=None, aktion_info=None,
+                               artnum_vorgabe=artnum)
+
+    if von_str and bis_str:
+        aktions_von = _parse_datum(von_str, date.today())
+        aktions_bis = _parse_datum(bis_str, date.today())
+    elif aktion_info:
+        aktions_von = aktion_info['datum_ab']
+        aktions_bis = aktion_info['datum_bis'] or date.today()
+    else:
+        aktions_von = aktions_bis = date.today()
+
+    try:
+        analyse = koppelkauf_modul.analyse_komplett(artnum, aktions_von, aktions_bis)
+    except Exception as e:
+        log.exception("Koppelkauf-Analyse fehlgeschlagen")
+        flash(f'Datenbankfehler bei der Analyse: {e}', 'error')
+        analyse = None
+
+    return render_template('koppelkauf.html',
+                           aktionen=aktionen,
+                           stichtag=stichtag_s,
+                           aktion_info=aktion_info,
+                           analyse=analyse,
+                           artnum=artnum,
+                           aktions_von=aktions_von,
+                           aktions_bis=aktions_bis)
 
 
 # ── DATEV-Export ──────────────────────────────────────────────
