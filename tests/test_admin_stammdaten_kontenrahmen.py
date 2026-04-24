@@ -172,5 +172,105 @@ class TestListe(unittest.TestCase):
         self.assertEqual(eintraege[2]['info'], '')
 
 
+class TestKategorie(unittest.TestCase):
+    """Klassifikation via KONTOART + Nummern-Range pro Rahmen."""
+
+    def test_kontoart_signale_rahmenunabhaengig(self):
+        mod = _lade_modul(_FakeCursor(['KONTORAHMEN', 'KONTO', 'KONTONAME'],
+                                      []))
+        # KONTOART=3 immer Kasse, egal welcher Rahmen
+        self.assertEqual(mod._kategorie('CUSTOM', 9999, 3), ('geld', 'kasse'))
+        self.assertEqual(mod._kategorie('SKR03', 0, 20),    ('geld', 'bank'))
+        self.assertEqual(mod._kategorie('SKR04', 0, 5),
+                         ('steuer', 'vorsteuer'))
+        self.assertEqual(mod._kategorie('XXX', 0, 7),
+                         ('steuer', 'umsatzsteuer'))
+
+    def test_skr03_ranges(self):
+        mod = _lade_modul(_FakeCursor(['KONTORAHMEN', 'KONTO', 'KONTONAME'],
+                                      []))
+        kat = lambda k: mod._kategorie('SKR03', k, None)
+        # Kasse
+        self.assertEqual(kat(1000), ('geld', 'kasse'))
+        self.assertEqual(kat(1330), ('geld', 'kasse'))
+        # Bank
+        self.assertEqual(kat(1200), ('geld', 'bank'))
+        self.assertEqual(kat(1100), ('geld', 'bank'))
+        # Forderungen (ohne Vorsteuer-Range)
+        self.assertEqual(kat(1400), ('konten', 'forderungen'))
+        self.assertEqual(kat(1569), ('konten', 'forderungen'))
+        # Vorsteuer
+        self.assertEqual(kat(1570), ('steuer', 'vorsteuer'))
+        self.assertEqual(kat(1576), ('steuer', 'vorsteuer'))
+        # Verbindlichkeiten (ohne Umsatzsteuer-Range)
+        self.assertEqual(kat(1600), ('konten', 'verbindlichkeiten'))
+        self.assertEqual(kat(1769), ('konten', 'verbindlichkeiten'))
+        # Umsatzsteuer
+        self.assertEqual(kat(1770), ('steuer', 'umsatzsteuer'))
+        self.assertEqual(kat(1776), ('steuer', 'umsatzsteuer'))
+        # Aufwand
+        self.assertEqual(kat(3400), ('konten', 'aufwand'))
+        self.assertEqual(kat(4980), ('konten', 'aufwand'))
+        # Erloese
+        self.assertEqual(kat(8400), ('konten', 'erloese'))
+        self.assertEqual(kat(8100), ('konten', 'erloese'))
+        # Sonstige (Anlagevermoegen, Vortrag, Privat...)
+        self.assertEqual(kat(100),  ('konten', 'sonstige'))
+        self.assertEqual(kat(1800), ('konten', 'sonstige'))
+        self.assertEqual(kat(9000), ('konten', 'sonstige'))
+
+    def test_skr04_ranges(self):
+        mod = _lade_modul(_FakeCursor(['KONTORAHMEN', 'KONTO', 'KONTONAME'],
+                                      []))
+        kat = lambda k: mod._kategorie('SKR04', k, None)
+        self.assertEqual(kat(1200), ('konten', 'forderungen'))
+        self.assertEqual(kat(1400), ('steuer', 'vorsteuer'))
+        self.assertEqual(kat(1600), ('geld', 'kasse'))
+        self.assertEqual(kat(1800), ('geld', 'bank'))
+        self.assertEqual(kat(3800), ('steuer', 'umsatzsteuer'))
+        self.assertEqual(kat(3100), ('konten', 'verbindlichkeiten'))
+        self.assertEqual(kat(4000), ('konten', 'erloese'))
+        self.assertEqual(kat(5000), ('konten', 'aufwand'))
+        self.assertEqual(kat(7999), ('konten', 'aufwand'))
+        self.assertEqual(kat(100),  ('konten', 'sonstige'))
+
+    def test_unbekannter_rahmen(self):
+        mod = _lade_modul(_FakeCursor(['KONTORAHMEN', 'KONTO', 'KONTONAME'],
+                                      []))
+        # Ohne KONTOART-Signal und ohne bekannten Rahmen: sonstige
+        self.assertEqual(mod._kategorie('SKR42', 1000, None),
+                         ('konten', 'sonstige'))
+
+    def test_kontoart_schlaegt_range(self):
+        """Wenn KONTOART='Bank' gesetzt, aber Nummer im Forderungsbereich:
+        KONTOART gewinnt."""
+        mod = _lade_modul(_FakeCursor(['KONTORAHMEN', 'KONTO', 'KONTONAME'],
+                                      []))
+        # SKR03 1450 waere Forderung, aber KONTOART=20 -> Bank
+        self.assertEqual(mod._kategorie('SKR03', 1450, 20),
+                         ('geld', 'bank'))
+
+    def test_eintrag_enthaelt_gruppe_und_unter(self):
+        mod = _lade_modul(_FakeCursor(
+            ['KONTORAHMEN', 'KONTO', 'KONTONAME', 'KONTOART'],
+            [
+                {'KONTORAHMEN': 'SKR03', 'KONTO': 8400,
+                 'KONTONAME': 'Erl', 'KONTOART': 99},
+                {'KONTORAHMEN': 'SKR03', 'KONTO': 1000,
+                 'KONTONAME': 'Kasse', 'KONTOART': 3},
+                {'KONTORAHMEN': 'SKR03', 'KONTO': 1576,
+                 'KONTONAME': 'Vorst 19%', 'KONTOART': 5},
+            ],
+        ))
+        eintraege = mod.liste()['eintraege']
+        by_k = {e['konto']: e for e in eintraege}
+        self.assertEqual(by_k[8400]['gruppe'], 'konten')
+        self.assertEqual(by_k[8400]['unter'],  'erloese')
+        self.assertEqual(by_k[1000]['gruppe'], 'geld')
+        self.assertEqual(by_k[1000]['unter'],  'kasse')
+        self.assertEqual(by_k[1576]['gruppe'], 'steuer')
+        self.assertEqual(by_k[1576]['unter'],  'vorsteuer')
+
+
 if __name__ == '__main__':
     unittest.main()
