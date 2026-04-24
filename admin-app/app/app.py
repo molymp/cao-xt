@@ -1285,6 +1285,33 @@ def api_stammdaten_land():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Adressgruppen ─────────────────────────────────
+
+@app.route('/stammdaten/adressgruppen')
+@_login_required
+def stammdaten_adressgruppe_seite():
+    """Read-only Baum der CAO-``ADRESSGRUPPEN``-Tabelle.
+
+    Spiegelt die cao_admin.exe-Seite *Einstellungen → Adressgruppen*.
+    """
+    return render_template('stammdaten_adressgruppe.html')
+
+
+@app.get('/api/stammdaten/adressgruppen')
+@_login_required
+def api_stammdaten_adressgruppe():
+    """JSON-Liste der Adressgruppen inkl. Parent-ID fuer Baum."""
+    import stammdaten_adressgruppe as _ag
+    try:
+        res = _ag.liste()
+        return jsonify(ok=True,
+                       parent_spalte=res['parent_spalte'],
+                       eintraege=res['eintraege'])
+    except Exception as e:
+        log.exception('ADRESSGRUPPEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
