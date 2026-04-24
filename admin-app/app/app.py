@@ -1362,6 +1362,30 @@ def api_stammdaten_kontenrahmen():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Firmen-Bankkonten ────────────────────────────
+
+@app.route('/stammdaten/firmen-bankkonten')
+@_login_required
+def stammdaten_firmenbank_seite():
+    """Read-only-Liste der Firmen-Bankkonten (FIBU_KONTEN, KONTOART=20)."""
+    return render_template('stammdaten_firmenbank.html')
+
+
+@app.get('/api/stammdaten/firmen-bankkonten')
+@_login_required
+def api_stammdaten_firmenbank():
+    """JSON-Liste aller Firmen-Bankkonten, gruppiert nach Rahmen."""
+    import stammdaten_firmenbank as _fb
+    try:
+        res = _fb.liste()
+        return jsonify(ok=True,
+                       rahmen=res['rahmen'],
+                       eintraege=res['eintraege'])
+    except Exception as e:
+        log.exception('FIRMEN-BANKKONTEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
