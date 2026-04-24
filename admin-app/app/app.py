@@ -1237,6 +1237,30 @@ def api_stammdaten_zahlungsart():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Lieferarten ───────────────────────────────────
+
+@app.route('/stammdaten/lieferarten')
+@_login_required
+def stammdaten_lieferart_seite():
+    """Read-only Liste der CAO-``LIEFERARTEN``-Tabelle.
+
+    Spiegelt die cao_admin.exe-Seite *Einstellungen → Lieferarten*.
+    """
+    return render_template('stammdaten_lieferart.html')
+
+
+@app.get('/api/stammdaten/lieferarten')
+@_login_required
+def api_stammdaten_lieferart():
+    """JSON-Liste der Lieferarten inkl. Standard-Belegtext."""
+    import stammdaten_lieferart as _la
+    try:
+        return jsonify(ok=True, eintraege=_la.liste())
+    except Exception as e:
+        log.exception('LIEFERARTEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
