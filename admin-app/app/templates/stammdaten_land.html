@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Laender & MwSt{% endblock %}
+
+{% block extra_style %}
+<style>
+  .land-wrap { display: grid; grid-template-columns: minmax(520px, 1fr) 420px;
+               gap: 16px; }
+  @media (max-width: 1100px) { .land-wrap { grid-template-columns: 1fr; } }
+
+  table.tbl-land { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.tbl-land th, table.tbl-land td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  table.tbl-land th {
+    color: var(--text-dim);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+  }
+  table.tbl-land tbody tr { cursor: pointer; }
+  table.tbl-land tbody tr:hover { background: var(--bg-hell); }
+  table.tbl-land tbody tr.aktiv-zeile { background: var(--bg-hell); }
+  table.tbl-land td.col-iso {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--akzent-hell);
+    width: 50px;
+  }
+  table.tbl-land td.col-name { font-weight: 600; }
+  table.tbl-land td.col-mwst {
+    font-variant-numeric: tabular-nums;
+    font-family: monospace;
+    width: 70px;
+    text-align: right;
+    color: var(--text-dim);
+  }
+  table.tbl-land td.col-mwst.haupt {
+    color: var(--text-hell);
+    font-weight: 600;
+  }
+  table.tbl-land td.col-eu { width: 50px; text-align: center; }
+  .eu-ja   { color: #6ee787; }
+  .eu-nein { color: var(--text-dim); }
+
+  .land-such {
+    width: 100%;
+    max-width: 360px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 6px;
+    font: inherit;
+  }
+  .info-banner {
+    background: #3b2f1a;
+    border-left: 3px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #fde68a;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+
+  .detail-feld { margin-bottom: 12px; }
+  .detail-feld .lbl {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .detail-feld .val {
+    display: block;
+    font-size: 14px;
+    color: var(--text-hell);
+  }
+  .detail-feld .val.mono { font-family: monospace; }
+  .detail-feld .val.leer {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  .mwst-kachel-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .mwst-kachel {
+    background: var(--bg-dunkel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .mwst-kachel .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+  .mwst-kachel .wert {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-hell);
+  }
+  .mwst-kachel.leer .wert { color: var(--text-dim); font-weight: normal; }
+
+  .flag-item {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .flag-item.on  { border-color: #6ee787; color: #6ee787; }
+  .flag-item.off { color: var(--text-dim); }
+
+  .detail-placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+    padding: 32px 8px;
+    text-align: center;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">🌍 Laender & MwSt</h1>
+<div class="info-banner">
+  <strong>Read-only.</strong> Pflege in
+  <code>cao_admin.exe → Einstellungen → Laender</code>. Die drei
+  MwSt-Saetze <code>MWST_1</code> (Normalsatz), <code>MWST_2</code>
+  (ermaessigt) und <code>MWST_3</code> (frei) gelten fuer Rechnungen
+  an Kunden in diesem Land.
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Gesamt: <span id="stat-gesamt">–</span></span>
+  <span class="chip">EU: <span id="stat-eu">–</span></span>
+  <span class="chip">Mit MwSt gepflegt: <span id="stat-mwst">–</span></span>
+</div>
+
+<div class="land-wrap">
+  <div class="card">
+    <input type="text" id="such-feld" class="land-such"
+           placeholder="🔍 Filter (Name, ISO, Waehrung)">
+    <table class="tbl-land">
+      <thead>
+        <tr>
+          <th class="col-iso">ISO</th>
+          <th>Name</th>
+          <th class="col-mwst">MwSt 1</th>
+          <th class="col-mwst">MwSt 2</th>
+          <th class="col-eu">EU</th>
+        </tr>
+      </thead>
+      <tbody id="land-tbody">
+        <tr><td colspan="5" style="color: var(--text-dim); text-align: center;
+                                     padding: 24px;">Lade…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" id="detail-karte">
+    <div class="detail-placeholder" id="detail-leer">
+      Bitte links ein Land auswaehlen.
+    </div>
+    <div id="detail-inhalt" style="display: none;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+let _aktiv = null;   // ISO-ID des ausgewaehlten Landes
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fmtMwst(v) {
+  if (v == null) return '–';
+  return (Math.round(v * 100) / 100).toString().replace('.', ',') + '\u202f%';
+}
+
+function renderListe(filter) {
+  const f = (filter || '').trim().toLowerCase();
+  const gefiltert = f
+    ? _alle.filter(e =>
+        (e.name     || '').toLowerCase().includes(f)
+        || (e.name2    || '').toLowerCase().includes(f)
+        || (e.id       || '').toLowerCase().includes(f)
+        || (e.iso3     || '').toLowerCase().includes(f)
+        || (e.waehrung || '').toLowerCase().includes(f))
+    : _alle;
+
+  const tbody = document.getElementById('land-tbody');
+  if (!gefiltert.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color: var(--text-dim);
+      padding: 16px; text-align: center;">
+      Keine Eintraege ${f ? '(Filter aktiv)' : ''}.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = gefiltert.map(e => `
+    <tr data-id="${escapeHtml(e.id)}"
+        class="${_aktiv === e.id ? 'aktiv-zeile' : ''}">
+      <td class="col-iso">${escapeHtml(e.id)}</td>
+      <td class="col-name">${escapeHtml(e.name)}</td>
+      <td class="col-mwst ${e.mwst[0] != null ? 'haupt' : ''}">
+        ${fmtMwst(e.mwst[0])}</td>
+      <td class="col-mwst">${fmtMwst(e.mwst[1])}</td>
+      <td class="col-eu">${e.eu_land
+        ? '<span class="eu-ja">✓</span>'
+        : '<span class="eu-nein">–</span>'}</td>
+    </tr>
+  `).join('');
+
+  tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      _aktiv = tr.dataset.id;
+      renderListe(document.getElementById('such-feld').value);
+      renderDetail();
+    });
+  });
+}
+
+function renderDetail() {
+  const leer = document.getElementById('detail-leer');
+  const inhalt = document.getElementById('detail-inhalt');
+  const e = _alle.find(x => x.id === _aktiv);
+  if (!e) {
+    leer.style.display = '';
+    inhalt.style.display = 'none';
+    return;
+  }
+  leer.style.display = 'none';
+  inhalt.style.display = '';
+
+  function feld(lbl, val, mono) {
+    const leerVal = val == null || val === '' || val === 0 && lbl !== 'Format';
+    return `
+      <div class="detail-feld">
+        <span class="lbl">${escapeHtml(lbl)}</span>
+        <span class="val ${mono ? 'mono' : ''} ${leerVal ? 'leer' : ''}">
+          ${leerVal ? '–' : escapeHtml(val)}</span>
+      </div>`;
+  }
+
+  const kachel = (idx, label) => {
+    const v = e.mwst[idx];
+    const cls = v == null ? 'leer' : '';
+    return `<div class="mwst-kachel ${cls}">
+      <div class="label">${label}</div>
+      <div class="wert">${fmtMwst(v)}</div>
+    </div>`;
+  };
+
+  inhalt.innerHTML = `
+    <h2 style="margin-top: 0; margin-bottom: 4px;">
+      ${escapeHtml(e.name)}
+      <span style="font-family: monospace; color: var(--akzent-hell);
+                   margin-left: 8px;">${escapeHtml(e.id)}</span>
+    </h2>
+    ${e.name2
+      ? `<div style="color: var(--text-dim); margin-bottom: 16px;
+                     font-style: italic;">${escapeHtml(e.name2)}</div>`
+      : '<div style="margin-bottom: 16px;"></div>'}
+
+    <div class="detail-feld">
+      <span class="lbl">MwSt-Saetze</span>
+      <div class="mwst-kachel-grid">
+        ${kachel(0, 'Normal')}
+        ${kachel(1, 'Ermaessigt')}
+        ${kachel(2, 'Frei')}
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      ${feld('ISO-3', e.iso3, true)}
+      ${feld('Vorwahl', e.vorwahl, true)}
+      ${feld('Waehrung', e.waehrung, true)}
+      ${feld('Sprache', e.sprache, true)}
+      ${feld('PLZ-Format', e.post_code, true)}
+      ${feld('Erloeskonto', e.erloeskonto, true)}
+    </div>
+
+    <div class="detail-feld">
+      <span class="lbl">EU-Mitglied</span>
+      <span class="flag-item ${e.eu_land ? 'on' : 'off'}">
+        ${e.eu_land ? '✓ Ja' : '○ Nein'}</span>
+    </div>
+  `;
+}
+
+async function laden() {
+  const r = await api('GET', '/api/stammdaten/laender');
+  if (!r.ok) {
+    document.getElementById('land-tbody').innerHTML =
+      `<tr><td colspan="5" style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</td></tr>`;
+    return;
+  }
+  _alle = r.eintraege || [];
+  const eu = _alle.filter(e => e.eu_land).length;
+  const mitMwst = _alle.filter(
+    e => e.mwst.some(v => v != null && v > 0)).length;
+  document.getElementById('stat-gesamt').textContent = _alle.length;
+  document.getElementById('stat-eu').textContent     = eu;
+  document.getElementById('stat-mwst').textContent   = mitMwst;
+  renderListe('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('such-feld').addEventListener('input', (e) => {
+    renderListe(e.target.value);
+  });
+  laden();
+});
+</script>
+{% endblock %}

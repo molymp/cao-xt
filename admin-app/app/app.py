@@ -1261,6 +1261,30 @@ def api_stammdaten_lieferart():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Laender + MwSt ────────────────────────────────
+
+@app.route('/stammdaten/laender')
+@_login_required
+def stammdaten_land_seite():
+    """Read-only Liste der CAO-``LAND``-Tabelle mit MwSt-Saetzen.
+
+    Spiegelt die cao_admin.exe-Seite *Einstellungen → Laender*.
+    """
+    return render_template('stammdaten_land.html')
+
+
+@app.get('/api/stammdaten/laender')
+@_login_required
+def api_stammdaten_land():
+    """JSON-Liste der Laender inkl. MwSt-Saetze und EU-Flag."""
+    import stammdaten_land as _lnd
+    try:
+        return jsonify(ok=True, eintraege=_lnd.liste())
+    except Exception as e:
+        log.exception('LAND laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
