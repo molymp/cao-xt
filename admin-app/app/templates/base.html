@@ -222,6 +222,46 @@ a { text-decoration: none; color: inherit; }
 .sidebar-item .icon { font-size: 16px; flex-shrink: 0; }
 .sidebar-divider { border: none; border-top: 1px solid var(--border); margin: 8px 12px; }
 
+/* Klappbare Untergruppen (fuer lange Sektionen wie Stammdaten) */
+.sidebar-subgroup {
+  padding: 0;
+}
+.sidebar-subgroup-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  margin: 2px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-klein);
+}
+.sidebar-subgroup-title:hover { color: var(--text-hell); }
+.sidebar-subgroup-title .caret {
+  font-family: monospace;
+  font-size: 9px;
+  width: 10px;
+  display: inline-block;
+  transition: transform 0.1s;
+}
+.sidebar-subgroup.zu .caret { transform: rotate(-90deg); }
+.sidebar-subgroup-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 4px;
+  overflow: hidden;
+  max-height: 1000px;
+  transition: max-height 0.15s;
+}
+.sidebar-subgroup.zu .sidebar-subgroup-items {
+  max-height: 0;
+}
+
 /* ── Hauptinhalt ──────────────────────────────────────────── */
 .main-content {
   flex: 1;
@@ -454,45 +494,78 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">CAO-Stammdaten</div>
       <div class="sidebar-section">
-        <a href="/stammdaten/mengeneinheiten" class="sidebar-item {% if request.path == '/stammdaten/mengeneinheiten' %}aktiv{% endif %}">
-          <span class="icon">📐</span> Mengeneinheiten
-        </a>
-        <a href="/stammdaten/zahlungsarten" class="sidebar-item {% if request.path == '/stammdaten/zahlungsarten' %}aktiv{% endif %}">
-          <span class="icon">💳</span> Zahlungsarten
-        </a>
-        <a href="/stammdaten/lieferarten" class="sidebar-item {% if request.path == '/stammdaten/lieferarten' %}aktiv{% endif %}">
-          <span class="icon">🚚</span> Lieferarten
-        </a>
-        <a href="/stammdaten/laender" class="sidebar-item {% if request.path == '/stammdaten/laender' %}aktiv{% endif %}">
-          <span class="icon">🌍</span> Laender & MwSt
-        </a>
-        <a href="/stammdaten/adressgruppen" class="sidebar-item {% if request.path == '/stammdaten/adressgruppen' %}aktiv{% endif %}">
-          <span class="icon">👥</span> Adressgruppen
-        </a>
-        <a href="/stammdaten/warengruppen" class="sidebar-item {% if request.path == '/stammdaten/warengruppen' %}aktiv{% endif %}">
-          <span class="icon">📦</span> Warengruppen
-        </a>
-        <a href="/stammdaten/kontenrahmen" class="sidebar-item {% if request.path == '/stammdaten/kontenrahmen' %}aktiv{% endif %}">
-          <span class="icon">📒</span> Kontenrahmen
-        </a>
-        <a href="/stammdaten/firmen-bankkonten" class="sidebar-item {% if request.path == '/stammdaten/firmen-bankkonten' %}aktiv{% endif %}">
-          <span class="icon">🏦</span> Firmen-Bankkonten
-        </a>
-        <a href="/stammdaten/firma" class="sidebar-item {% if request.path == '/stammdaten/firma' %}aktiv{% endif %}">
-          <span class="icon">🏢</span> Firmendaten
-        </a>
-        <a href="/stammdaten/artikelattribute" class="sidebar-item {% if request.path == '/stammdaten/artikelattribute' %}aktiv{% endif %}">
-          <span class="icon">🏷️</span> Artikelattribute
-        </a>
-        <a href="/stammdaten/nummernkreise" class="sidebar-item {% if request.path == '/stammdaten/nummernkreise' %}aktiv{% endif %}">
-          <span class="icon">🔢</span> Nummernkreise
-        </a>
-        <a href="/stammdaten/exporte" class="sidebar-item {% if request.path == '/stammdaten/exporte' %}aktiv{% endif %}">
-          <span class="icon">📊</span> Export-Queries
-        </a>
-        <a href="/stammdaten/binaerdaten" class="sidebar-item {% if request.path == '/stammdaten/binaerdaten' %}aktiv{% endif %}">
-          <span class="icon">📎</span> Binärdaten
-        </a>
+
+        <div class="sidebar-subgroup" data-sg="artikel">
+          <div class="sidebar-subgroup-title">
+            <span class="caret">▾</span> Artikel & Lager
+          </div>
+          <div class="sidebar-subgroup-items">
+            <a href="/stammdaten/mengeneinheiten" class="sidebar-item {% if request.path == '/stammdaten/mengeneinheiten' %}aktiv{% endif %}">
+              <span class="icon">📐</span> Mengeneinheiten
+            </a>
+            <a href="/stammdaten/warengruppen" class="sidebar-item {% if request.path == '/stammdaten/warengruppen' %}aktiv{% endif %}">
+              <span class="icon">📦</span> Warengruppen
+            </a>
+            <a href="/stammdaten/artikelattribute" class="sidebar-item {% if request.path == '/stammdaten/artikelattribute' %}aktiv{% endif %}">
+              <span class="icon">🏷️</span> Artikelattribute
+            </a>
+            <a href="/stammdaten/binaerdaten" class="sidebar-item {% if request.path == '/stammdaten/binaerdaten' %}aktiv{% endif %}">
+              <span class="icon">📎</span> Binärdaten
+            </a>
+          </div>
+        </div>
+
+        <div class="sidebar-subgroup" data-sg="kunden">
+          <div class="sidebar-subgroup-title">
+            <span class="caret">▾</span> Kunden & Verkauf
+          </div>
+          <div class="sidebar-subgroup-items">
+            <a href="/stammdaten/adressgruppen" class="sidebar-item {% if request.path == '/stammdaten/adressgruppen' %}aktiv{% endif %}">
+              <span class="icon">👥</span> Adressgruppen
+            </a>
+            <a href="/stammdaten/laender" class="sidebar-item {% if request.path == '/stammdaten/laender' %}aktiv{% endif %}">
+              <span class="icon">🌍</span> Laender & MwSt
+            </a>
+            <a href="/stammdaten/zahlungsarten" class="sidebar-item {% if request.path == '/stammdaten/zahlungsarten' %}aktiv{% endif %}">
+              <span class="icon">💳</span> Zahlungsarten
+            </a>
+            <a href="/stammdaten/lieferarten" class="sidebar-item {% if request.path == '/stammdaten/lieferarten' %}aktiv{% endif %}">
+              <span class="icon">🚚</span> Lieferarten
+            </a>
+          </div>
+        </div>
+
+        <div class="sidebar-subgroup" data-sg="buchhaltung">
+          <div class="sidebar-subgroup-title">
+            <span class="caret">▾</span> Buchhaltung
+          </div>
+          <div class="sidebar-subgroup-items">
+            <a href="/stammdaten/kontenrahmen" class="sidebar-item {% if request.path == '/stammdaten/kontenrahmen' %}aktiv{% endif %}">
+              <span class="icon">📒</span> Kontenrahmen
+            </a>
+            <a href="/stammdaten/firmen-bankkonten" class="sidebar-item {% if request.path == '/stammdaten/firmen-bankkonten' %}aktiv{% endif %}">
+              <span class="icon">🏦</span> Firmen-Bankkonten
+            </a>
+            <a href="/stammdaten/firma" class="sidebar-item {% if request.path == '/stammdaten/firma' %}aktiv{% endif %}">
+              <span class="icon">🏢</span> Firmendaten
+            </a>
+          </div>
+        </div>
+
+        <div class="sidebar-subgroup" data-sg="system">
+          <div class="sidebar-subgroup-title">
+            <span class="caret">▾</span> System
+          </div>
+          <div class="sidebar-subgroup-items">
+            <a href="/stammdaten/nummernkreise" class="sidebar-item {% if request.path == '/stammdaten/nummernkreise' %}aktiv{% endif %}">
+              <span class="icon">🔢</span> Nummernkreise
+            </a>
+            <a href="/stammdaten/exporte" class="sidebar-item {% if request.path == '/stammdaten/exporte' %}aktiv{% endif %}">
+              <span class="icon">📊</span> Export-Queries
+            </a>
+          </div>
+        </div>
+
       </div>
 
       <hr class="sidebar-divider">
@@ -569,6 +642,40 @@ async function api(method, url, body) {
   }
   _uhrTick();
   setInterval(_uhrTick, 10000);
+})();
+
+// Sidebar-Untergruppen: klappbar + State in localStorage.
+// Laeuft synchron, damit der Nutzer beim Reload kein Flackern sieht.
+(function(){
+  var STORAGE_KEY = 'sidebar-subgroups-zu';
+  function leseState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+  function speichereState(liste) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(liste)); }
+    catch (e) {}
+  }
+  var zu = new Set(leseState());
+  var gruppen = document.querySelectorAll('.sidebar-subgroup');
+  gruppen.forEach(function(sg){
+    var key = sg.dataset.sg;
+    // Wenn ein Child aktiv ist, Gruppe IMMER auf (egal was im State steht)
+    var aktivInnen = sg.querySelector('.sidebar-item.aktiv');
+    if (aktivInnen) {
+      zu.delete(key);
+    } else if (zu.has(key)) {
+      sg.classList.add('zu');
+    }
+    var titel = sg.querySelector('.sidebar-subgroup-title');
+    if (!titel) return;
+    titel.addEventListener('click', function(){
+      sg.classList.toggle('zu');
+      if (sg.classList.contains('zu')) zu.add(key);
+      else zu.delete(key);
+      speichereState(Array.from(zu));
+    });
+  });
 })();
 </script>
 <script src="/brand/dorfkern-logo.js" defer></script>
