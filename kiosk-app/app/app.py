@@ -17,6 +17,7 @@ import db
 from db import get_db, get_db_transaction, cent_zu_euro_str
 from common.auth import (login_required as _login_required, login_user,
                          logout_user, mitarbeiter_login_karte)
+from common.permission import flask_helpers as _perm_flask_helpers
 from functools import wraps
 import ean as ean_modul
 import druck
@@ -35,6 +36,76 @@ app.jinja_loader = ChoiceLoader([
     app.jinja_loader,
     FileSystemLoader(_COMMON_TEMPLATES),
 ])
+
+# Dorfkern-Permissions: Decorator + Jinja-Helper ``hat_recht``
+_permission_required, _perm_ctx = _perm_flask_helpers()
+app.context_processor(_perm_ctx)
+
+# Pfad-Prefix -> Permission-Key (first-match wins).
+# 'kiosk.zugriff' deckt ALLES hier als Grundzugriff, wird per
+# before_request einmal geprueft. Spezifische Sektionen brauchen
+# zusaetzlich ein feineres Recht.
+_KIOSK_PERMISSION_MAP: list[tuple[str, str]] = [
+    ('/bestellungen',       'kiosk.bestellverwaltung'),
+    ('/api/bestellungen',   'kiosk.bestellverwaltung'),
+    ('/meine-bestellungen', 'kiosk.backwaren'),
+    ('/api/meine-bestellungen', 'kiosk.backwaren'),
+    ('/journal',            'kiosk.backwaren'),
+    ('/mittagstisch',       'kiosk.mittagstisch'),
+    ('/stempeluhr',         'kiosk.stempeluhr'),
+    ('/api/stempeluhr',     'kiosk.stempeluhr'),
+]
+
+# Pfade, die NIEMALS einen Permission-Check brauchen (Login-Flow,
+# statische Assets, Kundenterminal-Scan).
+_KIOSK_PERMISSION_WHITELIST: tuple[str, ...] = (
+    '/login', '/logout',
+    '/produktbilder/', '/brand/', '/doku/',
+    '/kunden-scan', '/api/kundenkarte/scan',
+    '/status',
+)
+
+
+@app.before_request
+def _kiosk_permission_guard():
+    """Feingranularer Permission-Check pro URL-Prefix.
+
+    Wird NACH common.auth.login_required ausgewertet – d.h. unangemeldete
+    User sehen die Login-Seite; angemeldete MAs muessen das passende
+    Recht haben.
+    """
+    from flask import request, session, redirect, url_for, flash, jsonify
+    path = request.path or ''
+    if any(path.startswith(w) for w in _KIOSK_PERMISSION_WHITELIST):
+        return None
+    ma_id = session.get('ma_id')
+    if not ma_id:
+        return None   # login_required kommt durch
+    from common import permission as _p
+    # Erst spezifisches Recht je Prefix
+    for prefix, key in _KIOSK_PERMISSION_MAP:
+        if path.startswith(prefix):
+            if not _p.hat_recht(ma_id, key):
+                return _verweigern(path, key)
+            return None
+    # Default: jeder angemeldete MA braucht kiosk.zugriff fuer alle
+    # uebrigen Pfade (Warenkorb, Kundenterminal, Terminal-Einstellung ...)
+    if not _p.hat_recht(ma_id, 'kiosk.zugriff'):
+        return _verweigern(path, 'kiosk.zugriff')
+    return None
+
+
+def _verweigern(path: str, key: str):
+    from flask import request, redirect, url_for, flash, jsonify
+    if path.startswith('/api/') or \
+            'application/json' in (request.headers.get('Accept', '') or ''):
+        return jsonify(ok=False,
+                       msg=f'Keine Berechtigung fuer {key}'), 403
+    flash(f'Keine Berechtigung ({key}).', 'error')
+    try:
+        return redirect(url_for('index'))
+    except Exception:
+        return redirect('/')
 
 
 @app.context_processor

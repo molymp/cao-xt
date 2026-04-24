@@ -369,6 +369,85 @@ def set_rolle_permission(rolle: str, objekt_key: str, recht: str) -> None:
         """, (rolle, objekt_key, recht))
 
 
+def flask_helpers():
+    """Liefert zwei Flask-Helfer fuer die Kiosk/Kasse/Orga-Apps.
+
+    Die Apps binden das in ihrer ``app.py`` wie folgt ein::
+
+        from common.permission import flask_helpers
+        require_permission, _ctx = flask_helpers()
+        app.context_processor(_ctx)
+
+        @app.route('/storno')
+        @require_permission('kasse.storno')
+        def storno():
+            ...
+
+    Und im Template::
+
+        {% if hat_recht('kiosk.backwaren') %}
+          <a href="/backwaren">Backwaren</a>
+        {% endif %}
+
+    Dadurch bleibt der App-spezifische Teil in ``app.py`` und das
+    Sidebar-Filtering ist im Jinja-Template.
+
+    Rueckgabe:
+        ``(require_permission, context_processor_fn)``.
+    """
+    from functools import wraps
+    try:
+        from flask import session, flash, redirect, url_for, request
+    except ImportError as e:
+        raise RuntimeError(
+            'common.permission.flask_helpers() setzt Flask voraus.') from e
+
+    def require_permission(objekt_key: str, recht: str = 'BEIDES'):
+        """Decorator: fordert ``hat_recht(session.ma_id, ...)`` ein.
+
+        Fehlendes Recht -> Flash-Message + Redirect auf '/'. API-Routen
+        (erkennbar an Accept: application/json oder Pfad
+        /api/) bekommen stattdessen HTTP 403.
+        """
+        def deko(view):
+            @wraps(view)
+            def wrapper(*args, **kwargs):
+                ma_id = session.get('ma_id')
+                if not ma_id or not hat_recht(ma_id, objekt_key, recht):
+                    # API-Antwort als JSON mit 403, sonst Redirect
+                    will_json = (
+                        request.path.startswith('/api/')
+                        or 'application/json' in (
+                            request.headers.get('Accept', '') or '')
+                    )
+                    if will_json:
+                        from flask import jsonify
+                        return jsonify(
+                            ok=False,
+                            msg=f'Keine Berechtigung fuer {objekt_key}',
+                        ), 403
+                    flash(
+                        f'Keine Berechtigung fuer {objekt_key}.', 'error')
+                    try:
+                        return redirect(url_for('index'))
+                    except Exception:
+                        return redirect('/')
+                return view(*args, **kwargs)
+            return wrapper
+        return deko
+
+    def _context_processor():
+        """Liefert ``hat_recht(key, recht='BEIDES')`` in Jinja-Templates."""
+        ma_id = session.get('ma_id') if session else None
+
+        def _hat_recht(objekt_key: str, recht: str = 'BEIDES') -> bool:
+            return bool(ma_id) and hat_recht(ma_id, objekt_key, recht)
+
+        return {'hat_recht': _hat_recht}
+
+    return require_permission, _context_processor
+
+
 def loesche_rolle_permission(rolle: str, objekt_key: str) -> None:
     """Entfernt eine Rolle-Objekt-Zuweisung (Entzug)."""
     with get_db_transaction() as cur:
