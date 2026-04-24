@@ -21,6 +21,7 @@ Bewusst NICHT enthalten:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -34,7 +35,17 @@ _KIOSK_CONFIG_LOCAL = os.path.join(
     _REPO_ROOT, 'kiosk-app', 'app', 'config_local.py')
 _KIOSK_APP_DIR = os.path.join(_REPO_ROOT, 'kiosk-app', 'app')
 
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from common import konfig as _konfig  # noqa: E402
+
 log = logging.getLogger(__name__)
+
+
+# Schluessel in DORFKERN_KONFIG (Kategorie MITTAGSTISCH)
+KEY_SPREADSHEET   = 'mittagstisch.spreadsheet_id'
+KEY_CREDENTIALS   = 'mittagstisch.credentials_json'
 
 
 _RE_SPREADSHEET = re.compile(
@@ -104,8 +115,35 @@ def _credentials_datei_info(pfad: str) -> dict[str, Any]:
     }
 
 
+def _db_spreadsheet_id() -> str:
+    wert = _konfig.get(KEY_SPREADSHEET, default=None)
+    return str(wert).strip() if wert else ''
+
+
+def _db_credentials_dict() -> dict | None:
+    """Liest das Credentials-JSON aus DORFKERN_KONFIG.
+
+    Wir speichern es als SECRET (Klartext-TEXT in der DB), aber parsen hier
+    zu einem dict, damit die UI einfache Sanity-Checks anzeigen kann
+    (Typ = service_account, welche Mail-Adresse, welches Projekt).
+    Rueckgabe ``None`` wenn nicht gesetzt oder kein valides JSON.
+    """
+    roh = _konfig.get(KEY_CREDENTIALS, default=None)
+    if not roh:
+        return None
+    try:
+        return json.loads(roh)
+    except (TypeError, ValueError):
+        return None
+
+
 def status() -> dict[str, Any]:
     """Liefert die komplette Mittagstisch-Info fuer die Admin-Seite.
+
+    Primaer-Quelle ist DORFKERN_KONFIG, wenn dort Werte gesetzt sind.
+    Sonst faellt die Anzeige auf die bisherige kiosk-app/config_local
+    zurueck. So sind Alt-Installationen weiter sichtbar und die UI
+    zeigt, woher die Werte kommen (``quelle`` pro Feld).
 
     Rueckgabe::
 
@@ -113,16 +151,50 @@ def status() -> dict[str, Any]:
           'config_local_pfad':    str,
           'config_local_exists':  bool,
           'spreadsheet_id':       str,
-          'spreadsheet_url':      str,    # https://docs.google.com/... | ''
+          'spreadsheet_id_quelle': 'db'|'config_local'|'leer',
+          'spreadsheet_url':      str,
           'credentials':          { pfad_roh, pfad_absolut, existiert,
-                                    groesse, mtime, alter_tage },
-          'kiosk_url':            str,    # aus config.KIOSK_URL/KIOSK_PORT
-          'kiosk_mittagstisch_url': str,  # .../mittagstisch
+                                    groesse, mtime, alter_tage,
+                                    quelle: 'db'|'file'|'leer',
+                                    json_sanity: None|{typ, email, project_id},
+                                    json_set:  bool },
+          'kiosk_url':            str,
+          'kiosk_mittagstisch_url': str,
         }
     """
     cfg = _lies_config_local()
-    sid = cfg['spreadsheet_id']
+    # Spreadsheet-ID: DB gewinnt, dann config_local
+    sid_db = _db_spreadsheet_id()
+    sid_cl = cfg['spreadsheet_id']
+    if sid_db:
+        sid, sid_quelle = sid_db, 'db'
+    elif sid_cl:
+        sid, sid_quelle = sid_cl, 'config_local'
+    else:
+        sid, sid_quelle = '', 'leer'
+
+    # Credentials: DB-JSON gewinnt; sonst Datei aus config_local
+    cred_dict = _db_credentials_dict()
+    json_sanity = None
+    if cred_dict:
+        json_sanity = {
+            'typ':        (cred_dict.get('type') or '').strip(),
+            'email':      (cred_dict.get('client_email') or '').strip(),
+            'project_id': (cred_dict.get('project_id') or '').strip(),
+        }
     cred = _credentials_datei_info(cfg['credentials_file'])
+    if cred_dict is not None:
+        cred['quelle'] = 'db'
+        cred['json_sanity'] = json_sanity
+        cred['json_set'] = True
+    elif cred['existiert']:
+        cred['quelle'] = 'file'
+        cred['json_sanity'] = None
+        cred['json_set'] = False
+    else:
+        cred['quelle'] = 'leer'
+        cred['json_sanity'] = None
+        cred['json_set'] = False
 
     spreadsheet_url = (
         f'https://docs.google.com/spreadsheets/d/{sid}/edit' if sid else ''
@@ -142,8 +214,75 @@ def status() -> dict[str, Any]:
         'config_local_pfad':    _KIOSK_CONFIG_LOCAL,
         'config_local_exists':  os.path.isfile(_KIOSK_CONFIG_LOCAL),
         'spreadsheet_id':       sid,
+        'spreadsheet_id_quelle': sid_quelle,
         'spreadsheet_url':      spreadsheet_url,
         'credentials':          cred,
         'kiosk_url':            kiosk_url_basis,
         'kiosk_mittagstisch_url': kiosk_mittagstisch_url,
     }
+
+
+def speichern(*, spreadsheet_id: str | None = None,
+              credentials_json: str | None = None,
+              ma_id: int | None = None) -> dict[str, Any]:
+    """Speichert Mittagstisch-Werte in DORFKERN_KONFIG.
+
+    ``credentials_json`` wird als SECRET abgelegt. Falls der Client einen
+    leeren String schickt, bleibt der vorherige Wert erhalten (wir
+    ueberschreiben nur bei tatsaechlicher Eingabe – Service-Account-JSONs
+    nuke-en kostet Zeit neu zu beschaffen).
+    """
+    geaendert = []
+    try:
+        if spreadsheet_id is not None:
+            sid = str(spreadsheet_id).strip()
+            _konfig.set(
+                KEY_SPREADSHEET, sid, typ='STRING', kategorie='MITTAGSTISCH',
+                beschreibung='Google-Sheets-ID mit dem Wochenplan',
+                ma_id=ma_id,
+            )
+            geaendert.append('spreadsheet_id')
+        if credentials_json is not None:
+            raw = str(credentials_json).strip()
+            if raw:
+                # Vor dem Speichern parsen – sonst landet Unsinn in der DB
+                try:
+                    parsed = json.loads(raw)
+                except (TypeError, ValueError) as e:
+                    return {'ok': False,
+                            'msg': f'Credentials-JSON ungueltig: {e}'}
+                if parsed.get('type') != 'service_account':
+                    return {'ok': False,
+                            'msg': ('JSON ist kein Service-Account '
+                                    '(type != "service_account").')}
+                _konfig.set(
+                    KEY_CREDENTIALS, raw, typ='SECRET',
+                    kategorie='MITTAGSTISCH',
+                    beschreibung='Google Service-Account Credentials (JSON)',
+                    ma_id=ma_id,
+                )
+                geaendert.append('credentials_json')
+            # leerer String -> nichts tun, alter Wert bleibt
+    except Exception as e:
+        log.exception('Mittagstisch-Konfig speichern fehlgeschlagen')
+        return {'ok': False, 'msg': str(e)}
+    return {'ok': True, 'geaendert': geaendert}
+
+
+def credentials_loeschen(ma_id: int | None = None) -> dict[str, Any]:
+    """Loescht explizit die Credentials aus der DB (leert den Wert).
+
+    Wird von einem eigenen 'Credentials entfernen'-Button im UI getriggert,
+    damit 'Leer lassen um nicht zu aendern' im Haupt-Formular nicht
+    ueberladen wird.
+    """
+    try:
+        _konfig.set(
+            KEY_CREDENTIALS, '', typ='SECRET', kategorie='MITTAGSTISCH',
+            beschreibung='Google Service-Account Credentials (JSON)',
+            ma_id=ma_id,
+        )
+        return {'ok': True}
+    except Exception as e:
+        log.exception('Mittagstisch-Credentials loeschen fehlgeschlagen')
+        return {'ok': False, 'msg': str(e)}

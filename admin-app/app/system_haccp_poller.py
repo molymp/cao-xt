@@ -26,8 +26,55 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from installer import app_manager  # noqa: E402
+from common import konfig as _konfig  # noqa: E402
 
 log = logging.getLogger(__name__)
+
+
+# Schluessel in DORFKERN_KONFIG (Kategorie HACCP)
+KEY_API_KEY      = 'haccp.tfa_api_key'
+KEY_BASE_URL     = 'haccp.tfa_base_url'
+KEY_INTERVALL_S  = 'haccp.poll_intervall_s'
+
+# Defaults, wenn weder DB noch Env gesetzt
+DEFAULT_BASE_URL    = 'https://go.tfa.me'
+DEFAULT_INTERVALL_S = 120
+
+
+def effektive_konfig() -> dict[str, Any]:
+    """Liefert die effektiven Konfigwerte mit Quelle.
+
+    Priorisierungs-Reihenfolge pro Schluessel::
+
+        1. DORFKERN_KONFIG (via common.konfig.get)
+        2. Env-Variable (TFA_API_KEY, TFA_BASE_URL, HACCP_POLL_INTERVALL_S)
+        3. Default
+
+    Rueckgabe::
+
+        {
+          'tfa_api_key':     {'wert': str|None, 'quelle': 'db'|'env'|'default'},
+          'tfa_base_url':    {'wert': str,      'quelle': ...},
+          'poll_intervall_s':{'wert': int,      'quelle': ...},
+        }
+    """
+    def aufl(key_db: str, env_name: str, default: Any, typ_cast):
+        db_wert = _konfig.get(key_db, default=None)
+        if db_wert is not None and db_wert != '':
+            return {'wert': typ_cast(db_wert), 'quelle': 'db'}
+        env_wert = os.environ.get(env_name, '')
+        if env_wert:
+            return {'wert': typ_cast(env_wert), 'quelle': 'env'}
+        return {'wert': default, 'quelle': 'default'}
+
+    return {
+        'tfa_api_key':      aufl(KEY_API_KEY,     'TFA_API_KEY',
+                                 None,                 lambda v: str(v)),
+        'tfa_base_url':     aufl(KEY_BASE_URL,    'TFA_BASE_URL',
+                                 DEFAULT_BASE_URL,     lambda v: str(v)),
+        'poll_intervall_s': aufl(KEY_INTERVALL_S, 'HACCP_POLL_INTERVALL_S',
+                                 DEFAULT_INTERVALL_S,  lambda v: int(v)),
+    }
 
 
 def _int_oder_none(wert: Any) -> int | None:
@@ -153,19 +200,63 @@ def status() -> dict[str, Any]:
         'log':     daemon_stat.get('log', ''),
     }
 
-    # Konfig – Env-Vars sind die einzige Quelle (CAO-Poller liest keine REGISTRY)
-    tfa_key = os.environ.get('TFA_API_KEY', '')
+    # Konfig – primaer aus DB (DORFKERN_KONFIG), fallback Env, dann Default.
+    eff = effektive_konfig()
+    tfa_key = eff['tfa_api_key']['wert'] or ''
     konfig = {
-        'tfa_base_url':     os.environ.get(
-            'TFA_BASE_URL', 'https://go.tfa.me'),
+        'tfa_base_url':     eff['tfa_base_url']['wert'],
         'tfa_api_key':      _maskiere_key(tfa_key),
         'tfa_api_key_set':  bool(tfa_key),
-        'poll_intervall_s': int(
-            os.environ.get('HACCP_POLL_INTERVALL_S', '120')),
+        'poll_intervall_s': eff['poll_intervall_s']['wert'],
+        'quellen':          {
+            'tfa_base_url':     eff['tfa_base_url']['quelle'],
+            'tfa_api_key':      eff['tfa_api_key']['quelle'],
+            'poll_intervall_s': eff['poll_intervall_s']['quelle'],
+        },
         'hinweis':          (
-            'Aenderungen an TFA_API_KEY / TFA_BASE_URL / '
-            'HACCP_POLL_INTERVALL_S erfordern einen Neustart des Pollers.'
+            'Aenderungen greifen erst nach Neustart des '
+            'haccp-poller-Daemons (System -> App-Steuerung).'
         ),
     }
 
     return {'daemon': daemon, 'heartbeat': heart, 'konfig': konfig}
+
+
+def speichern(*, tfa_api_key: str | None = None,
+              tfa_base_url: str | None = None,
+              poll_intervall_s: int | None = None,
+              ma_id: int | None = None) -> dict[str, Any]:
+    """Speichert die drei Konfig-Werte in DORFKERN_KONFIG.
+
+    Werte, die ``None`` sind, werden nicht angefasst. Leerer String loescht
+    den Eintrag effektiv (wert='' -> Fallback auf Env/Default beim Lesen).
+    """
+    geaendert = []
+    try:
+        if tfa_api_key is not None:
+            _konfig.set(
+                KEY_API_KEY, tfa_api_key, typ='SECRET', kategorie='HACCP',
+                beschreibung='TFA-Go API-Key fuer HACCP-Poller',
+                ma_id=ma_id,
+            )
+            geaendert.append('tfa_api_key')
+        if tfa_base_url is not None:
+            _konfig.set(
+                KEY_BASE_URL, tfa_base_url, typ='STRING', kategorie='HACCP',
+                beschreibung=('TFA-Go API-Basis-URL (meist '
+                              'https://go.tfa.me)'),
+                ma_id=ma_id,
+            )
+            geaendert.append('tfa_base_url')
+        if poll_intervall_s is not None:
+            _konfig.set(
+                KEY_INTERVALL_S, int(poll_intervall_s), typ='INT',
+                kategorie='HACCP',
+                beschreibung='Poll-Intervall in Sekunden (Empfehlung 60-300)',
+                ma_id=ma_id,
+            )
+            geaendert.append('poll_intervall_s')
+    except Exception as e:
+        log.exception('HACCP-Konfig speichern fehlgeschlagen')
+        return {'ok': False, 'msg': str(e)}
+    return {'ok': True, 'geaendert': geaendert}

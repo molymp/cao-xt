@@ -74,6 +74,79 @@
     font-size: 12px;
     border-radius: 3px;
   }
+
+  /* Edit-Formular */
+  .edit-zeile {
+    display: grid;
+    grid-template-columns: 180px 1fr auto;
+    gap: 8px;
+    padding: 6px 0;
+    align-items: center;
+  }
+  .edit-zeile label {
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .edit-zeile input[type=text], .edit-zeile input[type=number],
+  .edit-zeile input[type=password] {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 4px;
+    font: inherit;
+    font-family: monospace;
+    font-size: 13px;
+  }
+  .edit-zeile .quelle-badge {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .edit-zeile .quelle-badge.db  { color: #34d399; border-color: #34d399; }
+  .edit-zeile .quelle-badge.env { color: #fbbf24; border-color: #fbbf24; }
+  .edit-zeile .quelle-badge.default,
+  .edit-zeile .quelle-badge.config_local,
+  .edit-zeile .quelle-badge.file,
+  .edit-zeile .quelle-badge.leer { color: var(--text-dim); }
+
+  .btn-primary {
+    padding: 8px 16px;
+    background: #3a7cbd;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .btn-primary:hover { background: #4a8ccd; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-danger {
+    padding: 6px 12px;
+    background: transparent;
+    color: #f87171;
+    border: 1px solid #f87171;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .btn-danger:hover { background: #3b1f1a; }
+
+  .save-hinweis {
+    margin-top: 10px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    display: none;
+  }
+  .save-hinweis.ok     { background: #14532d; color: #86efac; display: block; }
+  .save-hinweis.fehler { background: #3b1f1a; color: #fecaca; display: block; }
 </style>
 {% endblock %}
 
@@ -209,27 +282,97 @@ function heartbeatKarte(hb) {
     </div>`;
 }
 
+function quelleBadge(q) {
+  const label = {db:'DB', env:'ENV', default:'DEFAULT',
+                 config_local:'FILE', file:'FILE', leer:'leer'}[q] || q;
+  return `<span class="quelle-badge ${q}" title="Quelle: ${q}">`
+    + `${label}</span>`;
+}
+
 function konfigKarte(k) {
+  const q = k.quellen || {};
   return `
     <div class="karte">
-      <h2>Konfiguration (Env-Vars)</h2>
-      <div class="zeile">
-        <span class="lbl">TFA_BASE_URL</span>${valMono(k.tfa_base_url)}
-      </div>
-      <div class="zeile">
-        <span class="lbl">TFA_API_KEY</span>
-        ${k.tfa_api_key_set
-          ? `<span class="val mono">${escapeHtml(k.tfa_api_key)}</span>`
-          : '<span class="val leer">– nicht gesetzt –</span>'}
-      </div>
-      <div class="zeile">
-        <span class="lbl">HACCP_POLL_INTERVALL_S</span>
-        <span class="val mono">${k.poll_intervall_s} s</span>
-      </div>
+      <h2>Konfiguration</h2>
+      <form id="konfig-form">
+        <div class="edit-zeile">
+          <label for="ed-base-url">TFA-Basis-URL</label>
+          <input type="text" id="ed-base-url"
+                 value="${escapeHtml(k.tfa_base_url)}"
+                 placeholder="https://go.tfa.me">
+          ${quelleBadge(q.tfa_base_url || 'default')}
+        </div>
+        <div class="edit-zeile">
+          <label for="ed-api-key">TFA-API-Key</label>
+          <input type="text" id="ed-api-key"
+                 value="${k.tfa_api_key_set ? escapeHtml(k.tfa_api_key) : ''}"
+                 placeholder="Leer lassen um unveraendert zu belassen">
+          ${quelleBadge(q.tfa_api_key || 'leer')}
+        </div>
+        <div class="edit-zeile">
+          <label for="ed-intervall">Poll-Intervall (Sek.)</label>
+          <input type="number" id="ed-intervall" min="30" max="3600"
+                 value="${k.poll_intervall_s}">
+          ${quelleBadge(q.poll_intervall_s || 'default')}
+        </div>
+        <button type="submit" class="btn-primary">Speichern</button>
+        <div id="save-hinweis" class="save-hinweis"></div>
+      </form>
       <div class="hinweis-box">
-        ${escapeHtml(k.hinweis)}
+        ${escapeHtml(k.hinweis)}<br>
+        <strong>Reihenfolge</strong>:
+        <span class="quelle-badge db">DB</span> (DORFKERN_KONFIG) &gt;
+        <span class="quelle-badge env">ENV</span>
+        (TFA_API_KEY etc.) &gt;
+        <span class="quelle-badge default">DEFAULT</span>.
+        Der API-Key wird beim Anzeigen maskiert; Eingabe eines neuen
+        Werts ueberschreibt ihn.
       </div>
     </div>`;
+}
+
+function setzeSaveHinweis(typ, msg) {
+  const el = document.getElementById('save-hinweis');
+  if (!el) return;
+  el.className = 'save-hinweis ' + typ;
+  el.textContent = msg;
+}
+
+async function onSpeichern(ev) {
+  ev.preventDefault();
+  const base_url = document.getElementById('ed-base-url').value.trim();
+  const api_key_roh = document.getElementById('ed-api-key').value;
+  const intervall = document.getElementById('ed-intervall').value;
+  const btn = document.querySelector('#konfig-form button[type=submit]');
+  btn.disabled = true;
+  setzeSaveHinweis('ok', 'Speichere …');
+  const body = {
+    tfa_base_url:     base_url,
+    poll_intervall_s: parseInt(intervall, 10),
+  };
+  // API-Key: nur senden wenn der User etwas eingetippt hat, das NICHT
+  // die Maskierung ist (vier-Sterne-Muster).
+  if (api_key_roh && !/\*{4,}/.test(api_key_roh)) {
+    body.tfa_api_key = api_key_roh;
+  }
+  try {
+    const r = await fetch('/api/system/haccp-poller', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    }).then(r => r.json());
+    if (r.ok) {
+      setzeSaveHinweis('ok',
+        'Gespeichert: ' + (r.geaendert || []).join(', ') +
+        '. Poller-Daemon bitte neu starten, damit die Werte greifen.');
+      setTimeout(laden, 500);
+    } else {
+      setzeSaveHinweis('fehler', 'Fehler: ' + (r.msg || '?'));
+    }
+  } catch (e) {
+    setzeSaveHinweis('fehler', String(e));
+  }
+  btn.disabled = false;
 }
 
 async function laden() {
@@ -244,6 +387,8 @@ async function laden() {
     box.innerHTML = daemonKarte(r.daemon)
       + heartbeatKarte(r.heartbeat)
       + konfigKarte(r.konfig);
+    const form = document.getElementById('konfig-form');
+    if (form) form.addEventListener('submit', onSpeichern);
   } catch (e) {
     box.innerHTML = `<div style="color:#f08080;padding:12px;">
       ${escapeHtml(String(e))}</div>`;
@@ -252,7 +397,14 @@ async function laden() {
 
 document.addEventListener('DOMContentLoaded', () => {
   laden();
-  setInterval(laden, 5000);   // alle 5 s aktualisieren
+  // Auto-Refresh nur fuer Daemon+Heartbeat-Karten, nicht fuer Konfig
+  // (wuerde Edit-Formular zerstoeren). Wir rendern einfach neu, aber
+  // pausieren waehrend der User im Konfig-Feld fokussiert ist.
+  setInterval(() => {
+    const aktiv = document.activeElement;
+    if (aktiv && aktiv.closest && aktiv.closest('#konfig-form')) return;
+    laden();
+  }, 5000);
 });
 </script>
 {% endblock %}

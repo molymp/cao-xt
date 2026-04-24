@@ -1562,6 +1562,36 @@ def api_system_haccp_poller():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+@app.post('/api/system/haccp-poller')
+@_login_required
+def api_system_haccp_poller_speichern():
+    """Speichert HACCP-Konfig in DORFKERN_KONFIG.
+
+    JSON-Body: {'tfa_api_key'?: str, 'tfa_base_url'?: str,
+                'poll_intervall_s'?: int}
+    Feld weglassen oder None = nicht aendern. Leerer String = explizit
+    leeren (Rueckfall auf Env/Default beim Lesen).
+    """
+    import system_haccp_poller as _hp
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('mitarbeiter_id')
+    try:
+        intervall = body.get('poll_intervall_s')
+        if intervall is not None and intervall != '':
+            intervall = int(intervall)
+        else:
+            intervall = None
+    except (TypeError, ValueError):
+        return jsonify(ok=False,
+                       msg='poll_intervall_s muss eine Zahl sein'), 400
+    return jsonify(_hp.speichern(
+        tfa_api_key=body.get('tfa_api_key'),
+        tfa_base_url=body.get('tfa_base_url'),
+        poll_intervall_s=intervall,
+        ma_id=ma_id,
+    ))
+
+
 # ── Stammdaten: Mittagstisch ─────────────────────────────────────
 
 @app.route('/stammdaten/mittagstisch')
@@ -1580,6 +1610,33 @@ def api_stammdaten_mittagstisch():
     except Exception as e:
         log.exception('stammdaten_mittagstisch status fehlgeschlagen')
         return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/stammdaten/mittagstisch')
+@_login_required
+def api_stammdaten_mittagstisch_speichern():
+    """Speichert Mittagstisch-Konfig in DORFKERN_KONFIG.
+
+    JSON-Body: {'spreadsheet_id'?: str, 'credentials_json'?: str}
+    Leerer credentials_json-String = alter Wert bleibt (nicht loeschen).
+    """
+    import system_mittagstisch as _mt
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('mitarbeiter_id')
+    return jsonify(_mt.speichern(
+        spreadsheet_id=body.get('spreadsheet_id'),
+        credentials_json=body.get('credentials_json'),
+        ma_id=ma_id,
+    ))
+
+
+@app.post('/api/stammdaten/mittagstisch/credentials/loeschen')
+@_login_required
+def api_stammdaten_mittagstisch_credentials_loeschen():
+    """Entfernt die gespeicherten Service-Account-Credentials aus der DB."""
+    import system_mittagstisch as _mt
+    ma_id = session.get('mitarbeiter_id')
+    return jsonify(_mt.credentials_loeschen(ma_id=ma_id))
 
 
 # ── System: Updates ──────────────────────────────────────────────

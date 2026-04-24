@@ -35,7 +35,11 @@ class _FakeCursor:
         return False
 
 
-def _lade(db_row, daemon_status, env_overrides=None):
+def _lade(db_row, daemon_status, env_overrides=None,
+          konfig_werte=None):
+    """``konfig_werte``: dict {schluessel: wert} – was common.konfig.get
+    zurueckliefern soll. None = als 'nicht gesetzt' behandeln.
+    """
     # Fake db
     fake_db = types.ModuleType('db')
     fake_db.get_db = lambda: _FakeCursor(db_row)
@@ -51,6 +55,17 @@ def _lade(db_row, daemon_status, env_overrides=None):
     )
     sys.modules['installer.app_manager'] = fake_mgr
 
+    # Fake common.konfig
+    werte = dict(konfig_werte or {})
+    common_pkg = types.ModuleType('common')
+    common_pkg.__path__ = []
+    sys.modules['common'] = common_pkg
+    fake_konfig = types.SimpleNamespace(
+        get=lambda key, default=None: werte.get(key, default),
+        set=lambda key, wert, **kw: werte.__setitem__(key, wert),
+    )
+    sys.modules['common.konfig'] = fake_konfig
+
     # Env-Variablen setzen
     if env_overrides is not None:
         for k in ('TFA_API_KEY', 'TFA_BASE_URL', 'HACCP_POLL_INTERVALL_S'):
@@ -62,6 +77,7 @@ def _lade(db_row, daemon_status, env_overrides=None):
     spec = importlib.util.spec_from_file_location('hp_test', _MODUL_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    mod._konfig_werte = werte   # fuer Asserts
     return mod
 
 
@@ -153,6 +169,64 @@ class TestHaccpPollerStatus(unittest.TestCase):
         # Default-Basis-URL
         self.assertEqual(k['tfa_base_url'], 'https://go.tfa.me')
         self.assertEqual(k['poll_intervall_s'], 120)
+        # Alle Quellen 'default' (kein DB, kein Env)
+        self.assertEqual(k['quellen']['tfa_base_url'], 'default')
+        self.assertEqual(k['quellen']['poll_intervall_s'], 'default')
+
+    def test_db_gewinnt_ueber_env(self):
+        mod = _lade(
+            db_row=None,
+            daemon_status={'running': False, 'pid': None, 'log': ''},
+            env_overrides={
+                'TFA_API_KEY': 'env-key-xxx',
+                'TFA_BASE_URL': 'https://env.example/',
+                'HACCP_POLL_INTERVALL_S': '30',
+            },
+            konfig_werte={
+                'haccp.tfa_api_key':     'db-key-yyy',
+                'haccp.tfa_base_url':    'https://db.example/',
+                'haccp.poll_intervall_s': 60,
+            },
+        )
+        s = mod.status()
+        k = s['konfig']
+        # Maskierter DB-Key, aber nicht der Env-Key
+        self.assertTrue(k['tfa_api_key_set'])
+        self.assertIn('db', k['tfa_api_key'])
+        self.assertEqual(k['tfa_base_url'], 'https://db.example/')
+        self.assertEqual(k['poll_intervall_s'], 60)
+        self.assertEqual(k['quellen']['tfa_base_url'], 'db')
+        self.assertEqual(k['quellen']['tfa_api_key'], 'db')
+        self.assertEqual(k['quellen']['poll_intervall_s'], 'db')
+
+
+class TestHaccpPollerSpeichern(unittest.TestCase):
+
+    def test_speichern_alle_drei(self):
+        mod = _lade(db_row=None,
+                    daemon_status={'running': False, 'pid': None, 'log': ''},
+                    env_overrides={},
+                    konfig_werte={})
+        r = mod.speichern(tfa_api_key='neuer-key',
+                          tfa_base_url='https://xy.tfa.me',
+                          poll_intervall_s=90)
+        self.assertTrue(r['ok'])
+        self.assertEqual(sorted(r['geaendert']),
+                         ['poll_intervall_s', 'tfa_api_key', 'tfa_base_url'])
+        # Werte sind wirklich durch den Fake-konfig.set durchgeschleust
+        self.assertEqual(mod._konfig_werte['haccp.tfa_api_key'], 'neuer-key')
+        self.assertEqual(mod._konfig_werte['haccp.poll_intervall_s'], 90)
+
+    def test_speichern_teilweise(self):
+        mod = _lade(db_row=None,
+                    daemon_status={'running': False, 'pid': None, 'log': ''},
+                    env_overrides={},
+                    konfig_werte={})
+        r = mod.speichern(tfa_base_url='https://xy.tfa.me')
+        self.assertTrue(r['ok'])
+        self.assertEqual(r['geaendert'], ['tfa_base_url'])
+        self.assertIn('haccp.tfa_base_url', mod._konfig_werte)
+        self.assertNotIn('haccp.tfa_api_key', mod._konfig_werte)
 
 
 if __name__ == '__main__':
