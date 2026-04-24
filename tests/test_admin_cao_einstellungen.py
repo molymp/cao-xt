@@ -20,6 +20,10 @@ _MODUL_PATH = os.path.join(
     _REPO_ROOT, 'admin-app', 'app', 'cao_einstellungen.py')
 
 # admin-app/app hat einen Bindestrich – kein regulaerer Paketimport moeglich.
+# Wir stubben ``db`` und laden das Modul ueber importlib. Damit die neben-
+# dran liegenden reinen Datenmodule (``cao_labels``) gefunden werden,
+# haengen wir ``admin-app/app/`` an den sys.path an.
+sys.path.insert(0, os.path.join(_REPO_ROOT, 'admin-app', 'app'))
 _fake_db = types.ModuleType('db')
 _fake_db.get_db = lambda: None  # noqa: E731
 sys.modules['db'] = _fake_db
@@ -100,6 +104,25 @@ class TestWertExtrahieren(unittest.TestCase):
         wert, typ = ce.wert_extrahieren({'VAL_BLOB': blob})
         self.assertLessEqual(len(wert or ''), 4001 + 1)  # 4000 + ellipsis
         self.assertTrue((wert or '').endswith('…'))
+
+
+class TestLabelsKatalog(unittest.TestCase):
+    """Der aus cao_admin.exe extrahierte Labels-Katalog ist im Modul
+    ueber ``LABELS_CAO`` / ``ENUM_WERTE`` verfuegbar und wird in
+    ``registry_laden`` in jede Zeile eingemischt."""
+
+    def test_labels_enthalten_use_kfz(self):
+        # USE_KFZ ist ein sehr stabiler Treffer (Tab 'Allgemein',
+        # Caption 'KFZ-Verwaltung') – sinnvoller Rauch-Test.
+        eintrag = ce.LABELS_CAO.get(('MAIN', 'USE_KFZ'))
+        self.assertIsNotNone(eintrag)
+        self.assertIn('KFZ', eintrag['titel'])
+        self.assertEqual(eintrag['tab'], 'Allgemein')
+
+    def test_enum_werte_anzpreis(self):
+        # ANZPREIS (Nachkommastellen) ist eine ComboBox mit 4 Optionen.
+        werte = ce.ENUM_WERTE.get(('MAIN\\ARTIKEL', 'ANZPREIS'))
+        self.assertEqual(werte, ['2', '3', '4', '5'])
 
 
 if __name__ == '__main__':

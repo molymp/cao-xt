@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from cao_labels import ENUM_WERTE, LABELS_CAO, TAB_FUER_MAINKEY
 from db import get_db
 
 log = logging.getLogger(__name__)
@@ -176,6 +177,7 @@ def registry_laden() -> list[dict[str, Any]]:
         val_typ_hinweis = r.get('VAL_TYP')
         if val_typ_hinweis:
             typ = f'{typ} / VAL_TYP={val_typ_hinweis}'
+        label_info = LABELS_CAO.get((mainkey, name))
         ergebnis.append({
             'mainkey':   mainkey,
             'name':      name,
@@ -183,6 +185,12 @@ def registry_laden() -> list[dict[str, Any]]:
             'typ':       typ,
             'cachable':  bool(r.get('CACHABLE')),
             'readonly':  bool(r.get('READONLY')),
+            # Aus cao_admin.exe extrahiert – fehlt, wenn keine UI-Bindung
+            # gefunden wurde (reiner REGISTRY-Schluessel ohne Dialogfeld).
+            'titel':     (label_info or {}).get('titel'),
+            'hint':      (label_info or {}).get('hint'),
+            'cao_tab':   (label_info or {}).get('tab'),
+            'enum':      ENUM_WERTE.get((mainkey, name)),
         })
     return ergebnis
 
