@@ -1639,6 +1639,59 @@ def api_stammdaten_mittagstisch_credentials_loeschen():
     return jsonify(_mt.credentials_loeschen(ma_id=ma_id))
 
 
+# ── System: Dorfkern-Rechte-Matrix ───────────────────────────────
+
+@app.route('/rechte/dorfkern')
+@_login_required
+def rechte_dorfkern_seite():
+    """Editierbare Matrix Rolle x Permission-Objekt."""
+    return render_template('system_rechte_dorfkern.html')
+
+
+@app.get('/api/rechte/dorfkern/matrix')
+@_login_required
+def api_rechte_dorfkern_matrix():
+    import system_rechte_dorfkern as _rd
+    try:
+        return jsonify(ok=True, **_rd.matrix())
+    except Exception as e:
+        log.exception('Matrix laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/rechte/dorfkern/zelle')
+@_login_required
+def api_rechte_dorfkern_zelle():
+    """Body: {rolle, objekt_key, recht}. recht='' loescht den Eintrag."""
+    import system_rechte_dorfkern as _rd
+    body = request.get_json(silent=True) or {}
+    return jsonify(_rd.zelle_setzen(
+        rolle=body.get('rolle', ''),
+        objekt_key=body.get('objekt_key', ''),
+        recht=body.get('recht', ''),
+    ))
+
+
+# ── System: Mitarbeiter (Rechte-Uebersicht) ──────────────────────
+
+@app.route('/system/mitarbeiter')
+@_login_required
+def system_mitarbeiter_seite():
+    """Mitarbeiter-Liste mit CAO-Rolle und abgeleiteten Dorfkern-Rechten."""
+    return render_template('system_mitarbeiter.html')
+
+
+@app.get('/api/system/mitarbeiter')
+@_login_required
+def api_system_mitarbeiter():
+    import system_mitarbeiter as _sm
+    try:
+        return jsonify(ok=True, mitarbeiter=_sm.liste())
+    except Exception as e:
+        log.exception('Mitarbeiter-Liste fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
