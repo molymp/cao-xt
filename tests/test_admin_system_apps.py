@@ -62,6 +62,12 @@ def _fake_manager(**overrides) -> types.SimpleNamespace:
         calls.append(('restart', name))
         return True
 
+    def log_info(pfad):
+        # Minimal-Mock fuer die UI-Anzeige
+        return {'pfad': pfad, 'existiert': False, 'groesse': 0,
+                'max_bytes': 5 * 1024 * 1024, 'backups': [],
+                'gesamt_bytes': 0}
+
     ns = types.SimpleNamespace(
         APPS=apps,
         status_app=status_app,
@@ -69,6 +75,7 @@ def _fake_manager(**overrides) -> types.SimpleNamespace:
         start_app=start_app,
         stop_app=stop_app,
         restart_app=restart_app,
+        log_info=log_info,
     )
     for k, v in overrides.items():
         setattr(ns, k, v)
@@ -89,6 +96,10 @@ class TestSystemApps(unittest.TestCase):
         by = {e['name']: e for e in res}
         self.assertIn('Admin', by['admin']['beschreibung'])
         self.assertIn('HACCP', by['haccp-poller']['beschreibung'])
+        # log_info ist pro Eintrag mitgegeben (Rotations-Anzeige)
+        self.assertIn('log_info', by['admin'])
+        self.assertEqual(by['admin']['log_info']['max_bytes'],
+                         5 * 1024 * 1024)
 
     def test_start_ruft_manager(self):
         fake = _fake_manager()

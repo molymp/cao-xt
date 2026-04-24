@@ -139,6 +139,9 @@
   <code>./dorfkern-ctl [start|stop|restart] &lt;app&gt;</code> auf
   der Shell. Die Admin-App selbst kann nicht von hier aus neu
   gestartet werden (würde sich selbst stoppen).
+  <strong>Logs</strong> werden vor jedem App-Start rotiert; Default
+  5 MB / 3 Backups (<code>CAOXT_LOG_ROTATE_MB</code> /
+  <code>CAOXT_LOG_ROTATE_BACKUPS</code>).
 </div>
 
 <div class="auto-refresh">
@@ -175,6 +178,40 @@ function render() {
   _apps.forEach(a => bindAktionen(a.name));
 }
 
+function fmtBytes(n) {
+  if (!n) return '0';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function logZeile(a) {
+  if (!a.log) return '';
+  const info = a.log_info;
+  if (!info || !info.existiert) {
+    return `<div class="lbl">Log</div>
+            <div class="val">${escapeHtml(a.log)}
+              <span style="color:var(--text-dim);">(leer)</span></div>`;
+  }
+  // Rotations-Indikator: farbig wenn Log nahe Schwelle
+  const anteil = info.max_bytes ? (info.groesse / info.max_bytes) : 0;
+  const farbe = anteil > 0.9 ? '#f87171'
+              : anteil > 0.7 ? '#fbbf24'
+              : 'var(--text-dim)';
+  const bak = info.backups.length
+    ? ` · ${info.backups.length} Backup${info.backups.length===1?'':'s'}`
+      + ` (gesamt ${fmtBytes(info.gesamt_bytes)})`
+    : '';
+  return `<div class="lbl">Log</div>
+          <div class="val">
+            <span style="word-break:break-all;">${escapeHtml(a.log)}</span>
+            <div style="font-size:11px;color:${farbe};margin-top:2px;">
+              ${fmtBytes(info.groesse)} von
+              ${fmtBytes(info.max_bytes)}${bak}
+            </div>
+          </div>`;
+}
+
 function renderKarte(a) {
   const kann_restart = a.name !== 'admin';
   return `
@@ -194,9 +231,7 @@ function renderKarte(a) {
         ${a.pid ? `
           <div class="lbl">PID</div>
           <div class="val">${a.pid}</div>` : ''}
-        ${a.log ? `
-          <div class="lbl">Log</div>
-          <div class="val">${escapeHtml(a.log)}</div>` : ''}
+        ${logZeile(a)}
       </div>
       <div class="aktionen">
         <button class="btn-aktion start"  data-aktion="start"

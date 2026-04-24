@@ -31,6 +31,129 @@ _APP_PYTHON  = _VENV_PYTHON if os.path.isfile(_VENV_PYTHON) else sys.executable
 PID_FILE = '/tmp/caoxt-pids.json'
 LOG_DIR  = '/tmp'
 
+# Log-Rotation: vor jedem Start wird geprueft, ob das Log groesser als
+# CAOXT_LOG_ROTATE_MB ist. Ist dem so, wird es zu <log>.1 umbenannt,
+# existierende .1 zu .2 etc., und das aelteste (.N) wird geloescht.
+# Die App schreibt dann in eine frische Datei.
+#
+# Env-Vars zum Tuning pro Host:
+#   CAOXT_LOG_ROTATE_MB       max. Groesse in MB (Default 5)
+#   CAOXT_LOG_ROTATE_BACKUPS  Anzahl Backups zu behalten (Default 3)
+#
+# 5 MB x (1 + 3) = 20 MB max. pro App-Log -> 80 MB fuer alle vier Apps +
+# HACCP-Poller. Passt auch auf tmpfs mit 256 MB.
+try:
+    _LOG_ROTATE_BYTES = int(float(
+        os.environ.get('CAOXT_LOG_ROTATE_MB', '5')) * 1024 * 1024)
+except (TypeError, ValueError):
+    _LOG_ROTATE_BYTES = 5 * 1024 * 1024
+try:
+    _LOG_ROTATE_BACKUPS = max(
+        0, int(os.environ.get('CAOXT_LOG_ROTATE_BACKUPS', '3')))
+except (TypeError, ValueError):
+    _LOG_ROTATE_BACKUPS = 3
+
+
+def _rotate_log(log_path: str,
+                max_bytes: int = _LOG_ROTATE_BYTES,
+                backups: int = _LOG_ROTATE_BACKUPS) -> bool:
+    """Rotiert ``log_path`` falls groesser als ``max_bytes``.
+
+    Pre-Start-Rotation: wird vor dem Oeffnen der Log-Datei aufgerufen.
+    Auf der laufenden App-Instanz schreibt sonst niemand ins File.
+    Idempotent; bei Fehlern wird nur gewarnt, der App-Start geht weiter.
+
+    Ablauf bei backups=3::
+
+        log.3 geloescht
+        log.2 -> log.3
+        log.1 -> log.2
+        log   -> log.1
+        (neue log wird vom nachfolgenden open(...,'a') angelegt)
+
+    Returns:
+        True wenn rotiert wurde, False sonst (Datei fehlte oder klein genug).
+    """
+    try:
+        if not os.path.isfile(log_path):
+            return False
+        try:
+            size = os.path.getsize(log_path)
+        except OSError:
+            return False
+        if size < max_bytes:
+            return False
+        # Aeltestes Backup loeschen, Rest shiften
+        if backups > 0:
+            aeltest = f'{log_path}.{backups}'
+            if os.path.isfile(aeltest):
+                try:
+                    os.unlink(aeltest)
+                except OSError:
+                    pass
+            # log.(N-1) -> log.N, ..., log.1 -> log.2
+            for i in range(backups, 1, -1):
+                src = f'{log_path}.{i - 1}'
+                dst = f'{log_path}.{i}'
+                if os.path.isfile(src):
+                    try:
+                        os.rename(src, dst)
+                    except OSError:
+                        pass
+            # aktuelles log -> log.1
+            try:
+                os.rename(log_path, f'{log_path}.1')
+            except OSError:
+                pass
+        else:
+            # Keine Backups konfiguriert: einfach wegkippen
+            try:
+                os.unlink(log_path)
+            except OSError:
+                pass
+        return True
+    except Exception:
+        # Log-Rotation darf App-Start nicht verhindern
+        return False
+
+
+def log_info(log_path: str) -> dict:
+    """Liefert Rotations-Info fuer ein Log (UI-Anzeige).
+
+    Rueckgabe::
+
+        {
+          'pfad':          str,
+          'existiert':     bool,
+          'groesse':       int,      # Bytes
+          'max_bytes':     int,      # Rotation-Schwelle
+          'backups':       [{'pfad': str, 'groesse': int}, ...],
+          'gesamt_bytes':  int,      # Summe aller Dateien inkl. Backups
+        }
+    """
+    info = {
+        'pfad': log_path,
+        'existiert': False,
+        'groesse': 0,
+        'max_bytes': _LOG_ROTATE_BYTES,
+        'backups': [],
+        'gesamt_bytes': 0,
+    }
+    try:
+        if os.path.isfile(log_path):
+            info['existiert'] = True
+            info['groesse'] = os.path.getsize(log_path)
+            info['gesamt_bytes'] += info['groesse']
+        for i in range(1, _LOG_ROTATE_BACKUPS + 1):
+            p = f'{log_path}.{i}'
+            if os.path.isfile(p):
+                s = os.path.getsize(p)
+                info['backups'].append({'pfad': p, 'groesse': s})
+                info['gesamt_bytes'] += s
+    except Exception:
+        pass
+    return info
+
 APPS = {
     'admin': {
         'type': 'web',
@@ -165,6 +288,10 @@ def _start_web_app(name: str, cfg: dict, *, print_fn=print) -> bool:
         print_fn(f"  ⟳  {name}: Port {port} belegt – beende alten Prozess …")
         _kill_port(port)
 
+    # Pre-Start Log-Rotation (idempotent, tut nichts wenn noch klein)
+    if _rotate_log(log_path):
+        print_fn(f"  ⤴  {name}: Log rotiert.")
+
     # App starten
     log_file = open(log_path, 'a')
     try:
@@ -232,6 +359,10 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
             if not _pid_alive(alt_pid):
                 break
             time.sleep(1)
+
+    # Pre-Start Log-Rotation (idempotent)
+    if _rotate_log(log_path):
+        print_fn(f"  ⤴  {name}: Log rotiert.")
 
     log_file = open(log_path, 'a')
     try:
