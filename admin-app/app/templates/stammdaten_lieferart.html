@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Lieferarten{% endblock %}
+
+{% block extra_style %}
+<style>
+  table.tbl-la { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.tbl-la th, table.tbl-la td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  table.tbl-la th {
+    color: var(--text-dim);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+  }
+  table.tbl-la td.col-id {
+    font-variant-numeric: tabular-nums;
+    font-family: monospace;
+    color: var(--text-dim);
+    width: 60px;
+  }
+  table.tbl-la td.col-name {
+    font-weight: 600;
+    width: 220px;
+  }
+  table.tbl-la td.col-text {
+    white-space: pre-wrap;
+    color: var(--text-hell);
+  }
+  table.tbl-la td.col-text.leer {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  .la-such {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 6px;
+    font: inherit;
+  }
+  .info-banner {
+    background: #3b2f1a;
+    border-left: 3px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #fde68a;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+  .std-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 3px;
+    background: var(--bg-hell);
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: normal;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">🚚 Lieferarten</h1>
+<div class="info-banner">
+  <strong>Read-only.</strong> Pflege in
+  <code>cao_admin.exe → Einstellungen → Lieferarten</code>. Die IDs
+  <code>1</code>, <code>4</code> und <code>5</code> sind CAO-Standard
+  (Selbstabholung etc.) und sollten nicht umbenannt werden.
+</div>
+
+<div class="card">
+  <div class="stat-zeile">
+    <span class="chip">Gesamt: <span id="stat-gesamt">–</span></span>
+    <span class="chip">Mit Belegtext: <span id="stat-mit-text">–</span></span>
+  </div>
+
+  <input type="text" id="such-feld" class="la-such"
+         placeholder="🔍 Filter (Name oder Text)">
+
+  <table class="tbl-la">
+    <thead>
+      <tr>
+        <th class="col-id">ID</th>
+        <th>Bezeichnung</th>
+        <th>Standard-Belegtext</th>
+      </tr>
+    </thead>
+    <tbody id="la-tbody">
+      <tr><td colspan="3" style="color: var(--text-dim); text-align: center;
+                                   padding: 24px;">Lade…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+const _STD_IDS = new Set([1, 4, 5]);
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function render(filter) {
+  const f = (filter || '').trim().toLowerCase();
+  const gefiltert = f
+    ? _alle.filter(e =>
+        (e.name || '').toLowerCase().includes(f)
+        || (e.text || '').toLowerCase().includes(f))
+    : _alle;
+
+  const tbody = document.getElementById('la-tbody');
+  if (!gefiltert.length) {
+    tbody.innerHTML = `<tr><td colspan="3" style="color: var(--text-dim);
+      padding: 16px; text-align: center;">
+      Keine Eintraege ${f ? '(Filter aktiv)' : ''}.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = gefiltert.map(e => `
+    <tr>
+      <td class="col-id">${escapeHtml(e.id)}</td>
+      <td class="col-name">${escapeHtml(e.name)}${
+        _STD_IDS.has(Number(e.id))
+          ? '<span class="std-badge" title="CAO-Standard-Lieferart">Std</span>'
+          : ''}</td>
+      <td class="col-text ${e.has_text ? '' : 'leer'}">${
+        e.has_text ? escapeHtml(e.text) : '(kein Belegtext)'}</td>
+    </tr>
+  `).join('');
+}
+
+async function laden() {
+  const r = await api('GET', '/api/stammdaten/lieferarten');
+  if (!r.ok) {
+    document.getElementById('la-tbody').innerHTML =
+      `<tr><td colspan="3" style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</td></tr>`;
+    return;
+  }
+  _alle = r.eintraege || [];
+  const mitText = _alle.filter(e => e.has_text).length;
+  document.getElementById('stat-gesamt').textContent  = _alle.length;
+  document.getElementById('stat-mit-text').textContent = mitText;
+  render('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('such-feld').addEventListener('input', (e) => {
+    render(e.target.value);
+  });
+  laden();
+});
+</script>
+{% endblock %}
