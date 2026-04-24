@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% block title %}Stempel {{ tag.strftime('%d.%m.%Y') }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+          flex-wrap: wrap; }
+.topbar h1 { flex: 1; margin: 0; }
+.btn { background: var(--gruen-mitte); color: white; border: none;
+       border-radius: var(--radius-klein); padding: 10px 16px; font-weight: 700;
+       cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
+       min-height: 44px; display: inline-flex; align-items: center; }
+.btn:hover { background: var(--gruen-dunkel); }
+.btn-secondary { background: white; color: var(--gruen-dunkel);
+                 border: 1px solid var(--gruen-mitte); }
+.btn-secondary:hover { background: var(--gruen-blass); }
+.filter-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+               background: white; padding: 14px 16px; border-radius: var(--radius);
+               box-shadow: var(--schatten); margin-bottom: 16px; }
+.filter-form .field { display: flex; flex-direction: column; gap: 4px;
+                      min-width: 160px; }
+.filter-form label { font-size: 11px; font-weight: 800; text-transform: uppercase;
+                     letter-spacing: 0.05em; color: var(--gruen-dunkel); }
+.filter-form input {
+    padding: 10px 12px; border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein); font-size: 14px; min-height: 44px;
+    font-family: inherit; background: white;
+}
+
+.st-table { width: 100%; background: white; border-collapse: collapse;
+            border-radius: var(--radius); overflow: hidden;
+            box-shadow: var(--schatten); }
+.st-table th { background: var(--gruen-blass); padding: 12px 14px;
+               text-align: left; font-size: 12px; font-weight: 800;
+               text-transform: uppercase; letter-spacing: 0.06em;
+               color: var(--gruen-dunkel); }
+.st-table td { padding: 10px 14px; border-top: 1px solid var(--creme-dunkel);
+               font-size: 14px; vertical-align: middle; }
+.st-table .col-zeit { font-variant-numeric: tabular-nums; white-space: nowrap;
+                      font-weight: 700; }
+.st-table .ma-name { font-weight: 700; }
+
+.pill { display: inline-block; padding: 3px 10px; border-radius: 10px;
+        font-size: 11px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.04em; }
+.pill-kommen { background: #e8f5e0; color: #2e7a2e; }
+.pill-gehen  { background: #fef1db; color: #8a5e1a; }
+.pill-korrektur { background: #e0ebf5; color: #2e5a7a; }
+.pill-kiosk  { background: var(--grau-hell); color: var(--text-mitte); }
+
+.empty { text-align: center; padding: 50px 20px; color: var(--grau-mitte);
+         background: white; border-radius: var(--radius); box-shadow: var(--schatten); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <h1>&#x1F570;&#xFE0F; Stempel {{ tag.strftime('%a, %d.%m.%Y') }}</h1>
+  <a class="btn-secondary btn" href="{{ url_for('orga_personal.uebersicht') }}">
+     ← Mitarbeiter
+  </a>
+</div>
+
+<form method="get" class="filter-form">
+  <div class="field">
+    <label>Tag</label>
+    <input type="date" name="tag" value="{{ tag.isoformat() }}">
+  </div>
+  <button type="submit" class="btn">Anzeigen</button>
+</form>
+
+{% if eintraege %}
+<table class="st-table">
+  <thead>
+    <tr>
+      <th style="width: 220px;">Mitarbeiter</th>
+      <th style="width: 120px;">Zeit</th>
+      <th style="width: 120px;">Richtung</th>
+      <th style="width: 140px;">Quelle</th>
+      <th style="width: 100px;">Terminal</th>
+      <th>Kommentar</th>
+      <th style="width: 110px;"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in eintraege %}
+    <tr>
+      <td>
+        <a href="{{ url_for('orga_personal.stempel_ma', pers_id=e.PERS_ID) }}"
+           style="text-decoration: none; color: inherit;">
+          <span class="ma-name">{{ e.VNAME }} {{ e.NAME }}</span>
+          {% if e.KUERZEL %}<span style="color: var(--text-mitte);">({{ e.KUERZEL }})</span>{% endif %}
+        </a>
+      </td>
+      <td class="col-zeit">{{ e.ZEITPUNKT.strftime('%H:%M:%S') }}</td>
+      <td><span class="pill pill-{{ e.RICHTUNG }}">{{ e.RICHTUNG }}</span></td>
+      <td>
+        {% if e.QUELLE == 'korrektur' %}
+          <span class="pill pill-korrektur">Korrektur</span>
+        {% else %}
+          <span class="pill pill-kiosk">Kiosk</span>
+        {% endif %}
+      </td>
+      <td>{{ e.TERMINAL_NR if e.TERMINAL_NR is not none else '–' }}</td>
+      <td style="font-size: 12px; color: var(--text-mitte);">{{ e.KOMMENTAR or '' }}</td>
+      <td>
+        <a class="btn btn-secondary"
+           style="min-height: 36px; padding: 6px 12px; font-size: 12px;"
+           href="{{ url_for('orga_personal.stempel_ma', pers_id=e.PERS_ID) }}">
+           Details →
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <p style="font-size: 15px;">Keine Stempel an diesem Tag.</p>
+</div>
+{% endif %}
+{% endblock %}

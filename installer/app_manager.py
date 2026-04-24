@@ -2,8 +2,8 @@
 CAO-XT App Manager – Start/Stop/Restart/Status für alle Apps und Daemons.
 
 Flask-Apps (type='web', Port-basiert):
-  verwaltung  → Port 5004
-  wawi        → Port 5003
+  admin  → Port 5004
+  orga        → Port 5003
   kasse       → Port 5002
   kiosk       → Port 5001
 
@@ -32,17 +32,17 @@ PID_FILE = '/tmp/caoxt-pids.json'
 LOG_DIR  = '/tmp'
 
 APPS = {
-    'verwaltung': {
+    'admin': {
         'type': 'web',
         'port': 5004,
-        'app_dir': os.path.join(_REPO_ROOT, 'verwaltung-app', 'app'),
-        'log': os.path.join(LOG_DIR, 'caoxt-verwaltung.log'),
+        'app_dir': os.path.join(_REPO_ROOT, 'admin-app', 'app'),
+        'log': os.path.join(LOG_DIR, 'caoxt-admin.log'),
     },
-    'wawi': {
+    'orga': {
         'type': 'web',
         'port': 5003,
-        'app_dir': os.path.join(_REPO_ROOT, 'wawi-app', 'app'),
-        'log': os.path.join(LOG_DIR, 'caoxt-wawi.log'),
+        'app_dir': os.path.join(_REPO_ROOT, 'orga-app', 'app'),
+        'log': os.path.join(LOG_DIR, 'caoxt-orga.log'),
     },
     'kasse': {
         'type': 'web',
@@ -64,9 +64,20 @@ APPS = {
     },
 }
 
-# Start-Reihenfolge: Verwaltung zuerst (Stammdaten-Basis), danach WaWi
+# Start-Reihenfolge: Admin zuerst (Stammdaten-Basis), danach Orga
 # (legt HACCP-Tabellen an), dann Poller, dann Kasse, Kiosk zuletzt.
-START_ORDER = ['verwaltung', 'wawi', 'haccp-poller', 'kasse', 'kiosk']
+START_ORDER = ['admin', 'orga', 'haccp-poller', 'kasse', 'kiosk']
+
+# Legacy-Aliase: `app_manager verwaltung start` / `app_manager wawi start`
+# werden auf die neuen Namen gemappt. Soll in Dorfkern v2.1 entfernt werden.
+_LEGACY_ALIASES = {
+    'verwaltung': 'admin',
+    'wawi':       'orga',
+}
+
+
+def _resolve(name: str) -> str:
+    return _LEGACY_ALIASES.get(name, name)
 
 
 def _load_pids() -> dict:
@@ -132,6 +143,7 @@ def _pid_alive(pid: int) -> bool:
 def start_app(name: str, *, print_fn=print) -> bool:
     """Startet eine einzelne App/Daemon. Gibt True bei Erfolg zurück.
     Dispatch nach ``type``: 'web' wartet auf Port, 'daemon' prueft Lebenszeichen."""
+    name = _resolve(name)
     cfg = APPS[name]
     if cfg.get('type', 'web') == 'daemon':
         return _start_daemon(name, cfg, print_fn=print_fn)
@@ -253,6 +265,7 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
 
 def stop_app(name: str, *, print_fn=print) -> None:
     """Stoppt eine einzelne App/Daemon."""
+    name = _resolve(name)
     cfg = APPS[name]
     pids = _load_pids()
     pid = pids.get(name)
@@ -285,6 +298,7 @@ def status_app(name: str) -> dict:
     """Gibt Status-Dict für eine App/Daemon zurück.
     Web-Apps gelten als 'running', wenn der Port lauscht; Daemons, wenn
     der PID noch lebt."""
+    name = _resolve(name)
     cfg = APPS[name]
     is_daemon = cfg.get('type', 'web') == 'daemon'
     pids = _load_pids()

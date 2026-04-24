@@ -212,7 +212,7 @@ def perform_update(branch: str = 'master') -> bool:
             _rollback(rollback_ref)
             return False
         # App-Requirements
-        for app_dir in ['kasse-app', 'kiosk-app', 'wawi-app', 'verwaltung-app']:
+        for app_dir in ['kasse-app', 'kiosk-app', 'orga-app', 'admin-app']:
             req = os.path.join(_REPO_ROOT, app_dir, 'app', 'requirements.txt')
             if os.path.exists(req):
                 _run([venv_pip, 'install', '-q', '-r', req], capture=True)
@@ -277,10 +277,10 @@ def _health_check() -> int:
     """Prüft, ob die konfigurierten Apps erreichbar sind. Gibt Anzahl OK zurück."""
     import socket
     ports = [
-        int(os.environ.get('VERWALTUNG_PORT', '5004')),
+        int(os.environ.get('ADMIN_PORT', '5004')),
         int(os.environ.get('KASSE_PORT', '5002')),
         int(os.environ.get('KIOSK_PORT', '5001')),
-        int(os.environ.get('WAWI_PORT', '5003')),
+        int(os.environ.get('ORGA_PORT', '5003')),
     ]
     ok_count = 0
     for port in ports:

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}App-Aktivierungen{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:8px;">🎚️ App-Aktivierungen</h1>
+<p style="color:var(--text-dim); margin-bottom:20px;">
+  Steuert die Sichtbarkeit der Apps im App-Switcher. Deaktivierte Apps
+  sind fuer alle Nutzer ausgegraut. <strong>ADMIN</strong> kann nicht
+  abgeschaltet werden.
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+  <button class="btn" onclick="load()">🔄 Neu laden</button>
+</div>
+
+<div class="card">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>App</th>
+        <th>Aktiv</th>
+        <th>Lizenz bis</th>
+        <th>Hinweis</th>
+        <th>Geaendert</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody id="aktBody"></tbody>
+  </table>
+</div>
+
+<!-- Editor-Dialog -->
+<div id="editDlg" class="hidden"
+     style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000;
+            display:flex; align-items:center; justify-content:center;">
+  <div class="card" style="width:min(520px,90vw); background:var(--bg); padding:24px;">
+    <h2 id="dlgTitel" style="margin-bottom:16px;">App bearbeiten</h2>
+    <input type="hidden" id="edApp">
+    <div class="form-group">
+      <label>
+        <input type="checkbox" id="edAktiv"> Aktiv
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Lizenz bis (optional, YYYY-MM-DD)</label>
+      <input class="form-control" id="edLizenzBis" placeholder="z.B. 2027-12-31">
+    </div>
+    <div class="form-group">
+      <label>Hinweis</label>
+      <input class="form-control" id="edHinweis" placeholder="z.B. Wartung, testweise deaktiviert">
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn" onclick="schliesseDlg()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="speichern()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_script %}
+<script>
+let eintraege = [];
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+
+async function load() {
+  const r = await api('GET', '/api/dorfkern/aktivierungen');
+  if (!r.ok) { toast(r.msg || 'Fehler beim Laden', 'err'); return; }
+  eintraege = r.eintraege || [];
+  render();
+}
+
+function render() {
+  const body = document.getElementById('aktBody');
+  body.innerHTML = eintraege.map(e => {
+    const istAdmin = e.APP === 'ADMIN';
+    return `
+    <tr>
+      <td><strong>${esc(e.APP)}</strong></td>
+      <td>${e.AKTIV ? '✅' : '❌'}</td>
+      <td>${esc(e.LIZENZ_BIS || '–')}</td>
+      <td style="color:var(--text-dim); font-size:13px;">${esc(e.HINWEIS || '')}</td>
+      <td style="font-size:13px;">${esc(e.GEAENDERT_AM || '')}</td>
+      <td>
+        <button class="btn btn-sm" onclick="oeffneBearbeiten('${esc(e.APP)}')">
+          Bearbeiten
+        </button>
+        ${istAdmin ? '<span class="tag" title="ADMIN ist nicht deaktivierbar">🔒</span>' : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function oeffneBearbeiten(app) {
+  const e = eintraege.find(x => x.APP === app);
+  if (!e) return;
+  document.getElementById('dlgTitel').textContent = 'App: ' + app;
+  document.getElementById('edApp').value = app;
+  document.getElementById('edAktiv').checked = !!e.AKTIV;
+  document.getElementById('edAktiv').disabled = (app === 'ADMIN');
+  document.getElementById('edLizenzBis').value = e.LIZENZ_BIS || '';
+  document.getElementById('edHinweis').value = e.HINWEIS || '';
+  document.getElementById('editDlg').classList.remove('hidden');
+}
+
+function schliesseDlg() {
+  document.getElementById('editDlg').classList.add('hidden');
+}
+
+async function speichern() {
+  const app = document.getElementById('edApp').value;
+  const body = {
+    aktiv:      document.getElementById('edAktiv').checked,
+    lizenz_bis: document.getElementById('edLizenzBis').value.trim() || null,
+    hinweis:    document.getElementById('edHinweis').value.trim() || null,
+  };
+  const r = await api('POST', '/api/dorfkern/aktivierungen/' + encodeURIComponent(app), body);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) { schliesseDlg(); load(); }
+}
+
+load();
+</script>
+{% endblock %}

@@ -52,7 +52,7 @@ sudo systemctl start kasse-app
 
 ## Parken ein-/ausschalten
 
-Die Parken-Funktion kann in der **Verwaltungs-App** unter **Funktionen** deaktiviert werden.
+Die Parken-Funktion kann in der **Admin-App** unter **Funktionen** deaktiviert werden.
 Wenn deaktiviert:
 - Die Buttons „Parken" und „Geparkt" werden ausgeblendet
 - Das Geparkte-Bons-Overlay ist nicht verfügbar

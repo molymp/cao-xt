@@ -40,6 +40,31 @@ def load_environment() -> str:
     return val if val in _VALID_ENVIRONMENTS else 'produktion'
 
 
+def load_security_config() -> dict:
+    """Laedt Sicherheits-Konfiguration aus caoxt.ini / Env.
+
+    Rueckgabe::
+
+        {'verbotene_db_namen': ['cao_2018_001', ...]}
+
+    Prioritaet: ``XT_FORBIDDEN_DB_NAMES`` (Komma-Liste) > ``[Sicherheit]
+    verbotene_db_namen`` in ``caoxt.ini`` > leere Liste.
+
+    Wird in ``common.db._get_pool`` konsultiert, um Writes gegen die
+    Produktiv-DB aus einer Entwicklungs-/Worktree-Instanz heraus hart zu
+    verhindern. Vergleich ist case-insensitiv auf dem DB-Namen.
+    """
+    def _parse(raw: str) -> list[str]:
+        return [x.strip().lower() for x in (raw or '').split(',') if x.strip()]
+
+    val = os.environ.get('XT_FORBIDDEN_DB_NAMES')
+    if val is None:
+        cfg = configparser.ConfigParser()
+        cfg.read(_INI_PATH)
+        val = cfg.get('Sicherheit', 'verbotene_db_namen', fallback='')
+    return {'verbotene_db_namen': _parse(val)}
+
+
 def load_db_config(app_prefix: str | None = None) -> dict:
     """Laedt DB-Konfiguration aus Env-Vars und caoxt.ini.
 

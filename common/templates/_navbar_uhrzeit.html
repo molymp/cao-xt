@@ -1,0 +1,16 @@
+{#-
+  Uhrzeit-Block am rechten Rand der Navbar.
+
+  Wird vom app-seitigen JS befuellt (Suche nach `#navbar-uhrzeit`).
+  Zeigt den angemeldeten Mitarbeiter + aktuelle Uhrzeit/Datum.
+
+  Parameter:
+    navbar_user_name  Anzeigename des eingeloggten Users (Optional; leer = ausblenden).
+                      Apps muessen den Namen aus ihrer eigenen Session-Logik
+                      als Context-Variable bereitstellen.
+-#}
+<div class="navbar-uhrzeit" id="navbar-uhrzeit">
+  {% if navbar_user_name %}<span class="uhr-user">👤 {{ navbar_user_name }}</span>{% endif %}
+  <span class="uhr-zeit">--:--</span>
+  <span class="uhr-datum">--</span>
+</div>

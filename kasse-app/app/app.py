@@ -5,6 +5,7 @@ Starten: cd kasse-app/app && python3 app.py
 from flask import (Flask, render_template, request, jsonify,
                    redirect, url_for, session, send_file, abort,
                    send_from_directory)
+from jinja2 import ChoiceLoader, FileSystemLoader
 from datetime import datetime, date
 import io
 import json
@@ -32,6 +33,17 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
+
+# Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Bausteine
+# (Navbar, Toast, Touch-Widgets, Login-Shell). Wird mit App-eigenen Templates
+# ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).
+_COMMON_TEMPLATES = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'templates')
+)
+app.jinja_loader = ChoiceLoader([
+    app.jinja_loader,
+    FileSystemLoader(_COMMON_TEMPLATES),
+])
 
 # Schema-Migrationen beim Start ausführen (inkl. virtuelle Terminal-Nummer falls Sandbox-Modus)
 kl.migrationen_ausfuehren()
@@ -131,6 +143,23 @@ def _globals():
         ec_tagesabschluss   = ts['ec_tagesabschluss']
     except Exception:
         pass
+    kiosk_url = config.KIOSK_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
+        if config.KIOSK_PORT else '')
+    orga_url = config.ORGA_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
+        if config.ORGA_PORT else '')
+    admin_url = config.ADMIN_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
+        if config.ADMIN_PORT else '')
+    # Feature-Gating (Phase 7): deaktivierte Apps aus Switcher ausblenden.
+    try:
+        from common import aktivierung as _akt
+        if not _akt.ist_aktiv('KIOSK'): kiosk_url = ''
+        if not _akt.ist_aktiv('ORGA'):  orga_url  = ''
+        # ADMIN ist immer aktiv – kein Gating.
+    except Exception:
+        pass
     return {
         'terminal_nr':         config.TERMINAL_NR,
         'firma_name':          config.FIRMA_NAME,
@@ -140,15 +169,9 @@ def _globals():
         'tse_nicht_produktiv': tse_nicht_produktiv,
         'ec_modus':            ec_modus,
         'ec_tagesabschluss':   ec_tagesabschluss,
-        'kiosk_url':           config.KIOSK_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
-                                   if config.KIOSK_PORT else ''),
-        'wawi_url':            config.WAWI_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
-                                   if config.WAWI_PORT else ''),
-        'verwaltung_url':      config.VERWALTUNG_URL or (
-                                   f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
-                                   if config.VERWALTUNG_PORT else ''),
+        'kiosk_url':           kiosk_url,
+        'orga_url':            orga_url,
+        'admin_url':           admin_url,
         'ma_login_name':       session.get('login_name', ''),
         'update_verfuegbar':   _update_status["verfuegbar"],
         'git_commit_short':    GIT_COMMIT_SHORT,
@@ -1389,7 +1412,7 @@ def admin_trainings_modus():
     return redirect(url_for('admin_index'))
 
 
-# ── TSE-Verwaltung ────────────────────────────────────────────
+# ── TSE-Admin ────────────────────────────────────────────
 
 @app.get('/admin/tse')
 @_login_required
@@ -1681,6 +1704,18 @@ def kasse_doku_datei(dateiname):
     return send_from_directory(os.path.abspath(_DOKU_DIR), dateiname)
 
 
+# ── Gemeinsame Brand-Assets (common/brand/*) ──────────────────
+_BRAND_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'brand')
+)
+
+
+@app.route('/brand/<path:dateiname>')
+def _brand_asset(dateiname):
+    """Liefert Dorfkern-Logo-Assets (dorfkern-logo.js etc.) aus common/brand/."""
+    return send_from_directory(_BRAND_DIR, dateiname, max_age=60 * 60 * 24)
+
+
 @app.get('/kasse/handbuch')
 @_login_required
 def kasse_handbuch():
@@ -1824,4 +1859,11 @@ if __name__ == '__main__':
              config.HOST, config.PORT, config.TERMINAL_NR)
     if not db_modul.test_verbindung():
         log.error("Datenbankverbindung fehlgeschlagen! Bitte config.py prüfen.")
+    # Terminal-Selbstregistrierung (Phase 9): Host in TERMINAL-Tabelle
+    # eintragen / Kontakt aktualisieren. Fail-soft.
+    try:
+        from common.terminal_selbstregistrierung import selbst_registrieren
+        selbst_registrieren('KASSE')
+    except Exception as _exc:
+        log.debug("Terminal-Selbstregistrierung uebersprungen: %s", _exc)
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

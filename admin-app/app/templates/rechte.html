@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block title %}Rechte{% endblock %}
+{% block extra_style %}
+<style>
+  .rechte-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 1200px) {
+    .rechte-layout { grid-template-columns: 1fr; }
+  }
+  .rechte-baum {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+  .rechte-baum details {
+    margin-bottom: 4px;
+  }
+  .rechte-baum details > summary {
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    user-select: none;
+    font-weight: 500;
+  }
+  .rechte-baum details > summary:hover {
+    background: var(--akzent-hell, #1f4268);
+  }
+  .rechte-baum .kategorie > summary {
+    font-size: 14px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .rechte-baum .modul {
+    margin-left: 16px;
+  }
+  .rechte-baum .modul > summary {
+    font-size: 14px;
+  }
+  .rechte-baum .submodul {
+    margin-left: 40px;
+    padding: 2px 8px;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .rechte-baum .submodul:hover {
+    background: var(--akzent-hell, #1f4268);
+    border-radius: 4px;
+  }
+  .bit-liste {
+    list-style: none;
+    margin: 4px 0 0 20px;
+    padding: 0;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .bit-liste li {
+    padding: 1px 0;
+  }
+  .bit-an { color: var(--gruen-hell, #4ade80); }
+  .bit-aus { opacity: 0.5; }
+  .bit-unknown { color: #fbbf24; }
+  .rechte-wert {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .override-tabelle td, .override-tabelle th {
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+  .readonly-banner {
+    background: #3b2f1a;
+    border-left: 3px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #fde68a;
+    font-size: 14px;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<h1 style="margin-bottom:8px;">🔑 CAO-Rechte</h1>
+<div class="readonly-banner">
+  <strong>Read-only.</strong> Pflege erfolgt in <code>cao_admin.exe</code> auf dem
+  CAO-Host. Diese Ansicht spiegelt den aktuellen Stand aus
+  <code>BENUTZERRECHTE</code>.
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label style="display:block; font-size:12px; color:var(--text-dim);">Gruppe</label>
+      <select id="selGruppe" class="form-control" onchange="ladeBaum()">
+        {% for g in gruppen %}
+          <option value="{{ g.GRUPPEN_ID }}"
+                  {% if g.GRUPPEN_ID == 6 %}selected{% endif %}>
+            {{ '%04d' % g.GRUPPEN_ID }} – {{ g.NAME or '?' }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="display:block; font-size:12px; color:var(--text-dim);">Benutzer (Overrides)</label>
+      <select id="selBenutzer" class="form-control" onchange="ladeBenutzer()"
+              style="min-width:260px;">
+        <option value="">– keinen anzeigen –</option>
+      </select>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="color:var(--text-dim); font-size:12px;">
+      Bit 0 = <em>Modul aufrufen</em> (universell).<br>
+      Weitere Bits pro Modul nur zum Teil dokumentiert.
+    </div>
+  </div>
+</div>
+
+<div class="rechte-layout">
+  <div class="card">
+    <h2 style="margin-top:0; font-size:16px;">Modul-Baum &amp; Gruppenrechte</h2>
+    <div class="rechte-baum" id="baum">
+      <div style="color:var(--text-dim); text-align:center; padding:24px;">
+        Lade…
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0; font-size:16px;">Benutzer dieser Gruppe</h2>
+    <div id="userListe" style="max-height:30vh; overflow-y:auto;">
+      <div style="color:var(--text-dim); text-align:center; padding:24px;">
+        Lade…
+      </div>
+    </div>
+
+    <h2 style="font-size:16px; margin-top:20px;">Persoenliche Overrides</h2>
+    <div id="overrideAnzeige">
+      <div style="color:var(--text-dim); padding:8px;">
+        Wähle oben einen Benutzer aus, um persoenliche Abweichungen
+        (Override-Zeilen <code>GRUPPEN_ID=-1</code>) zu sehen.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _baum = [];
+let _benutzer = [];
+
+async function ladeBaum() {
+  const gid = document.getElementById('selGruppe').value;
+  const el  = document.getElementById('baum');
+  el.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px;">Lade…</div>';
+  const r = await api('GET', '/api/rechte/baum?gruppe=' + encodeURIComponent(gid));
+  if (!r.ok) {
+    el.innerHTML = '<div style="color:#f08080;padding:12px;">Fehler: ' + (r.msg || '?') + '</div>';
+    return;
+  }
+  _baum = r.baum;
+  renderBaum();
+  renderUserListe();
+}
+
+function renderBaum() {
+  const el = document.getElementById('baum');
+  if (!_baum.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);padding:12px;">Keine Module gefunden.</div>';
+    return;
+  }
+  const html = _baum.map(kat => `
+    <details class="kategorie" open>
+      <summary>${escapeHtml(kat.kategorie_name)}</summary>
+      ${kat.module.map(m => `
+        <details class="modul">
+          <summary>
+            ${escapeHtml(m.name)}
+            <span class="rechte-wert">(${m.modul_id} — RECHTE=${m.rechte})</span>
+            ${renderBitsInline(m.bits)}
+          </summary>
+          ${m.submodule.length ? m.submodule.map(s => `
+            <div class="submodul">
+              <span>
+                ${escapeHtml(s.name)}
+                <span class="rechte-wert">(${s.modul_id}/${s.submodul_id} — RECHTE=${s.rechte})</span>
+              </span>
+              ${renderBitsInline(s.bits)}
+            </div>
+          `).join('') : ''}
+        </details>
+      `).join('')}
+    </details>
+  `).join('');
+  el.innerHTML = html;
+}
+
+function renderBitsInline(bits) {
+  if (!bits || !bits.length) return '';
+  return '<span style="margin-left:8px;">' + bits.map(b => {
+    const cls = !b.gesetzt ? 'bit-aus'
+              : b.label === null ? 'bit-unknown'
+              : 'bit-an';
+    const label = b.label === null ? `Bit ${b.bit}` : b.label;
+    const icon  = b.gesetzt ? '✓' : '·';
+    return `<span class="${cls}" title="Bit ${b.bit}">${icon}&nbsp;${escapeHtml(label)}</span>`;
+  }).join(' &nbsp; ') + '</span>';
+}
+
+async function ladeBenutzer() {
+  const maId = document.getElementById('selBenutzer').value;
+  const el   = document.getElementById('overrideAnzeige');
+  if (!maId) {
+    el.innerHTML = '<div style="color:var(--text-dim);padding:8px;">Wähle oben einen Benutzer aus…</div>';
+    return;
+  }
+  el.innerHTML = '<div style="color:var(--text-dim);padding:12px;">Lade…</div>';
+  const r = await api('GET', '/api/rechte/benutzer/' + encodeURIComponent(maId) + '/overrides');
+  if (!r.ok) {
+    el.innerHTML = '<div style="color:#f08080;padding:12px;">Fehler: ' + (r.msg || '?') + '</div>';
+    return;
+  }
+  if (!r.overrides.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);padding:12px;">Keine Overrides. Benutzer erbt ausschliesslich die Gruppenrechte.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <table class="tbl override-tabelle" style="width:100%;">
+      <thead>
+        <tr><th>Kategorie</th><th>Modul</th><th>RECHTE</th><th>Bits</th></tr>
+      </thead>
+      <tbody>
+        ${r.overrides.map(o => `
+          <tr>
+            <td>${escapeHtml(o.kategorie)}</td>
+            <td>${escapeHtml(o.name)}
+              <span class="rechte-wert">(${o.modul_id}/${o.submodul_id})</span>
+            </td>
+            <td><code>${o.rechte}</code></td>
+            <td style="font-size:12px;">${renderBitsInline(o.bits)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function ladeBenutzerliste() {
+  const r = await api('GET', '/api/rechte/benutzer');
+  if (!r.ok) return;
+  _benutzer = r.benutzer;
+  const sel = document.getElementById('selBenutzer');
+  sel.innerHTML = '<option value="">– keinen anzeigen –</option>'
+    + _benutzer.filter(u => u.AKTIV).map(u => `
+      <option value="${u.MA_ID}">
+        ${String(u.MA_ID).padStart(4,'0')} – ${escapeHtml(u.LOGIN_NAME || '?')}
+        ${u.ANZEIGE_NAME ? '(' + escapeHtml(u.ANZEIGE_NAME) + ')' : ''}
+        · ${escapeHtml(u.GRUPPEN_NAME || '?')}
+      </option>
+    `).join('');
+  renderUserListe();
+}
+
+function renderUserListe() {
+  const gid = parseInt(document.getElementById('selGruppe').value || '0', 10);
+  const el  = document.getElementById('userListe');
+  const liste = _benutzer.filter(u => u.AKTIV && u.GRUPPEN_ID === gid);
+  if (!liste.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);padding:12px;">Keine aktiven Benutzer in dieser Gruppe.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <table class="tbl" style="width:100%; font-size:13px;">
+      <thead>
+        <tr><th>MA</th><th>Login</th><th>Name</th></tr>
+      </thead>
+      <tbody>
+        ${liste.map(u => `
+          <tr>
+            <td><code>${String(u.MA_ID).padStart(4,'0')}</code></td>
+            <td><strong>${escapeHtml(u.LOGIN_NAME || '')}</strong></td>
+            <td>${escapeHtml(u.ANZEIGE_NAME || '')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await ladeBenutzerliste();
+  await ladeBaum();
+});
+</script>
+{% endblock %}

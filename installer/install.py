@@ -35,8 +35,8 @@ _BANNER = r"""
 """
 
 _APP_LABELS = {
-    'verwaltung':   'Verwaltungs-App    (Port 5004)',
-    'wawi':         'WaWi-App           (Port 5003)',
+    'admin':   'Admin-App    (Port 5004)',
+    'orga':         'Orga-App           (Port 5003)',
     'kasse':        'Kassen-App         (Port 5002)',
     'kiosk':        'Kiosk-App          (Port 5001)',
     'haccp-poller': 'HACCP-Poller       (TFA-Temperatursensoren, Daemon)',
@@ -162,11 +162,11 @@ def phase3_environment(non_interactive: bool = False) -> str:
 
 def _tfa_key_vorhanden() -> bool:
     """True, wenn TFA_API_KEY in config/Env gesetzt ist (-> Poller sinnvoll)."""
-    # Env-Var hat Vorrang, dann wawi-app/app/config.py
+    # Env-Var hat Vorrang, dann orga-app/app/config.py
     if os.environ.get('TFA_API_KEY'):
         return True
     try:
-        sys.path.insert(0, os.path.join(_REPO_ROOT, 'wawi-app', 'app'))
+        sys.path.insert(0, os.path.join(_REPO_ROOT, 'orga-app', 'app'))
         import config as wc  # noqa: WPS433
         return bool(getattr(wc, 'TFA_API_KEY', ''))
     except Exception:
@@ -184,13 +184,13 @@ def phase4_app_selection(non_interactive: bool = False) -> list[str]:
         return auswahl
 
     print("  Welche Apps sollen gestartet werden?")
-    print("  (Verwaltungs-App wird immer gestartet)")
+    print("  (Admin-App wird immer gestartet)")
     print()
 
-    selected = ['verwaltung']  # immer
-    print(f"  ✓ verwaltung      – Verwaltungs-App (Pflicht)")
+    selected = ['admin']  # immer
+    print(f"  ✓ admin           – Admin-App (Pflicht)")
 
-    for app in ['wawi', 'kasse', 'kiosk']:
+    for app in ['orga', 'kasse', 'kiosk']:
         label = _APP_LABELS[app]
         if _ask_yes_no(f"  {label} starten?", True):
             selected.append(app)
@@ -201,8 +201,8 @@ def phase4_app_selection(non_interactive: bool = False) -> list[str]:
     if _tfa_key_vorhanden():
         label = _APP_LABELS['haccp-poller']
         if _ask_yes_no(f"  {label} starten?", True):
-            # nach 'wawi' einsortieren (Tabellen existieren dann)
-            idx = selected.index('wawi') + 1 if 'wawi' in selected \
+            # nach 'orga' einsortieren (Tabellen existieren dann)
+            idx = selected.index('orga') + 1 if 'orga' in selected \
                   else len(selected)
             selected.insert(idx, 'haccp-poller')
     else:
@@ -248,6 +248,21 @@ def phase5_start_and_report(selected_apps: list[str]) -> None:
     print()
 
 
+def phase4b_terminal_apps(terminal_typ: str) -> list[str]:
+    """Phase 4 (Terminal-Rolle): nur EINE App auswaehlen.
+
+    KIOSK → kiosk-app, KASSE → kasse-app, ORGA → orga-app. Admin-App
+    laeuft nur auf dem Admin-Host.
+    """
+    mapping = {'KIOSK': 'kiosk', 'KASSE': 'kasse', 'ORGA': 'orga'}
+    app = mapping.get(terminal_typ.upper())
+    if app is None:
+        print(f"  ✗ Unbekannter Terminal-Typ: {terminal_typ}")
+        sys.exit(1)
+    print(f"  ✓ Terminal-Rolle: {terminal_typ} → startet {app}-App")
+    return [app]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description='CAO-XT Installationsroutine',
@@ -257,10 +272,44 @@ def main() -> None:
         '--non-interactive', action='store_true',
         help='Nicht-interaktiver Modus (nutzt Umgebungsvariablen / bestehende caoxt.ini)'
     )
+    parser.add_argument(
+        '--role', choices=['admin', 'terminal'], default='admin',
+        help='admin: Vollinstallation (Default). terminal: nur eine '
+             'Terminal-App (Kiosk/Kasse/Orga); setzt --non-interactive voraus.'
+    )
+    parser.add_argument(
+        '--terminal-typ', default='',
+        help='Bei --role terminal: KIOSK | KASSE | ORGA.'
+    )
     args = parser.parse_args()
 
     print(_BANNER)
 
+    # ── Terminal-Rolle: Schnell-Pfad fuer Mass-Rollout ─────────
+    if args.role == 'terminal':
+        if not args.non_interactive:
+            print("  ✗ --role terminal erfordert --non-interactive")
+            sys.exit(1)
+        if not args.terminal_typ:
+            print("  ✗ --role terminal erfordert --terminal-typ")
+            sys.exit(1)
+        host, port, name, user, password = phase1_db_config(True)
+        # KEINE DB-Init (das ist Sache des Admin-Hosts).
+        environment = phase3_environment(True)
+        selected_apps = phase4b_terminal_apps(args.terminal_typ)
+        _section("Konfiguration speichern")
+        write_ini(
+            _INI_PATH,
+            host=host, port=port, name=name,
+            user=user, password=password,
+            environment=environment,
+            active_apps=selected_apps,
+        )
+        print(f"  ✓ caoxt.ini gespeichert: {_INI_PATH}")
+        phase5_start_and_report(selected_apps)
+        return
+
+    # ── Admin-Rolle (Vollinstallation, Default) ──────────────
     # Phase 1: DB-Verbindung
     host, port, name, user, password = phase1_db_config(args.non_interactive)
 

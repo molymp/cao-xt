@@ -149,7 +149,7 @@ class TestPollerAutoBackfill(unittest.TestCase):
     """``poller._auto_backfill`` entscheidet, OB Backfill faellt."""
 
     def setUp(self):
-        # Poller laedt wawi-app/app/config; wir stubben vor dem Import.
+        # Poller laedt orga-app/app/config; wir stubben vor dem Import.
         import types
         fake_config = types.ModuleType('config')
         fake_config.TFA_API_KEY = 'x'

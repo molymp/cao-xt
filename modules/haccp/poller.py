@@ -4,7 +4,7 @@ Start:
     cd repo-root
     python -m modules.haccp.poller
 
-Konfig ueber ``wawi-app/app/config.py`` (``TFA_API_KEY``, ``HACCP_POLL_INTERVALL_S``).
+Konfig ueber ``orga-app/app/config.py`` (``TFA_API_KEY``, ``HACCP_POLL_INTERVALL_S``).
 Beenden mit Ctrl-C (oder systemd stop).
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 # App-Config laden (DB-Credentials + TFA-Key)
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(_REPO_ROOT, 'wawi-app', 'app'))
+sys.path.insert(0, os.path.join(_REPO_ROOT, 'orga-app', 'app'))
 sys.path.insert(0, _REPO_ROOT)
 
 import config as wc  # noqa: E402

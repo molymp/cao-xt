@@ -193,7 +193,7 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 -- Views (alle in derselben DB – kein Cross-DB-Prefix nötig)
 -- ============================================================
 
--- Admin-Verwaltung
+-- Admin-Admin
 CREATE OR REPLACE VIEW XT_KIOSK_V_ARTIKEL_VERWALTUNG AS
     SELECT
         a.REC_ID                                    AS id,

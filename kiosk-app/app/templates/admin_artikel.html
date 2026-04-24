@@ -15,31 +15,31 @@
 .aktionsleiste { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
 .zaehler { background: var(--creme-dunkel); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; color: var(--text-mitte); font-weight: 700; }
 
-.verwaltung-tabelle { width: 100%; border-collapse: collapse; background: white; border-radius: var(--radius); overflow: hidden; box-shadow: var(--schatten); }
-.verwaltung-tabelle th {
+.admin-tabelle { width: 100%; border-collapse: collapse; background: white; border-radius: var(--radius); overflow: hidden; box-shadow: var(--schatten); }
+.admin-tabelle th {
     background: var(--gruen-dunkel); color: var(--creme);
     padding: 12px 14px; text-align: left; font-size: 0.78rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
     user-select: none; font-family: 'Nunito', sans-serif;
 }
-.verwaltung-tabelle th.sortierbar { cursor: pointer; transition: background 0.15s; }
-.verwaltung-tabelle th.sortierbar:hover { background: var(--gruen-mitte); }
-.verwaltung-tabelle th .sort-pfeil { display: inline-block; margin-left: 5px; opacity: 0.4; font-style: normal; }
-.verwaltung-tabelle th.sort-asc .sort-pfeil,
-.verwaltung-tabelle th.sort-desc .sort-pfeil { opacity: 1; }
+.admin-tabelle th.sortierbar { cursor: pointer; transition: background 0.15s; }
+.admin-tabelle th.sortierbar:hover { background: var(--gruen-mitte); }
+.admin-tabelle th .sort-pfeil { display: inline-block; margin-left: 5px; opacity: 0.4; font-style: normal; }
+.admin-tabelle th.sort-asc .sort-pfeil,
+.admin-tabelle th.sort-desc .sort-pfeil { opacity: 1; }
 
-.verwaltung-tabelle td { padding: 10px 14px; border-bottom: 1px solid var(--creme-dunkel); font-size: 0.875rem; vertical-align: middle; }
-.verwaltung-tabelle tr:last-child td { border-bottom: none; }
-.verwaltung-tabelle tr:hover td { background: var(--grau-hell); }
+.admin-tabelle td { padding: 10px 14px; border-bottom: 1px solid var(--creme-dunkel); font-size: 0.875rem; vertical-align: middle; }
+.admin-tabelle tr:last-child td { border-bottom: none; }
+.admin-tabelle tr:hover td { background: var(--grau-hell); }
 
-.verwaltung-tabelle select {
+.admin-tabelle select {
     font-family: 'Nunito', sans-serif; font-size: 0.85rem; font-weight: 600;
     border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
     padding: 6px 10px; background: var(--creme); color: var(--text-dunkel);
     cursor: pointer; transition: border-color 0.15s, background 0.15s;
 }
-.verwaltung-tabelle select:focus { outline: none; border-color: var(--gruen-hell); background: white; }
-.verwaltung-tabelle select.gespeichert { border-color: var(--gruen-status); background: #e8f5e0; }
+.admin-tabelle select:focus { outline: none; border-color: var(--gruen-hell); background: white; }
+.admin-tabelle select.gespeichert { border-color: var(--gruen-status); background: #e8f5e0; }
 
 .wochentage-gruppe { display: flex; gap: 4px; flex-wrap: nowrap; }
 .wochentage-gruppe label {
@@ -184,7 +184,7 @@
         </div>
     </div>
 
-    <table class="verwaltung-tabelle" id="artikel-tabelle">
+    <table class="admin-tabelle" id="artikel-tabelle">
         <thead>
             <tr>
                 <th class="sortierbar" data-col="0" onclick="sortiere(0)">ID <span class="sort-pfeil">↕</span></th>

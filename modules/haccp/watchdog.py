@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(_REPO_ROOT, 'wawi-app', 'app'))
+sys.path.insert(0, os.path.join(_REPO_ROOT, 'orga-app', 'app'))
 sys.path.insert(0, _REPO_ROOT)
 
 import config as wc  # noqa: E402

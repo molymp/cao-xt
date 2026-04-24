@@ -2316,8 +2316,67 @@ def _spalte_vorhanden(cur, tabelle: str, spalte: str) -> bool:
     return bool((cur.fetchone() or {}).get('N', 0))
 
 
+def _schema_einspielen():
+    """Spielt das Kasse-Schema (kasse-app/schema.sql) idempotent ein.
+
+    Legt die XT_KASSE_*-Haupttabellen an, falls sie fehlen. Jedes einzelne
+    Statement ist eigenständig idempotent (CREATE TABLE IF NOT EXISTS,
+    INSERT IGNORE, ALTER … IF NOT EXISTS, INSERT … WHERE NOT EXISTS).
+    """
+    import os as _os
+    schema_path = _os.path.normpath(_os.path.join(
+        _os.path.dirname(__file__), '..', 'schema.sql'))
+    if not _os.path.isfile(schema_path):
+        _mig_log.warning('Schema-Datei nicht gefunden: %s', schema_path)
+        return
+    try:
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            sql_text = f.read()
+    except Exception as exc:
+        _mig_log.error('Schema-Datei unlesbar (%s): %s', schema_path, exc)
+        return
+
+    # Statements anhand ';' am Zeilenende splitten. Kommentare ('--')
+    # werden zeilenweise entfernt. schema.sql enthaelt keine Strings mit
+    # ';', daher reicht dieser einfache Split.
+    statements = []
+    buf = []
+    for raw in sql_text.splitlines():
+        line = raw.split('--', 1)[0].rstrip()
+        if not line.strip():
+            continue
+        buf.append(line)
+        if line.endswith(';'):
+            stmt = '\n'.join(buf).rstrip(';').strip()
+            if stmt:
+                statements.append(stmt)
+            buf = []
+    if buf:
+        rest = '\n'.join(buf).strip()
+        if rest:
+            statements.append(rest)
+
+    try:
+        with get_db() as cur:
+            for stmt in statements:
+                try:
+                    cur.execute(stmt)
+                except Exception as exc:
+                    # Ein fehlgeschlagenes Statement darf den Start nicht
+                    # verhindern – wir loggen und machen weiter (Schema
+                    # kann bereits teilweise bestehen).
+                    _mig_log.warning(
+                        'Schema-Statement fehlgeschlagen: %s | %s',
+                        stmt.split('\n', 1)[0][:80], exc)
+    except Exception as exc:
+        _mig_log.error('Schema-Einspielung fehlgeschlagen: %s', exc)
+
+
 def migrationen_ausfuehren():
     """Legt fehlende Spalten an (idempotent, sicher bei mehrfachem Aufruf)."""
+    # Zuerst das Haupt-Schema einspielen (CREATE TABLE IF NOT EXISTS), damit
+    # die folgenden ALTER TABLE-Migrationen eine existierende Tabelle finden.
+    _schema_einspielen()
     migrationen = [
         # XT_KASSE_KASSENBUCH – neue Spalten für Kassenbuch-Erweiterung
         ("XT_KASSE_KASSENBUCH", "BUCHUNGSTEXT",

@@ -41,7 +41,7 @@
     Für lokale Entwicklung: <a href="/admin/tse" style="color:var(--gold); text-decoration:underline;">Fiskaly TSE oder Trainings-Modus aktivieren →</a>
     {% else %}
     ⚠️ TSE nicht konfiguriert oder nicht erreichbar.
-    <a href="/admin/tse" style="color:var(--gold); text-decoration:underline; font-weight:700;">TSE-Verwaltung →</a>
+    <a href="/admin/tse" style="color:var(--gold); text-decoration:underline; font-weight:700;">TSE-Admin →</a>
     {% endif %}
   </div>
   {% endif %}
@@ -189,7 +189,7 @@
   <div class="adm-actions" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
     <a href="/admin/terminal" class="btn btn-primary">⚙️ Terminal bearbeiten</a>
     <button class="btn btn-neutral" onclick="druckerTest()">🖨 Drucker testen</button>
-    <a href="/admin/tse" class="btn btn-neutral">🔐 TSE-Verwaltung</a>
+    <a href="/admin/tse" class="btn btn-neutral">🔐 TSE-Admin</a>
     <a href="/admin/export" class="btn btn-neutral">📦 DSFinV-K Export</a>
     <a href="/kasse/abschluesse" class="btn btn-neutral">📋 Tagesabschlüsse</a>
     {% if not trainings_modus %}

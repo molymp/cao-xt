@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+{% block title %}Abwesenheits-Zeitstrahl{% endblock %}
+
+{% block extra_style %}
+<style>
+.kal-topbar { display: flex; align-items: center; gap: 12px;
+              margin-bottom: 16px; flex-wrap: wrap; }
+.kal-topbar h1 { flex: 1; margin: 0; }
+
+.kal-filter { background: white; padding: 12px 14px;
+              border-radius: var(--radius); box-shadow: var(--schatten);
+              margin-bottom: 16px; display: flex; flex-wrap: wrap;
+              gap: 10px; align-items: center; }
+.kal-filter .seg { display: inline-flex; gap: 0; border: 1px solid var(--creme-dunkel);
+                   border-radius: var(--radius-klein); overflow: hidden; }
+.kal-filter .seg a { padding: 8px 14px; font-size: 13px; font-weight: 700;
+                     color: var(--gruen-dunkel); text-decoration: none;
+                     background: white; }
+.kal-filter .seg a.aktiv { background: var(--gruen-mitte); color: white; }
+.kal-filter .nav-btn { padding: 8px 12px; border: 1px solid var(--creme-dunkel);
+                       border-radius: var(--radius-klein); background: white;
+                       color: var(--gruen-dunkel); text-decoration: none;
+                       font-weight: 700; }
+.kal-filter .nav-btn:hover { background: var(--creme); }
+.kal-filter .label { font-size: 11px; font-weight: 800; text-transform: uppercase;
+                     letter-spacing: 0.05em; color: var(--gruen-dunkel); }
+.kal-filter form select { padding: 6px 10px; border: 1px solid var(--creme-dunkel);
+                          border-radius: var(--radius-klein); font-size: 13px; }
+
+/* Matrix */
+.kal-wrap { overflow-x: auto; background: white; border-radius: var(--radius);
+            box-shadow: var(--schatten); }
+/* Jahresansicht passt immer in die Viewport-Breite – kein Seit-Scroll noetig. */
+.kal-wrap.jahr { overflow-x: hidden; }
+table.kal { border-collapse: collapse; font-size: 11px;
+            font-variant-numeric: tabular-nums; }
+table.kal.jahr { table-layout: fixed; width: 100%; }
+table.kal th, table.kal td { border: 1px solid #eee; padding: 0;
+                             text-align: center; white-space: nowrap; }
+table.kal thead th { background: var(--creme); font-weight: 700;
+                     color: var(--gruen-dunkel); position: sticky; top: 0;
+                     z-index: 3; }
+table.kal thead th.monat-sep { border-left: 2px solid var(--gruen-dunkel); }
+table.kal th.ma-spalte, table.kal td.ma-spalte { position: sticky; left: 0;
+                             background: white; text-align: left;
+                             padding: 4px 10px; min-width: 160px;
+                             max-width: 220px; z-index: 2; }
+/* In der Jahresansicht nimmt die MA-Spalte nur so viel wie noetig. */
+table.kal.jahr th.ma-spalte, table.kal.jahr td.ma-spalte {
+    min-width: 140px; max-width: 140px; width: 140px;
+    font-size: 12px;
+}
+table.kal thead th.ma-spalte { z-index: 4; background: var(--creme); }
+table.kal td.tag-zelle { width: 20px; min-width: 20px; max-width: 20px;
+                         height: 26px; }
+/* Im Jahr bekommen die Tag-Zellen keine feste Breite → Browser verteilt
+   sie elastisch auf die Rest-Breite (≈ 3–4 px pro Tag). */
+table.kal.jahr td.tag-zelle { width: auto; min-width: 0; max-width: none;
+                              height: 22px; }
+table.kal td.tag-zelle.mo-sep { border-left: 2px solid var(--gruen-dunkel); }
+table.kal td.tag-zelle.wochenende { background: #f6f4ec; }
+table.kal td.tag-zelle.feiertag  { background: #f2e4b0; }
+table.kal td.tag-zelle.heute     { outline: 2px solid var(--gruen-mitte);
+                                   outline-offset: -2px; }
+table.kal thead th.tag-head { width: 20px; font-size: 10px; padding: 2px 0; }
+table.kal.jahr thead th.tag-head { width: auto; min-width: 0; padding: 0;
+                                   height: 6px; }
+table.kal thead th.tag-head.wochenende { background: #ece9d8; }
+/* Monatskopf-Zeile nur in der Jahresansicht. */
+table.kal.jahr thead th.monat-kopf { padding: 4px 2px; font-size: 12px;
+                                     text-transform: uppercase;
+                                     letter-spacing: 0.03em;
+                                     background: var(--creme); }
+table.kal.jahr thead th.monat-kopf a { color: var(--gruen-dunkel);
+                                       text-decoration: none; }
+table.kal.jahr thead th.monat-kopf a:hover { text-decoration: underline; }
+
+/* Farbige Zellen nach TYP (Matching zu abw-typ-chip in ma_detail.html) */
+.abw-fill { display: block; width: 100%; height: 100%; text-align: center;
+            font-size: 10px; font-weight: 800; color: white;
+            line-height: 26px; cursor: pointer;
+            text-decoration: none; }
+.abw-fill.t-krank       { background: #c54646; }
+.abw-fill.t-kind_krank  { background: #d87a3a; }
+.abw-fill.t-schulung    { background: #3a7cbd; }
+.abw-fill.t-unbezahlt   { background: #888; }
+.abw-fill.t-sonstiges   { background: #7a6a50; }
+.abw-fill.t-urlaub      { background: #3c8a4a; }
+/* Status-Varianten: beantragt = gestreift, abgelehnt = blass */
+.abw-fill.s-beantragt {
+    background-image: repeating-linear-gradient(
+        135deg, rgba(255,255,255,0.5) 0 4px, transparent 4px 8px);
+    background-blend-mode: overlay;
+}
+.abw-fill.s-abgelehnt { opacity: 0.25; filter: grayscale(0.5); }
+/* In der Jahresansicht sind die Zellen zu schmal fuer Buchstaben – nur Farbe. */
+table.kal.jahr .abw-fill { line-height: 22px; font-size: 0; }
+
+/* Legende */
+.kal-legende { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px 14px;
+               margin-top: 12px; background: white; border-radius: var(--radius);
+               box-shadow: var(--schatten); font-size: 12px; align-items: center; }
+.kal-legende .lg-chip { display: inline-block; width: 14px; height: 14px;
+                        border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kal-topbar">
+  <h1>🗓️ Abwesenheits-Zeitstrahl</h1>
+</div>
+
+<div class="kal-filter">
+  <div class="seg">
+    <a class="{% if ansicht == 'monat' %}aktiv{% endif %}"
+       href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                        ansicht='monat', jahr=jahr, monat=monat) }}">Monat</a>
+    <a class="{% if ansicht == 'jahr' %}aktiv{% endif %}"
+       href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                        ansicht='jahr', jahr=jahr) }}">Jahr</a>
+  </div>
+
+  {% if ansicht == 'monat' %}
+    <a class="nav-btn"
+       href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                        ansicht='monat', jahr=prev_jahr, monat=prev_monat) }}">
+      ← {{ '%02d'|format(prev_monat) }}/{{ prev_jahr }}
+    </a>
+    <span class="label" style="font-size: 16px; text-transform: none;">
+      {{ '%02d'|format(monat) }}/{{ jahr }}
+    </span>
+    <a class="nav-btn"
+       href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                        ansicht='monat', jahr=next_jahr, monat=next_monat) }}">
+      {{ '%02d'|format(next_monat) }}/{{ next_jahr }} →
+    </a>
+  {% else %}
+    <a class="nav-btn"
+       href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                        ansicht='jahr', jahr=prev_jahr) }}">← {{ prev_jahr }}</a>
+    <span class="label" style="font-size: 16px; text-transform: none;">{{ jahr }}</span>
+    <a class="nav-btn"
+       href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                        ansicht='jahr', jahr=next_jahr) }}">{{ next_jahr }} →</a>
+  {% endif %}
+
+  <span style="flex: 1;"></span>
+  <span class="label">{{ mitarbeiter|length }} Mitarbeiter</span>
+</div>
+
+<div class="kal-wrap {% if ansicht == 'jahr' %}jahr{% endif %}">
+  <table class="kal {% if ansicht == 'jahr' %}jahr{% endif %}">
+    <thead>
+      {% if ansicht == 'jahr' %}
+      {# Zweizeiliger Header: oben Monatsname (colspan=Tage), unten pro Tag nur Farb-Marker. #}
+      <tr>
+        <th class="ma-spalte" rowspan="2">Mitarbeiter</th>
+        {% for mk in monats_koepfe %}
+        <th class="monat-kopf{% if not loop.first %} monat-sep{% endif %}"
+            colspan="{{ mk.tage }}">
+          <a href="{{ url_for('orga_personal.abwesenheiten_kalender',
+                              ansicht='monat', jahr=mk.jahr, monat=mk.monat) }}"
+             title="Zum Monat {{ '%02d'|format(mk.monat) }}/{{ mk.jahr }}">
+            {{ mk.name }}
+          </a>
+        </th>
+        {% endfor %}
+      </tr>
+      <tr>
+        {% for t in tage %}
+        <th class="tag-head {% if t.weekday() >= 5 %}wochenende{% endif %}"
+            title="{{ t.strftime('%A, %d.%m.%Y') }}{% if feiertage.get(t) %} – {{ feiertage[t] }}{% endif %}"></th>
+        {% endfor %}
+      </tr>
+      {% else %}
+      <tr>
+        <th class="ma-spalte">Mitarbeiter</th>
+        {% for t in tage %}
+        <th class="tag-head {% if t.weekday() >= 5 %}wochenende{% endif %}"
+            title="{{ t.strftime('%A, %d.%m.%Y') }}{% if feiertage.get(t) %} – {{ feiertage[t] }}{% endif %}">
+          {{ t.day }}
+        </th>
+        {% endfor %}
+      </tr>
+      {% endif %}
+    </thead>
+    <tbody>
+      {% for ma in mitarbeiter %}
+      <tr>
+        <td class="ma-spalte" title="{{ ma.PERSONALNUMMER }}">
+          <a href="{{ url_for('orga_personal.detail', pers_id=ma.PERS_ID) }}#abwesenheit-card"
+             style="color: var(--gruen-dunkel); text-decoration: none; font-weight: 700;">
+            {{ ma.NAME }}, {{ ma.VNAME }}
+          </a>
+          {% if ma.KUERZEL %}<small style="color: var(--grau-mitte);">({{ ma.KUERZEL }})</small>{% endif %}
+        </td>
+        {% for t in tage %}
+          {% set a = matrix[ma.PERS_ID].get(t) %}
+          {% set wochenend = (t.weekday() >= 5) %}
+          {% set feiertag  = feiertage.get(t) %}
+          <td class="tag-zelle{% if wochenend %} wochenende{% endif %}{% if feiertag %} feiertag{% endif %}{% if t == heute %} heute{% endif %}{% if t.day == 1 and not loop.first %} mo-sep{% endif %}">
+            {% if a %}
+              <a class="abw-fill t-{{ a.TYP }}{% if a.STATUS %} s-{{ a.STATUS }}{% endif %}"
+                 href="{{ url_for('orga_personal.detail', pers_id=ma.PERS_ID) }}#abwesenheit-card"
+                 title="{{ typ_labels.get(a.TYP, a.TYP) }}{% if a.STATUS and a.STATUS != 'genehmigt' %} ({{ status_labels.get(a.STATUS, a.STATUS) }}){% endif %} – {{ a.VON.strftime('%d.%m.') }}–{{ a.BIS.strftime('%d.%m.%Y') }}{% if a.BEMERKUNG %} – {{ a.BEMERKUNG }}{% endif %}">
+                {{ typ_labels.get(a.TYP, a.TYP)[0] }}
+              </a>
+            {% endif %}
+          </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      {% if not mitarbeiter %}
+      <tr>
+        <td colspan="{{ tage|length + 1 }}" style="text-align: center; padding: 20px; color: var(--grau-mitte);">
+          Keine aktiven Mitarbeiter.
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="kal-legende">
+  <strong>Legende:</strong>
+  {% for key, label in typ_labels.items() %}
+    <span><span class="lg-chip abw-fill t-{{ key }}"></span>{{ label }}</span>
+  {% endfor %}
+  <span style="margin-left: 16px;">
+    <span class="lg-chip" style="background: #f6f4ec;"></span>Wochenende
+  </span>
+  <span>
+    <span class="lg-chip" style="background: #f2e4b0;"></span>Feiertag
+  </span>
+  <span style="margin-left: 16px;">
+    <em>Gestreift =&nbsp;beantragt (nicht genehmigt) &middot; Blass =&nbsp;abgelehnt</em>
+  </span>
+</div>
+{% endblock %}

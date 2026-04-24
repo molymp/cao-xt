@@ -15,7 +15,7 @@ Ablauf pro Kassiervorgang (alle TSE-Typen):
 Für Tagesabschluss (Z-Bon):
   1. tse_tagesabschluss()      → signierter Z-Bon-Eintrag
 
-TSE-Verwaltung:
+TSE-Admin:
   tse_geraete_liste()          → alle TSE-Geräte aus XT_KASSE_TSE_GERAETE
   tse_geraet_speichern()       → neues TSE-Gerät anlegen / aktualisieren
   tse_geraet_aktivieren()      → TSE für Terminal aktivieren (TSE_ID setzen)
@@ -147,7 +147,7 @@ def _assert_fiskaly(tconf: dict) -> None:
     if not tconf.get('FISKALY_API_KEY'):
         raise RuntimeError(
             f"Terminal {tconf.get('TERMINAL_NR')}: Fiskaly API-Key nicht konfiguriert. "
-            "Bitte in Admin → TSE-Verwaltung eintragen."
+            "Bitte in Admin → TSE-Admin eintragen."
         )
 
 
@@ -158,7 +158,7 @@ def _swissbit_pfad(tconf: dict) -> str:
     if not pfad:
         raise RuntimeError(
             "SWISSBIT_PFAD nicht konfiguriert. "
-            "Bitte in Admin → TSE-Verwaltung den Gerätepfad eintragen (z.B. /dev/sda)."
+            "Bitte in Admin → TSE-Admin den Gerätepfad eintragen (z.B. /dev/sda)."
         )
     return pfad
 

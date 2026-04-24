@@ -4,6 +4,7 @@ Starten: cd app && python3 app.py
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
+from jinja2 import ChoiceLoader, FileSystemLoader
 from datetime import datetime, timedelta, date
 import base64
 import os
@@ -24,11 +25,38 @@ import mittagstisch as mt
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+# Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Bausteine
+# (Navbar, Toast, Touch-Widgets, Login-Shell). Wird mit App-eigenen Templates
+# ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).
+_COMMON_TEMPLATES = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'templates')
+)
+app.jinja_loader = ChoiceLoader([
+    app.jinja_loader,
+    FileSystemLoader(_COMMON_TEMPLATES),
+])
+
 
 @app.context_processor
 def _inject_globals():
     """Stellt terminal_nr und update_verfuegbar in allen Templates bereit."""
     tnr = get_terminal_nr()
+    kasse_url = config.KASSE_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
+        if config.KASSE_PORT else '')
+    orga_url = config.ORGA_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ORGA_PORT}'
+        if config.ORGA_PORT else '')
+    admin_url = config.ADMIN_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
+        if config.ADMIN_PORT else '')
+    # Feature-Gating (Phase 7): deaktivierte Apps aus Switcher ausblenden.
+    try:
+        from common import aktivierung as _akt
+        if not _akt.ist_aktiv('KASSE'): kasse_url = ''
+        if not _akt.ist_aktiv('ORGA'):  orga_url  = ''
+    except Exception:
+        pass
     return {
         "terminal_nr":        tnr,
         "ist_kundenterminal": (tnr == 9),
@@ -38,15 +66,9 @@ def _inject_globals():
         "firma_name":         config.FIRMA_NAME,
         "db_name":            config.DB_NAME,
         "ma_login_name":      session.get('login_name', ''),
-        "kasse_url":          config.KASSE_URL or (
-                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.KASSE_PORT}'
-                                  if config.KASSE_PORT else ''),
-        "wawi_url":           config.WAWI_URL or (
-                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.WAWI_PORT}'
-                                  if config.WAWI_PORT else ''),
-        "verwaltung_url":     config.VERWALTUNG_URL or (
-                                  f'{request.scheme}://{request.host.split(":")[0]}:{config.VERWALTUNG_PORT}'
-                                  if config.VERWALTUNG_PORT else ''),
+        "kasse_url":          kasse_url,
+        "orga_url":           orga_url,
+        "admin_url":          admin_url,
         "git_commit_short":   GIT_COMMIT_SHORT,
     }
 
@@ -207,7 +229,7 @@ def _produkte_laden() -> list:
     return rows
 
 def produkt_cache_leeren():
-    """Manuell aufrufen wenn Artikel-Verwaltung Änderungen gespeichert hat."""
+    """Manuell aufrufen wenn Artikel-Admin Änderungen gespeichert hat."""
     global _produkt_cache
     _produkt_cache = None
 
@@ -1746,6 +1768,18 @@ def doku_datei(dateiname):
     return send_from_directory(os.path.abspath(DOKU_DIR), dateiname)
 
 
+# ── Gemeinsame Brand-Assets (common/brand/*) ──────────────────
+_BRAND_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), '..', '..', 'common', 'brand')
+)
+
+
+@app.route('/brand/<path:dateiname>')
+def _brand_asset(dateiname):
+    """Liefert Dorfkern-Logo-Assets (dorfkern-logo.js etc.) aus common/brand/."""
+    return send_from_directory(_BRAND_DIR, dateiname, max_age=60 * 60 * 24)
+
+
 @_login_required
 @app.route("/handbuch")
 def handbuch():
@@ -1935,7 +1969,7 @@ def terminal_einstellung_setzen():
 #
 # Oeffentliche Route (kein Login): der Karten-Scan ist die Authentifizierung.
 # Kommen/Gehen wird aus dem letzten Stempel des MA abgeleitet (siehe
-# modules.wawi.personal.models.stempel_naechste_richtung).
+# modules.orga.personal.models.stempel_naechste_richtung).
 
 @app.route("/stempeluhr")
 def stempeluhr():
@@ -1952,7 +1986,7 @@ def api_stempeluhr_scan():
     data = request.get_json(silent=True) or {}
     guid = str(data.get("barcode", "")).strip()
     try:
-        from modules.wawi.personal.models import stempeln_karte
+        from modules.orga.personal.models import stempeln_karte
         ergebnis = stempeln_karte(guid, get_terminal_nr())
     except Exception as exc:
         return jsonify({"ok": False, "fehler": f"Serverfehler: {exc}"}), 500
@@ -2017,7 +2051,7 @@ def _ss_pers_id() -> int:
 @app.route("/stempeluhr/pin")
 def stempeluhr_pin():
     """Kachel-Auswahl der MA (mit PIN) + PIN-Keypad."""
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     mas = pm.ma_mit_pin_liste()
     return render_template("stempeluhr_pin.html",
                            terminal_nr=get_terminal_nr(), mitarbeiter=mas)
@@ -2032,7 +2066,7 @@ def api_stempeluhr_pin_auth():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "fehler": "Mitarbeiter fehlt."}), 400
     pin = str(data.get("pin", "")).strip()
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     ma = pm.authentifiziere_pers_pin(pers_id, pin)
     if not ma:
         return jsonify({"ok": False, "fehler": "PIN stimmt nicht."}), 401
@@ -2052,7 +2086,7 @@ def stempeluhr_abmelden():
 @app.route("/stempeluhr/menu")
 @_ss_auth_required
 def stempeluhr_menu():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     naechste = pm.stempel_naechste_richtung(pers_id)
     return render_template("stempeluhr_menu.html",
@@ -2066,7 +2100,7 @@ def stempeluhr_menu():
 @_ss_auth_required
 def api_stempeluhr_pin_stempeln():
     """Loest Stempel (Kommen/Gehen) fuer den authentifizierten MA aus."""
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     richtung = pm.stempel_naechste_richtung(pers_id)
     zeitpunkt = datetime.now().replace(microsecond=0)
@@ -2097,7 +2131,7 @@ _KORREKTUR_MAX_TAGE = 14
 @app.route("/stempeluhr/korrektur")
 @_ss_auth_required
 def stempeluhr_korrektur():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     bis = date.today()
     von = bis - timedelta(days=_KORREKTUR_MAX_TAGE)
@@ -2111,7 +2145,7 @@ def stempeluhr_korrektur():
 
 def _ss_benutzer_ma_id(pers_id: int) -> int:
     """MA_ID fuers Log. Faellt auf PERS_ID zurueck, wenn CAO nicht verknuepft."""
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     ma = pm.ma_by_id(pers_id) or {}
     return int(ma.get('CAO_MA_ID') or 0) or int(pers_id)
 
@@ -2126,7 +2160,7 @@ def _parse_hhmm_auf_datum(tag: date, hhmm: str) -> datetime:
 @app.route("/stempeluhr/korrektur/neu", methods=["POST"])
 @_ss_auth_required
 def stempeluhr_korrektur_neu():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     try:
         tag = date.fromisoformat(request.form.get("tag", "").strip())
@@ -2151,7 +2185,7 @@ def stempeluhr_korrektur_neu():
 @app.route("/stempeluhr/korrektur/<int:rec_id>", methods=["POST"])
 @_ss_auth_required
 def stempeluhr_korrektur_update(rec_id: int):
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     # Nur eigene Stempel korrigierbar.
     with db.get_db() as cur:
@@ -2184,7 +2218,7 @@ def stempeluhr_korrektur_update(rec_id: int):
 @app.route("/stempeluhr/urlaub")
 @_ss_auth_required
 def stempeluhr_urlaub_neu():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     jahr = date.today().year
     saldo = pm.urlaub_saldo(pers_id, jahr)
@@ -2198,7 +2232,7 @@ def stempeluhr_urlaub_neu():
 @app.route("/stempeluhr/urlaub", methods=["POST"])
 @_ss_auth_required
 def stempeluhr_urlaub_speichern():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     try:
         von = date.fromisoformat(request.form.get("von", "").strip())
@@ -2233,7 +2267,7 @@ def stempeluhr_urlaub_speichern():
 @app.route("/stempeluhr/abwesenheit")
 @_ss_auth_required
 def stempeluhr_abwesenheit_neu():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     return render_template("stempeluhr_abwesenheit.html",
                            pers_id=_ss_pers_id(),
                            name=session.get('ss_name', ''),
@@ -2244,7 +2278,7 @@ def stempeluhr_abwesenheit_neu():
 @app.route("/stempeluhr/abwesenheit", methods=["POST"])
 @_ss_auth_required
 def stempeluhr_abwesenheit_speichern():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     typ = request.form.get("typ", "").strip()
     try:
@@ -2281,7 +2315,7 @@ def stempeluhr_abwesenheit_speichern():
 @app.route("/stempeluhr/uebersicht")
 @_ss_auth_required
 def stempeluhr_uebersicht():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     pers_id = _ss_pers_id()
     jahr = date.today().year
     saldo = pm.urlaub_saldo(pers_id, jahr)
@@ -2309,7 +2343,7 @@ def stempeluhr_pin_aendern_seite():
 @app.route("/api/stempeluhr/pin-aendern", methods=["POST"])
 @_ss_auth_required
 def api_stempeluhr_pin_aendern():
-    from modules.wawi.personal import models as pm
+    from modules.orga.personal import models as pm
     data = request.get_json(silent=True) or {}
     alte = str(data.get("alte_pin", "")).strip()
     neue = str(data.get("neue_pin", "")).strip()
@@ -2345,4 +2379,10 @@ if __name__ == "__main__":
     print(f"DB:      {config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}")
     print(f"Bilder:  {len(_bild_cache)} Produktbilder gefunden")
     print(f"Starte Flask auf {config.HOST}:{config.PORT}")
+    # Terminal-Selbstregistrierung (Phase 9).
+    try:
+        from common.terminal_selbstregistrierung import selbst_registrieren
+        selbst_registrieren('KIOSK')
+    except Exception:
+        pass
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

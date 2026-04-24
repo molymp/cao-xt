@@ -12,7 +12,7 @@ Design-Entscheidungen:
   * Der Helper ist bewusst "dumm": er kennt keinen Dev-Modus und leitet nichts
     um. Umleitung/Subject-Prefix (z.B. fuer Dev-Test "Empfaenger = Sender")
     entscheidet der Aufrufer – siehe
-    ``modules/wawi/personal/models.py::schichtplan_freigabe_emails_senden``.
+    ``modules/orga/personal/models.py::schichtplan_freigabe_emails_senden``.
   * Versand ist best-effort: SMTP-Fehler werden geloggt, nicht geworfen –
     der Aufrufer entscheidet per Return-Dict, ob alles geklappt hat.
 """

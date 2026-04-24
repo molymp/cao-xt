@@ -1,0 +1,29 @@
+{#-
+  App-Switcher: Kiosk → Kasse → Orga → Admin in fester Reihenfolge.
+
+  Jeder Button ist in einem von drei Zustaenden:
+    * "app-aktiv"   – aktuelle App, linkt auf `aktive_app_url`.
+    * "switch"      – andere App, URL im Context gesetzt (z.B. `orga_url`).
+    * "app-inaktiv" – andere App, URL nicht gesetzt (App nicht erreichbar).
+
+  Parameter:
+    aktive_app       Kennung der aufrufenden App: 'kiosk' | 'kasse' | 'orga' | 'admin'
+    aktive_app_url   Link-Ziel fuer den aktiven Button (App-Root, z.B. '/' oder '/kasse')
+    kiosk_url, kasse_url, orga_url, admin_url
+                     Switch-Ziele (aus Flask-Context); leer → inaktiv darstellen.
+-#}
+{%- set _apps = [
+  ('kiosk', '🖥️ Kiosk', kiosk_url),
+  ('kasse', '🛒 Kasse', kasse_url),
+  ('orga',  '📦 Orga',  orga_url),
+  ('admin', '⚙️ Admin', admin_url),
+] -%}
+{%- for _key, _label, _url in _apps %}
+  {%- if _key == aktive_app %}
+    <a href="{{ aktive_app_url }}" class="nav-btn nav-btn-app-aktiv">{{ _label }}</a>
+  {%- elif _url %}
+    <a href="{{ _url }}" class="nav-btn nav-btn-switch">{{ _label }}</a>
+  {%- else %}
+    <span class="nav-btn nav-btn-app-inaktiv">{{ _label }}</span>
+  {%- endif %}
+{%- endfor %}

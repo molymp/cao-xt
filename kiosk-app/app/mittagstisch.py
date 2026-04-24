@@ -1,5 +1,5 @@
 """
-Mittagstisch-Verwaltung: Lesen/Schreiben des Google Sheets via gspread.
+Mittagstisch-Admin: Lesen/Schreiben des Google Sheets via gspread.
 
 Sheet-Struktur (je Tab, z.B. "KW13_2026"):
   A1          : "Wochenplan Mittagstisch"
