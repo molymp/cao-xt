@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Adressgruppen{% endblock %}
+
+{% block extra_style %}
+<style>
+  .ag-such {
+    width: 100%;
+    max-width: 360px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 6px;
+    font: inherit;
+  }
+  .info-banner {
+    background: #3b2f1a;
+    border-left: 3px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #fde68a;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+
+  .ag-tree {
+    font-size: 14px;
+  }
+  .ag-node {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ag-node:hover { background: var(--bg-hell); }
+  .ag-node .caret {
+    cursor: pointer;
+    width: 14px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    user-select: none;
+    font-family: monospace;
+    font-size: 11px;
+  }
+  .ag-node.blatt .caret { visibility: hidden; }
+  .ag-node .id {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-dim);
+    font-size: 12px;
+    min-width: 50px;
+  }
+  .ag-node .name {
+    flex-grow: 1;
+    font-weight: 600;
+  }
+  .ag-node .meta {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: monospace;
+  }
+  .ag-node .rabatt {
+    color: var(--akzent-hell);
+    font-variant-numeric: tabular-nums;
+  }
+  .ag-node .nicht-durchsuchbar {
+    font-style: italic;
+    color: var(--text-dim);
+  }
+  .ag-children {
+    margin-left: 22px;
+    border-left: 1px solid var(--border);
+  }
+
+  .sql-badge, .kinder-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--bg-hell);
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: normal;
+    letter-spacing: 0.03em;
+  }
+  .sql-badge { color: #f59e0b; border: 1px solid #f59e0b; }
+
+  .warnhinweis {
+    background: #2b1f3b;
+    border-left: 3px solid #a78bfa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+    color: #ddd6fe;
+    font-size: 13px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">👥 Adressgruppen</h1>
+<div class="info-banner">
+  <strong>Read-only.</strong> Pflege in
+  <code>cao_admin.exe → Einstellungen → Adressgruppen</code>.
+  Gruppen mit <strong>SQL-Filter</strong> sind dynamisch und werden
+  zur Laufzeit ausgewertet (Badge <span class="sql-badge">SQL</span>).
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Gesamt: <span id="stat-gesamt">–</span></span>
+  <span class="chip">Wurzeln: <span id="stat-wurzeln">–</span></span>
+  <span class="chip">Durchsuchbar: <span id="stat-such">–</span></span>
+  <span class="chip">Dynamisch (SQL): <span id="stat-sql">–</span></span>
+</div>
+
+<div class="card">
+  <input type="text" id="such-feld" class="ag-such"
+         placeholder="🔍 Filter (Name)">
+  <div id="kein-tree-hinweis" class="warnhinweis" style="display: none;">
+    ⚠ Diese ADRESSGRUPPEN-Tabelle hat keine Parent-Spalte – Anzeige
+    als flache Liste.
+  </div>
+  <div id="ag-tree" class="ag-tree">
+    <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+      Lade…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+let _wurzeln = [];
+let _kinder_map = new Map();   // parent_id -> [kinder]
+let _expandiert = new Set();   // Set<id> – welche Knoten sind aufgeklappt
+let _hat_tree = false;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function fmtRabatt(r) {
+  if (r == null) return '';
+  if (r === 0) return '';
+  return (Math.round(r * 100) / 100).toString().replace('.', ',') + ' %';
+}
+
+function renderNode(e, tiefe) {
+  const hatKinder = (_kinder_map.get(e.id) || []).length > 0;
+  const offen = _expandiert.has(e.id);
+  const caret = hatKinder ? (offen ? '▾' : '▸') : '';
+
+  const metaParts = [];
+  if (e.rabatt != null && e.rabatt > 0) {
+    metaParts.push(
+      `<span class="rabatt">${escapeHtml(fmtRabatt(e.rabatt))}</span>`);
+  }
+  if (e.hat_sql) {
+    metaParts.push('<span class="sql-badge">SQL</span>');
+  }
+  if (!e.durchsuchen) {
+    metaParts.push('<span class="nicht-durchsuchbar">nicht listbar</span>');
+  }
+  if (hatKinder) {
+    metaParts.push(
+      `<span class="kinder-badge">${e.kinder} Unter</span>`);
+  }
+
+  let html = `
+    <div class="ag-node ${hatKinder ? '' : 'blatt'}" data-id="${e.id}">
+      <span class="caret">${caret}</span>
+      <span class="id">#${escapeHtml(e.id)}</span>
+      <span class="name">${escapeHtml(e.name) || '(ohne Name)'}</span>
+      <span class="meta">${metaParts.join('')}</span>
+    </div>`;
+
+  if (hatKinder && offen) {
+    html += '<div class="ag-children">';
+    for (const kind of _kinder_map.get(e.id)) {
+      html += renderNode(kind, tiefe + 1);
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+function renderFlach(liste) {
+  return `<div class="ag-tree">` + liste.map(e => {
+    const metaParts = [];
+    if (e.rabatt != null && e.rabatt > 0) {
+      metaParts.push(
+        `<span class="rabatt">${escapeHtml(fmtRabatt(e.rabatt))}</span>`);
+    }
+    if (e.hat_sql) {
+      metaParts.push('<span class="sql-badge">SQL</span>');
+    }
+    if (!e.durchsuchen) {
+      metaParts.push('<span class="nicht-durchsuchbar">nicht listbar</span>');
+    }
+    return `
+      <div class="ag-node blatt">
+        <span class="caret"></span>
+        <span class="id">#${escapeHtml(e.id)}</span>
+        <span class="name">${escapeHtml(e.name) || '(ohne Name)'}</span>
+        <span class="meta">${metaParts.join('')}</span>
+      </div>`;
+  }).join('') + `</div>`;
+}
+
+function baumAufbauen() {
+  _kinder_map = new Map();
+  _wurzeln = [];
+  for (const e of _alle) {
+    if (e.parent_id == null) {
+      _wurzeln.push(e);
+    } else {
+      if (!_kinder_map.has(e.parent_id)) _kinder_map.set(e.parent_id, []);
+      _kinder_map.get(e.parent_id).push(e);
+    }
+  }
+}
+
+function render(filter) {
+  const box = document.getElementById('ag-tree');
+  const f = (filter || '').trim().toLowerCase();
+
+  if (!_hat_tree) {
+    const gefiltert = f
+      ? _alle.filter(e => (e.name || '').toLowerCase().includes(f))
+      : _alle;
+    box.innerHTML = gefiltert.length
+      ? renderFlach(gefiltert)
+      : `<div style="color: var(--text-dim); padding: 16px;
+                   text-align: center;">Keine Eintraege.</div>`;
+    return;
+  }
+
+  if (f) {
+    // Bei Filter: flache Anzeige aller Treffer, nicht den Baum
+    const gefiltert = _alle.filter(
+      e => (e.name || '').toLowerCase().includes(f));
+    box.innerHTML = gefiltert.length
+      ? renderFlach(gefiltert)
+      : `<div style="color: var(--text-dim); padding: 16px;
+                   text-align: center;">Keine Treffer.</div>`;
+    return;
+  }
+
+  if (!_wurzeln.length) {
+    box.innerHTML = `<div style="color: var(--text-dim); padding: 16px;
+      text-align: center;">Keine Adressgruppen.</div>`;
+    return;
+  }
+  box.innerHTML = _wurzeln.map(e => renderNode(e, 0)).join('');
+
+  // Caret-Klicks anbinden
+  box.querySelectorAll('.ag-node').forEach(node => {
+    const caret = node.querySelector('.caret');
+    if (!caret || node.classList.contains('blatt')) return;
+    caret.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const id = parseInt(node.dataset.id, 10);
+      if (_expandiert.has(id)) _expandiert.delete(id);
+      else _expandiert.add(id);
+      render(document.getElementById('such-feld').value);
+    });
+  });
+}
+
+async function laden() {
+  const r = await api('GET', '/api/stammdaten/adressgruppen');
+  if (!r.ok) {
+    document.getElementById('ag-tree').innerHTML =
+      `<div style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+    return;
+  }
+  _alle = r.eintraege || [];
+  _hat_tree = !!r.parent_spalte;
+
+  if (!_hat_tree) {
+    document.getElementById('kein-tree-hinweis').style.display = '';
+  }
+
+  baumAufbauen();
+
+  // Statistiken
+  document.getElementById('stat-gesamt').textContent  = _alle.length;
+  document.getElementById('stat-wurzeln').textContent = _wurzeln.length;
+  document.getElementById('stat-such').textContent =
+    _alle.filter(e => e.durchsuchen).length;
+  document.getElementById('stat-sql').textContent =
+    _alle.filter(e => e.hat_sql).length;
+
+  // Erste Ebene initial aufklappen
+  for (const w of _wurzeln) {
+    if ((_kinder_map.get(w.id) || []).length) _expandiert.add(w.id);
+  }
+  render('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('such-feld').addEventListener('input', (e) => {
+    render(e.target.value);
+  });
+  laden();
+});
+</script>
+{% endblock %}
