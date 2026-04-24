@@ -35,13 +35,22 @@ def liste() -> list[dict[str, Any]]:
     for eintrag in app_manager.status_all():
         name = eintrag['name']
         cfg  = app_manager.APPS.get(name, {})
+        log_pfad = eintrag.get('log')
+        # Log-Info (Groesse + Rotation-Backups) optional, bricht nicht
+        log_info = None
+        if log_pfad and hasattr(app_manager, 'log_info'):
+            try:
+                log_info = app_manager.log_info(log_pfad)
+            except Exception:
+                log_info = None
         ergebnis.append({
             'name':    name,
             'type':    eintrag.get('type', 'web'),
             'port':    eintrag.get('port'),
             'running': bool(eintrag.get('running')),
             'pid':     eintrag.get('pid'),
-            'log':     eintrag.get('log'),
+            'log':     log_pfad,
+            'log_info': log_info,
             'beschreibung': _beschreibung(name),
             'app_dir': cfg.get('app_dir'),
             'module':  cfg.get('module'),
