@@ -1213,6 +1213,30 @@ def api_stammdaten_mengeneinheit():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Zahlungsarten ─────────────────────────────────
+
+@app.route('/stammdaten/zahlungsarten')
+@_login_required
+def stammdaten_zahlungsart_seite():
+    """Read-only Liste der CAO-``ZAHLUNGSARTEN``-Tabelle.
+
+    Spiegelt die cao_admin.exe-Seite *Einstellungen → Zahlungsarten*.
+    """
+    return render_template('stammdaten_zahlungsart.html')
+
+
+@app.get('/api/stammdaten/zahlungsarten')
+@_login_required
+def api_stammdaten_zahlungsart():
+    """JSON-Liste der Zahlungsarten mit Y/N-Flags als Bool."""
+    import stammdaten_zahlungsart as _za
+    try:
+        return jsonify(ok=True, eintraege=_za.liste())
+    except Exception as e:
+        log.exception('ZAHLUNGSARTEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')

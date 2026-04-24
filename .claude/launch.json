@@ -12,6 +12,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["wawi-app/app/app.py"],
       "port": 5003
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["admin-app/app/app.py"],
+      "port": 5004
     }
   ]
 }
