@@ -1386,6 +1386,27 @@ def api_stammdaten_firmenbank():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Firmendaten ──────────────────────────────────
+
+@app.route('/stammdaten/firma')
+@_login_required
+def stammdaten_firma_seite():
+    """Read-only-Detail der FIRMA-Tabelle (Mandantenstammsatz)."""
+    return render_template('stammdaten_firma.html')
+
+
+@app.get('/api/stammdaten/firma')
+@_login_required
+def api_stammdaten_firma():
+    """JSON-Detail der Firmendaten (oder None falls Tabelle leer)."""
+    import stammdaten_firma as _fa
+    try:
+        return jsonify(ok=True, firma=_fa.firma())
+    except Exception as e:
+        log.exception('FIRMA laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
