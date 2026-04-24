@@ -15,49 +15,14 @@
 <link rel="stylesheet" href="/common-static/dorfkern.css">
 <link rel="stylesheet" href="/common-static/dorfkern-admin.css">
 <style>
-/* ── Farb-Variablen (Admin – dunkles Theme) ──────────── */
-:root {
-  --bg-dunkel:     #1a2332;
-  --bg-mitte:      #243040;
-  --bg-hell:       #2e3d50;
-  --bg-karte:      #2a3848;
-  --akzent:        #3a7cbd;
-  --akzent-hell:   #4a9ae0;
-  --text-hell:     #e0e8f0;
-  --text-mitte:    #a0b4c8;
-  --text-dim:      #6a8098;
-  --border:        #3a4a5a;
-  --border-hell:   #4a5a6a;
-  --gruen:         #2e9e5a;
-  --gruen-hell:    #3ab870;
-  --rot:           #c04040;
-  --gold:          #c8780a;
-  --gold-hell:     #e8970e;
-  --schatten:      0 2px 12px rgba(0,0,0,0.2);
-  --schatten-stark: 0 4px 24px rgba(0,0,0,0.3);
-  --radius:        12px;
-  --radius-klein:  8px;
-  --sidebar-w:     220px;
-  --navbar-h:      60px;
-}
+/* ── Admin-spezifisches Layout ─────────────────────────────────
+   Farb-Variablen, Typografie, .sidebar-*-Komponenten kommen aus
+   common/static/dorfkern.css + dorfkern-admin.css. Hier nur noch
+   admin-eigene Overrides: Navbar, Body-Hoehe, DB-Badge, App-Switch-
+   Button-Varianten. */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html, body {
-  height: 100%;
-  font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
-  font-size: 15px;
-  background: var(--bg-dunkel);
-  color: var(--text-hell);
-}
-
-h1, h2, h3 {
-  font-family: 'Fraunces', Georgia, serif;
-  color: var(--text-hell);
-  font-weight: 400;
-}
-
-a { text-decoration: none; color: inherit; }
+html, body { height: 100%; }
+a { color: inherit; text-decoration: none; }
 
 /* ── Layout ───────────────────────────────────────────────── */
 .layout {
@@ -187,7 +152,7 @@ a { text-decoration: none; color: inherit; }
   overflow: hidden;
 }
 
-/* ── Sidebar ──────────────────────────────────────────────── */
+/* ── Sidebar (nur Container-Styling, Items kommen aus Shared) ─ */
 .sidebar {
   width: var(--sidebar-w);
   background: var(--bg-mitte);
@@ -196,74 +161,8 @@ a { text-decoration: none; color: inherit; }
   flex-shrink: 0;
   padding: 16px 0;
 }
-.sidebar-section {
-  padding: 0 12px 8px 12px;
-}
-.sidebar-section-title {
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-dim);
-  padding: 8px 8px 4px 8px;
-}
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border-radius: var(--radius-klein);
-  color: var(--text-mitte);
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-  text-decoration: none;
-}
-.sidebar-item:hover { background: var(--bg-hell); color: var(--text-hell); }
-.sidebar-item.aktiv { background: rgba(58,124,189,0.2); color: var(--akzent-hell); font-weight: 700; }
-.sidebar-item .icon { font-size: 16px; flex-shrink: 0; }
-.sidebar-divider { border: none; border-top: 1px solid var(--border); margin: 8px 12px; }
 
-/* Klappbare Untergruppen (fuer lange Sektionen wie Stammdaten) */
-.sidebar-subgroup {
-  padding: 0;
-}
-.sidebar-subgroup-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  margin: 2px 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--text-dim);
-  cursor: pointer;
-  user-select: none;
-  border-radius: var(--radius-klein);
-}
-.sidebar-subgroup-title:hover { color: var(--text-hell); }
-.sidebar-subgroup-title .caret {
-  font-family: monospace;
-  font-size: 9px;
-  width: 10px;
-  display: inline-block;
-  transition: transform 0.1s;
-}
-.sidebar-subgroup.zu .caret { transform: rotate(-90deg); }
-.sidebar-subgroup-items {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding-left: 4px;
-  overflow: hidden;
-  max-height: 1000px;
-  transition: max-height 0.15s;
-}
-.sidebar-subgroup.zu .sidebar-subgroup-items {
-  max-height: 0;
-}
+/* Klappbare Untergruppen-Regeln kommen komplett aus dorfkern.css */
 
 /* ── Hauptinhalt ──────────────────────────────────────────── */
 .main-content {
