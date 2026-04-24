@@ -1312,6 +1312,32 @@ def api_stammdaten_adressgruppe():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Warengruppen ──────────────────────────────────
+
+@app.route('/stammdaten/warengruppen')
+@_login_required
+def stammdaten_warengruppe_seite():
+    """Read-only Baum der CAO-``WARENGRUPPEN``-Tabelle.
+
+    Spiegelt die cao_admin.exe-Seite *Einstellungen → Warengruppen*
+    mit Kalkulation (VK1..VK5-Faktoren), Steuercode und Default-Konten.
+    """
+    return render_template('stammdaten_warengruppe.html')
+
+
+@app.get('/api/stammdaten/warengruppen')
+@_login_required
+def api_stammdaten_warengruppe():
+    """JSON-Liste der Warengruppen inkl. Parent-ID fuer Baum."""
+    import stammdaten_warengruppe as _wg
+    try:
+        res = _wg.liste()
+        return jsonify(ok=True, eintraege=res['eintraege'])
+    except Exception as e:
+        log.exception('WARENGRUPPEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
