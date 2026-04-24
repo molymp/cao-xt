@@ -3,6 +3,7 @@
 
 flask>=3.0
 mysql-connector-python>=8.0
+waitress>=3.0           # Prod-WSGI-Server (ersetzt Werkzeug-Dev-Server)
 gspread>=6.0
 google-auth>=2.0
 

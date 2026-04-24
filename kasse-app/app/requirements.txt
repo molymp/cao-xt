@@ -3,6 +3,7 @@
 
 flask>=3.0
 mysql-connector-python>=8.0
+waitress>=3.0           # Prod-WSGI-Server (ersetzt Werkzeug-Dev-Server)
 requests>=2.31          # Fiskaly REST API
 qrcode[pil]>=7.4        # QR-Code für Kassenbon (TSE-Pflichtangaben)
 Pillow>=10.0            # Abhängigkeit von qrcode

@@ -2385,4 +2385,12 @@ if __name__ == "__main__":
         selbst_registrieren('KIOSK')
     except Exception:
         pass
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    if config.DEBUG:
+        # Dev: Werkzeug-Dev-Server mit Auto-Reloader + Debugger
+        app.run(host=config.HOST, port=config.PORT, debug=True)
+    else:
+        # Prod: Waitress – stabiler Threaded-WSGI-Server ohne Reloader.
+        # Kiosk ist touch-bedient, erste-Byte-Latenz zaehlt.
+        from waitress import serve
+        serve(app, host=config.HOST, port=config.PORT,
+              threads=8, ident='cao-xt')
