@@ -19,6 +19,7 @@ from db import get_db, test_verbindung
 from common.auth import (login_required as _login_required,
                          mitarbeiter_login as _mitarbeiter_login,
                          mitarbeiter_login_karte)
+from common.permission import flask_helpers as _perm_flask_helpers
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -41,6 +42,78 @@ app.jinja_loader = ChoiceLoader([
     app.jinja_loader,
     FileSystemLoader(_COMMON_TEMPLATES),
 ])
+
+# Dorfkern-Permissions: Decorator + Jinja-Helper ``hat_recht``
+_permission_required, _perm_ctx = _perm_flask_helpers()
+app.context_processor(_perm_ctx)
+
+# Pfad-Prefix -> Permission-Key fuer den Orga-before_request-Hook.
+# Nur URL-Sektionen mit eigenem Permission-Objekt (Dashboard/Home
+# zaehlen als 'orga.zugriff' und werden per Default gecheckt).
+_ORGA_PERMISSION_MAP: list[tuple[str, str]] = [
+    ('/orga/preispflege',                'orga.preispflege'),
+    ('/orga/datev-export',               'orga.datev_export'),
+    ('/orga/personal/schichtplan',       'orga.schichtplan'),
+    ('/orga/personal/schicht',           'orga.personal.schichten'),
+    ('/orga/personal/abwesenheiten',     'orga.personal.abwesenheiten'),
+    ('/orga/personal/arbeitszeitkonten', 'orga.personal.arbeitszeitkonten'),
+    ('/orga/personal',                   'orga.personal.mitarbeiter'),
+    ('/orga/haccp',                      'orga.haccp'),
+    ('/orga/handbuch',                   'orga.handbuch'),
+    ('/orga',                            'orga.artikel'),
+    ('/reporting',                       'orga.reporting'),
+]
+
+# Pfade ohne Permission-Check (Login, statische Ressourcen, API-Utility)
+_ORGA_PERMISSION_WHITELIST: tuple[str, ...] = (
+    '/login', '/logout',
+    '/brand/', '/static/',
+    '/coming-soon',    # Platzhalter, unnoetig zu blocken
+)
+
+
+@app.before_request
+def _orga_permission_guard():
+    from flask import request, session, redirect, url_for, flash, jsonify
+    path = request.path or ''
+    if any(path.startswith(w) for w in _ORGA_PERMISSION_WHITELIST):
+        return None
+    ma_id = session.get('ma_id')
+    if not ma_id:
+        return None
+    from common import permission as _p
+    # HTTP-Methode bestimmt LESEN vs. PFLEGEN fuer LESE_PFLEGE-Objekte:
+    # GET/HEAD/OPTIONS -> LESEN, alles andere -> PFLEGEN.
+    is_read = request.method in ('GET', 'HEAD', 'OPTIONS')
+    lese_pflege_keys = {'orga.schichtplan'}
+
+    # Spezifische Sektionen first-match
+    for prefix, key in _ORGA_PERMISSION_MAP:
+        if path.startswith(prefix):
+            if key in lese_pflege_keys:
+                recht = 'LESEN' if is_read else 'PFLEGEN'
+            else:
+                recht = 'BEIDES'
+            if _p.hat_recht(ma_id, key, recht):
+                return None
+            return _orga_verweigern(path, f'{key} ({recht})')
+    # Default: jeder angemeldete MA braucht orga.zugriff
+    if _p.hat_recht(ma_id, 'orga.zugriff'):
+        return None
+    return _orga_verweigern(path, 'orga.zugriff')
+
+
+def _orga_verweigern(path: str, key: str):
+    from flask import request, redirect, url_for, flash, jsonify
+    if path.startswith('/api/') or \
+            'application/json' in (request.headers.get('Accept', '') or ''):
+        return jsonify(ok=False,
+                       msg=f'Keine Berechtigung fuer {key}'), 403
+    flash(f'Keine Berechtigung ({key}).', 'error')
+    try:
+        return redirect(url_for('index'))
+    except Exception:
+        return redirect('/')
 
 
 def _fmt_eur(value, dp=2):

@@ -244,6 +244,8 @@
 <script>
 let stornoVorgangId = null;
 const posCache = {};
+// Aus Permission-Context (Kasse): ist der User berechtigt zu stornieren?
+const _HAT_RECHT_STORNO = {{ 'true' if hat_recht('kasse.storno') else 'false' }};
 
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -324,7 +326,8 @@ async function suchen() {
         : `<span style="color:var(--th); font-size:12px;">—</span>`;
 
       // Storno-Button nur für normale, abgeschlossene Bons
-      const stornoBtn = (!istStorniert && !istStornoBon)
+      // UND nur wenn der Mitarbeiter das Recht 'kasse.storno' hat.
+      const stornoBtn = (!istStorniert && !istStornoBon && _HAT_RECHT_STORNO)
         ? `<button class="j-btn j-btn-storno" onclick="event.stopPropagation();stornoStarten(${v.ID},${v.BON_NR},${v.BETRAG_BRUTTO})">↩️ Storno</button>`
         : '';
 

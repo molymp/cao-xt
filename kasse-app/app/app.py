@@ -20,6 +20,7 @@ import db as db_modul
 from db import get_db, get_db_transaction, euro_zu_cent, test_verbindung
 from common.auth import (login_required as _login_required, login_user,
                          logout_user, mitarbeiter_login_karte)
+from common.permission import flask_helpers as _perm_flask_helpers
 import kasse_logik as kl
 import druck
 import dsfinvk
@@ -44,6 +45,40 @@ app.jinja_loader = ChoiceLoader([
     app.jinja_loader,
     FileSystemLoader(_COMMON_TEMPLATES),
 ])
+
+# Dorfkern-Permissions: Decorator + Jinja-Helper ``hat_recht``
+_permission_required, _perm_ctx = _perm_flask_helpers()
+app.context_processor(_perm_ctx)
+
+
+@app.before_request
+def _kasse_admin_guard():
+    """Schuetzt den Admin-Bereich '/admin/*' via ``kasse.einstellungen``.
+
+    Greift NACH dem Login (Loginseite selbst ist nicht /admin/*).
+    Fuer 14 /admin/*-Routen muessten wir sonst jede einzeln mit
+    @_permission_required dekorieren; ein globaler Hook bleibt DRY.
+    """
+    from flask import request, session, redirect, url_for, flash, jsonify
+    path = request.path or ''
+    if not (path == '/admin' or path.startswith('/admin/')):
+        return None
+    ma_id = session.get('ma_id')
+    if not ma_id:
+        return None  # _login_required kuemmert sich darum
+    from common import permission as _p
+    if _p.hat_recht(ma_id, 'kasse.einstellungen'):
+        return None
+    if path.startswith('/api/') or \
+            'application/json' in (request.headers.get('Accept', '') or ''):
+        return jsonify(
+            ok=False,
+            msg='Keine Berechtigung fuer kasse.einstellungen'), 403
+    flash('Keine Berechtigung für den Kasse-Admin-Bereich.', 'error')
+    try:
+        return redirect(url_for('index'))
+    except Exception:
+        return redirect('/')
 
 # Schema-Migrationen beim Start ausführen (inkl. virtuelle Terminal-Nummer falls Sandbox-Modus)
 kl.migrationen_ausfuehren()
@@ -668,6 +703,8 @@ def journal():
 
 
 @app.get('/kasse/storno')
+@_login_required
+@_permission_required('kasse.storno')
 def storno_redirect():
     return redirect(url_for('journal'))
 
@@ -728,6 +765,7 @@ def api_vorgang_kopieren(vid):
 
 @app.post('/api/vorgang/<int:vid>/storno')
 @_login_required
+@_permission_required('kasse.storno')
 def api_storno(vid):
     terminal_nr = _eff_terminal_nr()
     try:

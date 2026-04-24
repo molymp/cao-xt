@@ -448,7 +448,9 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% if update_verfuegbar %}
   <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
   {% endif %}
+  {% if hat_recht('kasse.einstellungen') %}
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
+  {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
   <a href="/logout"           class="nav-btn danger">Abmelden</a>
   {% set navbar_user_name = ma_login_name %}

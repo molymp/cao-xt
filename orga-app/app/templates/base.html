@@ -446,23 +446,36 @@ a { text-decoration: none; color: inherit; }
         </a>
 
         {% set artikel_aktiv = request.path in ('/orga', '/orga/preispflege') %}
+        {% set zeige_artikel = hat_recht('orga.artikel') or hat_recht('orga.preispflege') %}
+        {% if zeige_artikel %}
         <div class="sidebar-group {% if artikel_aktiv %}open{% endif %}" id="grp-artikel">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-artikel')">
             <span class="icon">📦</span> Artikel
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
+            {% if hat_recht('orga.artikel') %}
             <a href="/orga"
                class="sidebar-sub-item {% if request.path == '/orga' %}aktiv{% endif %}">
               <span class="sub-icon">🔍</span> Suche &amp; Detail
             </a>
+            {% endif %}
+            {% if hat_recht('orga.preispflege') %}
             <a href="/orga/preispflege"
                class="sidebar-sub-item {% if request.path == '/orga/preispflege' %}aktiv{% endif %}">
               <span class="sub-icon">💶</span> Preispflege
             </a>
+            {% endif %}
           </div>
         </div>
+        {% endif %}
 
+        {% set zeige_personal = hat_recht('orga.personal.mitarbeiter')
+                              or hat_recht('orga.schichtplan', 'LESEN')
+                              or hat_recht('orga.personal.schichten')
+                              or hat_recht('orga.personal.abwesenheiten')
+                              or hat_recht('orga.personal.arbeitszeitkonten') %}
+        {% if zeige_personal %}
         <div class="sidebar-group {% if request.path.startswith('/orga/personal') %}open{% endif %}"
              id="grp-personal">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-personal')">
@@ -470,28 +483,42 @@ a { text-decoration: none; color: inherit; }
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
+            {% if hat_recht('orga.personal.mitarbeiter') %}
             <a href="/orga/personal/"
                class="sidebar-sub-item {% if request.path == '/orga/personal/' or (request.path.startswith('/orga/personal/') and not request.path.startswith('/orga/personal/schicht')) %}aktiv{% endif %}">
               <span class="sub-icon">👥</span> Mitarbeiter
             </a>
+            {% endif %}
+            {% if hat_recht('orga.schichtplan', 'LESEN') %}
             <a href="/orga/personal/schichtplan/"
                class="sidebar-sub-item {% if request.path.startswith('/orga/personal/schichtplan') %}aktiv{% endif %}">
               <span class="sub-icon">📅</span> Schichtplan
+              {% if not hat_recht('orga.schichtplan', 'PFLEGEN') %}
+              <span class="sub" style="color:var(--text-dim);">(nur lesen)</span>
+              {% endif %}
             </a>
+            {% endif %}
+            {% if hat_recht('orga.personal.schichten') %}
             <a href="/orga/personal/schicht/"
                class="sidebar-sub-item {% if request.path.startswith('/orga/personal/schicht/') or request.path == '/orga/personal/schicht' %}aktiv{% endif %}">
               <span class="sub-icon">🕐</span> Schichten
             </a>
+            {% endif %}
+            {% if hat_recht('orga.personal.abwesenheiten') %}
             <a href="/orga/personal/abwesenheiten/kalender"
                class="sidebar-sub-item {% if request.path.startswith('/orga/personal/abwesenheiten') %}aktiv{% endif %}">
               <span class="sub-icon">🗓️</span> Abwesenheiten
             </a>
+            {% endif %}
+            {% if hat_recht('orga.personal.arbeitszeitkonten') %}
             <a href="/orga/personal/arbeitszeitkonten"
                class="sidebar-sub-item {% if request.path.startswith('/orga/personal/arbeitszeitkonten') %}aktiv{% endif %}">
               <span class="sub-icon">⏱️</span> Arbeitszeitkonten
             </a>
+            {% endif %}
           </div>
         </div>
+        {% endif %}
       </div>
 
       <hr class="sidebar-divider">
@@ -561,9 +588,11 @@ a { text-decoration: none; color: inherit; }
             <a href="/coming-soon?modul=Lastschriften" class="sidebar-sub-item">
               <span class="sub-icon">📑</span> Lastschriften
             </a>
+            {% if hat_recht('orga.datev_export') %}
             <a href="/orga/datev-export" class="sidebar-sub-item {% if request.path.startswith('/orga/datev-export') %}aktiv{% endif %}">
               <span class="sub-icon">📤</span> Datev-Export
             </a>
+            {% endif %}
             <a href="/coming-soon?modul=Mahnungen" class="sidebar-sub-item">
               <span class="sub-icon">⚠️</span> Mahnungen
             </a>
@@ -575,10 +604,12 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">Weitere</div>
       <div class="sidebar-section">
+        {% if hat_recht('orga.reporting') %}
         <a href="/reporting" class="sidebar-item {% if request.path == '/reporting' %}aktiv{% endif %}">
           <span class="icon">📈</span> Reporting
           <span class="sub">CFO-Reports</span>
         </a>
+        {% endif %}
 
         <div class="sidebar-group" id="grp-tools">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-tools')">
@@ -601,12 +632,16 @@ a { text-decoration: none; color: inherit; }
         <a href="/coming-soon?modul=Lohnbuchhaltung" class="sidebar-item">
           <span class="icon">💼</span> Lohnbuchhaltung
         </a>
+        {% if hat_recht('orga.haccp') %}
         <a href="{{ url_for('haccp.dashboard') }}" class="sidebar-item">
           <span class="icon">🧼</span> Hygiene / HACCP
         </a>
+        {% endif %}
+        {% if hat_recht('orga.handbuch') %}
         <a href="/orga/handbuch" class="sidebar-item">
           <span class="icon">📖</span> Handbuch
         </a>
+        {% endif %}
       </div>
     </nav>
 
