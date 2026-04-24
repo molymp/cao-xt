@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Mitarbeiter{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+  .ma-such {
+    width: 100%;
+    max-width: 360px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 6px;
+    font: inherit;
+  }
+
+  table.ma {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.ma th, table.ma td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  table.ma thead th {
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  table.ma tr.inaktiv td {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  table.ma td.ma-id {
+    font-family: monospace;
+    color: var(--text-dim);
+    width: 60px;
+  }
+  table.ma td.login {
+    font-family: monospace;
+    width: 140px;
+  }
+  table.ma td.aktiv-zelle { width: 40px; text-align: center; }
+  .dot-aktiv { color: #34d399; }
+  .dot-inaktiv { color: var(--text-dim); }
+
+  .rolle-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .rolle-pill.admin {
+    background: #14532d;
+    color: #86efac;
+  }
+  .rolle-pill.normal {
+    background: var(--bg-hell);
+    color: var(--text-hell);
+    border: 1px solid var(--border);
+  }
+
+  td.rechte-zelle {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  td.rechte-zelle .app-block {
+    display: inline-block;
+    margin-right: 10px;
+  }
+  td.rechte-zelle .app-block.voll  { color: #34d399; }
+  td.rechte-zelle .app-block.teil  { color: #fbbf24; }
+  td.rechte-zelle .app-block.leer  { color: var(--text-dim); }
+  td.rechte-zelle .app-name {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">👤 Mitarbeiter</h1>
+<div class="info-banner">
+  Alle CAO-Mitarbeiter (aus <code>MITARBEITER</code>) mit ihrer Rolle
+  (aus <code>BENUTZERRECHTE</code>) und den <strong>abgeleiteten
+  Dorfkern-Rechten</strong>. Die Mitarbeiter-Stammdaten selbst
+  werden in <code>cao_admin.exe</code> gepflegt; die Rolle-zu-Recht-
+  Zuordnung im <a href="/rechte/dorfkern" style="color:#60a5fa;">
+  Dorfkern-Rechte-Editor</a>.
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Mitarbeiter: <span id="stat-gesamt">–</span></span>
+  <span class="chip">Aktiv: <span id="stat-aktiv">–</span></span>
+  <span class="chip">Administratoren: <span id="stat-admin">–</span></span>
+</div>
+
+<div class="card">
+  <input type="text" id="such-feld" class="ma-such"
+         placeholder="🔍 Filter (Name, Login, Rolle)">
+  <div id="box">
+    <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+      Lade…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function rechteZellenInhalt(r) {
+  const apps = ['KIOSK', 'KASSE', 'ORGA'];
+  return apps.map(app => {
+    const e = r.rechte_pro_app[app];
+    if (!e) return '';
+    const klasse = e.erlaubt === 0 && e.gesamt > 0 ? 'leer'
+                 : e.erlaubt === e.gesamt ? 'voll' : 'teil';
+    const titel = e.detail && e.detail.length
+      ? e.detail.join(', ')
+      : 'keine Rechte';
+    return `<span class="app-block ${klasse}" title="${escapeHtml(titel)}">
+      <span class="app-name">${app}</span>
+      ${e.erlaubt}/${e.gesamt}
+    </span>`;
+  }).join('');
+}
+
+function render(filter) {
+  const box = document.getElementById('box');
+  const f = (filter || '').trim().toLowerCase();
+  let gefiltert = _alle;
+  if (f) {
+    gefiltert = _alle.filter(m =>
+      (m.anzeige_name || '').toLowerCase().includes(f)
+      || (m.login_name || '').toLowerCase().includes(f)
+      || (m.rolle || '').toLowerCase().includes(f));
+  }
+  if (!gefiltert.length) {
+    box.innerHTML = `<div style="color:var(--text-dim);padding:16px;
+      text-align:center;">Keine Mitarbeiter${f ? ' (Filter)' : ''}.</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <table class="ma">
+      <thead>
+        <tr>
+          <th style="text-align:center;">●</th>
+          <th>ID</th>
+          <th>Login</th>
+          <th>Name</th>
+          <th>Rolle</th>
+          <th>Dorfkern-Rechte</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${gefiltert.map(m => `
+          <tr class="${m.aktiv ? '' : 'inaktiv'}">
+            <td class="aktiv-zelle ${m.aktiv ? 'dot-aktiv' : 'dot-inaktiv'}"
+                title="${m.aktiv ? 'aktiv' : 'inaktiv/ausgelaufen'}">
+              ${m.aktiv ? '●' : '○'}
+            </td>
+            <td class="ma-id">${m.ma_id}</td>
+            <td class="login">${escapeHtml(m.login_name) || '–'}</td>
+            <td>${escapeHtml(m.anzeige_name) || '–'}</td>
+            <td>
+              <span class="rolle-pill ${m.ist_admin ? 'admin' : 'normal'}">
+                ${escapeHtml(m.rolle)}
+              </span>
+            </td>
+            <td class="rechte-zelle">
+              ${m.ist_admin
+                ? '<span class="app-block voll"><span class="app-name">ALLES</span></span>'
+                : rechteZellenInhalt(m)}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function laden() {
+  try {
+    const r = await fetch('/api/system/mitarbeiter')
+      .then(r => r.json());
+    if (!r.ok) {
+      document.getElementById('box').innerHTML =
+        `<div style="color:#f08080;padding:12px;">
+          Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+      return;
+    }
+    _alle = r.mitarbeiter || [];
+    document.getElementById('stat-gesamt').textContent = _alle.length;
+    document.getElementById('stat-aktiv').textContent =
+      _alle.filter(m => m.aktiv).length;
+    document.getElementById('stat-admin').textContent =
+      _alle.filter(m => m.ist_admin).length;
+    render('');
+  } catch (e) {
+    document.getElementById('box').innerHTML =
+      `<div style="color:#f08080;padding:12px;">
+        ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('such-feld').addEventListener('input', (e) => {
+    render(e.target.value);
+  });
+  laden();
+});
+</script>
+{% endblock %}

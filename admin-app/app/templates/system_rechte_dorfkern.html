@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}Dorfkern-Rechte{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+
+  .matrix-wrap {
+    overflow-x: auto;
+    margin-top: 10px;
+  }
+  table.matrix {
+    border-collapse: collapse;
+    font-size: 13px;
+    width: auto;
+    min-width: 100%;
+  }
+  table.matrix th, table.matrix td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  table.matrix thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-dunkel);
+    z-index: 2;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    font-weight: 700;
+    min-width: 140px;
+    white-space: nowrap;
+  }
+  table.matrix thead th.app-head {
+    padding-top: 10px;
+    border-bottom: 2px solid var(--border);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  table.matrix thead th:first-child { min-width: 280px; }
+  table.matrix tbody tr.app-trenner td {
+    padding: 10px 10px 2px 10px;
+    background: var(--bg-dunkel);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-top: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  table.matrix tbody td.objekt-zelle {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  table.matrix tbody td.objekt-zelle .key {
+    display: block;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: normal;
+    margin-top: 1px;
+  }
+  table.matrix tbody td.objekt-zelle .beschr {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: normal;
+    margin-top: 2px;
+    white-space: normal;
+    max-width: 320px;
+  }
+  table.matrix tbody td.objekt-zelle .unt {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 3px;
+    border: 1px solid #fbbf24;
+    color: #fbbf24;
+    font-family: monospace;
+    font-size: 9px;
+    font-weight: normal;
+    vertical-align: middle;
+  }
+  table.matrix tbody td.recht-zelle {
+    text-align: center;
+    padding: 4px 6px;
+  }
+  table.matrix tbody td.recht-zelle.admin {
+    color: #86efac;
+    font-weight: 700;
+    background: #0f2b1c;
+  }
+  table.matrix tbody tr:hover td {
+    background: var(--bg-hell);
+  }
+  select.recht-select {
+    background: var(--bg-hell);
+    color: var(--text-hell);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  select.recht-select.gesetzt-BEIDES  { border-color: #34d399;
+                                         color: #86efac; }
+  select.recht-select.gesetzt-LESEN   { border-color: #60a5fa;
+                                         color: #93c5fd; }
+  select.recht-select.gesetzt-PFLEGEN { border-color: #fbbf24;
+                                         color: #fde68a; }
+  select.recht-select.gesetzt- { color: var(--text-dim); }
+
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+
+  .save-hinweis {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .save-hinweis.sichtbar { opacity: 1; }
+  .save-hinweis.ok     { background: #14532d; color: #86efac; }
+  .save-hinweis.fehler { background: #3b1f1a; color: #fecaca; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">🔐 Dorfkern-Rechte</h1>
+<div class="info-banner">
+  Rolle × Permission-Objekt-Matrix.
+  <strong>Administratoren</strong> sind implizit auf allen Objekten
+  berechtigt (grün). Für alle anderen Rollen das gewünschte Recht
+  per Dropdown setzen – Änderungen werden sofort gespeichert.
+  <strong>LESE_PFLEGE-Objekte</strong> (Badge <span
+  style="padding:0 5px;border:1px solid #fbbf24;color:#fbbf24;
+  border-radius:3px;font-family:monospace;font-size:10px;">LESE_PFLEGE</span>)
+  erlauben getrennt LESEN oder PFLEGEN, die anderen nur
+  „kein Recht" oder „Zugriff".
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Rollen: <span id="stat-rollen">–</span></span>
+  <span class="chip">Objekte: <span id="stat-objekte">–</span></span>
+  <span class="chip">Eintraege: <span id="stat-eintraege">–</span></span>
+</div>
+
+<div id="hinweis" class="save-hinweis"></div>
+
+<div class="card">
+  <div id="box" class="matrix-wrap">
+    <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+      Lade…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _daten = null;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function hinweisZeigen(typ, msg) {
+  const el = document.getElementById('hinweis');
+  el.className = 'save-hinweis ' + typ + ' sichtbar';
+  el.textContent = msg;
+  setTimeout(() => el.classList.remove('sichtbar'), 2500);
+}
+
+function render(d) {
+  const rollen = d.rollen || [];
+  const objekte = d.objekte || [];
+  const rechte = d.rechte || {};
+  const opts = d.recht_optionen || {};
+
+  // Header-Zeilen: APP-Gruppen nicht hier; stattdessen Objekte
+  // zeilenweise, gruppiert durch Trenner-Zeilen pro APP.
+  const kopf = `
+    <thead>
+      <tr>
+        <th>Objekt</th>
+        ${rollen.map(r => `<th>${escapeHtml(r.name)}
+          ${r.admin ? '<span style="color:var(--text-dim);font-weight:normal;" title="implizit alle Rechte">⋆</span>' : ''}
+        </th>`).join('')}
+      </tr>
+    </thead>`;
+
+  let body = '<tbody>';
+  let letzte_app = null;
+  for (const obj of objekte) {
+    if (obj.app !== letzte_app) {
+      body += `<tr class="app-trenner">
+        <td colspan="${1 + rollen.length}">${escapeHtml(obj.app)}</td>
+      </tr>`;
+      letzte_app = obj.app;
+    }
+    body += '<tr>';
+    // Objekt-Spalte
+    const unt_badge = obj.unterscheidung === 'LESE_PFLEGE'
+      ? '<span class="unt">LESE_PFLEGE</span>' : '';
+    body += `<td class="objekt-zelle">
+      ${escapeHtml(obj.bezeichnung)}${unt_badge}
+      <span class="key">${escapeHtml(obj.key)}</span>
+      ${obj.beschreibung
+        ? `<span class="beschr">${escapeHtml(obj.beschreibung)}</span>`
+        : ''}
+    </td>`;
+    // Rollen-Spalten
+    for (const rolle of rollen) {
+      if (rolle.admin) {
+        body += `<td class="recht-zelle admin" title="Administratoren sind implizit berechtigt">ALLE</td>`;
+        continue;
+      }
+      const aktuell = (rechte[rolle.name] || {})[obj.key] || '';
+      const optionen = opts[obj.unterscheidung] || ['', 'BEIDES'];
+      body += `<td class="recht-zelle">
+        <select class="recht-select gesetzt-${escapeHtml(aktuell)}"
+                data-rolle="${escapeHtml(rolle.name)}"
+                data-key="${escapeHtml(obj.key)}">
+          ${optionen.map(o => `
+            <option value="${escapeHtml(o)}" ${o === aktuell ? 'selected' : ''}>
+              ${o === '' ? '—' : escapeHtml(o)}
+            </option>`).join('')}
+        </select>
+      </td>`;
+    }
+    body += '</tr>';
+  }
+  body += '</tbody>';
+
+  document.getElementById('box').innerHTML = `
+    <table class="matrix">${kopf}${body}</table>`;
+
+  // Event-Handler: on-change sofort speichern
+  document.querySelectorAll('.recht-select').forEach(sel => {
+    sel.addEventListener('change', () => onAendern(sel));
+  });
+
+  // Stats
+  document.getElementById('stat-rollen').textContent = rollen.length;
+  document.getElementById('stat-objekte').textContent = objekte.length;
+  let n = 0;
+  for (const r of Object.values(rechte)) n += Object.keys(r || {}).length;
+  document.getElementById('stat-eintraege').textContent = n;
+}
+
+async function onAendern(select) {
+  const rolle = select.dataset.rolle;
+  const key   = select.dataset.key;
+  const recht = select.value;
+  select.disabled = true;
+  try {
+    const r = await fetch('/api/rechte/dorfkern/zelle', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({rolle, objekt_key: key, recht}),
+    }).then(r => r.json());
+    if (r.ok) {
+      hinweisZeigen('ok',
+        `${rolle}: ${key} -> ${recht || 'kein Zugriff'}`);
+      // Farbe der Select aktualisieren
+      select.className = 'recht-select gesetzt-' + recht;
+      // Cache aktualisieren, ohne neu zu laden
+      if (_daten && _daten.rechte) {
+        if (!_daten.rechte[rolle]) _daten.rechte[rolle] = {};
+        if (recht === '') delete _daten.rechte[rolle][key];
+        else _daten.rechte[rolle][key] = recht;
+        let n = 0;
+        for (const r of Object.values(_daten.rechte))
+          n += Object.keys(r || {}).length;
+        document.getElementById('stat-eintraege').textContent = n;
+      }
+    } else {
+      hinweisZeigen('fehler', r.msg || 'Speichern fehlgeschlagen.');
+      // Select auf den alten Zustand zurücksetzen durch reload
+      await laden();
+    }
+  } catch (e) {
+    hinweisZeigen('fehler', String(e));
+  }
+  select.disabled = false;
+}
+
+async function laden() {
+  try {
+    const r = await fetch('/api/rechte/dorfkern/matrix')
+      .then(r => r.json());
+    if (!r.ok) {
+      document.getElementById('box').innerHTML =
+        `<div style="color:#f08080;padding:12px;">
+          Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+      return;
+    }
+    _daten = r;
+    render(r);
+  } catch (e) {
+    document.getElementById('box').innerHTML =
+      `<div style="color:#f08080;padding:12px;">
+        ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', laden);
+</script>
+{% endblock %}
