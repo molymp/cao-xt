@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Nummernkreise{% endblock %}
+
+{% block extra_style %}
+<style>
+  .info-banner {
+    background: #1a2b3b;
+    border-left: 3px solid #60a5fa;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    color: #dbeafe;
+    font-size: 14px;
+  }
+  .stat-zeile {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+  }
+  .stat-zeile .chip {
+    padding: 2px 10px;
+    border-radius: 10px;
+    background: var(--bg-hell);
+  }
+  .nk-such {
+    width: 100%;
+    max-width: 360px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-dunkel);
+    color: var(--text-hell);
+    border-radius: 6px;
+    font: inherit;
+  }
+  table.nk {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.nk th, table.nk td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  table.nk thead th {
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  table.nk tr:hover td { background: var(--bg-hell); }
+  table.nk td.sort {
+    font-family: monospace;
+    color: var(--text-dim);
+    width: 40px;
+    text-align: right;
+  }
+  table.nk td.key {
+    font-family: monospace;
+    font-weight: 600;
+    color: var(--text-hell);
+    width: 170px;
+  }
+  table.nk td.maske {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--akzent-hell);
+    width: 150px;
+  }
+  table.nk td.zahl {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--text-hell);
+    width: 110px;
+  }
+  table.nk td.laenge {
+    font-family: monospace;
+    color: var(--text-dim);
+    text-align: right;
+    width: 50px;
+  }
+  table.nk td.vorschau {
+    font-family: monospace;
+    font-variant-numeric: tabular-nums;
+    color: #34d399;
+  }
+  .badge-ro {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    font-size: 10px;
+    font-family: monospace;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 8px;">🔢 Nummernkreise</h1>
+<div class="info-banner">
+  <strong>Read-only.</strong> Pflege in
+  <code>cao_admin.exe → Einstellungen → Nummernkreise</code>. Die
+  Kreise werden technisch als REGISTRY-Eintraege mit
+  <code>MAINKEY='MAIN\NUMBERS'</code> gespeichert. Die Vorschau
+  zeigt, wie die <em>naechste</em> Nummer formatiert aussehen wird.
+  Jede ausgegebene Nummer wird zusaetzlich mit Hash in
+  <code>NUMMERN_LOG</code> protokolliert (Revisionssicherheit).
+</div>
+
+<div class="stat-zeile">
+  <span class="chip">Kreise: <span id="stat-kreise">–</span></span>
+  <span class="chip">Read-only: <span id="stat-ro">–</span></span>
+  <span class="chip">Log-Eintraege: <span id="stat-log">–</span></span>
+</div>
+
+<div class="card">
+  <input type="text" id="such-feld" class="nk-such"
+         placeholder="🔍 Filter (Key)">
+  <div id="box">
+    <div style="color: var(--text-dim); padding: 24px; text-align: center;">
+      Lade…
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _alle = [];
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function vorschau(maske, nummer, laenge) {
+  // Maske: '000000' oder '"PREFIX-"000000'
+  // Numerischer Teil = Folge aus '0' (wiederholtes); Prefix/Suffix sind
+  // in doppelten Quotes eingebettet.
+  if (!maske) return '';
+  if (nummer == null) return '';
+  // Numerische Laenge: bevorzugt VAL_INT3, sonst Anzahl '0' in der Maske
+  const nullCount = (maske.match(/0/g) || []).length;
+  const l = laenge || nullCount || String(nummer).length;
+  const num = String(nummer).padStart(l, '0');
+  // Quotes entfernen, Ziffernblock durch num ersetzen
+  return maske.replace(/"([^"]*)"/g, '$1').replace(/0{1,}/, num);
+}
+
+function render(filter) {
+  const box = document.getElementById('box');
+  const f = (filter || '').trim().toLowerCase();
+  const gefiltert = f
+    ? _alle.filter(e => (e.key || '').toLowerCase().includes(f))
+    : _alle;
+  if (!gefiltert.length) {
+    box.innerHTML = `<div style="color:var(--text-dim);padding:16px;
+      text-align:center;">Keine Nummernkreise${f ? ' (Filter)' : ''}.</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <table class="nk">
+      <thead>
+        <tr>
+          <th style="text-align:right;">#</th>
+          <th>Key</th>
+          <th>Maske</th>
+          <th style="text-align:right;">Nächste</th>
+          <th style="text-align:right;">Länge</th>
+          <th>Vorschau</th>
+          <th>Flags</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${gefiltert.map(e => `
+          <tr>
+            <td class="sort">${e.sort == null ? '–' : e.sort}</td>
+            <td class="key">${escapeHtml(e.key)}</td>
+            <td class="maske">${escapeHtml(e.maske) || '–'}</td>
+            <td class="zahl">${e.naechste == null ? '–' : e.naechste}</td>
+            <td class="laenge">${e.laenge == null ? '–' : e.laenge}</td>
+            <td class="vorschau">
+              ${escapeHtml(vorschau(e.maske, e.naechste, e.laenge))}</td>
+            <td>${e.readonly
+                ? '<span class="badge-ro" title="in cao_admin schreibgeschuetzt">RO</span>'
+                : ''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function laden() {
+  const r = await api('GET', '/api/stammdaten/nummernkreise');
+  if (!r.ok) {
+    document.getElementById('box').innerHTML =
+      `<div style="color:#f08080;padding:12px;">
+        Fehler: ${escapeHtml(r.msg || '?')}</div>`;
+    return;
+  }
+  _alle = r.eintraege || [];
+  document.getElementById('stat-kreise').textContent = _alle.length;
+  document.getElementById('stat-ro').textContent =
+    _alle.filter(e => e.readonly).length;
+  document.getElementById('stat-log').textContent =
+    (r.log_total || 0).toLocaleString('de-DE');
+  render('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('such-feld').addEventListener('input', (e) => {
+    render(e.target.value);
+  });
+  laden();
+});
+</script>
+{% endblock %}

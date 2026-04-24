@@ -1407,6 +1407,96 @@ def api_stammdaten_firma():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Artikelattribute ─────────────────────────────
+
+@app.route('/stammdaten/artikelattribute')
+@_login_required
+def stammdaten_attribut_seite():
+    """Read-only Liste der Artikelattribute + Optionen + Nutzung."""
+    return render_template('stammdaten_attribut.html')
+
+
+@app.get('/api/stammdaten/artikelattribute')
+@_login_required
+def api_stammdaten_attribut():
+    import stammdaten_attribut as _at
+    try:
+        return jsonify(ok=True, eintraege=_at.liste())
+    except Exception as e:
+        log.exception('ARTIKEL_ATTRIBUT laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# ── CAO-Stammdaten: Nummernkreise ────────────────────────────────
+
+@app.route('/stammdaten/nummernkreise')
+@_login_required
+def stammdaten_nummernkreise_seite():
+    """Read-only Liste der Nummernkreise (REGISTRY 'MAIN\\NUMBERS')."""
+    return render_template('stammdaten_nummernkreise.html')
+
+
+@app.get('/api/stammdaten/nummernkreise')
+@_login_required
+def api_stammdaten_nummernkreise():
+    import stammdaten_nummernkreise as _nk
+    try:
+        res = _nk.liste()
+        return jsonify(ok=True,
+                       eintraege=res['eintraege'],
+                       log_total=res['log_total'])
+    except Exception as e:
+        log.exception('NUMMERNKREISE laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# ── CAO-Stammdaten: Export-Queries ───────────────────────────────
+
+@app.route('/stammdaten/exporte')
+@_login_required
+def stammdaten_export_seite():
+    """Read-only Liste der CAO-Reports (EXPORT + EXPORT_KATEGORIEN)."""
+    return render_template('stammdaten_export.html')
+
+
+@app.get('/api/stammdaten/exporte')
+@_login_required
+def api_stammdaten_export():
+    import stammdaten_export as _ex
+    try:
+        res = _ex.liste()
+        return jsonify(ok=True,
+                       kategorien=res['kategorien'],
+                       eintraege=res['eintraege'])
+    except Exception as e:
+        log.exception('EXPORT laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# ── CAO-Stammdaten: Binaerdaten ──────────────────────────────────
+
+@app.route('/stammdaten/binaerdaten')
+@_login_required
+def stammdaten_binaer_seite():
+    """Read-only Uebersicht der Binaerdaten-Typen + Speichernutzung."""
+    return render_template('stammdaten_binaer.html')
+
+
+@app.get('/api/stammdaten/binaerdaten')
+@_login_required
+def api_stammdaten_binaer():
+    import stammdaten_binaer as _bi
+    try:
+        res = _bi.liste()
+        return jsonify(ok=True,
+                       kategorien=res['kategorien'],
+                       total_anzahl=res['total_anzahl'],
+                       total_bytes=res['total_bytes'])
+    except Exception as e:
+        log.exception('BINAERDATEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
