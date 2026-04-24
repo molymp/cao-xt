@@ -29,7 +29,11 @@ DB_NAME     = os.environ.get('KIOSK_DB_NAME') or _cfg['name']
 TERMINAL_NR = 1
 
 # ── Flask ─────────────────────────────────────────────────────
-DEBUG      = True
+# DEBUG=True aktiviert Werkzeug's Auto-Reloader + interaktiven Debugger.
+# In Produktion killt das die Performance (Frame-Retention, doppelte
+# Prozesse, doppelte Background-Threads). Daher Default false; per Env
+# einschaltbar fuer lokale Entwicklung.
+DEBUG      = os.environ.get('KIOSK_DEBUG', 'false').lower() == 'true'
 PORT       = 5001            # 5000 ist belegt
 HOST       = "0.0.0.0"      # ganzes LAN erreichbar
 SECRET_KEY = os.environ.get('KIOSK_SECRET_KEY', 'bitte-in-produktion-aendern')

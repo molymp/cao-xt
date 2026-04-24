@@ -102,8 +102,24 @@ def _get_pool() -> pooling.MySQLConnectionPool:
 
 
 def _get_conn() -> mysql.connector.MySQLConnection:
+    """Holt eine Pool-Verbindung und prueft per ping, dass sie lebt.
+
+    NAT-Middleboxes (FritzBox MyFRITZ, viele Consumer-Router) droppen
+    idle TCP-Flows nach 2-5 Minuten, ohne dass MySQL-Server oder Pool
+    das mitbekommen. Der Pool haelt also tote Sockets fuer Stunden,
+    und der naechste ``cursor.execute()`` blockt minutenlang auf
+    Kernel-TCP-Retransmits. Mit ``ping(reconnect=True)`` erkennen
+    wir den toten Socket billig (1 Byte Write + ACK) und bauen ihn
+    transparent neu auf.
+
+    Faellt der Pool komplett aus oder schlaegt ping auch nach Retry
+    fehl, wird eine frische (nicht gepoolte) Verbindung als Fallback
+    aufgebaut – wie frueher.
+    """
     try:
-        return _get_pool().get_connection()
+        conn = _get_pool().get_connection()
+        conn.ping(reconnect=True, attempts=2, delay=0)
+        return conn
     except Exception:
         cfg = _pool_config or {}
         _pruefe_db_whitelist(cfg.get('name', ''))
