@@ -1338,6 +1338,30 @@ def api_stammdaten_warengruppe():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── CAO-Stammdaten: Kontenrahmen ──────────────────────────────────
+
+@app.route('/stammdaten/kontenrahmen')
+@_login_required
+def stammdaten_kontenrahmen_seite():
+    """Read-only-Liste der CAO-``FIBU_KONTEN``-Tabelle (mehrere Rahmen)."""
+    return render_template('stammdaten_kontenrahmen.html')
+
+
+@app.get('/api/stammdaten/kontenrahmen')
+@_login_required
+def api_stammdaten_kontenrahmen():
+    """JSON-Liste aller Konten aller Rahmen."""
+    import stammdaten_kontenrahmen as _kr
+    try:
+        res = _kr.liste()
+        return jsonify(ok=True,
+                       rahmen=res['rahmen'],
+                       eintraege=res['eintraege'])
+    except Exception as e:
+        log.exception('KONTENRAHMEN laden fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
