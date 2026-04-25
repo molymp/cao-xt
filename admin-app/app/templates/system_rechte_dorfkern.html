@@ -77,11 +77,12 @@
     margin-left: 6px;
     padding: 0 5px;
     border-radius: 3px;
-    border: 1px solid #fbbf24;
-    color: #fbbf24;
+    background: #fef3c7;
+    border: 1px solid var(--status-gelb);
+    color: #6a4a00;
     font-family: monospace;
     font-size: 9px;
-    font-weight: normal;
+    font-weight: 700;
     vertical-align: middle;
   }
   table.matrix tbody td.recht-zelle {
@@ -89,15 +90,15 @@
     padding: 4px 6px;
   }
   table.matrix tbody td.recht-zelle.admin {
-    color: #86efac;
+    color: var(--brand-cream);
     font-weight: 700;
-    background: #0f2b1c;
+    background: var(--gruen-dunkel);
   }
   table.matrix tbody tr:hover td {
-    background: var(--bg-hell);
+    background: var(--brand-cream);
   }
   select.recht-select {
-    background: var(--bg-hell);
+    background: #ffffff;
     color: var(--text-hell);
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -106,12 +107,15 @@
     font-size: 12px;
     cursor: pointer;
   }
-  select.recht-select.gesetzt-BEIDES  { border-color: #34d399;
-                                         color: #86efac; }
-  select.recht-select.gesetzt-LESEN   { border-color: #60a5fa;
-                                         color: #93c5fd; }
-  select.recht-select.gesetzt-PFLEGEN { border-color: #fbbf24;
-                                         color: #fde68a; }
+  select.recht-select.gesetzt-BEIDES  { border-color: var(--gruen-mitte);
+                                         background: #e8f1dc;
+                                         color: var(--gruen-dunkel); }
+  select.recht-select.gesetzt-LESEN   { border-color: #4a7aa8;
+                                         background: #dde9f4;
+                                         color: #1f3e5f; }
+  select.recht-select.gesetzt-PFLEGEN { border-color: var(--brand-terracotta);
+                                         background: var(--akzent-blass);
+                                         color: var(--brand-terracotta-dunkel); }
   select.recht-select.gesetzt- { color: var(--text-dim); }
 
   .save-hinweis {
@@ -127,8 +131,8 @@
     transition: opacity 0.2s;
   }
   .save-hinweis.sichtbar { opacity: 1; }
-  .save-hinweis.ok     { background: #14532d; color: #86efac; }
-  .save-hinweis.fehler { background: #3b1f1a; color: #fecaca; }
+  .save-hinweis.ok     { background: var(--gruen-mitte); color: #ffffff; }
+  .save-hinweis.fehler { background: var(--status-rot);  color: #ffffff; }
 </style>
 {% endblock %}
 
@@ -140,8 +144,9 @@
   berechtigt (grün). Für alle anderen Rollen das gewünschte Recht
   per Dropdown setzen – Änderungen werden sofort gespeichert.
   <strong>LESE_PFLEGE-Objekte</strong> (Badge <span
-  style="padding:0 5px;border:1px solid #fbbf24;color:#fbbf24;
-  border-radius:3px;font-family:monospace;font-size:10px;">LESE_PFLEGE</span>)
+  style="padding:1px 6px;background:#fef3c7;border:1px solid var(--status-gelb);
+  color:#6a4a00;border-radius:3px;font-family:monospace;font-size:10px;
+  font-weight:700;">LESE_PFLEGE</span>)
   erlauben getrennt LESEN oder PFLEGEN, die anderen nur
   „kein Recht" oder „Zugriff".
 </div>
