@@ -63,26 +63,46 @@
     display: inline-block;
     padding: 1px 6px;
     border-radius: 3px;
-    background: var(--bg-hell);
-    color: var(--text-dim);
+    background: #ffffff;
+    color: var(--text-mitte);
+    border: 1px solid var(--border);
     font-size: 10px;
-    font-weight: normal;
+    font-weight: 600;
     letter-spacing: 0.03em;
   }
   .badge.kalk {
-    color: var(--akzent-hell);
-    border: 1px solid var(--akzent-hell);
+    color: var(--brand-terracotta-dunkel);
+    background: var(--akzent-blass);
+    border: 1px solid var(--brand-terracotta);
     font-variant-numeric: tabular-nums;
   }
-  .badge.stcode  { color: #fbbf24; border: 1px solid #fbbf24; }
-  .badge.konto   { color: #9ca3af; border: 1px solid var(--border); }
-  .badge.rabatt  { color: #f87171; border: 1px solid #f87171;
-                   font-variant-numeric: tabular-nums; }
+  .badge.stcode  {
+    color: #6a4a00;
+    background: #fef3c7;
+    border: 1px solid var(--status-gelb);
+  }
+  .badge.konto   {
+    color: var(--text-mitte);
+    background: var(--brand-cream);
+    border: 1px solid var(--border-hell);
+  }
+  .badge.rabatt  {
+    color: #6a1810;
+    background: #f6d8ce;
+    border: 1px solid var(--status-rot);
+    font-variant-numeric: tabular-nums;
+  }
   .badge.nicht-durchsuchbar {
     font-style: italic;
     color: var(--text-dim);
+    background: transparent;
+    border-style: dashed;
   }
-  .badge.kinder { color: var(--text-dim); }
+  .badge.kinder {
+    color: var(--gruen-dunkel);
+    background: var(--brand-sage);
+    border: 1px solid var(--brand-sage-dunkel);
+  }
 </style>
 {% endblock %}
 
