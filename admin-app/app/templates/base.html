@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de" data-theme="{{ ui_theme }}">
+<html lang="de">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -335,7 +335,6 @@ a { color: inherit; text-decoration: none; }
   {% set nav_aktive_app_url    = '/' %}
   {% set nav_user_name         = current_user.login_name if current_user else '' %}
   {% set nav_db_status         = db_ok %}
-  {% set nav_show_theme_switcher = true %}
   {% include '_dorfkern_navbar.html' %}
 
   <!-- Body -->

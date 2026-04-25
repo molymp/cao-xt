@@ -1,44 +1,15 @@
 /* ========================================================================
-   Dorfkern – Shared Base CSS
+   Dorfkern – einheitliches Theme fuer alle Apps
    ------------------------------------------------------------------------
-   Wird von allen vier Apps (admin, kasse, kiosk, orga) via
-   /common-static/dorfkern.css geladen. Offizielles Dorfkern-Brand aus
-   common/brand/dorfkern-logo.js + Logo-Final-Exploration (A2 W2):
-
-     Tokens        Hex        Rolle
-     ------------  ---------  -----------------------------------
-     --brand-ink           #141414    Hauptschrift auf hell
-     --brand-cream         #f2ede3    Warmes Creme (Text auf dunkel,
-                                      Default-Hintergrund)
-     --brand-paper         #faf7f0    Helleres Papier (Card/Section-BG)
-     --brand-sage          #d9dcc9    Sage-Gruen (Akzent Neutral,
-                                      Hover-Flaechen, Subtil-Variante)
-     --brand-terracotta    #b65c3a    PRIMAERER Akzent (Kern-Punkt,
-                                      Buttons, Highlights)
-     --brand-terracotta-light  #e08a66  Helle Variante fuer Dark-Mode
-     --brand-night-ink     #1b2027    Sehr dunkles Nachtblau fuer
-                                      Dark-Mode-Hintergrund
-
-     Body-BG gemaess Logo-Final: #f0eee9 (Zwischen cream und paper).
-
-   Admin-App laedt zusaetzlich dorfkern-admin.css (Dark-Mode-Override
-   mit nightInk/cream).
-
-   Fonts (aus dorfkern-logo.js + Logo-Final-HTML):
-     - Fraunces           Display/Wortmarke/H1-H4
-     - Nunito/Inter       UI-Sans (Nunito ist Bestandsstandard, Inter
-                          ist Brand-Alternative)
-     - JetBrains Mono     Monospace (Tabellen, Code, Key-Werte)
-
-   App-spezifische Styles in ihren base.html bleiben unveraendert und
-   gewinnen durch CSS-Kaskade (sie stehen spaeter im <head>).
+   Dorfladen-Identitaet: cremefarbenes Papier + dunkles Gruen + Gold-
+   Akzent. Brand-Tokens (ink/cream/sage/terracotta) bleiben als
+   technische Schicht verfuegbar fuer neue Templates die sich auf
+   Logo-Branding beziehen.
+   Wird von allen vier Apps via /common-static/dorfkern.css geladen.
    ======================================================================== */
 
-
-/* ── Offizielle Brand-Tokens ──────────────────────────────────── */
-
-/* Brand-Tokens + Geometrie sind theme-uebergreifend */
 :root {
+  /* ── Brand-Tokens aus dorfkern-logo.js / dk-brand.jsx ─────── */
   --brand-ink:              #141414;
   --brand-cream:            #f2ede3;
   --brand-paper:            #faf7f0;
@@ -48,127 +19,53 @@
   --brand-night-ink:        #1b2027;
   --brand-body-bg:          #f0eee9;
 
+  /* ── Status-Akzente ─────────────────────────────────────── */
   --status-gruen: #2e7a2e;
   --status-rot:   #b83030;
   --status-gelb:  #d4a030;
 
-  --radius-klein:  4px;
-  --radius-mittel: 6px;
-  --radius-gross:  10px;
-  --radius:        12px;          /* fuer User-App-Karten */
-  --sidebar-w:     220px;
-  --navbar-h:      60px;
+  /* ── Geometrie ──────────────────────────────────────────── */
+  --radius-klein:    4px;
+  --radius-mittel:   6px;
+  --radius-gross:    10px;
+  --radius:          12px;
+  --sidebar-w:       220px;
+  --navbar-h:        60px;
+  --schatten:        0 2px 12px rgba(26, 64, 16, 0.13);
+  --schatten-stark:  0 4px 24px rgba(26, 64, 16, 0.22);
 
-  /* Theme-uebergreifende Defaults fuer Schatten + Akzent-Goldnoten
-     (User-Apps und Admin nutzen sie gleichermassen). */
-  --schatten:        0 2px 12px rgba(0, 0, 0, 0.13);
-  --schatten-stark:  0 4px 24px rgba(0, 0, 0, 0.22);
-  --gold:            #c8780a;
-  --gold-hell:       #e8970e;
-}
-
-
-/* ── Theme: Dorfkern-Light ────────────────────────────────────
-   Default fuer User-Apps am Tagschein. Greift wenn:
-   - <html data-theme="dorfkern-light"> explizit gesetzt
-   - <html> ohne data-theme (Fallback ueber :root nicht moeglich,
-     also explizit als generischer Selector)
-*/
-:root,
-[data-theme="dorfkern-light"] {
-  --bg-dunkel:     var(--brand-body-bg);
-  --bg-mitte:      var(--brand-paper);
-  --bg-hell:       var(--brand-sage);
-  --text-hell:     var(--brand-ink);
-  --text-mitte:    rgba(20, 20, 20, 0.80);
-  --text-dim:      rgba(20, 20, 20, 0.55);
-  --akzent:        var(--brand-terracotta);
-  --akzent-hell:   var(--brand-terracotta-light);
-  --border:        rgba(20, 20, 20, 0.12);
-
-  /* Legacy-Variablen der User-Apps – Brand-interpoliert. */
-  --gruen-dunkel:  var(--brand-ink);
-  --gruen-mitte:   var(--brand-terracotta);
-  --gruen-hell:    var(--brand-terracotta-light);
-  --gruen-blass:   var(--brand-cream);
-  --gruen-status:  var(--status-gruen);
-  --rot:           var(--status-rot);
-  --creme:         var(--brand-paper);
-  --creme-dunkel:  var(--brand-sage);
-  --creme-warm:    var(--brand-cream);
-  --text-dunkel:   var(--brand-ink);
-  --grau-hell:     var(--brand-paper);
-  --grau-mitte:    rgba(20, 20, 20, 0.45);
-  --bg:            var(--bg-dunkel);
-  --panel:         var(--brand-paper);
-}
-
-
-/* ── Theme: Dorfkern-Dark ─────────────────────────────────────
-   Admin-Default + 'Nachtbetrieb' fuer User-Apps.
-   Aequivalent zum bisherigen dorfkern-admin.css. */
-[data-theme="dorfkern-dark"] {
-  --bg-dunkel:     var(--brand-night-ink);
-  --bg-mitte:      #242a33;
-  --bg-hell:       #2e3640;
-  --text-hell:     var(--brand-cream);
-  --text-mitte:    rgba(242, 237, 227, 0.80);
-  --text-dim:      rgba(242, 237, 227, 0.55);
-  --akzent:        var(--brand-terracotta-light);
-  --akzent-hell:   var(--brand-cream);
-  --border:        rgba(242, 237, 227, 0.15);
-
-  /* Legacy fuer User-Apps im Dark-Mode */
-  --gruen-dunkel:  var(--brand-cream);
-  --gruen-mitte:   var(--brand-terracotta-light);
-  --gruen-hell:    var(--brand-terracotta-light);
-  --gruen-blass:   rgba(242, 237, 227, 0.10);
-  --gruen-status:  var(--status-gruen);
-  --rot:           var(--status-rot);
-  --creme:         var(--brand-night-ink);
-  --creme-dunkel:  #2a2f38;
-  --creme-warm:    #3a3f48;
-  --text-dunkel:   var(--brand-cream);
-  --grau-hell:     rgba(242, 237, 227, 0.06);
-  --grau-mitte:    rgba(242, 237, 227, 0.45);
-  --bg:            var(--bg-dunkel);
-  --panel:         #242a33;
-}
-
-
-/* ── Theme: Dorfkern-Gruen (Dorfladen-Identitaet) ─────────────
-   Klassische Dorfladen-Farben fuer User-Apps, die sich vom
-   neutralen Brand absetzen wollen (z.B. Kasse-Login-Screen). */
-[data-theme="dorfkern-gruen"] {
-  --bg-dunkel:     #f7f3ea;
-  --bg-mitte:      #ffffff;
-  --bg-hell:       #d4e8c2;
-  --text-hell:     #5a7a3a;
-  --text-mitte:    #2e4a1a;
-  --text-dim:      #5a7a3a;
-  --akzent:        #4a9428;
-  --akzent-hell:   #2e6e1a;
-  --border:        rgba(20, 40, 8, 0.15);
-
-  /* Klassische Dorfladen-Variablen (1:1 wie bisher in den Apps) */
+  /* ── Dorfladen-Identitaet (theme-Variablen, einheitlich) ── */
   --gruen-dunkel:  #1a4010;
   --gruen-mitte:   #2e6e1a;
   --gruen-hell:    #4a9428;
   --gruen-blass:   #d4e8c2;
-  --gruen-status:  #2e7a2e;
-  --rot:           #b83030;
+  --gruen-status:  var(--status-gruen);
+  --gold:          #c8780a;
+  --gold-hell:     #e8970e;
+  --rot:           var(--status-rot);
   --creme:         #f7f3ea;
   --creme-dunkel:  #ece3cc;
   --creme-warm:    #e5d9bc;
   --text-dunkel:   #142808;
   --grau-hell:     #f0ece0;
   --grau-mitte:    #a8b890;
-  --bg:            #f7f3ea;
+  --bg:            var(--creme);
   --panel:         #ffffff;
+
+  /* ── Layer-Aliase fuer Common-Komponenten + Admin-UI ─────── */
+  --bg-dunkel:     #f7f3ea;          /* Seiten-BG */
+  --bg-mitte:      #ffffff;          /* Card/Sidebar-BG */
+  --bg-hell:       #d4e8c2;          /* Hover-Flaechen */
+  --text-hell:     #142808;          /* Haupt-Text */
+  --text-mitte:    #2e4a1a;
+  --text-dim:      #5a7a3a;
+  --akzent:        #4a9428;          /* gruen-hell als Akzent */
+  --akzent-hell:   #2e6e1a;
+  --border:        rgba(20, 40, 8, 0.15);
 }
 
 
-/* ── Reset + Typografie ───────────────────────────────────────── */
+/* ── Reset + Typografie ───────────────────────────────────── */
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -192,6 +89,7 @@ h1, h2, h3, h4 {
   font-family: "Fraunces", Georgia, serif;
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--gruen-dunkel);
 }
 
 code, pre, .mono, .monospace {
@@ -203,26 +101,23 @@ a { color: var(--akzent); }
 a:hover { color: var(--akzent-hell); }
 
 
-/* ── Generic Container ────────────────────────────────────────── */
+/* ── Generische Komponenten ───────────────────────────────── */
 
 .card {
   padding: 18px 20px;
-  background: var(--bg-mitte);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-mittel);
   margin-bottom: 16px;
 }
 
-
-/* ── Banner (Info / Warn / Fehler) ────────────────────────────── */
-
 .info-banner {
-  background: var(--brand-sage);
-  border-left: 3px solid var(--akzent);
+  background: var(--gruen-blass);
+  border-left: 3px solid var(--gruen-mitte);
   padding: 10px 14px;
   border-radius: var(--radius-klein);
   margin-bottom: 16px;
-  color: var(--brand-ink);
+  color: var(--text-dunkel);
   font-size: 14px;
 }
 .warn-banner {
@@ -244,27 +139,24 @@ a:hover { color: var(--akzent-hell); }
   font-size: 14px;
 }
 
-
-/* ── Statistik-Zeile + Chips ──────────────────────────────────── */
-
 .stat-zeile {
   display: flex;
   gap: 16px;
   margin-bottom: 14px;
   font-size: 13px;
-  color: var(--text-dim);
+  color: var(--text-mitte);
   flex-wrap: wrap;
 }
 
 .stat-zeile .chip {
   padding: 2px 10px;
   border-radius: 10px;
-  background: var(--bg-hell);
-  color: var(--text-hell);
+  background: var(--grau-hell);
+  color: var(--text-dunkel);
 }
 
 
-/* ── Sidebar-Basis ────────────────────────────────────────────── */
+/* ── Sidebar-Basis ────────────────────────────────────────── */
 
 .sidebar-section {
   padding: 0 12px 8px 12px;
@@ -275,7 +167,7 @@ a:hover { color: var(--akzent-hell); }
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--text-dim);
+  color: var(--grau-mitte);
   padding: 8px 8px 4px 8px;
 }
 
@@ -293,12 +185,12 @@ a:hover { color: var(--akzent-hell); }
   text-decoration: none;
 }
 .sidebar-item:hover {
-  background: var(--bg-hell);
-  color: var(--brand-ink);
+  background: var(--grau-hell);
+  color: var(--gruen-dunkel);
 }
 .sidebar-item.aktiv {
-  background: var(--brand-sage);
-  color: var(--akzent);
+  background: var(--gruen-blass);
+  color: var(--gruen-dunkel);
   font-weight: 700;
 }
 .sidebar-item .icon {
@@ -308,12 +200,12 @@ a:hover { color: var(--akzent-hell); }
 
 .sidebar-divider {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--creme-dunkel);
   margin: 8px 12px;
 }
 
 
-/* ── Klappbare Sidebar-Untergruppen ─────────────────────────── */
+/* ── Klappbare Sidebar-Untergruppen ─────────────────────── */
 
 .sidebar-subgroup { padding: 0; }
 .sidebar-subgroup-title {
@@ -325,12 +217,12 @@ a:hover { color: var(--akzent-hell); }
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--grau-mitte);
   cursor: pointer;
   user-select: none;
   border-radius: var(--radius-klein);
 }
-.sidebar-subgroup-title:hover { color: var(--text-hell); }
+.sidebar-subgroup-title:hover { color: var(--gruen-dunkel); }
 .sidebar-subgroup-title .caret {
   font-family: "JetBrains Mono", monospace;
   font-size: 9px;
@@ -351,13 +243,13 @@ a:hover { color: var(--akzent-hell); }
 .sidebar-subgroup.zu .sidebar-subgroup-items { max-height: 0; }
 
 
-/* ── Buttons ──────────────────────────────────────────────────── */
+/* ── Buttons ──────────────────────────────────────────────── */
 
 .btn,
 button.btn {
   padding: 8px 16px;
   background: var(--akzent);
-  color: var(--brand-cream);
+  color: white;
   border: none;
   border-radius: var(--radius-klein);
   font: inherit;
@@ -367,7 +259,6 @@ button.btn {
 }
 .btn:hover:not(:disabled) {
   background: var(--akzent-hell);
-  color: var(--brand-ink);
 }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -379,21 +270,21 @@ button.btn {
 }
 .btn-danger:hover:not(:disabled) {
   background: var(--status-rot);
-  color: var(--brand-cream);
+  color: white;
 }
 
 .btn-ghost {
   background: transparent;
-  color: var(--text-dim);
+  color: var(--text-mitte);
   border: 1px solid var(--border);
 }
 .btn-ghost:hover:not(:disabled) {
   color: var(--text-hell);
-  background: var(--bg-hell);
+  background: var(--grau-hell);
 }
 
 
-/* ── Form-Inputs (Default, via Klasse) ────────────────────────── */
+/* ── Form-Inputs (Default, via Klasse) ────────────────────── */
 
 .dorfkern-input,
 input[type="text"].dorfkern-input,
@@ -403,8 +294,8 @@ select.dorfkern-input,
 textarea.dorfkern-input {
   padding: 8px 12px;
   border: 1px solid var(--border);
-  background: var(--brand-paper);
-  color: var(--brand-ink);
+  background: var(--panel);
+  color: var(--text-dunkel);
   border-radius: var(--radius-klein);
   font: inherit;
 }
@@ -415,7 +306,7 @@ textarea.dorfkern-input {
 }
 
 
-/* ── Generische Badges ────────────────────────────────────────── */
+/* ── Generische Badges ────────────────────────────────────── */
 
 .badge {
   display: inline-block;
@@ -423,17 +314,14 @@ textarea.dorfkern-input {
   border-radius: 3px;
   font-size: 10px;
   letter-spacing: 0.03em;
-  background: var(--bg-hell);
+  background: var(--grau-hell);
   color: var(--text-mitte);
   white-space: nowrap;
 }
 .badge.akzent { color: var(--akzent); border: 1px solid var(--akzent); }
-.badge.muted  { color: var(--text-dim); border: 1px solid var(--border); }
+.badge.muted  { color: var(--grau-mitte); border: 1px solid var(--border); }
 
 
-/* ── Dorfkern-Mark-Container ──────────────────────────────────── */
+/* ── Dorfkern-Mark-Container ──────────────────────────────── */
 
-/* Wird von common/brand/dorfkern-logo.js gesteuert. Wir liefern nur
-   den default-Akzent als CSS-Variable, damit die Marke sich ans
-   aktuelle Theme anpasst (Light -> terracotta, Dark -> terracottaLight). */
-.dk-logo { --dk-accent: var(--akzent); }
+.dk-logo { --dk-accent: var(--gold); }

@@ -35,19 +35,23 @@ class TestCommonStatic(unittest.TestCase):
             r = c.get('/common-static/dorfkern-admin.css')
             self.assertEqual(r.status_code, 200)
             body = r.data.decode('utf-8')
-            # Admin-spezifische Layout-Werte. Themes selbst liegen in
-            # dorfkern.css; Admin hat KEIN eigenes Farbschema mehr.
-            self.assertIn('--schatten-stark', body)
+            # Admin-spezifische Layout-Werte. Kein eigenes Farbschema.
             self.assertIn('--bg-karte', body)
             self.assertIn('--radius-klein', body)
 
-    def test_dorfkern_css_hat_alle_drei_themes(self):
+    def test_dorfkern_css_einheitliches_theme(self):
+        """Es gibt nur ein Theme – Brand-Tokens + Dorfladen-Identitaet."""
         app = self._app()
         with app.test_client() as c:
             body = c.get('/common-static/dorfkern.css').data.decode('utf-8')
-        for theme in ['dorfkern-light', 'dorfkern-dark', 'dorfkern-gruen']:
-            self.assertIn(f'[data-theme="{theme}"]', body,
-                          f'Theme {theme} fehlt in dorfkern.css')
+        # Brand-Tokens sind da
+        for hex_wert in ['#141414', '#f2ede3', '#b65c3a']:
+            self.assertIn(hex_wert, body)
+        # Dorfladen-Variablen
+        for v in ['--gruen-dunkel', '--creme', '--gold', '--text-dunkel']:
+            self.assertIn(v, body)
+        # KEIN data-theme-Selektor mehr (nur ein Theme)
+        self.assertNotIn('[data-theme=', body)
 
     def test_dorfkern_css_nutzt_offizielle_brand_tokens(self):
         """Sanity: die shared CSS enthaelt die offiziellen Dorfkern-Farben
