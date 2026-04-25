@@ -1,15 +1,16 @@
 /* ========================================================================
    Dorfkern-Admin – Layout-Erweiterungen
    ------------------------------------------------------------------------
-   Theme-Variablen liegen in dorfkern.css (einheitliches Theme).
+   Theme-Variablen liegen in dorfkern.css (einheitliches Brand-Theme).
    Hier nur die admin-spezifischen Layout-Werte:
    - groesserer Card-Radius (Desktop-Maus-Bedienung)
-   - separater Karten-BG (Cards heller als Sidebar)
-   - eigener Schatten-Stark (Tiefenwirkung)
+   - separater Karten-BG (immer weiss, fuer Kontrast zum Cream-Body)
+   - eigener Schatten-Stark (Tiefenwirkung – zarte Tinte, kein Dark-Mode)
    ======================================================================== */
 
 :root {
   --radius-klein:    8px;       /* Admin-Override (Shared: 4px) */
   --bg-karte:        #ffffff;
-  --schatten-stark:  0 4px 24px rgba(0, 0, 0, 0.30);
+  --schatten-stark:  0 8px 24px rgba(20, 20, 20, 0.12),
+                     0 2px 6px  rgba(20, 20, 20, 0.06);
 }
