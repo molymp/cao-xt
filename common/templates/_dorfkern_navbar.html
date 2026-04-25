@@ -33,6 +33,9 @@
        nav_extra_classes     optional zusaetzliche CSS-Klassen am .navbar
        nav_show_logout       optional bool, Default true (Login-Seiten setzen
                              False)
+       nav_logo_theme        'light' (Default, Tinte auf Cream-Navbar) oder
+                             'dark'  (Cream auf dunkelgruener Navbar) –
+                             steuert die Logo-SVG-Farben.
 #}
 <div class="navbar{% if nav_extra_classes %} {{ nav_extra_classes }}{% endif %}">
   <span class="logo">
@@ -40,6 +43,7 @@
        autoplay=true: Aufbau-Animation laeuft beim ersten Sichtbarwerden,
        danach bleibt das Mark statisch sichtbar (forwards-Fill). #}
     <span data-dorfkern-logo="mark" data-size="48"
+          data-theme="{{ nav_logo_theme|default('light') }}"
           data-autoplay="true"></span>
     <span class="logo-text">
       <span class="logo-name">{{ firma_name }}</span>
