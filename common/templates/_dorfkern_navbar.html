@@ -66,10 +66,6 @@
     {% endif %}
   {% endif %}
 
-  {% if nav_show_theme_switcher|default(false) %}
-    {% include '_theme_switcher.html' %}
-  {% endif %}
-
   {% if nav_show_logout|default(true) and nav_user_name %}
   <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
   {% endif %}
