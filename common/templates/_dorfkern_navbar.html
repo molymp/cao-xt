@@ -1,0 +1,79 @@
+{# Dorfkern-Navbar – wiederverwendbares Markup fuer Admin/Kasse/Kiosk/Orga.
+
+   Verwendung im jeweiligen base.html, NACH der Navbar-CSS:
+
+       {% set nav_logo_sub      = 'Admin' %}
+       {% set nav_aktive_app    = 'admin' %}
+       {% set nav_aktive_app_url= '/' %}
+       {% set nav_user_name     = current_user.login_name if current_user else '' %}
+       {% set nav_db_status     = db_ok %}            (optional)
+       {% set nav_extra_classes = 'trainings-aktiv' %}(optional)
+       {% include '_dorfkern_navbar.html' %}
+
+   Mehr-Zeilen-Inhalte als String-Slots:
+
+       {% set nav_badges_html %}
+         <span class="training-badge">🎓 Trainingsmodus</span>
+       {% endset %}
+       {% set nav_extra_html %}
+         <a href="/admin/" class="nav-btn">⚙️ Einstellungen</a>
+         <a href="/handbuch" class="nav-btn">📖 Handbuch</a>
+       {% endset %}
+
+   Slots:
+       nav_logo_sub          unter dem Firmennamen (z.B. 'Admin', 'T1 · DB')
+       nav_aktive_app        eine von: 'admin'|'kasse'|'kiosk'|'orga'
+       nav_aktive_app_url    URL der eigenen App fuer den Switcher
+       nav_user_name         Anzeige in der Uhrzeit-Spalte
+       nav_db_status         optional bool – wenn gesetzt, DB-Badge anzeigen
+       nav_badges_html       optional HTML rechts vom Switcher
+                             (Status-Badges wie Trainingsmodus)
+       nav_extra_html        optional HTML links vor DB/Theme/Logout
+                             (App-spezifische Nav-Buttons)
+       nav_extra_classes     optional zusaetzliche CSS-Klassen am .navbar
+       nav_show_logout       optional bool, Default true (Login-Seiten setzen
+                             False)
+#}
+<div class="navbar{% if nav_extra_classes %} {{ nav_extra_classes }}{% endif %}">
+  <span class="logo">
+    {# Dorfkern-Mark – gemeinsam ueber common/brand/dorfkern-logo.js #}
+    <span data-dorfkern-logo="mark" data-size="48"
+          data-autoplay="false"></span>
+    <span class="logo-text">
+      <span class="logo-name">{{ firma_name }}</span>
+      {% if nav_logo_sub %}
+      <span class="logo-sub">{{ nav_logo_sub }}</span>
+      {% endif %}
+    </span>
+  </span>
+
+  {% if nav_badges_html %}{{ nav_badges_html|safe }}{% endif %}
+
+  {# App-Switcher: Kiosk → Kasse → Orga → Admin #}
+  {% set aktive_app = nav_aktive_app|default('admin') %}
+  {% set aktive_app_url = nav_aktive_app_url|default('/') %}
+  {% include '_app_switcher.html' %}
+
+  <div class="spacer" style="flex:1"></div>
+
+  {% if nav_extra_html %}{{ nav_extra_html|safe }}{% endif %}
+
+  {% if nav_db_status is defined %}
+    {% if nav_db_status %}
+    <span class="db-badge ok">DB ✓</span>
+    {% else %}
+    <span class="db-badge err">DB ✗</span>
+    {% endif %}
+  {% endif %}
+
+  {% if nav_show_theme_switcher|default(false) %}
+    {% include '_theme_switcher.html' %}
+  {% endif %}
+
+  {% if nav_show_logout|default(true) and nav_user_name %}
+  <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
+  {% endif %}
+
+  {% set navbar_user_name = nav_user_name|default('') %}
+  {% include '_navbar_uhrzeit.html' %}
+</div>

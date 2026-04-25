@@ -427,25 +427,23 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 </head>
 <body>
 {% include '_git_badge.html' %}
-<div class="navbar{% if trainings_modus %} trainings-aktiv{% elif tse_nicht_produktiv %} sandbox-aktiv{% endif %}">
-  <span class="logo">
-    <!-- Dorfkern-Mark via gemeinsames JS-Embed (common/brand/dorfkern-logo.js) -->
-    <span data-dorfkern-logo="mark" data-size="48" data-autoplay="false"></span>
-    <span class="logo-text">
-      <span class="logo-name">{{ firma_name }}</span>
-      <span class="logo-sub">T{{ terminal_nr }} · {{ db_name }}</span>
-    </span>
-  </span>
+{% set nav_logo_sub      = 'T' ~ terminal_nr ~ ' · ' ~ db_name %}
+{% set nav_aktive_app    = 'kasse' %}
+{% set nav_aktive_app_url= '/kasse' %}
+{% set nav_user_name     = ma_login_name %}
+{% if trainings_modus %}
+  {% set nav_extra_classes = 'trainings-aktiv' %}
+{% elif tse_nicht_produktiv %}
+  {% set nav_extra_classes = 'sandbox-aktiv' %}
+{% endif %}
+{% set nav_badges_html %}
   {% if trainings_modus %}
-  <span class="training-badge">🎓 Trainingsmodus</span>
+    <span class="training-badge">🎓 Trainingsmodus</span>
   {% elif tse_nicht_produktiv %}
-  <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
+    <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
   {% endif %}
-  {# App-Switcher: Kiosk → Kasse → Orga → Admin #}
-  {% set aktive_app = 'kasse' %}
-  {% set aktive_app_url = '/kasse' %}
-  {% include '_app_switcher.html' %}
-  <div style="flex:1"></div>
+{% endset %}
+{% set nav_extra_html %}
   {% block nav_extra %}{% endblock %}
   {% if update_verfuegbar %}
   <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
@@ -454,10 +452,8 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
   {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
-  <a href="/logout"           class="nav-btn danger">Abmelden</a>
-  {% set navbar_user_name = ma_login_name %}
-  {% include '_navbar_uhrzeit.html' %}
-</div>
+{% endset %}
+{% include '_dorfkern_navbar.html' %}
 
 {% block content %}{% endblock %}
 
