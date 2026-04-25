@@ -37,8 +37,12 @@ def register_common_static(app, url_prefix: str = '/common-static') -> None:
         return
 
     def _serve(dateiname):
-        return send_from_directory(static_dir, dateiname,
-                                   max_age=60 * 60 * 24)
+        # max_age=0 + conditional=True (Flask-Default): Browser fragt jedes
+        # Mal mit If-Modified-Since/ETag nach – bei unveraenderter Datei
+        # antwortet Flask mit 304 (kein Transfer). Verhindert, dass
+        # CSS-Aenderungen wegen langer Cache-Lifetime in der Browser-
+        # Cache haengen bleiben.
+        return send_from_directory(static_dir, dateiname, max_age=0)
 
     _serve.__name__ = endpoint
     app.add_url_rule(f'{url_prefix}/<path:dateiname>',

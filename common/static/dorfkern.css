@@ -1,21 +1,26 @@
 /* ========================================================================
    Dorfkern – einheitliches Theme fuer alle Apps
    ------------------------------------------------------------------------
-   Dorfladen-Identitaet: cremefarbenes Papier + dunkles Gruen + Gold-
-   Akzent. Brand-Tokens (ink/cream/sage/terracotta) bleiben als
-   technische Schicht verfuegbar fuer neue Templates die sich auf
-   Logo-Branding beziehen.
+   Offizielles Brand: cremefarbenes Papier (Body), dunkelgruenes Fraunces-
+   Display (Headlines), Terracotta (Akzent/CTA), Salbei-Gruen (sekundaere
+   Flaechen) und Tinten-Schwarz (Body-Text).
+   Brand-Tokens sind die Quelle der Wahrheit (--brand-*); die alten
+   Dorfladen-Variablen (--gruen-*, --gold, --creme, ...) bleiben als
+   Aliase auf die Brand-Tokens, damit Bestands-Templates ohne Aenderung
+   weiter funktionieren.
    Wird von allen vier Apps via /common-static/dorfkern.css geladen.
    ======================================================================== */
 
 :root {
-  /* ── Brand-Tokens aus dorfkern-logo.js / dk-brand.jsx ─────── */
+  /* ── Brand-Tokens (offiziell, aus dorfkern-logo.js / dk-brand.jsx) ── */
   --brand-ink:              #141414;
   --brand-cream:            #f2ede3;
   --brand-paper:            #faf7f0;
   --brand-sage:             #d9dcc9;
+  --brand-sage-dunkel:      #b8c0a6;
   --brand-terracotta:       #b65c3a;
   --brand-terracotta-light: #e08a66;
+  --brand-terracotta-dunkel:#8a3f25;
   --brand-night-ink:        #1b2027;
   --brand-body-bg:          #f0eee9;
 
@@ -31,37 +36,42 @@
   --radius:          12px;
   --sidebar-w:       220px;
   --navbar-h:        60px;
-  --schatten:        0 2px 12px rgba(26, 64, 16, 0.13);
-  --schatten-stark:  0 4px 24px rgba(26, 64, 16, 0.22);
+  --schatten:        0 1px 3px rgba(20, 20, 20, 0.08), 0 1px 2px rgba(20, 20, 20, 0.04);
+  --schatten-stark:  0 8px 24px rgba(20, 20, 20, 0.12), 0 2px 6px rgba(20, 20, 20, 0.06);
 
-  /* ── Dorfladen-Identitaet (theme-Variablen, einheitlich) ── */
-  --gruen-dunkel:  #1a4010;
+  /* ── Dorfladen-Aliase (Legacy-Variablen, jetzt auf Brand abgebildet) ── */
+  --gruen-dunkel:  #1a4010;            /* Headlines + Sidebar-Akzent */
   --gruen-mitte:   #2e6e1a;
   --gruen-hell:    #4a9428;
-  --gruen-blass:   #d4e8c2;
+  --gruen-blass:   var(--brand-sage);
   --gruen-status:  var(--status-gruen);
-  --gold:          #c8780a;
-  --gold-hell:     #e8970e;
+  --gruen:         var(--status-gruen);
+  /* "gold" jetzt = Terracotta-Akzent (Brand-CTA) */
+  --gold:          var(--brand-terracotta);
+  --gold-hell:     var(--brand-terracotta-light);
   --rot:           var(--status-rot);
-  --creme:         #f7f3ea;
-  --creme-dunkel:  #ece3cc;
+  --creme:         var(--brand-body-bg);
+  --creme-dunkel:  var(--brand-cream);
   --creme-warm:    #e5d9bc;
-  --text-dunkel:   #142808;
-  --grau-hell:     #f0ece0;
-  --grau-mitte:    #a8b890;
-  --bg:            var(--creme);
+  --text-dunkel:   var(--brand-ink);
+  --grau-hell:     var(--brand-cream);
+  --grau-mitte:    #8a8a82;
+  --bg:            var(--brand-body-bg);
   --panel:         #ffffff;
 
   /* ── Layer-Aliase fuer Common-Komponenten + Admin-UI ─────── */
-  --bg-dunkel:     #f7f3ea;          /* Seiten-BG */
-  --bg-mitte:      #ffffff;          /* Card/Sidebar-BG */
-  --bg-hell:       #d4e8c2;          /* Hover-Flaechen */
-  --text-hell:     #142808;          /* Haupt-Text */
-  --text-mitte:    #2e4a1a;
-  --text-dim:      #5a7a3a;
-  --akzent:        #4a9428;          /* gruen-hell als Akzent */
-  --akzent-hell:   #2e6e1a;
-  --border:        rgba(20, 40, 8, 0.15);
+  --bg-dunkel:     var(--brand-body-bg);   /* Seiten-BG (Body) */
+  --bg-mitte:      #ffffff;                /* Card/Sidebar-BG */
+  --bg-hell:       var(--brand-sage);      /* Hover-/Sage-Flaechen */
+  --bg-karte:      #ffffff;
+  --text-hell:     var(--brand-ink);       /* Haupt-Text */
+  --text-mitte:    #2a2a28;
+  --text-dim:      #6a6a64;
+  --akzent:        var(--brand-terracotta);
+  --akzent-hell:   var(--brand-terracotta-dunkel);
+  --akzent-blass:  #f4dccf;                /* hellster Terracotta-Wash */
+  --border:        rgba(20, 20, 20, 0.10);
+  --border-hell:   rgba(20, 20, 20, 0.18);
 }
 
 
@@ -112,7 +122,7 @@ a:hover { color: var(--akzent-hell); }
 }
 
 .info-banner {
-  background: var(--gruen-blass);
+  background: var(--brand-sage);
   border-left: 3px solid var(--gruen-mitte);
   padding: 10px 14px;
   border-radius: var(--radius-klein);
@@ -151,7 +161,7 @@ a:hover { color: var(--akzent-hell); }
 .stat-zeile .chip {
   padding: 2px 10px;
   border-radius: 10px;
-  background: var(--grau-hell);
+  background: var(--brand-cream);
   color: var(--text-dunkel);
 }
 
@@ -167,7 +177,7 @@ a:hover { color: var(--akzent-hell); }
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--grau-mitte);
+  color: var(--text-dim);
   padding: 8px 8px 4px 8px;
 }
 
@@ -185,12 +195,12 @@ a:hover { color: var(--akzent-hell); }
   text-decoration: none;
 }
 .sidebar-item:hover {
-  background: var(--grau-hell);
+  background: var(--brand-cream);
   color: var(--gruen-dunkel);
 }
 .sidebar-item.aktiv {
-  background: var(--gruen-blass);
-  color: var(--gruen-dunkel);
+  background: var(--brand-sage);
+  color: var(--brand-terracotta-dunkel);
   font-weight: 700;
 }
 .sidebar-item .icon {
@@ -200,7 +210,7 @@ a:hover { color: var(--akzent-hell); }
 
 .sidebar-divider {
   border: none;
-  border-top: 1px solid var(--creme-dunkel);
+  border-top: 1px solid var(--border);
   margin: 8px 12px;
 }
 
@@ -217,7 +227,7 @@ a:hover { color: var(--akzent-hell); }
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--grau-mitte);
+  color: var(--text-dim);
   cursor: pointer;
   user-select: none;
   border-radius: var(--radius-klein);
@@ -280,7 +290,7 @@ button.btn {
 }
 .btn-ghost:hover:not(:disabled) {
   color: var(--text-hell);
-  background: var(--grau-hell);
+  background: var(--brand-cream);
 }
 
 
@@ -314,14 +324,83 @@ textarea.dorfkern-input {
   border-radius: 3px;
   font-size: 10px;
   letter-spacing: 0.03em;
-  background: var(--grau-hell);
+  background: var(--brand-cream);
   color: var(--text-mitte);
   white-space: nowrap;
 }
 .badge.akzent { color: var(--akzent); border: 1px solid var(--akzent); }
-.badge.muted  { color: var(--grau-mitte); border: 1px solid var(--border); }
+.badge.muted  { color: var(--text-dim); border: 1px solid var(--border); }
 
 
 /* ── Dorfkern-Mark-Container ──────────────────────────────── */
 
-.dk-logo { --dk-accent: var(--gold); }
+.dk-logo { --dk-accent: var(--brand-terracotta); }
+
+
+/* ========================================================================
+   App-Switcher (gemeinsam fuer alle Apps)
+   ------------------------------------------------------------------------
+   Aktiver App-Knopf: Terracotta-Hintergrund + cremes Label.
+   Andere (klickbar):  Salbei-Outline auf creme + Tinten-Text.
+   Andere (inaktiv):   muted-Grau-Outline + dim-Text.
+   Wirkt sowohl auf hellem als auch auf dunkelgruenem Navbar-Hintergrund.
+   ======================================================================== */
+
+.navbar .nav-btn-app-aktiv,
+.navbar .nav-btn-switch,
+.navbar .nav-btn-app-inaktiv,
+.navbar .nav-app-aktiv,
+.navbar .nav-app-switch,
+.navbar .nav-app-inaktiv {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-klein);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-decoration: none;
+  font-family: 'Nunito', sans-serif;
+  min-height: 38px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  letter-spacing: 0.01em;
+}
+
+.navbar .nav-btn-app-aktiv,
+.navbar .nav-app-aktiv {
+  background: var(--brand-terracotta) !important;
+  color: var(--brand-paper) !important;
+  border: 2px solid var(--brand-terracotta) !important;
+  opacity: 1 !important;
+}
+.navbar .nav-btn-app-aktiv:hover,
+.navbar .nav-app-aktiv:hover {
+  background: var(--brand-terracotta-dunkel) !important;
+  color: var(--brand-paper) !important;
+}
+
+.navbar .nav-btn-switch,
+.navbar .nav-app-switch {
+  background: var(--brand-sage) !important;
+  color: var(--brand-ink) !important;
+  border: 2px solid var(--brand-sage-dunkel) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+.navbar .nav-btn-switch:hover,
+.navbar .nav-app-switch:hover {
+  background: var(--brand-sage-dunkel) !important;
+  color: var(--brand-terracotta-dunkel) !important;
+}
+
+.navbar .nav-btn-app-inaktiv,
+.navbar .nav-app-inaktiv {
+  background: transparent !important;
+  color: var(--text-dim) !important;
+  border: 2px dashed var(--border-hell) !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+  cursor: default !important;
+}
