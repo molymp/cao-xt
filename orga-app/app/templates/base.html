@@ -11,33 +11,13 @@
       media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
-<!-- Dorfkern-Shared-CSS (Basis: gruenes Theme, Komponenten) -->
+<!-- Dorfkern-Shared-CSS – Themes: light/dark/gruen ueber data-theme -->
 <link rel="stylesheet" href="/common-static/dorfkern.css">
+{% set theme_default = 'dorfkern-gruen' %}
+{% include '_theme_init.html' %}
 <style>
-/* ── Farb-Variablen (Habacher Dorfladen) ──────────────────── */
-:root {
-  --gruen-dunkel:  #1a4010;
-  --gruen-mitte:   #2e6e1a;
-  --gruen-hell:    #4a9428;
-  --gruen-blass:   #d4e8c2;
-  --gold:          #c8780a;
-  --gold-hell:     #e8970e;
-  --creme:         #f7f3ea;
-  --creme-dunkel:  #ece3cc;
-  --creme-warm:    #e5d9bc;
-  --text-dunkel:   #142808;
-  --text-mitte:    #2e4a1a;
-  --text-hell:     #5a7a3a;
-  --grau-hell:     #f0ece0;
-  --grau-mitte:    #a8b890;
-  --rot:           #b83030;
-  --schatten:      0 2px 12px rgba(26,64,16,0.13);
-  --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
-  --radius:        12px;
-  --radius-klein:  8px;
-  --sidebar-w:     220px;
-  --navbar-h:      60px;
-}
+/* Farb-Variablen kommen aus dorfkern.css (Theme [data-theme=...]).
+   Hier nur app-spezifische Layout-Anpassungen. */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -404,11 +384,12 @@ a { text-decoration: none; color: inherit; }
 <div class="layout">
 
   <!-- Navbar -->
-  {% set nav_logo_sub      = 'Orga' %}
-  {% set nav_aktive_app    = 'orga' %}
-  {% set nav_aktive_app_url= '/' %}
-  {% set nav_user_name     = current_user.login_name if current_user else '' %}
-  {% set nav_db_status     = db_ok %}
+  {% set nav_logo_sub          = 'Orga' %}
+  {% set nav_aktive_app        = 'orga' %}
+  {% set nav_aktive_app_url    = '/' %}
+  {% set nav_user_name         = current_user.login_name if current_user else '' %}
+  {% set nav_db_status         = db_ok %}
+  {% set nav_show_theme_switcher = true %}
   {% include '_dorfkern_navbar.html' %}
 
   <!-- Body -->

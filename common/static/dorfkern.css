@@ -55,8 +55,16 @@
   --radius-klein:  4px;
   --radius-mittel: 6px;
   --radius-gross:  10px;
+  --radius:        12px;          /* fuer User-App-Karten */
   --sidebar-w:     220px;
-  --navbar-h:      56px;
+  --navbar-h:      60px;
+
+  /* Theme-uebergreifende Defaults fuer Schatten + Akzent-Goldnoten
+     (User-Apps und Admin nutzen sie gleichermassen). */
+  --schatten:        0 2px 12px rgba(0, 0, 0, 0.13);
+  --schatten-stark:  0 4px 24px rgba(0, 0, 0, 0.22);
+  --gold:            #c8780a;
+  --gold-hell:       #e8970e;
 }
 
 
@@ -78,12 +86,21 @@
   --akzent-hell:   var(--brand-terracotta-light);
   --border:        rgba(20, 20, 20, 0.12);
 
-  /* Legacy-Aliase, damit User-App-CSS nicht bricht */
+  /* Legacy-Variablen der User-Apps – Brand-interpoliert. */
   --gruen-dunkel:  var(--brand-ink);
   --gruen-mitte:   var(--brand-terracotta);
   --gruen-hell:    var(--brand-terracotta-light);
   --gruen-blass:   var(--brand-cream);
+  --gruen-status:  var(--status-gruen);
   --rot:           var(--status-rot);
+  --creme:         var(--brand-paper);
+  --creme-dunkel:  var(--brand-sage);
+  --creme-warm:    var(--brand-cream);
+  --text-dunkel:   var(--brand-ink);
+  --grau-hell:     var(--brand-paper);
+  --grau-mitte:    rgba(20, 20, 20, 0.45);
+  --bg:            var(--bg-dunkel);
+  --panel:         var(--brand-paper);
 }
 
 
@@ -101,11 +118,21 @@
   --akzent-hell:   var(--brand-cream);
   --border:        rgba(242, 237, 227, 0.15);
 
+  /* Legacy fuer User-Apps im Dark-Mode */
   --gruen-dunkel:  var(--brand-cream);
   --gruen-mitte:   var(--brand-terracotta-light);
   --gruen-hell:    var(--brand-terracotta-light);
-  --gruen-blass:   var(--brand-cream);
+  --gruen-blass:   rgba(242, 237, 227, 0.10);
+  --gruen-status:  var(--status-gruen);
   --rot:           var(--status-rot);
+  --creme:         var(--brand-night-ink);
+  --creme-dunkel:  #2a2f38;
+  --creme-warm:    #3a3f48;
+  --text-dunkel:   var(--brand-cream);
+  --grau-hell:     rgba(242, 237, 227, 0.06);
+  --grau-mitte:    rgba(242, 237, 227, 0.45);
+  --bg:            var(--bg-dunkel);
+  --panel:         #242a33;
 }
 
 
@@ -116,18 +143,28 @@
   --bg-dunkel:     #f7f3ea;
   --bg-mitte:      #ffffff;
   --bg-hell:       #d4e8c2;
-  --text-hell:     #142808;
+  --text-hell:     #5a7a3a;
   --text-mitte:    #2e4a1a;
   --text-dim:      #5a7a3a;
   --akzent:        #4a9428;
   --akzent-hell:   #2e6e1a;
   --border:        rgba(20, 40, 8, 0.15);
 
+  /* Klassische Dorfladen-Variablen (1:1 wie bisher in den Apps) */
   --gruen-dunkel:  #1a4010;
   --gruen-mitte:   #2e6e1a;
   --gruen-hell:    #4a9428;
   --gruen-blass:   #d4e8c2;
+  --gruen-status:  #2e7a2e;
   --rot:           #b83030;
+  --creme:         #f7f3ea;
+  --creme-dunkel:  #ece3cc;
+  --creme-warm:    #e5d9bc;
+  --text-dunkel:   #142808;
+  --grau-hell:     #f0ece0;
+  --grau-mitte:    #a8b890;
+  --bg:            #f7f3ea;
+  --panel:         #ffffff;
 }
 
 

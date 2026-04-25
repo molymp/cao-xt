@@ -12,35 +12,16 @@
       media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
-<!-- Dorfkern-Shared-CSS (Basis: gruenes Theme, Komponenten) -->
+<!-- Dorfkern-Shared-CSS – Themes: light/dark/gruen ueber data-theme -->
 <link rel="stylesheet" href="/common-static/dorfkern.css">
+{% set theme_default = 'dorfkern-gruen' %}
+{% include '_theme_init.html' %}
 <style>
-/* ── Farb-Variablen (Habacher Dorfladen) ────────────────── */
+/* Theme-Variablen (gruen-dunkel/creme/text-dunkel/...) kommen aus
+   dorfkern.css. Hier nur Kasse-spezifische Aliase und Layout. */
 :root {
-  --gruen-dunkel:  #1a4010;
-  --gruen-mitte:   #2e6e1a;
-  --gruen-hell:    #4a9428;
-  --gruen-blass:   #d4e8c2;
-  --gold:          #c8780a;
-  --gold-hell:     #e8970e;
-  --creme:         #f7f3ea;
-  --creme-dunkel:  #ece3cc;
-  --creme-warm:    #e5d9bc;
-  --text-dunkel:   #142808;
-  --text-mitte:    #2e4a1a;
-  --text-hell:     #5a7a3a;
-  --grau-hell:     #f0ece0;
-  --grau-mitte:    #a8b890;
-  --rot:           #b83030;
-  --gruen-status:  #2e7a2e;
-  --schatten:      0 2px 12px rgba(26,64,16,0.13);
-  --schatten-stark: 0 4px 24px rgba(26,64,16,0.22);
-  --radius:        12px;
-  --radius-klein:  8px;
-
-  /* Kompatibilitäts-Aliase für bestehende Templates */
   --bg:       var(--creme);
-  --panel:    white;
+  --panel:    var(--panel);
   --card:     var(--grau-hell);
   --accent:   var(--gold);
   --green:    var(--gruen-status);
@@ -453,6 +434,7 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
 {% endset %}
+{% set nav_show_theme_switcher = true %}
 {% include '_dorfkern_navbar.html' %}
 
 {% block content %}{% endblock %}
