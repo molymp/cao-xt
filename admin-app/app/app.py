@@ -1692,6 +1692,18 @@ def api_system_mitarbeiter():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+# ── System: UI-Theme (zentral fuer alle Apps) ────────────────────
+
+@app.post('/api/system/theme')
+@_login_required
+def api_system_theme_setzen():
+    """Speichert das UI-Theme in DORFKERN_KONFIG (gilt fuer alle Apps)."""
+    from common import ui_theme
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('mitarbeiter_id')
+    return jsonify(ui_theme.set_theme(body.get('theme', ''), ma_id=ma_id))
+
+
 # ── System: Updates ──────────────────────────────────────────────
 
 @app.route('/system/updates')
@@ -1880,6 +1892,10 @@ def _brand_asset(dateiname):
 # ── Gemeinsame Statik (common/static/*) – dorfkern.css et al. ──
 from common.static_serving import register_common_static as _reg_common_static  # noqa: E402
 _reg_common_static(app)
+
+# ── UI-Theme (zentral aus DORFKERN_KONFIG) ──────────────────────
+from common.ui_theme import register_theme_context as _reg_ui_theme  # noqa: E402
+_reg_ui_theme(app)
 
 
 # ── Legacy-Redirects (Dorfkern v2 Rename /verwaltung → /admin) ─

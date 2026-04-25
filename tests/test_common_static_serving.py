@@ -35,11 +35,11 @@ class TestCommonStatic(unittest.TestCase):
             r = c.get('/common-static/dorfkern-admin.css')
             self.assertEqual(r.status_code, 200)
             body = r.data.decode('utf-8')
-            # Admin-spezifische Layout-Werte (Schatten, Gold-Akzent,
-            # Karten-BG pro Theme). Themes selbst liegen in dorfkern.css.
-            self.assertIn('--schatten', body)
-            self.assertIn('--gold', body)
+            # Admin-spezifische Layout-Werte. Themes selbst liegen in
+            # dorfkern.css; Admin hat KEIN eigenes Farbschema mehr.
+            self.assertIn('--schatten-stark', body)
             self.assertIn('--bg-karte', body)
+            self.assertIn('--radius-klein', body)
 
     def test_dorfkern_css_hat_alle_drei_themes(self):
         app = self._app()

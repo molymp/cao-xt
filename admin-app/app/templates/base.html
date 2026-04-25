@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="{{ ui_theme }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,8 +14,6 @@
 <!-- Dorfkern-Shared-CSS: Basis-Themes + Admin-Layout-Erweiterungen -->
 <link rel="stylesheet" href="/common-static/dorfkern.css">
 <link rel="stylesheet" href="/common-static/dorfkern-admin.css">
-{% set theme_default = 'dorfkern-dark' %}
-{% include '_theme_init.html' %}
 <style>
 /* ── Admin-spezifisches Layout ─────────────────────────────────
    Farb-Variablen, Typografie, .sidebar-*-Komponenten kommen aus

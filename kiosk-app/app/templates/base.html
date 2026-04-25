@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="{{ ui_theme }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,8 +10,6 @@
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
     <!-- Dorfkern-Shared-CSS – Themes light/dark/gruen via data-theme -->
     <link rel="stylesheet" href="/common-static/dorfkern.css">
-    {% set theme_default = 'dorfkern-gruen' %}
-    {% include '_theme_init.html' %}
     <style>
         /* Kiosk-spezifische Aliase – die Theme-Variablen kommen aus
            dorfkern.css unter [data-theme=...]. Hier nur die Kiosk-
@@ -42,7 +40,7 @@
             font-weight: 400;
         }
 
-        header {
+        .navbar {
             background: var(--gruen-dunkel);
             color: var(--creme);
             display: flex;
@@ -54,26 +52,26 @@
             position: relative;
             z-index: 100;
         }
-        header .logo {
+        .navbar .logo {
             display: flex; align-items: center; gap: 14px;
             flex-shrink: 0; text-decoration: none;
         }
-        header .logo-icon {
+        .navbar .logo-icon {
             width: 56px; height: 56px; flex-shrink: 0;
             color: var(--gruen-blass);
         }
-        header .logo-text {
+        .navbar .logo-text {
             font-family: 'Fraunces', Georgia, serif;
             font-size: 1.55rem; color: var(--creme); line-height: 1.1;
         }
-        header .logo-text span {
+        .navbar .logo-text span {
             display: block;
             font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
             font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em;
             text-transform: uppercase; color: var(--gruen-blass); margin-top: 1px;
         }
-        header nav { display: flex; gap: 4px; flex-wrap: nowrap; }
-        header nav a {
+        .navbar nav { display: flex; gap: 4px; flex-wrap: nowrap; }
+        .navbar nav a {
             display: inline-flex; align-items: center;
             color: var(--creme-dunkel); text-decoration: none;
             padding: 9px 15px; border-radius: var(--radius-klein);
@@ -81,65 +79,65 @@
             font-size: 0.88rem; font-weight: 700;
             transition: background 0.15s, color 0.15s; white-space: nowrap;
         }
-        header nav a:hover, header nav a.aktiv {
+        .navbar nav a:hover, .navbar nav a.aktiv {
             background: rgba(74,148,40,0.3); color: var(--gruen-blass);
         }
         /* Update-Badge in der Navbar */
-        header nav a.nav-update {
+        .navbar nav a.nav-update {
             background: var(--gold); color: white !important;
             animation: update-pulse 2.5s ease-in-out infinite;
         }
-        header nav a.nav-update:hover { background: var(--gold-hell); }
+        .navbar nav a.nav-update:hover { background: var(--gold-hell); }
         @keyframes update-pulse {
             0%, 100% { opacity: 1; }
             50%       { opacity: 0.65; }
         }
         /* App-Switcher */
-        header .nav-app-aktiv {
+        .navbar .nav-app-aktiv {
             border: 2px solid var(--gold); color: var(--gold-hell);
             background: rgba(200,120,10,0.15); border-radius: var(--radius-klein);
             padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
             text-decoration: none; white-space: nowrap;
         }
-        header .nav-app-switch {
+        .navbar .nav-app-switch {
             border: 1px solid rgba(200,120,10,0.4); color: var(--gold-hell);
             border-radius: var(--radius-klein);
             padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
             text-decoration: none; white-space: nowrap;
             transition: background 0.15s;
         }
-        header .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
-        header .nav-app-inaktiv {
+        .navbar .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
+        .navbar .nav-app-inaktiv {
             border: 1px solid rgba(255,255,255,0.08); color: var(--grau-mitte);
             border-radius: var(--radius-klein);
             padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
             white-space: nowrap; opacity: 0.5; cursor: default;
         }
         .app-switcher { display: flex; align-items: center; gap: 4px; }
-        header .terminal-info {
+        .navbar .terminal-info {
             font-size: 0.78rem; color: var(--grau-mitte);
             text-align: right; flex-shrink: 0;
         }
-        header .terminal-info .terminal-uhr-user {
+        .navbar .terminal-info .terminal-uhr-user {
             display: block;
             font-size: 0.82rem;
             font-weight: 700;
             color: var(--gruen-blass);
         }
-        header .terminal-info .terminal-uhr-zeit {
+        .navbar .terminal-info .terminal-uhr-zeit {
             display: block;
             font-size: 1rem;
             font-weight: 800;
             color: var(--gruen-blass);
             letter-spacing: 0.04em;
         }
-        header .terminal-info .terminal-uhr-datum {
+        .navbar .terminal-info .terminal-uhr-datum {
             display: block;
             font-size: 0.72rem;
             font-weight: 600;
             color: var(--grau-mitte);
         }
-        header .nav-logout {
+        .navbar .nav-logout {
             display: inline-flex; align-items: center;
             font-size: 0.88rem; font-weight: 700;
             color: #f0a0a0; text-decoration: none;
@@ -148,7 +146,33 @@
             transition: background 0.12s;
             white-space: nowrap;
         }
-        header .nav-logout:hover { background: rgba(184,48,48,0.2); color: #fdd; }
+        .navbar .nav-logout:hover { background: rgba(184,48,48,0.2); color: #fdd; }
+
+        /* Kiosk-Funktions-Tabs (zweite Zeile unter der Navbar) */
+        .kiosk-funktionen {
+            background: var(--gruen-mitte);
+            display: flex; gap: 4px; flex-wrap: wrap;
+            padding: 8px 28px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            position: relative;
+            z-index: 90;
+        }
+        .kiosk-funktionen a {
+            display: inline-flex; align-items: center;
+            color: var(--creme-dunkel); text-decoration: none;
+            padding: 9px 15px; border-radius: var(--radius-klein);
+            border: 1px solid rgba(255,255,255,0.15);
+            font-size: 0.88rem; font-weight: 700;
+            transition: background 0.15s, color 0.15s; white-space: nowrap;
+        }
+        .kiosk-funktionen a:hover, .kiosk-funktionen a.aktiv {
+            background: rgba(74,148,40,0.3); color: var(--gruen-blass);
+        }
+        .kiosk-funktionen a.nav-update {
+            background: var(--gold); color: white !important;
+            animation: update-pulse 2.5s ease-in-out infinite;
+        }
+        .kiosk-funktionen a.nav-update:hover { background: var(--gold-hell); }
 
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -280,69 +304,40 @@
 <body>
 {% include '_git_badge.html' %}
 
-<header>
-    <a class="logo" href="/">
-        <!-- Dorfkern-Mark via gemeinsames JS-Embed (common/brand/dorfkern-logo.js) -->
-        <span data-dorfkern-logo="mark" data-size="56" data-autoplay="false"></span>
-        <div class="logo-text">
-            {{ firma_name }}
-            <span>Kiosk · {{ db_name }}</span>
-        </div>
+<!-- Vereinheitlichte Dorfkern-Navbar (Logo + AppSwitch + Logout + Uhr) -->
+{% set nav_logo_sub      = 'Kiosk · ' ~ db_name %}
+{% set nav_aktive_app    = 'kiosk' %}
+{% set nav_aktive_app_url= '/' %}
+{% set nav_user_name     = ma_login_name %}
+{% include '_dorfkern_navbar.html' %}
+
+<!-- Kiosk-Funktions-Tabs (Touch-First, zweite Zeile unter der Navbar) -->
+<nav class="kiosk-funktionen">
+    {% if hat_recht('kiosk.bestellverwaltung') %}
+    <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
+        📦 Bestellungen
+        <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
     </a>
-
-    <!-- App-Switcher: Kiosk → Kasse → Orga (feste Reihenfolge) -->
-    <div class="app-switcher">
-        <a href="/" class="nav-app-aktiv">🖥️ Kiosk</a>
-        {% if kasse_url %}
-        <a href="{{ kasse_url }}" class="nav-app-switch">🛒 Kasse</a>
-        {% else %}
-        <span class="nav-app-inaktiv">🛒 Kasse</span>
-        {% endif %}
-        {% if orga_url %}
-        <a href="{{ orga_url }}" class="nav-app-switch">📦 Orga</a>
-        {% else %}
-        <span class="nav-app-inaktiv">📦 Orga</span>
-        {% endif %}
-        {% if admin_url %}
-        <a href="{{ admin_url }}" class="nav-app-switch">⚙️ Admin</a>
-        {% endif %}
-    </div>
-
-    <nav>
-        {% if hat_recht('kiosk.bestellverwaltung') %}
-        <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
-            📦 Bestellungen
-            <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
-        </a>
-        {% endif %}
-        {% if hat_recht('kiosk.mittagstisch') %}
-        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
-        {% endif %}
-        {% if hat_recht('kiosk.stempeluhr') %}
-        <a href="/stempeluhr" class="{% if '/stempeluhr' in request.path %}aktiv{% endif %}">⏱ Stempeluhr</a>
-        {% endif %}
-        {% if hat_recht('kiosk.backwaren') %}
-        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
-        {% endif %}
-        <a href="/terminal-einstellung" class="{% if request.path == '/terminal-einstellung' %}aktiv{% endif %}">🖥️ Terminal</a>
-        {% if terminal_nr == 9 %}
-        <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
-        {% else %}
-        <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">📖 Handbuch</a>
-        {% endif %}
-        {% if terminal_nr == 8 and update_verfuegbar %}
-        <a href="/update" class="nav-update {% if request.path == '/update' %}aktiv{% endif %}">🔄 Update</a>
-        {% endif %}
-    </nav>
-
-    {% include '_theme_switcher.html' %}
-    <a href="/logout" class="nav-logout">Abmelden</a>
-    <div class="terminal-info" id="terminal-info">
-        {% if ma_login_name %}<span class="terminal-uhr-user">👤 {{ ma_login_name }}</span>{% endif %}
-        <span class="terminal-uhr-zeit" id="terminal-uhr-zeit">--:--</span>
-        <span class="terminal-uhr-datum" id="terminal-uhr-datum">--</span>
-    </div>
-</header>
+    {% endif %}
+    {% if hat_recht('kiosk.mittagstisch') %}
+    <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+    {% endif %}
+    {% if hat_recht('kiosk.stempeluhr') %}
+    <a href="/stempeluhr" class="{% if '/stempeluhr' in request.path %}aktiv{% endif %}">⏱ Stempeluhr</a>
+    {% endif %}
+    {% if hat_recht('kiosk.backwaren') %}
+    <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
+    {% endif %}
+    <a href="/terminal-einstellung" class="{% if request.path == '/terminal-einstellung' %}aktiv{% endif %}">🖥️ Terminal</a>
+    {% if terminal_nr == 9 %}
+    <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
+    {% else %}
+    <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">📖 Handbuch</a>
+    {% endif %}
+    {% if terminal_nr == 8 and update_verfuegbar %}
+    <a href="/update" class="nav-update {% if request.path == '/update' %}aktiv{% endif %}">🔄 Update</a>
+    {% endif %}
+</nav>
 
 {% block inhalt %}{% endblock %}
 
