@@ -50,6 +50,10 @@ app.jinja_loader = ChoiceLoader([
 from common.static_serving import register_common_static as _reg_common_static  # noqa: E402
 _reg_common_static(app)
 
+# UI-Theme (zentral aus DORFKERN_KONFIG)
+from common.ui_theme import register_theme_context as _reg_ui_theme  # noqa: E402
+_reg_ui_theme(app)
+
 # Dorfkern-Permissions: Decorator + Jinja-Helper ``hat_recht``
 _permission_required, _perm_ctx = _perm_flask_helpers()
 app.context_processor(_perm_ctx)

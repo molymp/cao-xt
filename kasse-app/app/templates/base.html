@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="{{ ui_theme }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -14,8 +14,6 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
 <!-- Dorfkern-Shared-CSS – Themes: light/dark/gruen ueber data-theme -->
 <link rel="stylesheet" href="/common-static/dorfkern.css">
-{% set theme_default = 'dorfkern-gruen' %}
-{% include '_theme_init.html' %}
 <style>
 /* Theme-Variablen (gruen-dunkel/creme/text-dunkel/...) kommen aus
    dorfkern.css. Hier nur Kasse-spezifische Aliase und Layout. */
@@ -434,7 +432,6 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
   {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
 {% endset %}
-{% set nav_show_theme_switcher = true %}
 {% include '_dorfkern_navbar.html' %}
 
 {% block content %}{% endblock %}

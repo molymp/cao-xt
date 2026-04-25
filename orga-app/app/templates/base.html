@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="{{ ui_theme }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,8 +13,6 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
 <!-- Dorfkern-Shared-CSS – Themes: light/dark/gruen ueber data-theme -->
 <link rel="stylesheet" href="/common-static/dorfkern.css">
-{% set theme_default = 'dorfkern-gruen' %}
-{% include '_theme_init.html' %}
 <style>
 /* Farb-Variablen kommen aus dorfkern.css (Theme [data-theme=...]).
    Hier nur app-spezifische Layout-Anpassungen. */
@@ -384,12 +382,11 @@ a { text-decoration: none; color: inherit; }
 <div class="layout">
 
   <!-- Navbar -->
-  {% set nav_logo_sub          = 'Orga' %}
-  {% set nav_aktive_app        = 'orga' %}
-  {% set nav_aktive_app_url    = '/' %}
-  {% set nav_user_name         = current_user.login_name if current_user else '' %}
-  {% set nav_db_status         = db_ok %}
-  {% set nav_show_theme_switcher = true %}
+  {% set nav_logo_sub      = 'Orga' %}
+  {% set nav_aktive_app    = 'orga' %}
+  {% set nav_aktive_app_url= '/' %}
+  {% set nav_user_name     = current_user.login_name if current_user else '' %}
+  {% set nav_db_status     = db_ok %}
   {% include '_dorfkern_navbar.html' %}
 
   <!-- Body -->
