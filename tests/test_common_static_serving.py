@@ -35,10 +35,19 @@ class TestCommonStatic(unittest.TestCase):
             r = c.get('/common-static/dorfkern-admin.css')
             self.assertEqual(r.status_code, 200)
             body = r.data.decode('utf-8')
-            # Admin-Theme: Dark-Mode mit nightInk-BG + cream-Text
-            # (offizielles Dorfkern-Dark-Theme aus dorfkern-logo.js)
-            self.assertIn('--bg-dunkel', body)
-            self.assertIn('brand-night-ink', body)
+            # Admin-spezifische Layout-Werte (Schatten, Gold-Akzent,
+            # Karten-BG pro Theme). Themes selbst liegen in dorfkern.css.
+            self.assertIn('--schatten', body)
+            self.assertIn('--gold', body)
+            self.assertIn('--bg-karte', body)
+
+    def test_dorfkern_css_hat_alle_drei_themes(self):
+        app = self._app()
+        with app.test_client() as c:
+            body = c.get('/common-static/dorfkern.css').data.decode('utf-8')
+        for theme in ['dorfkern-light', 'dorfkern-dark', 'dorfkern-gruen']:
+            self.assertIn(f'[data-theme="{theme}"]', body,
+                          f'Theme {theme} fehlt in dorfkern.css')
 
     def test_dorfkern_css_nutzt_offizielle_brand_tokens(self):
         """Sanity: die shared CSS enthaelt die offiziellen Dorfkern-Farben

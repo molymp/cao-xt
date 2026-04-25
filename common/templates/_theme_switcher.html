@@ -1,0 +1,57 @@
+{# Theme-Switcher-UI – kompaktes Dropdown.
+   Einbindung typischerweise in der Navbar:
+
+       {% include '_theme_switcher.html' %}
+
+   Speichert die Auswahl in localStorage('dorfkern-theme') und ruft
+   _theme_init.html den Wert beim naechsten Pageload wieder auf.
+#}
+<style>
+  .theme-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 4px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-hell);
+    color: var(--text-mitte);
+    border-radius: var(--radius-klein, 4px);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .theme-switcher:hover { color: var(--text-hell); }
+  .theme-switcher select {
+    background: transparent;
+    color: inherit;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+    outline: none;
+    padding: 2px 4px;
+  }
+  .theme-switcher select option { color: #000; }
+</style>
+<label class="theme-switcher" title="Farbschema umschalten">
+  <span aria-hidden="true">🎨</span>
+  <select id="dorfkern-theme-select" aria-label="Theme">
+    <option value="dorfkern-light">Hell</option>
+    <option value="dorfkern-dark">Dunkel</option>
+    <option value="dorfkern-gruen">Grün</option>
+  </select>
+</label>
+<script>
+(function() {
+  var sel = document.getElementById('dorfkern-theme-select');
+  if (!sel) return;
+  // Auswahl mit dem aktuell aktiven Theme synchronisieren
+  var curr = document.documentElement.getAttribute('data-theme')
+             || 'dorfkern-light';
+  sel.value = curr;
+  sel.addEventListener('change', function() {
+    var v = sel.value;
+    document.documentElement.setAttribute('data-theme', v);
+    try { localStorage.setItem('dorfkern-theme', v); } catch (e) {}
+  });
+})();
+</script>

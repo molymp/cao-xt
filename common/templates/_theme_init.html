@@ -1,0 +1,25 @@
+{# Theme-Init: setzt data-theme-Attribut SYNCHRON aus localStorage,
+   bevor body gerendert wird – kein FOUC.
+
+   Apps binden den Partial im <head> ein, NACH den CSS-Links:
+
+       {% include '_theme_init.html' %}
+
+   Default-Theme kann ueber den Block ueberschrieben werden, falls
+   eine App ein anderes Default haben moechte:
+
+       {% set theme_default = 'dorfkern-dark' %}
+       {% include '_theme_init.html' %}
+#}
+{% set _td = theme_default | default('dorfkern-light') %}
+<script>
+(function() {
+  try {
+    var saved = localStorage.getItem('dorfkern-theme') || {{ _td|tojson }};
+    document.documentElement.setAttribute('data-theme', saved);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme',
+      {{ _td|tojson }});
+  }
+})();
+</script>

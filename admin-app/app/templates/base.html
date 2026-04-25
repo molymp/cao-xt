@@ -11,9 +11,11 @@
       media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap"></noscript>
-<!-- Dorfkern-Shared-CSS: Basis + Admin-Theme (ueberschreibt Gruen) -->
+<!-- Dorfkern-Shared-CSS: Basis-Themes + Admin-Layout-Erweiterungen -->
 <link rel="stylesheet" href="/common-static/dorfkern.css">
 <link rel="stylesheet" href="/common-static/dorfkern-admin.css">
+{% set theme_default = 'dorfkern-dark' %}
+{% include '_theme_init.html' %}
 <style>
 /* ── Admin-spezifisches Layout ─────────────────────────────────
    Farb-Variablen, Typografie, .sidebar-*-Komponenten kommen aus
@@ -330,31 +332,13 @@ a { color: inherit; text-decoration: none; }
 <div class="layout">
 
   <!-- Navbar -->
-  <div class="navbar">
-    <span class="logo">
-      <!-- Dorfkern-Mark via gemeinsames JS-Embed (common/brand/dorfkern-logo.js) -->
-      <span data-dorfkern-logo="mark" data-size="48" data-autoplay="false"></span>
-      <span class="logo-text">
-        <span class="logo-name">{{ firma_name }}</span>
-        <span class="logo-sub">Admin</span>
-      </span>
-    </span>
-    {# App-Switcher: Kiosk → Kasse → Orga → Admin #}
-    {% set aktive_app = 'admin' %}
-    {% set aktive_app_url = '/' %}
-    {% include '_app_switcher.html' %}
-    <div class="spacer"></div>
-    {% if db_ok %}
-    <span class="db-badge ok">DB ✓</span>
-    {% else %}
-    <span class="db-badge err">DB ✗</span>
-    {% endif %}
-    {% if current_user %}
-    <a href="/logout" class="nav-btn nav-btn-logout">Abmelden</a>
-    {% endif %}
-    {% set navbar_user_name = current_user.login_name if current_user else '' %}
-    {% include '_navbar_uhrzeit.html' %}
-  </div>
+  {% set nav_logo_sub          = 'Admin' %}
+  {% set nav_aktive_app        = 'admin' %}
+  {% set nav_aktive_app_url    = '/' %}
+  {% set nav_user_name         = current_user.login_name if current_user else '' %}
+  {% set nav_db_status         = db_ok %}
+  {% set nav_show_theme_switcher = true %}
+  {% include '_dorfkern_navbar.html' %}
 
   <!-- Body -->
   <div class="body-area">

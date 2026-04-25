@@ -37,6 +37,7 @@
 
 /* ── Offizielle Brand-Tokens ──────────────────────────────────── */
 
+/* Brand-Tokens + Geometrie sind theme-uebergreifend */
 :root {
   --brand-ink:              #141414;
   --brand-cream:            #f2ede3;
@@ -47,18 +48,29 @@
   --brand-night-ink:        #1b2027;
   --brand-body-bg:          #f0eee9;
 
-  /* Ampeln / Status (nicht im Brand, aber Basis-UI braucht's) */
   --status-gruen: #2e7a2e;
   --status-rot:   #b83030;
   --status-gelb:  #d4a030;
 
+  --radius-klein:  4px;
+  --radius-mittel: 6px;
+  --radius-gross:  10px;
+  --sidebar-w:     220px;
+  --navbar-h:      56px;
+}
 
-  /* ── Light-Theme (Default) ──────────────────────────────────
-     Die Layer-Variablen werden von den Komponenten unten genutzt.
-     Apps / Admin ueberschreiben sie bei Bedarf. */
-  --bg-dunkel:     var(--brand-body-bg);      /* Seiten-Hintergrund */
-  --bg-mitte:      var(--brand-paper);        /* Card/Sidebar-BG */
-  --bg-hell:       var(--brand-sage);         /* Hover-Flaechen */
+
+/* ── Theme: Dorfkern-Light ────────────────────────────────────
+   Default fuer User-Apps am Tagschein. Greift wenn:
+   - <html data-theme="dorfkern-light"> explizit gesetzt
+   - <html> ohne data-theme (Fallback ueber :root nicht moeglich,
+     also explizit als generischer Selector)
+*/
+:root,
+[data-theme="dorfkern-light"] {
+  --bg-dunkel:     var(--brand-body-bg);
+  --bg-mitte:      var(--brand-paper);
+  --bg-hell:       var(--brand-sage);
   --text-hell:     var(--brand-ink);
   --text-mitte:    rgba(20, 20, 20, 0.80);
   --text-dim:      rgba(20, 20, 20, 0.55);
@@ -66,22 +78,56 @@
   --akzent-hell:   var(--brand-terracotta-light);
   --border:        rgba(20, 20, 20, 0.12);
 
-  /* Geometrie */
-  --radius-klein:  4px;
-  --radius-mittel: 6px;
-  --radius-gross:  10px;
-  --sidebar-w:     220px;
-  --navbar-h:      56px;
-
-  /* Legacy-Aliase: bestehende lokale Styles in den Apps nutzen
-     '--gruen-*' und '--rot'. Solange sie nicht migriert sind, liefern
-     wir neutrale Brand-Tokens als Fallback, damit neue Templates, die
-     NUR Shared-CSS laden, nicht ungestylt bleiben. */
+  /* Legacy-Aliase, damit User-App-CSS nicht bricht */
   --gruen-dunkel:  var(--brand-ink);
   --gruen-mitte:   var(--brand-terracotta);
   --gruen-hell:    var(--brand-terracotta-light);
   --gruen-blass:   var(--brand-cream);
   --rot:           var(--status-rot);
+}
+
+
+/* ── Theme: Dorfkern-Dark ─────────────────────────────────────
+   Admin-Default + 'Nachtbetrieb' fuer User-Apps.
+   Aequivalent zum bisherigen dorfkern-admin.css. */
+[data-theme="dorfkern-dark"] {
+  --bg-dunkel:     var(--brand-night-ink);
+  --bg-mitte:      #242a33;
+  --bg-hell:       #2e3640;
+  --text-hell:     var(--brand-cream);
+  --text-mitte:    rgba(242, 237, 227, 0.80);
+  --text-dim:      rgba(242, 237, 227, 0.55);
+  --akzent:        var(--brand-terracotta-light);
+  --akzent-hell:   var(--brand-cream);
+  --border:        rgba(242, 237, 227, 0.15);
+
+  --gruen-dunkel:  var(--brand-cream);
+  --gruen-mitte:   var(--brand-terracotta-light);
+  --gruen-hell:    var(--brand-terracotta-light);
+  --gruen-blass:   var(--brand-cream);
+  --rot:           var(--status-rot);
+}
+
+
+/* ── Theme: Dorfkern-Gruen (Dorfladen-Identitaet) ─────────────
+   Klassische Dorfladen-Farben fuer User-Apps, die sich vom
+   neutralen Brand absetzen wollen (z.B. Kasse-Login-Screen). */
+[data-theme="dorfkern-gruen"] {
+  --bg-dunkel:     #f7f3ea;
+  --bg-mitte:      #ffffff;
+  --bg-hell:       #d4e8c2;
+  --text-hell:     #142808;
+  --text-mitte:    #2e4a1a;
+  --text-dim:      #5a7a3a;
+  --akzent:        #4a9428;
+  --akzent-hell:   #2e6e1a;
+  --border:        rgba(20, 40, 8, 0.15);
+
+  --gruen-dunkel:  #1a4010;
+  --gruen-mitte:   #2e6e1a;
+  --gruen-hell:    #4a9428;
+  --gruen-blass:   #d4e8c2;
+  --rot:           #b83030;
 }
 
 
