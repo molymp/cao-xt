@@ -1365,13 +1365,18 @@ async function vorgangAbbrechen() {
   if (positionen.filter(p => !p.STORNIERT).length === 0) {
     toast('Bon ist leer – nichts zum Abbrechen', 'err'); return;
   }
-  if (!confirm('Vorgang wirklich abbrechen? Alle Positionen werden storniert.')) return;
-  const r = await api('POST', `/api/vorgang/${vorgangId}/abbrechen`);
-  if (!r.ok) { toast(r.fehler || 'Abbruch fehlgeschlagen', 'err'); return; }
-  toast('Vorgang abgebrochen', 'ok');
-  vorgangId = null; bonNr = null; positionen = [];
-  gewaehlterKunde = null; kundeAnzeigenAktualisieren();
-  aktualisiereBonNr(); renderWarenkorb();
+  kassenConfirm(
+    'Vorgang wirklich abbrechen? Alle Positionen werden storniert.',
+    async () => {
+      const r = await api('POST', `/api/vorgang/${vorgangId}/abbrechen`);
+      if (!r.ok) { toast(r.fehler || 'Abbruch fehlgeschlagen', 'err'); return; }
+      toast('Vorgang abgebrochen', 'ok');
+      vorgangId = null; bonNr = null; positionen = [];
+      gewaehlterKunde = null; kundeAnzeigenAktualisieren();
+      aktualisiereBonNr(); renderWarenkorb();
+    },
+    'Abbrechen'
+  );
 }
 
 // ── Parken ────────────────────────────────────────────────────

@@ -76,6 +76,7 @@
            value="{{ ma.RFID_TAG or '' }}"
            placeholder="z.B. 04:A2:B5:91 oder 04A2B591"
            data-touch-titel="RFID-Tag"
+           {% if autosave %}data-autosave="RFID_TAG"{% endif %}
            autocomplete="off" autocapitalize="characters" spellcheck="false">
   </div>
   <div class="form-group">
