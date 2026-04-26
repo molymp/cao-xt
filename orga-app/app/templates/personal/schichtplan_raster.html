@@ -25,10 +25,13 @@
        border-radius: var(--radius-klein); padding: 10px 16px; font-weight: 700;
        cursor: pointer; text-decoration: none; font-family: inherit; font-size: 14px;
        display: inline-flex; align-items: center; min-height: 44px; gap: 6px; }
-.btn:hover { background: var(--gruen-dunkel); }
+.btn:hover { background: var(--gruen-dunkel); color: white; }
 .btn-secondary { background: white; color: var(--gruen-dunkel);
                  border: 1px solid var(--gruen-mitte); }
-.btn-secondary:hover { background: var(--gruen-blass); }
+/* Defensive Hover-Variante: BG dunkelgruen, Text Cream – immer lesbar,
+   egal was im umgebenden Container an Vererbung mitkommt. */
+.btn-secondary:hover { background: var(--gruen-dunkel); color: var(--brand-cream);
+                       border-color: var(--gruen-dunkel); }
 .ansicht-tabs { display: flex; gap: 4px; background: white; border-radius: var(--radius-klein);
                 padding: 4px; border: 1px solid var(--creme-dunkel); }
 .ansicht-tabs a { padding: 8px 14px; border-radius: 6px; color: var(--text-mitte);
@@ -120,7 +123,9 @@
 }
 .umsatz-overlay-stripe.stripe-unter3 .empf { background: rgba(255,255,255,0.85); }
 
-.schicht-block { position: absolute; left: 2px; right: 2px; padding: 4px 6px;
+/* Schicht-Bloecke lassen rechts ~22px Platz, damit das Empfehlungs-Pill
+   der Heatmap-Unterlage am rechten Spaltenrand sichtbar bleibt. */
+.schicht-block { position: absolute; left: 2px; right: 22px; padding: 4px 6px;
                  border-radius: 4px; color: white; font-size: 11px;
                  line-height: 1.25; overflow: hidden;
                  box-shadow: 0 1px 2px rgba(0,0,0,0.12); cursor: pointer;
@@ -401,45 +406,103 @@ function setVorlageZielRelativ(tage) {
   und Aufgaben in den Reihen direkt unter dem jeweiligen Tag.
 </div>
 
-{% if bonus_summary and (bonus_summary.erwartet or bonus_summary.soll) %}
+{% if bonus_summary and (bonus_summary.erwartet or bonus_summary.zellen_ueber or bonus_summary.zellen_unter) %}
 <div class="bonus-banner">
   <div class="bb-zelle">
     <div class="bb-label">Zielumsatz / MA-Stunde</div>
-    <div class="bb-wert">{{ bonus_summary.ziel_pro_ma_h|int }}&nbsp;€</div>
+    <div class="bb-wert" id="bb-ziel-anzeige" data-aktuell="{{ bonus_summary.ziel_pro_ma_h|int }}">
+      <span id="bb-ziel-wert">{{ bonus_summary.ziel_pro_ma_h|int }}</span>&nbsp;€
+      <button type="button" class="bb-edit-btn" onclick="zielBearbeiten()"
+              title="Ziel-Umsatz aendern">✎</button>
+    </div>
+    <div id="bb-ziel-edit" style="display:none;">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <input type="number" id="bb-ziel-input" min="1" step="1" style="width:90px;
+               padding:6px 10px; border:1px solid var(--creme-dunkel);
+               border-radius:var(--radius-klein); font:inherit;"
+               value="{{ bonus_summary.ziel_pro_ma_h|int }}">
+        <span style="color:var(--text-mitte);">€/h</span>
+        <button type="button" class="btn" style="min-height:32px; padding:5px 10px;"
+                onclick="zielSpeichern()">✓</button>
+        <button type="button" class="btn btn-secondary" style="min-height:32px; padding:5px 10px;"
+                onclick="zielAbbrechen()">×</button>
+      </div>
+    </div>
   </div>
   <div class="bb-zelle">
     <div class="bb-label">Erwarteter Wochenumsatz</div>
     <div class="bb-wert">{{ '%.0f'|format(bonus_summary.erwartet) }}&nbsp;€</div>
-    <div class="bb-sub">aus Vorwoche &amp; Vorjahr-KW</div>
+    <div class="bb-sub">aus Vorwoche &amp; Vorjahr-KW (Feiertage 0 €)</div>
+  </div>
+  <div class="bb-zelle bb-{% if bonus_summary.punkte_saldo >= 0 %}plus{% else %}minus{% endif %}">
+    <div class="bb-label">Punkte-Saldo</div>
+    <div class="bb-wert">{{ '%+d'|format(bonus_summary.punkte_saldo) }}&nbsp;P</div>
+    <div class="bb-sub">+{{ bonus_summary.punkte_ueber }} ueberdeckt ·
+                          −{{ bonus_summary.punkte_unter }} fehlend</div>
   </div>
   <div class="bb-zelle">
-    <div class="bb-label">Geplante Soll-Leistung</div>
-    <div class="bb-wert">{{ '%.0f'|format(bonus_summary.soll) }}&nbsp;€</div>
-    <div class="bb-sub">Schicht-Stunden × Ziel</div>
-  </div>
-  <div class="bb-zelle bb-{% if bonus_summary.differenz >= 0 %}plus{% else %}minus{% endif %}">
-    <div class="bb-label">Bonus-Saldo</div>
-    <div class="bb-wert">{{ '%+d'|format(bonus_summary.differenz|int) }}&nbsp;€</div>
-    <div class="bb-sub">{{ bonus_summary.zellen_ueber }} Stunden ueberdeckt ·
-                          {{ bonus_summary.zellen_unter }} unterdeckt</div>
+    <div class="bb-label">Stunden-Status</div>
+    <div class="bb-wert" style="font-size:14px;">
+      <span style="color:var(--gruen-mitte);">{{ bonus_summary.zellen_ueber }} ↑</span>
+      &nbsp;·&nbsp;
+      <span style="color:var(--rot);">{{ bonus_summary.zellen_unter }} ↓</span>
+    </div>
+    <div class="bb-sub">Pro Stunde: 1 Punkt = 1 MA. Ueberschuss kann auf
+      Lueckenstunden verteilt werden.</div>
   </div>
 </div>
 
 <style>
-.bonus-banner { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+.bonus-banner { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                 gap: 10px; margin-bottom: 14px; }
 .bb-zelle { background: white; border: 1px solid var(--creme-dunkel);
             border-radius: var(--radius-klein); padding: 10px 14px; }
 .bb-label { font-size: 10px; font-weight: 800; text-transform: uppercase;
             letter-spacing: 0.06em; color: var(--grau-mitte); margin-bottom: 2px; }
 .bb-wert  { font-family: 'Fraunces', Georgia, serif; font-size: 20px;
-            color: var(--gruen-dunkel); font-variant-numeric: tabular-nums; }
+            color: var(--gruen-dunkel); font-variant-numeric: tabular-nums;
+            display: inline-flex; align-items: baseline; gap: 6px; }
 .bb-sub   { font-size: 11px; color: var(--text-mitte); margin-top: 2px; }
 .bb-plus  { background: #eef5e8; border-color: var(--gruen-mitte); }
 .bb-plus .bb-wert { color: var(--gruen-mitte); }
 .bb-minus { background: #fde8e8; border-color: var(--rot); }
 .bb-minus .bb-wert { color: var(--rot); }
+.bb-edit-btn { background: transparent; border: none; cursor: pointer;
+                color: var(--grau-mitte); font-size: 12px; padding: 0 4px;
+                font-family: inherit; line-height: 1; }
+.bb-edit-btn:hover { color: var(--gruen-dunkel); }
 </style>
+
+<script>
+function zielBearbeiten() {
+  document.getElementById('bb-ziel-anzeige').style.display = 'none';
+  document.getElementById('bb-ziel-edit').style.display = 'block';
+  const inp = document.getElementById('bb-ziel-input');
+  inp.focus(); inp.select();
+}
+function zielAbbrechen() {
+  document.getElementById('bb-ziel-anzeige').style.display = '';
+  document.getElementById('bb-ziel-edit').style.display = 'none';
+  document.getElementById('bb-ziel-input').value =
+    document.getElementById('bb-ziel-anzeige').dataset.aktuell;
+}
+async function zielSpeichern() {
+  const wert = parseInt(document.getElementById('bb-ziel-input').value, 10);
+  if (!wert || wert < 1) { alert('Bitte einen Betrag > 0 eingeben.'); return; }
+  try {
+    const r = await fetch('/orga/personal/schichtplan/ziel-umsatz', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'wert=' + encodeURIComponent(wert),
+    });
+    const d = await r.json();
+    if (!d.ok) { alert(d.fehler || 'Fehler beim Speichern'); return; }
+    location.reload();
+  } catch (e) {
+    alert('Netzwerkfehler: ' + e);
+  }
+}
+</script>
 {% endif %}
 
 <div class="raster-karte {% if woche_gesperrt %}gesperrt{% endif %}">
@@ -524,7 +587,7 @@ function setVorlageZielRelativ(tage) {
 
   {# Flex-Schichten (freie Zeiteinteilung) – direkt unter Zeitraster
      in der gleichen Karte. Jede Spalte ist exakt unter ihrem Tag. #}
-  {% if hat_flex %}
+  {% if plan_flex %}
   <div class="raster-zusatz-sektion">
     <div class="raster-zusatz-label" title="Flex-Schichten (freie Zeiteinteilung)">Flex</div>
     {% for i in range(7) %}
@@ -545,7 +608,7 @@ function setVorlageZielRelativ(tage) {
   {% endif %}
 
   {# Aufgaben (ohne feste Zeit) – Reihe unter Flex. #}
-  {% if hat_task %}
+  {% if plan_task %}
   <div class="raster-zusatz-sektion">
     <div class="raster-zusatz-label" title="Aufgaben ohne feste Zeit">Aufgaben</div>
     {% for i in range(7) %}
@@ -565,7 +628,7 @@ function setVorlageZielRelativ(tage) {
   {% endif %}
 </div>
 
-{% if not plan_fix and not hat_flex and not hat_task %}
+{% if not plan_fix and not plan_flex and not plan_task %}
 <div class="empty-hint">
   Für diese Woche ist noch nichts geplant.
   <a href="{{ url_for('orga_personal.schichtplan', woche=montag.isoformat()) }}">

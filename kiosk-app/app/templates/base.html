@@ -17,7 +17,7 @@
            mit Buchen/Abbrechen unten) nicht durch die zweite Menuezeile
            aus dem Viewport rutscht. */
         :root {
-            --kiosk-funktionsleiste-h: 48px;
+            --kiosk-funktionsleiste-h: 56px;
             /* --kiosk-content-h existiert weiterhin als Fallback fuer
                Templates die noch die alte calc()-Variante nutzen. Die
                eigentliche Hoehe kommt jetzt aus dem Flex-Layout des
@@ -181,11 +181,12 @@
         .kiosk-funktionen a {
             display: inline-flex; align-items: center;
             color: var(--brand-ink); text-decoration: none;
-            padding: 7px 14px; border-radius: var(--radius-klein);
+            padding: 8px 14px; border-radius: var(--radius-klein);
             border: 1px solid var(--brand-sage-dunkel);
             background: #ffffff;
             font-size: 0.92rem; font-weight: 700;
-            min-height: 36px;
+            min-height: 40px;
+            line-height: 1.2;
             white-space: nowrap;
             -webkit-tap-highlight-color: transparent;
         }
