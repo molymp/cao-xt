@@ -1484,6 +1484,104 @@ def schichtplan_raster():
     vorlagen = m.vorlage_liste()
     feiertage = m.feiertage_im_zeitraum(montag, montag + timedelta(days=6))
 
+    # ── Heatmap-Unterlage: erwarteter Umsatz pro Tag x Stunde ──
+    # Datenbasis: Vorwoche + gleiche KW im Vorjahr; gemittelt.
+    # Konfigurierbarer Ziel-Umsatz pro MA-Stunde (Default 100 EUR).
+    umsatz_overlay: dict = {}
+    bonus_summary: dict = {'soll': 0.0, 'erwartet': 0.0, 'differenz': 0.0,
+                            'zellen_unter': 0, 'zellen_ueber': 0,
+                            'ziel_pro_ma_h': 100.0}
+    ziel_pro_ma_h = 100.0
+    try:
+        from common import konfig as _konfig
+        ziel_pro_ma_h = float(_konfig.lese('schichtplan.umsatz_pro_ma_stunde',
+                                            default=100.0))
+    except Exception:
+        pass
+    bonus_summary['ziel_pro_ma_h'] = ziel_pro_ma_h
+    try:
+        import berichte as _bericht_modul
+        vw_von = montag - timedelta(days=7)
+        vw_bis = vw_von + timedelta(days=6)
+        h_vw = _bericht_modul.umsatz_heatmap(vw_von, vw_bis)
+        try:
+            vj_von = date.fromisocalendar(jahr - 1, kw, 1)
+            vj_bis = vj_von + timedelta(days=6)
+            h_vj = _bericht_modul.umsatz_heatmap(vj_von, vj_bis)
+        except Exception:
+            h_vj = None
+        for i in range(7):
+            tag = tage[i]
+            wt = tag.weekday()
+            for std in stunden:
+                v = h_vw['matrix'][wt].get(std, 0.0) if h_vw else 0.0
+                u = h_vj['matrix'][wt].get(std, 0.0) if h_vj else 0.0
+                werte = [w for w in (v, u) if w > 0]
+                erwartet = sum(werte) / len(werte) if werte else 0.0
+
+                # MA-Anzahl in dieser Stunde aus plan_fix-Bloecken zaehlen.
+                std_min = std * 60
+                ma_anz = 0
+                for gr in plan_fix.get(tag, []):
+                    if gr['_start_min'] <= std_min < gr['_ende_min']:
+                        ma_anz += len(gr.get('mas', []))
+                soll = ma_anz * ziel_pro_ma_h
+                diff = soll - erwartet  # >0 ueberdeckt, <0 unterdeckt
+                # Klassifizierung
+                if erwartet < 1 and ma_anz == 0:
+                    klasse = 'leer'
+                elif ma_anz == 0 and erwartet >= ziel_pro_ma_h * 0.5:
+                    klasse = 'unter'
+                elif ma_anz == 0:
+                    klasse = 'leer'
+                elif diff < -ziel_pro_ma_h * 0.4:
+                    klasse = 'unter'
+                elif diff > ziel_pro_ma_h * 0.6:
+                    klasse = 'ueber'
+                else:
+                    klasse = 'ok'
+                umsatz_overlay.setdefault(tag.isoformat(), {})[std] = {
+                    'erwartet': round(erwartet, 0),
+                    'ma_anz':   ma_anz,
+                    'soll':     round(soll, 0),
+                    'diff':     round(diff, 0),
+                    'klasse':   klasse,
+                }
+                bonus_summary['soll']      += soll
+                bonus_summary['erwartet']  += erwartet
+                bonus_summary['differenz'] += diff
+                if klasse == 'unter': bonus_summary['zellen_unter'] += 1
+                elif klasse == 'ueber': bonus_summary['zellen_ueber'] += 1
+        for k in ('soll', 'erwartet', 'differenz'):
+            bonus_summary[k] = round(bonus_summary[k], 0)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).debug(
+            "Heatmap-Unterlage fehlgeschlagen: %s", exc)
+
+    # Schicht-Definitionen + Abwesenheiten je Tag fuer den
+    # Click-to-assign-Dialog im Raster. abwesend_je_tag mappt
+    # ISO-Datum -> Liste pers_ids (am Tag krank/im Urlaub und damit
+    # nicht zuweisbar).
+    schicht_defs = m.schichten(nur_aktive=True)
+    abwesend_je_tag: dict[date, set[int]] = {tag: set() for tag in tage}
+    try:
+        abw_zeitraum = m.abwesenheiten_im_zeitraum(montag,
+                                                    montag + timedelta(days=6))
+    except Exception:
+        abw_zeitraum = []
+    for a in abw_zeitraum:
+        # Nur freigegebene/genommene Abwesenheiten zaehlen als blockierend.
+        if a.get('STATUS') not in ('genehmigt', 'genommen', 'genehmigt_extern'):
+            continue
+        von_a = a.get('VON')
+        bis_a = a.get('BIS') or von_a
+        if not von_a:
+            continue
+        for tag in tage:
+            if von_a <= tag <= bis_a:
+                abwesend_je_tag[tag].add(int(a['PERS_ID']))
+
     return render_template(
         'personal/schichtplan_raster.html',
         montag=montag,
@@ -1500,11 +1598,18 @@ def schichtplan_raster():
         plan_flex=plan_flex,
         plan_task=plan_task,
         mitarbeiter=mitarbeiter,
+        schicht_defs=schicht_defs,
+        abwesend_je_tag={
+            tag.isoformat(): sorted(list(ids))
+            for tag, ids in abwesend_je_tag.items()
+        },
         heute=date.today(),
         woche_status=status,
         woche_gesperrt=(status['STATUS'] == 'freigegeben'),
         vorlagen=vorlagen,
         feiertage=feiertage,
+        umsatz_overlay=umsatz_overlay,
+        bonus_summary=bonus_summary,
     )
 
 

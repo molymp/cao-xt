@@ -4,7 +4,7 @@ Starten: cd orga-app/app && python3 app.py
 """
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, send_from_directory
 from jinja2 import ChoiceLoader, FileSystemLoader
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timedelta, timezone
 import base64
 import io
 import os
@@ -719,6 +719,41 @@ def ec_umsaetze_export():
     return send_file(io.BytesIO(inhalt), mimetype='text/csv',
                      as_attachment=True,
                      download_name=f'ec_umsaetze_{von}_{bis}.csv')
+
+
+# ── Stunden-Heatmap (Umsatz je Wochentag × Stunde) ─────────────
+
+@app.get('/orga/berichte/umsatz-heatmap')
+def umsatz_heatmap_seite():
+    """Heatmap: durchschnittlicher Umsatz pro (Wochentag x Stunde) im
+    angegebenen Zeitraum. Standard: aktuelle KW + letzte 4 vollstaendige
+    Kalenderwochen, um saisonale Effekte abzumildern.
+    """
+    heute = date.today()
+    # Default: letzte 4 vollstaendige Wochen + diese Woche bis heute
+    default_von = heute - timedelta(days=heute.weekday() + 4 * 7)
+    von = _parse_datum(request.args.get('von'), default_von)
+    bis = _parse_datum(request.args.get('bis'), heute)
+    try:
+        heatmap = bericht_modul.umsatz_heatmap(von, bis)
+    except Exception as e:
+        log.exception("Umsatz-Heatmap-Fehler")
+        heatmap = None
+        flash(f'Datenbankfehler: {e}', 'error')
+    return render_template('berichte.html', bericht='umsatz_heatmap',
+                           heatmap=heatmap, von=von, bis=bis)
+
+
+@app.get('/orga/berichte/umsatz-heatmap/export')
+def umsatz_heatmap_export():
+    heute = date.today()
+    default_von = heute - timedelta(days=heute.weekday() + 4 * 7)
+    von = _parse_datum(request.args.get('von'), default_von)
+    bis = _parse_datum(request.args.get('bis'), heute)
+    inhalt = bericht_modul.umsatz_heatmap_csv(von, bis)
+    return send_file(io.BytesIO(inhalt), mimetype='text/csv',
+                     as_attachment=True,
+                     download_name=f'umsatz_heatmap_{von}_{bis}.csv')
 
 
 # ── Koppelkauf-Analyse ─────────────────────────────────────────

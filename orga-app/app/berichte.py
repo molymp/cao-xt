@@ -257,3 +257,97 @@ def ec_umsaetze_csv(von: date, bis: date) -> bytes:
     """EC-Umsätze als CSV-Download."""
     return _csv_response(ec_umsaetze(von, bis), EC_UMSAETZE_SPALTEN,
                          f'ec_umsaetze_{von}_{bis}.csv')
+
+
+# ── 5. Stunden-Heatmap (Umsatz je Wochentag × Stunde) ──────────────────────────
+#
+# Liefert pro (Wochentag, Stunde) den DURCHSCHNITTLICHEN Umsatz pro Tag im
+# Zeitraum. Wir aggregieren erst je Tag, dann per AVG ueber alle Tage des
+# selben Wochentags – sonst waere ein langer Zeitraum mit z.B. 8 Samstagen
+# verzerrt gegenueber 7 Samstagen.
+#
+# Rueckgabe ist eine Matrix dict[wochentag(0..6)][stunde(0..23)] -> float
+# plus die Eckdaten (min/max, Spannweite Stunden, Anzahl Tage je Wochentag).
+
+UMSATZ_HEATMAP_SQL = """
+SELECT
+    DATE(J.RDATUM)        AS tag,
+    WEEKDAY(J.RDATUM)     AS wtag,    -- 0=Mo … 6=So
+    HOUR(J.RDATUM)        AS stunde,
+    SUM(J.NSUMME)         AS umsatz
+FROM JOURNAL J
+WHERE J.QUELLE = 3
+  AND J.STADIUM < 127
+  AND DATE(J.RDATUM) BETWEEN %s AND %s
+GROUP BY DATE(J.RDATUM), WEEKDAY(J.RDATUM), HOUR(J.RDATUM)
+"""
+
+
+def umsatz_heatmap(von: date, bis: date) -> dict:
+    """Durchschnittlicher Bar-Umsatz je (Wochentag × Stunde) im Zeitraum.
+
+    Aggregiert zunaechst je Tag, mittelt dann ueber Tage des selben
+    Wochentags. So bekommt z.B. der Samstag den Wert "durchschnittlicher
+    Samstags-Umsatz in dieser Stunde".
+    """
+    with get_cao_db() as cur:
+        cur.execute(UMSATZ_HEATMAP_SQL, (von, bis))
+        rows = list(cur.fetchall() or [])
+
+    # Tagessummen je (wtag, tag, stunde)
+    summen: dict[tuple[int, date, int], float] = {}
+    tage_pro_wtag: dict[int, set] = {i: set() for i in range(7)}
+    for r in rows:
+        wt = int(r['wtag'])
+        tag = r['tag']
+        std = int(r['stunde']) if r['stunde'] is not None else 0
+        umsatz = float(r['umsatz'] or 0)
+        summen[(wt, tag, std)] = summen.get((wt, tag, std), 0.0) + umsatz
+        tage_pro_wtag[wt].add(tag)
+
+    # AVG je (wtag, stunde) ueber Anzahl Tage in tage_pro_wtag
+    matrix: dict[int, dict[int, float]] = {i: {} for i in range(7)}
+    for (wt, _tag, std), _umsatz in summen.items():
+        matrix[wt].setdefault(std, 0.0)
+    # leere Zeilen-Dict fuer alle 7 Wochentage
+    for wt in range(7):
+        anzahl_tage = len(tage_pro_wtag[wt]) or 1
+        # Summe ueber alle Tage je Stunde
+        std_summen: dict[int, float] = {}
+        for (w, _tag, std), umsatz in summen.items():
+            if w == wt:
+                std_summen[std] = std_summen.get(std, 0.0) + umsatz
+        for std, gesamt in std_summen.items():
+            matrix[wt][std] = round(gesamt / anzahl_tage, 2)
+
+    # Beobachtete Stunden-Spannweite + Max-Wert fuer Skalierung
+    alle_stunden = sorted({s for w in matrix.values() for s in w.keys()})
+    von_stunde = alle_stunden[0] if alle_stunden else 8
+    bis_stunde = alle_stunden[-1] if alle_stunden else 19
+    max_wert = max((v for w in matrix.values() for v in w.values()), default=0.0)
+
+    return {
+        'von':            von,
+        'bis':            bis,
+        'matrix':         matrix,
+        'von_stunde':     von_stunde,
+        'bis_stunde':     bis_stunde,
+        'max_wert':       max_wert,
+        'tage_pro_wtag':  {i: len(tage_pro_wtag[i]) for i in range(7)},
+    }
+
+
+def umsatz_heatmap_csv(von: date, bis: date) -> bytes:
+    """Heatmap als CSV (eine Zeile je Wochentag, je Stunde eine Spalte)."""
+    h = umsatz_heatmap(von, bis)
+    von_s, bis_s = h['von_stunde'], h['bis_stunde']
+    spalten = ['Wochentag'] + [f'{s:02d}:00' for s in range(von_s, bis_s + 1)]
+    wtage = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+    zeilen: list[dict] = []
+    for wt in range(7):
+        row: dict = {'Wochentag': wtage[wt]}
+        for s in range(von_s, bis_s + 1):
+            row[f'{s:02d}:00'] = h['matrix'][wt].get(s, 0.0)
+        zeilen.append(row)
+    return _csv_response(zeilen, spalten,
+                         f'umsatz_heatmap_{von}_{bis}.csv')
