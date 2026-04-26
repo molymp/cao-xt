@@ -90,13 +90,17 @@ def mitarbeiter_login(login_name: str, passwort: str) -> dict | None:
 
 
 def mitarbeiter_login_karte(guid: str) -> dict | None:
-    """Login per Mitarbeiter-Karte (Barcode-Scan).
+    """Login per Mitarbeiter-Karte (Barcode-Scan) ODER RFID-Tag.
 
-    Liest KARTEN.GUID, prueft TYP='M' (Mitarbeiter) und loest ueber
-    KARTEN.ID den zugehoerigen MITARBEITER auf.
+    1. Liest KARTEN.GUID, prueft TYP='M' (Mitarbeiter) und loest ueber
+       KARTEN.ID den zugehoerigen MITARBEITER auf (klassische
+       Mitarbeiterkarte).
+    2. Wenn nichts gefunden, faellt auf XT_MITARBEITER_RFID zurueck:
+       Mitarbeiter haben ihren Alarm-RFID-Tag eingetragen, dieser
+       authentifiziert sie genauso wie eine Mitarbeiterkarte.
 
     Args:
-        guid: Gescannter Barcode-Wert (KARTEN.GUID).
+        guid: Gescannter Barcode-/RFID-Wert.
 
     Returns:
         dict mit ``MA_ID``, ``LOGIN_NAME``, ``VNAME``, ``NAME`` oder ``None``.
@@ -112,4 +116,15 @@ def mitarbeiter_login_karte(guid: str) -> dict | None:
                WHERE k.GUID = %s AND k.TYP = 'M'""",
             (guid,)
         )
-        return cur.fetchone()
+        treffer = cur.fetchone()
+    if treffer:
+        return treffer
+    # Fallback: Mitarbeiter-RFID-Tag (Dorfkern XT-Tabelle)
+    try:
+        from common import rfid as _rfid
+        return _rfid.finde_ma_per_rfid(guid)
+    except Exception as exc:  # pragma: no cover – Modul fehlt nicht
+        import logging
+        logging.getLogger(__name__).warning(
+            "RFID-Fallback fehlgeschlagen: %s", exc)
+        return None

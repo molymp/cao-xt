@@ -50,6 +50,28 @@ def _form_werte(form) -> dict:
     return w
 
 
+def _rfid_speichern(cao_ma_id: int | None,
+                    rfid_tag_raw: str,
+                    geaendert_von_ma_id: int | None) -> None:
+    """Setzt/loescht den RFID-Tag fuer den CAO-Mitarbeiter.
+
+    Faengt ValueError ab und ueberlaesst dem Aufrufer das Flash-Handling
+    via Re-Raise. Ohne CAO-Verknuepfung ist Speichern nicht moeglich –
+    der RFID-Tag wird im UI dann eh nicht angezeigt.
+    """
+    from common import rfid as _rfid
+    rfid_tag = (rfid_tag_raw or '').strip()
+    if not cao_ma_id:
+        # Ohne CAO-Mitarbeiter-Verknuepfung gibt es keinen Anker fuer den Tag.
+        if rfid_tag:
+            raise ValueError(
+                'RFID-Tag kann nur gesetzt werden, wenn ein CAO-Login '
+                'verknuepft ist.')
+        return
+    _rfid.set_for_ma(int(cao_ma_id), rfid_tag or None,
+                     geaendert_von_ma_id=geaendert_von_ma_id)
+
+
 def _euro_to_ct(val: str) -> int:
     """"13,90" → 1390. Leere/ungueltige Eingabe → ValueError."""
     v = (val or '').replace('.', '').replace(',', '.').strip()
@@ -101,6 +123,10 @@ def neu():
                     'Anlage',
                     session['ma_id'],
                 )
+            # optional RFID-Tag (nur bei verknuepftem CAO-Login)
+            _rfid_speichern(werte.get('CAO_MA_ID'),
+                            request.form.get('rfid_tag', ''),
+                            session.get('ma_id'))
             flash(f'{werte["VNAME"]} {werte["NAME"]} angelegt.', 'ok')
             return redirect(url_for('orga_personal.detail', pers_id=pers_id))
         except (ValueError, LookupError) as e:
@@ -127,6 +153,16 @@ def detail(pers_id: int):
         try:
             werte = _form_werte(request.form)
             anz = m.ma_update(pers_id, werte, session['ma_id'])
+            # RFID-Tag separat behandeln (eigene Tabelle, eigener Counter)
+            from common import rfid as _rfid
+            alt_rfid = _rfid.get_for_ma(werte.get('CAO_MA_ID')) \
+                       if werte.get('CAO_MA_ID') else None
+            neu_rfid = (request.form.get('rfid_tag', '') or '').strip().upper()
+            if (alt_rfid or '') != neu_rfid:
+                _rfid_speichern(werte.get('CAO_MA_ID'),
+                                request.form.get('rfid_tag', ''),
+                                session.get('ma_id'))
+                anz += 1
             if anz:
                 flash(f'{anz} Feld(er) aktualisiert.', 'ok')
             else:
@@ -138,6 +174,12 @@ def detail(pers_id: int):
             flash(f'Fehler beim Speichern: {e}', 'error')
         ma = {**ma, **_form_werte(request.form)}
 
+    # Aktuellen RFID-Tag fuer Anzeige im Form-Feld laden
+    try:
+        from common import rfid as _rfid
+        ma['RFID_TAG'] = _rfid.get_for_ma(ma.get('CAO_MA_ID')) or ''
+    except Exception:
+        ma['RFID_TAG'] = ''
     aktuell_ct = m.aktueller_stundensatz_ct(pers_id)
     try:
         urlaub_jahr = int(request.args.get('urlaub_jahr', date.today().year))
