@@ -775,7 +775,27 @@ body.edit-mode [contenteditable="true"]:focus {
     <div class="hinweis-text" style="display: none;">Zeigt: Produktkatalog links, leerer Warenkorb rechts, Navigation oben</div>
   <img src="/doku/screenshot_1774479255929.png?t=1774479255947" alt="Screenshot: Startseite / Verkaufsbildschirm"></div>
 
-  <p>Die <strong>Navigation</strong> oben enthält Links zu allen Bereichen des Systems (Bestellungen, Journal, Admin usw.). Der Badge <span class="taste">📦 N</span> zeigt an, wie viele Bestellungen heute zu bearbeiten sind.</p>
+  <p>Oben sind <strong>zwei Leisten</strong>:</p>
+  <ul style="margin-top:6px;">
+    <li>
+      <strong>Obere Leiste (weiß).</strong> Links das Dorfkern-Logo
+      mit dem Filialnamen, dann der App-Switcher
+      (<span class="taste">🖥️ Kiosk</span> aktiv – die anderen Apps
+      Kasse / Orga / Admin sind klickbar, falls hier zu&shy;ge&shy;wiesen). Rechts die Uhr und der Abmelden-Knopf.
+    </li>
+    <li>
+      <strong>Funktionsleiste (sage-grün).</strong> Hier liegen die Kiosk-spezifischen Bereiche:
+      <span class="taste">📦 Bestellungen</span>,
+      <span class="taste">🍽 Mittagstisch</span>,
+      <span class="taste">⏱ Stempeluhr</span>,
+      <span class="taste">📒 Journal</span>,
+      <span class="taste">🖥️ Terminal</span>,
+      <span class="taste">📖 Handbuch</span>.
+      Der aktive Bereich ist Terracotta hinterlegt.
+      Der Badge <span class="taste">📦 N</span> auf <em>Bestellungen</em>
+      zeigt, wie viele heute zu bearbeiten sind.
+    </li>
+  </ul>
 </div>
 
 <!-- 1.2 Verkauf durchführen -->
@@ -863,9 +883,19 @@ body.edit-mode [contenteditable="true"]:focus {
   <p>Wenn ein Kunde die Ware doch nicht kaufen möchte oder ein Fehler passiert ist:</p>
   <ol class="schritte">
     <li>Die Schaltfläche <span class="taste grau">✕ Abbrechen</span> antippen.</li>
-    <li>Eine Bestätigungsabfrage erscheint – erneut bestätigen.</li>
-    <li>Der Warenkorb wird geleert. Es wird kein Bon gedruckt und kein Eintrag ins Journal geschrieben.</li>
+    <li>Eine Bestätigungsabfrage erscheint – mit <span class="taste rot">Verwerfen</span> bestätigen.</li>
+    <li>Alle Positionen verschwinden, der Warenkorb ist leer. Es wird kein Bon gedruckt und kein Eintrag ins Journal geschrieben.</li>
   </ol>
+
+  <div class="hinweis tipp">
+    <div class="icon">📋</div>
+    <div>
+      <strong>Die Bonnummer bleibt erhalten.</strong> Beim Kiosk werden mit
+      „Abbrechen" nur die Positionen entfernt – der Warenkorb (und damit
+      die Bonnummer) bleibt offen für die nächste Buchung. Es wird also
+      keine Bonnummer „verbrannt".
+    </div>
+  </div>
 
   <div class="hinweis tipp">
     <div class="icon">💡</div>

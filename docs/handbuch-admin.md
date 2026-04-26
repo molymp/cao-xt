@@ -78,6 +78,56 @@ Feature-Gating für den App-Switcher.
 
 ---
 
+## 2a. 💻 Terminal-Konfiguration — `/terminals`
+
+**Seit Phase 7c** zentral hier gepflegt (vorher in der Kasse-App).
+
+- **Übersichtstabelle:** Nummer · Bezeichnung · Drucker-IP · Modus
+  (`Live`/`Training`) · Bearbeiten-Knopf.
+- **Detail-Seite `/terminals/<nr>`** mit allen Nicht-TSE-Feldern:
+  - Allgemein (Bezeichnung)
+  - Bon-Kopf (Firma-Name + Zusatz, Override für `FIRMA.NAME1`)
+  - Bondrucker (IP / Port, Kassenlade Pin 2/5, Sofort-Drucken,
+    Schublade automatisch öffnen, QR-Code auf Bon)
+    + **Drucker-Test**-Knopf: sendet ESC/POS-Testseite direkt aus
+    der Admin-App an `DRUCKER_IP:DRUCKER_PORT`.
+  - Trainings-/Demo-Modus (TSE-Signierung deaktiviert; Bons als
+    `TRAININGSBON` gedruckt — nicht steuerlich relevant).
+  - EC-Terminal (manuell oder ZVT-Vollintegration; Terminal-IP/Port,
+    ZVT-Passwort, Tagesabschluss-Modus).
+  - DATEV-Konten (Bank, Nebenkasse, Manko-/Mehrbetragskonto).
+- API: `GET /api/terminals/<nr>` (Lesen),
+  `PUT /api/terminals/<nr>` (Whitelist-Partial-Update),
+  `POST /api/terminals/<nr>/drucker/test` (ESC/POS-Test).
+- TSE-Felder bleiben außen vor — die werden in `/tse` verwaltet.
+
+In der Kasse-App selbst zeigt `/admin/` jetzt nur noch
+KassenSichV-relevante Aktionen (TSE-Geräte, DSFinV-K-Export,
+Tagesabschlüsse) und einen Hinweis-Banner mit Link auf die zentrale
+Terminal-Detail-Seite. `/admin/terminal` (GET) leitet automatisch
+auf die Admin-URL um, `POST` bleibt als Fallback funktional.
+
+---
+
+## 2b. 🪪 Mitarbeiter-RFID — Pflege in Orga
+
+Mitarbeitende können einen RFID-Tag (z.B. von der Alarmanlage) als
+Login-Alternative zur Mitarbeiterkarte hinterlegen. Pflege:
+**Orga → Personal → Mitarbeiter → Feld „RFID-Tag"** (direkt unter
+dem CAO-Login).
+
+- DB-Tabelle: `XT_MITARBEITER_RFID` (`MA_ID PK`, `RFID_TAG VARCHAR(64)
+  UNIQUE`, `GEAENDERT_AM`, `GEAENDERT_VON_MA_ID`).
+- Format: 4–64 Zeichen aus `A-Z`, `0-9`, `:`, `-`. Auto-Uppercase.
+- Eindeutigkeit: ein Tag pro Person; doppelte Eingabe wird abgewiesen.
+- Wirkt automatisch in **allen Karten-Scan-Endpoints**: App-Login
+  (alle 4 Apps) + Stempeluhr (Kiosk) — über
+  `common.auth.mitarbeiter_login_karte`, der nach KARTEN-Lookup auf
+  `common.rfid.finde_ma_per_rfid` zurückfällt.
+- CAO-Tabellen werden nicht verändert; CAO-Updates bleiben unkritisch.
+
+---
+
 ## 3. Rechtemodell (Dorfkern v2)
 
 ### 3.1 Rollen
