@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mockup · Koppelkauf-Analyse · Habacher Dorfladen</title>
+<title>Mockup · Koppelkauf-Analyse · Aktion ohne Wirkung</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet"
@@ -129,21 +129,21 @@
     font-family: 'JetBrains Mono', monospace;
   }
 
-  /* ── Bewertung ─────────────────────────────────────────── */
+  /* ── Bewertung – diesmal NEGATIV (Rückgang) ───────────── */
   .bewertung {
-    background: linear-gradient(135deg, var(--sage), var(--cream));
-    border: 2px solid var(--gruen-m); border-radius: 14px;
+    background: linear-gradient(135deg, #f6d8ce, var(--cream));
+    border: 2px solid var(--rot); border-radius: 14px;
     padding: 22px 26px; margin-bottom: 22px;
     display: flex; gap: 18px; align-items: flex-start;
   }
   .bewertung .icon { font-size: 32px; flex-shrink: 0; }
   .bewertung h2 {
-    font-size: 22px; color: var(--gruen-d);
+    font-size: 22px; color: #6a1810;
     margin-bottom: 4px; font-weight: 600;
   }
-  .bewertung p { font-size: 14px; color: var(--gruen-d); }
+  .bewertung p { font-size: 14px; color: #6a1810; }
   .bewertung .uplift-pill {
-    background: var(--gruen-m); color: white; padding: 3px 11px;
+    background: var(--rot); color: white; padding: 3px 11px;
     border-radius: 6px; font-weight: 800; font-size: 13px;
     display: inline-block; margin-left: 6px;
     font-family: 'JetBrains Mono', monospace;
@@ -206,11 +206,11 @@
   }
   .koppel-tbl td.r { text-align: right; }
   .koppel-tbl .rang {
-    background: var(--gruen-d); color: white; border-radius: 50%;
+    background: var(--text-dim); color: white; border-radius: 50%;
     width: 22px; height: 22px; display: inline-flex; align-items: center;
     justify-content: center; font-size: 11px; font-weight: 800;
   }
-  .koppel-tbl tr:nth-child(-n+3) .rang { background: var(--terra); }
+  .koppel-tbl tr:nth-child(-n+3) .rang { background: var(--terra-d); }
   .quote-zelle {
     display: flex; align-items: center; gap: 8px; min-width: 180px;
   }
@@ -223,15 +223,15 @@
     border-radius: 4px;
   }
   .quote-text { font-weight: 700; min-width: 42px; text-align: right;
-                color: var(--terra-d); }
+                color: var(--text-dim); }
 
   /* ── Lessons-Block ─────────────────────────────────────── */
   .lessons {
     background: var(--paper); border: 1px solid var(--border);
-    border-left: 4px solid var(--terra);
+    border-left: 4px solid var(--rot);
     border-radius: 12px; padding: 20px 24px;
   }
-  .lessons h2 { color: var(--terra-d); margin-bottom: 6px; }
+  .lessons h2 { color: #6a1810; margin-bottom: 6px; }
   .lessons ul { list-style: none; margin-top: 12px; }
   .lessons li {
     padding: 10px 0 10px 28px; position: relative;
@@ -245,6 +245,7 @@
   .lessons li.info::before { content: 'ℹ'; color: var(--terra); }
   .lessons li.warn::before { content: '⚠'; color: var(--gelb); }
   .lessons li strong { color: var(--gruen-d); }
+  .lessons li.warn strong { color: #6a1810; }
 
   /* ── Footer ─────────────────────────────────────────────── */
   .seiten-fuss {
@@ -266,21 +267,20 @@
 
 <div class="seite">
 
-  <!-- Mockup-Hinweis -->
-  <span class="mockup-banner">Beispieldaten · so rendert die Analyse heute</span>
+  <span class="mockup-banner">Beispieldaten · Aktion ohne Wirkung · so rendert die Analyse heute</span>
 
   <!-- Aktionsprodukt-Header -->
   <div class="akt-header">
     <div>
-      <h1 class="titel">Allgäuer Bergkäse 200 g</h1>
-      <div class="untertitel">Wochen-Aktion · Frischetheke · KW 17</div>
-      <div class="artnum">ARTNUM 4711-BERGK-200</div>
+      <h1 class="titel">Bio-Apfelsaft naturtrüb 1 l</h1>
+      <div class="untertitel">Wochen-Aktion · Getränke · KW 9</div>
+      <div class="artnum">ARTNUM 5021-APFELSAFT-1L</div>
     </div>
     <div class="akt-preis-box">
       <div class="label">Aktionspreis</div>
-      <div class="aktionspreis">4,99 €</div>
-      <div class="normalpreis">statt 6,29 €</div>
-      <span class="rabatt">−20,7 %</span>
+      <div class="aktionspreis">3,49 €</div>
+      <div class="normalpreis">statt 4,29 €</div>
+      <span class="rabatt">−18,6 %</span>
     </div>
   </div>
 
@@ -288,7 +288,7 @@
   <div class="akt-zeit">
     <div>
       <span class="label">Aktionszeitraum</span>
-      <strong>Mo 21.04. – So 27.04.2026</strong>
+      <strong>Mo 23.02. – So 01.03.2026</strong>
     </div>
     <div>
       <span class="label">Dauer</span>
@@ -296,7 +296,7 @@
     </div>
     <div>
       <span class="label">KW</span>
-      <strong>17 / 2026</strong>
+      <strong>9 / 2026</strong>
     </div>
   </div>
 
@@ -308,38 +308,37 @@
   <div class="kpi-grid">
     <div class="kpi">
       <div class="label">Bons mit Aktionsartikel</div>
-      <div class="wert">142</div>
-      <div class="sub">≈ 20 / Tag</div>
+      <div class="wert" style="color: var(--text-dim);">18</div>
+      <div class="sub">≈ 2,6 / Tag</div>
     </div>
     <div class="kpi">
       <div class="label">Verkaufte Stück</div>
-      <div class="wert">187</div>
-      <div class="sub">Ø 1,32 / Bon</div>
+      <div class="wert" style="color: var(--text-dim);">22</div>
+      <div class="sub">Ø 1,22 / Bon</div>
     </div>
     <div class="kpi">
       <div class="label">Brutto-Umsatz</div>
-      <div class="wert">933 €</div>
-      <div class="sub">Aktionspreis · 4,99 €/Stk</div>
+      <div class="wert" style="color: var(--text-dim);">77 €</div>
+      <div class="sub">Aktionspreis · 3,49 €/Stk</div>
     </div>
     <div class="kpi">
-      <div class="label">Margenverlust</div>
-      <div class="wert" style="color: var(--rot);">−243 €</div>
-      <div class="sub">vs. Normalpreis 6,29 €</div>
+      <div class="label">Aktionsrabatt</div>
+      <div class="wert" style="color: var(--rot);">−18 €</div>
+      <div class="sub">22 Stk × 0,80 € Rabatt</div>
     </div>
   </div>
 
-  <!-- Bewertung -->
+  <!-- Bewertung NEGATIV -->
   <div class="bewertung">
-    <div class="icon">🎯</div>
+    <div class="icon">📉</div>
     <div>
-      <h2>Die Aktion war klar merkbar.<span class="uplift-pill">+286 %</span></h2>
+      <h2>Aktionseffekt: Rückgang im Zeitraum<span class="uplift-pill">−11 %</span></h2>
       <p>
-        142 Bons mit Bergkäse vs. <strong>Ø 37 Bons</strong> in den vier
-        Vergleichsperioden. Das entspricht einem fast vierfachen
-        Anstieg der Käuferfrequenz – der Aktionspreis hat deutlich mehr
-        Kunden zum Kauf bewegt. Auch die <strong>Koppelkauf-Quote</strong>
-        bleibt stabil hoch, der Bon-Wert hat sich also nicht zugunsten
-        nur des Aktionsartikels verschoben.
+        18 Bons mit Apfelsaft im Aktionszeitraum gegen
+        <strong>Ø 20 Bons</strong> in den vier Vergleichsperioden – also
+        sogar weniger als ohne Aktion. Saisonale Effekte oder
+        Verfügbarkeitsprobleme prüfen. Die Bewertung kommt direkt aus
+        <code>_uplift_einschaetzen()</code>.
       </p>
     </div>
   </div>
@@ -367,64 +366,66 @@
         <tbody>
           <tr class="aktion">
             <td>
-              <div class="periode-name">📍 Aktion KW 17</div>
-              <div class="periode-zeit">21.04. – 27.04.2026</div>
+              <div class="periode-name">📍 Aktion KW 9</div>
+              <div class="periode-zeit">23.02. – 01.03.2026</div>
             </td>
-            <td class="r">142</td>
-            <td class="r">187</td>
-            <td class="r">933 €</td>
+            <td class="r">18</td>
+            <td class="r">22</td>
+            <td class="r">77 €</td>
             <td class="r">—</td>
           </tr>
           <tr>
             <td>
-              <div class="periode-name">Vorwoche KW 16</div>
-              <div class="periode-zeit">14.04. – 20.04.2026</div>
+              <div class="periode-name">Vorwoche KW 8</div>
+              <div class="periode-zeit">16.02. – 22.02.2026</div>
             </td>
-            <td class="r">38</td>
-            <td class="r">44</td>
-            <td class="r">277 €</td>
-            <td class="r"><span class="delta plus">+274 %</span></td>
+            <td class="r">21</td>
+            <td class="r">25</td>
+            <td class="r">107 €</td>
+            <td class="r"><span class="delta minus">−14 %</span></td>
           </tr>
           <tr>
             <td>
-              <div class="periode-name">Folgewoche KW 18</div>
-              <div class="periode-zeit">28.04. – 04.05.2026</div>
+              <div class="periode-name">Folgewoche KW 10</div>
+              <div class="periode-zeit">02.03. – 08.03.2026</div>
             </td>
-            <td class="r">52</td>
-            <td class="r">61</td>
-            <td class="r">383 €</td>
-            <td class="r"><span class="delta plus">+173 %</span></td>
+            <td class="r">12</td>
+            <td class="r">13</td>
+            <td class="r">56 €</td>
+            <td class="r"><span class="delta plus">+50 %</span></td>
           </tr>
           <tr>
             <td>
-              <div class="periode-name">Vorjahr 21.–27.04.</div>
-              <div class="periode-zeit">21.04. – 27.04.2025</div>
+              <div class="periode-name">Vorjahr 23.02.–01.03.</div>
+              <div class="periode-zeit">23.02. – 01.03.2025</div>
             </td>
-            <td class="r">31</td>
-            <td class="r">37</td>
-            <td class="r">233 €</td>
-            <td class="r"><span class="delta plus">+358 %</span></td>
+            <td class="r">23</td>
+            <td class="r">28</td>
+            <td class="r">120 €</td>
+            <td class="r"><span class="delta minus">−22 %</span></td>
           </tr>
           <tr>
             <td>
-              <div class="periode-name">Vorjahr KW 17</div>
-              <div class="periode-zeit">22.04. – 28.04.2025</div>
+              <div class="periode-name">Vorjahr KW 9</div>
+              <div class="periode-zeit">24.02. – 02.03.2025</div>
             </td>
-            <td class="r">29</td>
-            <td class="r">34</td>
-            <td class="r">214 €</td>
-            <td class="r"><span class="delta plus">+390 %</span></td>
+            <td class="r">25</td>
+            <td class="r">30</td>
+            <td class="r">129 €</td>
+            <td class="r"><span class="delta minus">−28 %</span></td>
           </tr>
         </tbody>
       </table>
 
       <div style="margin-top: 16px; padding: 12px 14px;
-                  background: var(--cream); border-radius: 8px;
-                  font-size: 12px; color: var(--text-dim);">
-        💡 <strong style="color: var(--ink);">Nachzieheffekt:</strong>
-        Auch die Folgewoche liegt noch deutlich über dem Vorjahres-Niveau
-        – die Aktion zieht offenbar Stammkunden an, die nach
-        Aktionsende erstmal weiterkaufen.
+                  background: #f6d8ce; border-radius: 8px;
+                  font-size: 12px; color: #6a1810; border: 1px solid var(--rot);">
+        ⚠ <strong style="color: #6a1810;">Negativ-Mustern:</strong>
+        Vorwoche und beide Vorjahres-Perioden lagen über der Aktion –
+        der Rabatt hat keine zusätzliche Frequenz erzeugt, im Gegenteil.
+        Die Folgewoche ist nur scheinbar besser, weil sie aus der
+        kleinen Aktions-Basis berechnet ist (12 vs. 18 absolut bleibt
+        ein Einbruch unter Vorwochen-Niveau).
       </div>
     </div>
 
@@ -432,8 +433,8 @@
     <div class="card">
       <h2>Top-Koppelkäufe im Aktionszeitraum</h2>
       <div class="h-sub">
-        Welche Artikel landeten zusammen mit dem Bergkäse im
-        Warenkorb? Quote = Anteil der 142 Bergkäse-Bons.
+        Quote = Anteil der nur 18 Aktions-Bons – kleine absolute Zahlen,
+        die statistische Aussagekraft ist begrenzt.
       </div>
       <table class="koppel-tbl">
         <thead>
@@ -448,132 +449,73 @@
         <tbody>
           <tr>
             <td><span class="rang">1</span></td>
-            <td><strong>Bauernbrot Kruste 750 g</strong></td>
+            <td>Bauernbrot Kruste 750 g</td>
             <td>
               <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 72 %;"></div></div>
-                <span class="quote-text">72 %</span>
+                <div class="quote-bar"><div style="width: 33 %;"></div></div>
+                <span class="quote-text">33 %</span>
               </div>
             </td>
-            <td class="r">102</td>
-            <td class="r">357 €</td>
+            <td class="r">6</td>
+            <td class="r">21 €</td>
           </tr>
           <tr>
             <td><span class="rang">2</span></td>
-            <td><strong>Weintrauben hell 500 g</strong></td>
+            <td>Mineralwasser still 1,5 l</td>
             <td>
               <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 41 %;"></div></div>
-                <span class="quote-text">41 %</span>
+                <div class="quote-bar"><div style="width: 22 %;"></div></div>
+                <span class="quote-text">22 %</span>
               </div>
             </td>
-            <td class="r">58</td>
-            <td class="r">203 €</td>
+            <td class="r">4</td>
+            <td class="r">16 €</td>
           </tr>
           <tr>
             <td><span class="rang">3</span></td>
-            <td><strong>Bayerisches Bauernbutter 250 g</strong></td>
+            <td>Bio-Müsli 500 g</td>
             <td>
               <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 38 %;"></div></div>
-                <span class="quote-text">38 %</span>
+                <div class="quote-bar"><div style="width: 17 %;"></div></div>
+                <span class="quote-text">17 %</span>
               </div>
             </td>
-            <td class="r">54</td>
-            <td class="r">189 €</td>
+            <td class="r">3</td>
+            <td class="r">28 €</td>
           </tr>
           <tr>
             <td><span class="rang">4</span></td>
-            <td>Riesling QbA 0,75 l</td>
+            <td><strong>Sekt Brut 0,75 l</strong></td>
             <td>
               <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 28 %;"></div></div>
-                <span class="quote-text">28 %</span>
+                <div class="quote-bar"><div style="width: 11 %;"></div></div>
+                <span class="quote-text">11 %</span>
               </div>
             </td>
-            <td class="r">40</td>
-            <td class="r">320 €</td>
+            <td class="r">2</td>
+            <td class="r"><strong>109 €</strong></td>
           </tr>
           <tr>
             <td><span class="rang">5</span></td>
-            <td>Salzgebäck Stangen 200 g</td>
+            <td>Vollkornkekse 250 g</td>
             <td>
               <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 23 %;"></div></div>
-                <span class="quote-text">23 %</span>
+                <div class="quote-bar"><div style="width: 11 %;"></div></div>
+                <span class="quote-text">11 %</span>
               </div>
             </td>
-            <td class="r">33</td>
-            <td class="r">85 €</td>
-          </tr>
-          <tr>
-            <td><span class="rang">6</span></td>
-            <td>Walnusskerne 100 g</td>
-            <td>
-              <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 19 %;"></div></div>
-                <span class="quote-text">19 %</span>
-              </div>
-            </td>
-            <td class="r">27</td>
-            <td class="r">81 €</td>
-          </tr>
-          <tr>
-            <td><span class="rang">7</span></td>
-            <td>Birnen Williams 1 kg</td>
-            <td>
-              <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 16 %;"></div></div>
-                <span class="quote-text">16 %</span>
-              </div>
-            </td>
-            <td class="r">23</td>
-            <td class="r">69 €</td>
-          </tr>
-          <tr>
-            <td><span class="rang">8</span></td>
-            <td>Honig Wald 500 g</td>
-            <td>
-              <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 13 %;"></div></div>
-                <span class="quote-text">13 %</span>
-              </div>
-            </td>
-            <td class="r">18</td>
-            <td class="r">126 €</td>
-          </tr>
-          <tr>
-            <td><span class="rang">9</span></td>
-            <td>Bergsteinpilze getrocknet 30 g</td>
-            <td>
-              <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 9 %;"></div></div>
-                <span class="quote-text">9 %</span>
-              </div>
-            </td>
-            <td class="r">13</td>
-            <td class="r">78 €</td>
-          </tr>
-          <tr>
-            <td><span class="rang">10</span></td>
-            <td>Cidre trocken 0,33 l</td>
-            <td>
-              <div class="quote-zelle">
-                <div class="quote-bar"><div style="width: 8 %;"></div></div>
-                <span class="quote-text">8 %</span>
-              </div>
-            </td>
-            <td class="r">11</td>
-            <td class="r">37 €</td>
+            <td class="r">2</td>
+            <td class="r">18 €</td>
           </tr>
         </tbody>
       </table>
 
       <div style="margin-top: 14px; padding: 10px 12px; font-size: 12px;
-                  background: var(--terra-wash); border-radius: 8px;
-                  color: var(--terra-d); font-weight: 700;">
-        🍷 Bon-Wert mit Bergkäse: <strong>Ø 18,60 €</strong>
-        (vs. 12,40 € Wochenschnitt, +50 %).
+                  background: var(--cream); border-radius: 8px;
+                  color: var(--text-dim);">
+        ℹ Bon-Wert mit Apfelsaft: <strong style="color:var(--ink);">Ø 13,20 €</strong>
+        (vs. 11,80 € Wochenschnitt, +12 %). Erhöhung zu schwach für
+        einen eigenen Insight (Schwelle &ge; 20 %).
       </div>
     </div>
   </div>
@@ -583,58 +525,58 @@
     <h2>💡 Lessons Learned</h2>
     <div style="font-size: 13px; color: var(--text-dim); margin-top: 4px;">
       Automatisch aus den Roh-Kennzahlen abgeleitete Erkenntnisse.
-      Die folgenden 6 Aussagen würde der regelbasierte
-      Insight-Generator (<code>orga-app/app/koppelkauf.py ::
-      insights_generieren</code>) für diese Beispieldaten erzeugen.
+      Bei einer Flop-Aktion sind die Aussagen bewusst <strong>nüchtern
+      und problemfokussiert</strong>; positive Begleitprodukt-Insights
+      bleiben aus, weil keine Quote über 50 % liegt.
     </div>
     <ul>
-      <li>
-        <strong>Bauernbrot Kruste 750 g ist ein fest etabliertes
-        Begleitprodukt.</strong>
-        In 72 % der Bons mit dem Aktionsartikel war auch Bauernbrot
-        Kruste 750 g dabei. Beim nächsten Mal als kombinierte
-        Display-Aktion kommunizieren.
-      </li>
       <li class="info">
-        <strong>Riesling QbA 0,75 l zieht den Bon-Wert hoch.</strong>
-        Nur 28 % der Aktions-Bons enthalten Riesling QbA 0,75 l, der
-        Artikel trägt aber 320 € zum Begleitumsatz bei – ein
+        <strong>Sekt Brut 0,75 l zieht den Bon-Wert hoch.</strong>
+        Nur 11 % der Aktions-Bons enthalten Sekt Brut 0,75 l, der
+        Artikel trägt aber 109 € zum Begleitumsatz bei – ein
         hochpreisiges Komplementärprodukt.
       </li>
-      <li>
-        <strong>Folgewoche profitiert nach.</strong>
-        Auch nach Aktionsende liegt der Verkauf um 37 % über der
-        Vorwoche – die Aktion hat offenbar Stammkunden angezogen, die
-        erstmal weiterkaufen. Reaktivierung in 4 Wochen prüfen.
+      <li class="warn">
+        <strong>Aktion blieb hinter der Vorwoche.</strong>
+        Im Aktionszeitraum lagen die Bons mit dem Artikel 14 % unter
+        der Vorwoche (18 vs. 21) – das Preissignal hat offenbar nicht
+        zusätzlich angezogen. Platzierung, Kommunikation oder
+        Sortimentsfit prüfen.
       </li>
       <li class="info">
-        <strong>Vorjahr lag deutlich darunter.</strong>
-        Gegenüber der gleichen KW im Vorjahr liegt der Verkauf um
-        +390 %. Der Effekt ist also echter Aktionsantrieb, kein reiner
-        Saisoneffekt.
+        <strong>Folgewoche-Einbruch.</strong>
+        Nach Aktionsende fiel der Verkauf um 43 % unter die Vorwoche
+        zurück (12 statt 21 Bons). Stammkunden haben sich vermutlich
+        während der Aktion eingedeckt – echter Neukundeneffekt eher
+        gering.
       </li>
       <li class="warn">
-        <strong>Aktionsrabatt im Auge behalten.</strong>
-        Bei 187 verkauften Stück wurden 243 € Bruttoumsatz gegenüber
-        Normalpreis nicht erlöst. Mehrumsatz aus Koppelkäufen sollte
-        das mehr als ausgleichen.
-      </li>
-      <li>
-        <strong>Aktion hebt den Bon-Wert.</strong>
-        Bons mit Aktionsartikel sind im Schnitt 18,60 € wert –
-        +50 % gegenüber Bons ohne diesen Artikel (12,40 €). Die
-        Aktion zieht höhere Warenkörbe an.
+        <strong>Rabatt hat nicht gezündet.</strong>
+        Trotz 19 % Preisnachlass nur −11 % gegenüber dem
+        Vergleichsschnitt. Mehr Sichtbarkeit (Plakat, Display,
+        Newsletter) oder ein Bündel mit einem Komplementärprodukt
+        könnte die Wirkung verbessern.
       </li>
     </ul>
+
+    <div style="margin-top: 16px; padding: 12px 14px;
+                background: var(--cream); border-radius: 8px;
+                font-size: 12px; color: var(--text-dim);">
+      <strong style="color: var(--ink);">Was hier nicht erscheint, ist
+      auch eine Aussage:</strong> kein „X-Bündel funktioniert", kein
+      „Vorjahr lag deutlich darunter", kein „Aktion hebt den
+      Bon-Wert", kein „Folgewoche profitiert nach". Die Aktion hat
+      schlicht keine messbar positive Spur in den Daten hinterlassen.
+    </div>
   </div>
 
   <!-- Footer -->
   <div class="seiten-fuss">
     <span>🌾 Habacher Dorfladen · Dorfkern v2 · Reporting</span>
-    <span class="pfad">/orga/berichte/koppelkauf?artnum=4711-BERGK-200&amp;von=2026-04-21&amp;bis=2026-04-27</span>
+    <span class="pfad">/orga/berichte/koppelkauf?artnum=5021-APFELSAFT-1L&amp;von=2026-02-23&amp;bis=2026-03-01</span>
     <span>Stand: April 2026 ·
-      <a href="koppelkauf-mockup-flop.html"
-         style="color: var(--terra); font-weight: 700;">Gegenbeispiel: Flop-Aktion →</a>
+      <a href="koppelkauf-mockup.html"
+         style="color: var(--terra); font-weight: 700;">← zurück zur Erfolgs-Aktion</a>
     </span>
   </div>
 

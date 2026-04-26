@@ -592,6 +592,74 @@ def insights_generieren(analyse: dict) -> list[dict]:
                       f"Aktion zieht hoehere Warenkoerbe an.",
         })
 
+    # 7. Aktion bringt WENIGER als die Vorwoche – schlechtester Befund.
+    #    Das uebersteuert die generelle Vergleichs-Bewertung mit einer
+    #    konkreten Warnung; Stammkunden koennten den Artikel im
+    #    Vergleichszeitraum schon vorher gekauft haben.
+    aktion_bons_n = aktion_um.get('anzahl_bons', 0)
+    if vw and aktion_bons_n > 0:
+        vw_bons_n = (vw.get('umsatz') or {}).get('anzahl_bons', 0)
+        if vw_bons_n > 0 and aktion_bons_n < vw_bons_n:
+            rueckgang = (vw_bons_n - aktion_bons_n) / vw_bons_n * 100
+            insights.append({
+                'typ': 'warn',
+                'titel': "Aktion blieb hinter der Vorwoche.",
+                'text':  f"Im Aktionszeitraum lagen die Bons mit dem "
+                          f"Artikel {rueckgang:.0f} % unter der Vorwoche "
+                          f"({aktion_bons_n} vs. {vw_bons_n}) – das "
+                          f"Preissignal hat offenbar nicht zusaetzlich "
+                          f"angezogen. Platzierung, Kommunikation oder "
+                          f"Sortimentsfit pruefen.",
+            })
+
+    # 8. Folgewoche bricht ein (Stammkunden vorgezogen, kein Aufmerk-
+    #    samkeitseffekt, der ueber das Aktionsende hinausstrahlt).
+    if vw and fw:
+        vw_bons_n = (vw.get('umsatz') or {}).get('anzahl_bons', 0)
+        fw_bons_n = (fw.get('umsatz') or {}).get('anzahl_bons', 0)
+        if vw_bons_n > 0 and fw_bons_n < vw_bons_n * 0.7:
+            einbruch = (vw_bons_n - fw_bons_n) / vw_bons_n * 100
+            insights.append({
+                'typ': 'info',
+                'titel': "Folgewoche-Einbruch.",
+                'text':  f"Nach Aktionsende fiel der Verkauf um {einbruch:.0f} % "
+                          f"unter die Vorwoche zurueck ({fw_bons_n} statt "
+                          f"{vw_bons_n} Bons). Stammkunden haben sich "
+                          f"vermutlich waehrend der Aktion eingedeckt – "
+                          f"echter Neukundeneffekt eher gering.",
+            })
+
+    # 9. Hoher Rabatt aber kaum/keine Wirkung: Aktion-Bons vs. Schnitt
+    #    der Vergleichsperioden < 10 %, Rabatt > 15 %.
+    rabatt_pct = None
+    if margen and margen.get('normal_pro_stk'):
+        if margen['normal_pro_stk'] > 0:
+            rabatt_pct = (margen.get('rabatt_pro_stk', 0)
+                          / margen['normal_pro_stk']) * 100
+    # Wirkung-Vergleich: Schnitt aller vorhandenen Vergleichsperioden
+    vergleich_bons_liste = []
+    for key in ('vorwoche', 'folgewoche', 'vorjahr', 'vorjahr_kw'):
+        p = perioden.get(key)
+        if p:
+            vergleich_bons_liste.append(
+                (p.get('umsatz') or {}).get('anzahl_bons', 0))
+    vergleich_avg = (sum(vergleich_bons_liste) / len(vergleich_bons_liste)
+                      if vergleich_bons_liste else 0)
+    wirkung_pct = None
+    if vergleich_avg > 0:
+        wirkung_pct = (aktion_bons_n - vergleich_avg) / vergleich_avg * 100
+    if (rabatt_pct is not None and rabatt_pct >= 15
+            and wirkung_pct is not None and wirkung_pct < 10):
+        insights.append({
+            'typ': 'warn',
+            'titel': "Rabatt hat nicht gezuendet.",
+            'text':  f"Trotz {rabatt_pct:.0f} % Preisnachlass nur "
+                      f"{wirkung_pct:+.0f} % gegenueber dem Vergleichsschnitt. "
+                      f"Mehr Sichtbarkeit (Plakat, Display, Newsletter) "
+                      f"oder ein Buendel mit einem Komplementaerprodukt "
+                      f"koennte die Wirkung verbessern.",
+        })
+
     return insights
 
 
