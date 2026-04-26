@@ -1384,6 +1384,30 @@ def _redirect_schichtplan(montag_raw: str, rueck: str):
     return redirect(url_for(ziel, woche=montag_raw))
 
 
+@bp.post('/schichtplan/ziel-umsatz')
+@backoffice_required
+def schichtplan_ziel_umsatz_setzen():
+    """Setzt den DORFKERN_KONFIG-Eintrag schichtplan.umsatz_pro_ma_stunde
+    auf einen neuen Ganzzahl-Wert. Wird vom Bonus-Banner inline-Editor
+    aufgerufen, JSON-Antwort fuer schnelles AJAX.
+    """
+    from flask import jsonify
+    try:
+        wert = int(request.form.get('wert', '').strip())
+        if wert < 1:
+            raise ValueError('Wert muss > 0 sein.')
+        from common import konfig as _konfig
+        _konfig.set('schichtplan.umsatz_pro_ma_stunde', wert,
+                    typ='INT', kategorie='SCHICHTPLAN',
+                    beschreibung='Erwarteter Umsatz pro MA-Stunde fuer '
+                                  'die Heatmap-Schichtempfehlung.')
+        return jsonify({'ok': True, 'wert': wert})
+    except (ValueError, KeyError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 500
+
+
 @bp.post('/schichtplan/zuordnung')
 @backoffice_required
 def schichtplan_zuordnung_anlegen():
@@ -1491,16 +1515,21 @@ def schichtplan_raster():
 
     # ── Heatmap-Unterlage: erwarteter Umsatz pro Tag x Stunde ──
     # Datenbasis: Vorwoche + gleiche KW im Vorjahr; gemittelt.
-    # Konfigurierbarer Ziel-Umsatz pro MA-Stunde (Default 100 EUR).
+    # Feiertage in der angezeigten Woche werden uebersprungen –
+    # Erwarteter Umsatz=0, Empfehlung=0, kein Eintrag in der Bilanz.
+    # Punktesaldo: pro Stunde = (geplante MA - empfohlene MA),
+    # aufsummiert ueber die ganze Woche. Positiv = Reserve, negativ
+    # = Lueckenstunden.
     umsatz_overlay: dict = {}
-    bonus_summary: dict = {'soll': 0.0, 'erwartet': 0.0, 'differenz': 0.0,
+    bonus_summary: dict = {'punkte_saldo': 0, 'erwartet': 0.0,
                             'zellen_unter': 0, 'zellen_ueber': 0,
+                            'punkte_ueber': 0, 'punkte_unter': 0,
                             'ziel_pro_ma_h': 100.0}
     ziel_pro_ma_h = 100.0
     try:
         from common import konfig as _konfig
-        ziel_pro_ma_h = float(_konfig.lese('schichtplan.umsatz_pro_ma_stunde',
-                                            default=100.0))
+        ziel_pro_ma_h = float(_konfig.get('schichtplan.umsatz_pro_ma_stunde',
+                                          default=100.0))
     except Exception:
         pass
     bonus_summary['ziel_pro_ma_h'] = ziel_pro_ma_h
@@ -1518,6 +1547,7 @@ def schichtplan_raster():
         for i in range(7):
             tag = tage[i]
             wt = tag.weekday()
+            ist_feiertag = bool(feiertage.get(tag))
             for std in stunden:
                 v = h_vw['matrix'][wt].get(std, 0.0) if h_vw else 0.0
                 u = h_vj['matrix'][wt].get(std, 0.0) if h_vj else 0.0
@@ -1530,19 +1560,24 @@ def schichtplan_raster():
                 for gr in plan_fix.get(tag, []):
                     if gr['_start_min'] <= std_min < gr['_ende_min']:
                         ma_anz += len(gr.get('mas', []))
-                # Empfohlene MA-Anzahl: erwarteter Umsatz / Ziel je MA-h.
-                # Aufrunden, ab >25 % des Ziel-Umsatzes mindestens 1 MA.
+
+                # An Feiertagen ist der Laden zu – kein erwarteter Umsatz,
+                # auch keine Empfehlung; geplante Schichten dort waeren
+                # eine Reserve.
+                if ist_feiertag:
+                    erwartet = 0.0
                 empfohlen = 0
                 if erwartet > 0 and ziel_pro_ma_h > 0:
                     empfohlen = int(erwartet // ziel_pro_ma_h)
                     rest = erwartet - empfohlen * ziel_pro_ma_h
                     if rest >= ziel_pro_ma_h * 0.25:
                         empfohlen += 1
-                # Luecke vs. Plan
-                luecke = empfohlen - ma_anz   # >0: zu wenig MA, <0: ueberdeckt
-                soll = ma_anz * ziel_pro_ma_h
-                diff = soll - erwartet
-                # Klassifizierung anhand der MA-Luecke
+                # Punkte: positiv = ueberdeckt, negativ = Luecke.
+                # Definition vom User: pro MA-Stunde 1 Punkt; empfohlen
+                # MA × Ziel-Umsatz "verbrauchen" entsprechende Punkte.
+                punkte = ma_anz - empfohlen
+                # Klassifizierung
+                luecke = -punkte
                 if empfohlen == 0 and ma_anz == 0:
                     klasse = 'leer'
                 elif luecke <= 0:
@@ -1558,17 +1593,19 @@ def schichtplan_raster():
                     'ma_anz':    ma_anz,
                     'empfohlen': empfohlen,
                     'luecke':    luecke,
-                    'soll':      round(soll, 0),
-                    'diff':      round(diff, 0),
+                    'punkte':    punkte,
                     'klasse':    klasse,
+                    'feiertag':  ist_feiertag,
                 }
-                bonus_summary['soll']      += soll
-                bonus_summary['erwartet']  += erwartet
-                bonus_summary['differenz'] += diff
-                if luecke > 0:    bonus_summary['zellen_unter'] += 1
-                elif luecke < 0:  bonus_summary['zellen_ueber'] += 1
-        for k in ('soll', 'erwartet', 'differenz'):
-            bonus_summary[k] = round(bonus_summary[k], 0)
+                bonus_summary['erwartet']    += erwartet
+                bonus_summary['punkte_saldo'] += punkte
+                if punkte > 0:
+                    bonus_summary['zellen_ueber'] += 1
+                    bonus_summary['punkte_ueber'] += punkte
+                elif punkte < 0:
+                    bonus_summary['zellen_unter'] += 1
+                    bonus_summary['punkte_unter'] += -punkte
+        bonus_summary['erwartet'] = round(bonus_summary['erwartet'], 0)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).debug(
