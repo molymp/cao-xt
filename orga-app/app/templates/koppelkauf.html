@@ -346,6 +346,61 @@
   <p>{{ itp.text }}</p>
 </div>
 
+{# ── Margen-/Rabatt + Bon-Wert ─────────────────────────────── #}
+{% if analyse.margen or analyse.bon_wert %}
+<div class="kk-extra-grid">
+  {% if analyse.margen %}
+  <div class="card kk-extra">
+    <h3 class="card-titel">Aktionsrabatt</h3>
+    <div class="kk-extra-wert" style="color: var(--rot);">
+      −{{ '%.0f'|format(analyse.margen.rabatt_volumen) | replace('.', ',') }}&nbsp;€
+    </div>
+    <div class="kk-extra-sub">
+      {{ '%.0f'|format(analyse.margen.stueckzahl) }} Stk × ({{ '%.2f'|format(analyse.margen.normal_pro_stk) | replace('.', ',') }}&nbsp;€ Normal − {{ '%.2f'|format(analyse.margen.aktion_pro_stk) | replace('.', ',') }}&nbsp;€ Aktion)
+    </div>
+    <div class="kk-extra-zusatz">
+      Brutto Aktion: <strong>{{ '%.0f'|format(analyse.margen.aktion_brutto) | replace('.', ',') }}&nbsp;€</strong>
+      <span style="color: var(--text-dim);">
+        · vs. Normal {{ '%.0f'|format(analyse.margen.normal_brutto) | replace('.', ',') }}&nbsp;€
+      </span>
+    </div>
+  </div>
+  {% endif %}
+  {% if analyse.bon_wert and analyse.bon_wert.mit_aktion_avg %}
+  <div class="card kk-extra">
+    <h3 class="card-titel">Ø Bon-Wert</h3>
+    <div class="kk-extra-wert" style="color: var(--gruen-mitte);">
+      {{ '%.2f'|format(analyse.bon_wert.mit_aktion_avg) | replace('.', ',') }}&nbsp;€
+    </div>
+    <div class="kk-extra-sub">
+      mit Aktionsartikel ({{ analyse.bon_wert.mit_aktion_anz }} Bons)
+      {% if analyse.bon_wert.delta_pct is not none %}
+        · <strong style="color:{{ 'var(--gruen-mitte)' if analyse.bon_wert.delta_pct >= 0 else 'var(--rot)' }};">{{ '%+.0f'|format(analyse.bon_wert.delta_pct) }}&nbsp;%</strong>
+      {% endif %}
+    </div>
+    <div class="kk-extra-zusatz">
+      ohne Aktion: <strong>{{ '%.2f'|format(analyse.bon_wert.ohne_aktion_avg) | replace('.', ',') }}&nbsp;€</strong>
+      <span style="color: var(--text-dim);">
+        ({{ analyse.bon_wert.ohne_aktion_anz }} Bons im Zeitraum)
+      </span>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+.kk-extra-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                  gap: 14px; margin-bottom: 16px; }
+.kk-extra { padding: 16px 20px; }
+.kk-extra-wert {
+  font-family: 'Fraunces', Georgia, serif; font-size: 32px; line-height: 1;
+  margin: 4px 0 8px 0; font-variant-numeric: tabular-nums; font-weight: 500;
+}
+.kk-extra-sub { font-size: 12px; color: var(--text-mitte); margin-bottom: 6px; }
+.kk-extra-zusatz { font-size: 12px; color: var(--text-mitte); }
+</style>
+{% endif %}
+
 {# ── Periodenvergleich: Umsatz des Aktionsartikels ──────────── #}
 <div class="card" style="margin-bottom:16px;">
   <h2 class="card-titel">Umsatzvergleich: {{ aktion_info.bezeichnung if aktion_info else artnum }}</h2>
@@ -690,6 +745,48 @@
   });
 })();
 </script>
+
+{# ── Lessons Learned (regelbasierte Insights) ──────────────── #}
+{% if analyse.insights %}
+<div class="kk-lessons">
+  <h2>💡 Lessons Learned</h2>
+  <div class="kk-lessons-sub">
+    Automatisch aus den Roh-Kennzahlen abgeleitete Erkenntnisse.
+  </div>
+  <ul>
+    {% for ins in analyse.insights %}
+    <li class="ll-{{ ins.typ }}">
+      <div class="ll-titel"><strong>{{ ins.titel }}</strong></div>
+      <div class="ll-text">{{ ins.text }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+<style>
+.kk-lessons { background: white; border: 1px solid var(--border);
+              border-left: 4px solid var(--brand-terracotta);
+              border-radius: var(--radius); padding: 20px 24px;
+              box-shadow: var(--schatten); margin-bottom: 18px; }
+.kk-lessons h2 { color: var(--brand-terracotta-dunkel); margin: 0 0 4px 0;
+                  font-size: 18px; }
+.kk-lessons-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+.kk-lessons ul { list-style: none; padding: 0; margin: 0; }
+.kk-lessons li {
+  padding: 10px 0 10px 30px; position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.kk-lessons li:last-child { border-bottom: none; }
+.kk-lessons li::before {
+  position: absolute; left: 4px; top: 10px; font-weight: 800; font-size: 16px;
+}
+.kk-lessons li.ll-positiv::before { content: '✓'; color: var(--gruen-mitte); }
+.kk-lessons li.ll-info::before    { content: 'ℹ'; color: var(--brand-terracotta); }
+.kk-lessons li.ll-warn::before    { content: '⚠'; color: var(--status-gelb); }
+.kk-lessons .ll-titel { color: var(--gruen-dunkel); margin-bottom: 2px; }
+.kk-lessons .ll-text  { font-size: 13px; color: var(--text-mitte); }
+</style>
+{% endif %}
 
 {% endif %}{# /analyse #}
 {% endblock %}
