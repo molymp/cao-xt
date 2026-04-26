@@ -138,17 +138,27 @@
         /* ── Kiosk-Funktionsleiste (zweite Zeile unter Navbar) ───
            Touch-optimiert: kein Hover, jeder Button hat einen
            dauerhaften feinen Rahmen, der Aktiv-Zustand ist deutlich
-           abgehoben. */
+           abgehoben.
+
+           Aufbau: links die anderen Sub-Module (Mittagstisch /
+           Stempeluhr), rechts die zum aktuellen Sub-Modul
+           "Backwaren" gehoerenden Ansichten (Bestellungen /
+           Journal / Terminal). Der Spacer dazwischen schiebt die
+           rechte Gruppe ans rechte Ende. */
         .kiosk-funktionen {
             background: var(--brand-sage);
             border-bottom: 1px solid var(--brand-sage-dunkel);
-            display: flex; gap: 6px; flex-wrap: wrap;
+            display: flex; gap: 12px; flex-wrap: wrap;
             padding: 6px 20px;
             min-height: var(--kiosk-funktionsleiste-h);
             align-items: center;
             position: relative;
             z-index: 90;
         }
+        .kf-links, .kf-rechts {
+            display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+        }
+        .kf-spacer { flex: 1; }
         .kiosk-funktionen a {
             display: inline-flex; align-items: center;
             color: var(--brand-ink); text-decoration: none;
@@ -312,34 +322,45 @@
 {% set nav_aktive_app_url= '/' %}
 {% set nav_user_name     = ma_login_name %}
 {% set nav_db_status     = db_ok %}
+{# In der oberen Navbar (links von Abmelden):
+   - Update-Knopf nur auf Terminal 8 wenn ein Update bereit liegt
+   - Handbuch / Hilfe (auf dem Kunden-Terminal #9 als „Hilfe") #}
+{% set nav_extra_html %}
+  {% if terminal_nr == 8 and update_verfuegbar %}
+  <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
+  {% endif %}
+  {% if terminal_nr == 9 %}
+  <a href="/handbuch" class="nav-btn{% if request.path == '/handbuch' %} aktiv{% endif %}">❓ Hilfe</a>
+  {% else %}
+  <a href="/handbuch" class="nav-btn{% if request.path == '/handbuch' %} aktiv{% endif %}">📖 Handbuch</a>
+  {% endif %}
+{% endset %}
 {% include '_dorfkern_navbar.html' %}
 
-<!-- Kiosk-Funktions-Tabs (Touch-First, zweite Zeile unter der Navbar) -->
+{# Kiosk-Funktionsleiste: links andere Sub-Module, rechts die zum
+   aktuellen Sub-Modul „Backwaren" gehoerenden Ansichten. #}
 <nav class="kiosk-funktionen">
-    {% if hat_recht('kiosk.bestellverwaltung') %}
-    <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
-        📦 Bestellungen
-        <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
-    </a>
-    {% endif %}
-    {% if hat_recht('kiosk.mittagstisch') %}
-    <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
-    {% endif %}
-    {% if hat_recht('kiosk.stempeluhr') %}
-    <a href="/stempeluhr" class="{% if '/stempeluhr' in request.path %}aktiv{% endif %}">⏱ Stempeluhr</a>
-    {% endif %}
-    {% if hat_recht('kiosk.backwaren') %}
-    <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
-    {% endif %}
-    <a href="/terminal-einstellung" class="{% if request.path == '/terminal-einstellung' %}aktiv{% endif %}">🖥️ Terminal</a>
-    {% if terminal_nr == 9 %}
-    <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">❓ Hilfe</a>
-    {% else %}
-    <a href="/handbuch" class="{% if request.path == '/handbuch' %}aktiv{% endif %}">📖 Handbuch</a>
-    {% endif %}
-    {% if terminal_nr == 8 and update_verfuegbar %}
-    <a href="/update" class="nav-update {% if request.path == '/update' %}aktiv{% endif %}">🔄 Update</a>
-    {% endif %}
+    <div class="kf-links">
+        {% if hat_recht('kiosk.mittagstisch') %}
+        <a href="/mittagstisch" class="{% if '/mittagstisch' in request.path %}aktiv{% endif %}" data-lade="Bitte kurz warten …">🍽 Mittagstisch</a>
+        {% endif %}
+        {% if hat_recht('kiosk.stempeluhr') %}
+        <a href="/stempeluhr" class="{% if '/stempeluhr' in request.path %}aktiv{% endif %}">⏱ Stempeluhr</a>
+        {% endif %}
+    </div>
+    <div class="kf-spacer"></div>
+    <div class="kf-rechts">
+        {% if hat_recht('kiosk.bestellverwaltung') %}
+        <a href="/bestellungen" class="nav-link {% if '/bestellungen' in request.path %}aktiv{% endif %}" id="nav-bestellungen">
+            📦 Bestellungen
+            <span id="nav-bestell-badge" style="display:none; background:var(--rot); color:white; border-radius:10px; padding:1px 7px; font-size:0.75rem; margin-left:4px; font-weight:800;">0</span>
+        </a>
+        {% endif %}
+        {% if hat_recht('kiosk.backwaren') %}
+        <a href="/journal" class="{% if request.path == '/journal' %}aktiv{% endif %}">📒 Journal</a>
+        {% endif %}
+        <a href="/terminal-einstellung" class="{% if request.path == '/terminal-einstellung' %}aktiv{% endif %}">🖥️ Terminal</a>
+    </div>
 </nav>
 
 {% block inhalt %}{% endblock %}
