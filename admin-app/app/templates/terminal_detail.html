@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Terminal {{ terminal_nr }}{% endblock %}
+{% block content %}
+<div style="max-width:760px;">
+  <h1 id="kopf" style="margin-bottom:8px;">💻 Terminal {{ terminal_nr }}</h1>
+  <p style="color:var(--text-dim); margin-bottom:20px;">
+    Zentrale Konfiguration aller Nicht-TSE-Einstellungen. TSE-Geraete
+    werden separat unter
+    <a href="/tse" style="color:var(--brand-terracotta);">🔐 TSE-Geräte</a>
+    verwaltet.
+  </p>
+
+  <div id="ladeHinweis" class="info-banner">Lade …</div>
+
+  <div id="formular" class="hidden">
+    <!-- Bezeichnung -->
+    <div class="card">
+      <h2 style="font-size:18px; margin-bottom:14px;">Allgemein</h2>
+      <div class="form-group">
+        <label>Bezeichnung</label>
+        <input class="form-control" id="bezeichnung" placeholder="z.B. Hauptkasse">
+      </div>
+    </div>
+
+    <!-- Bon-Kopf -->
+    <div class="card">
+      <h2 style="font-size:18px; margin-bottom:6px;">Bon-Kopf</h2>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Name, Adresse und Steuerdaten kommen aus FIRMA. Hier nur Override.
+      </div>
+      <div class="form-group">
+        <label>Firmenname <small>(leer = aus FIRMA.NAME1)</small></label>
+        <input class="form-control" id="firma_name">
+      </div>
+      <div class="form-group">
+        <label>Zusatz <small>(Zeile unter dem Namen, optional)</small></label>
+        <input class="form-control" id="firma_zusatz"
+               placeholder="z.B. Der Laden von Bürgern für Bürger">
+      </div>
+    </div>
+
+    <!-- Bondrucker -->
+    <div class="card">
+      <h2 style="font-size:18px; margin-bottom:14px;">Bondrucker (ESC/POS Netzwerk)</h2>
+      <div style="display:grid; grid-template-columns:1fr 120px; gap:12px;">
+        <div class="form-group">
+          <label>IP-Adresse</label>
+          <input class="form-control" id="drucker_ip" placeholder="192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label>Port</label>
+          <input class="form-control" id="drucker_port" type="number" placeholder="9100">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Kassenlade</label>
+        <select class="form-control" id="kassenlade">
+          <option value="0">Keine</option>
+          <option value="1">Pin 2 (Standard)</option>
+          <option value="2">Pin 5</option>
+        </select>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
+        <label class="checkbox-zeile">
+          <input type="checkbox" id="sofort_drucken">
+          <span><b>Sofort drucken</b> – Bon direkt nach dem Buchen</span>
+        </label>
+        <label class="checkbox-zeile">
+          <input type="checkbox" id="schublade_auto_oeffnen">
+          <span><b>Schublade auto&shy;ma&shy;tisch oeffnen</b> – nur bei Barzahlung</span>
+        </label>
+        <label class="checkbox-zeile">
+          <input type="checkbox" id="qr_code">
+          <span><b>QR-Code auf Bon</b> – TSE-Daten maschinen&shy;lesbar (BSI TR-03153)</span>
+        </label>
+      </div>
+      <div style="margin-top:14px;">
+        <button type="button" class="btn btn-neutral btn-sm" onclick="druckerTest()">
+          🖨 Drucker-Test
+        </button>
+        <span id="druckerStatus" style="margin-left:10px; font-size:13px;
+              color:var(--text-dim);"></span>
+      </div>
+    </div>
+
+    <!-- Trainings-Modus -->
+    <div class="card" id="trainingsCard">
+      <h2 style="font-size:18px; margin-bottom:6px;">Trainings-/Demo-Modus</h2>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Im Trainings-Modus werden keine echten TSE-Signaturen erstellt. Bons
+        bekommen den Aufdruck <b>TRAININGSBON</b> und sind steuerlich nicht
+        relevant. Ideal fuer Schulungen + Einrichtung mit abgelaufener TSE.
+      </div>
+      <label class="checkbox-zeile">
+        <input type="checkbox" id="trainings_modus">
+        <span><b>Trainings-Modus aktiv</b> – TSE-Signierung deaktiviert</span>
+      </label>
+    </div>
+
+    <!-- EC-Terminal -->
+    <div class="card">
+      <h2 style="font-size:18px; margin-bottom:6px;">EC-Terminal (Kartenzahlung)</h2>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        Ingenico Desk 3500 oder kompatibles ZVT-TCP-Terminal.
+      </div>
+      <div class="form-group">
+        <label>Modus</label>
+        <select class="form-control" id="ec_modus" onchange="ecModusGeaendert()">
+          <option value="manuell">Manuell – Kassierer bestaetigt nach Terminalanzeige</option>
+          <option value="zvt">Vollintegration – ZVT-Protokoll (TCP/IP)</option>
+        </select>
+      </div>
+      <div id="ecZvtFelder" style="display:none;">
+        <div style="display:grid; grid-template-columns:1fr 120px; gap:12px;">
+          <div class="form-group">
+            <label>Terminal-IP</label>
+            <input class="form-control" id="ec_terminal_ip" placeholder="192.168.1.50">
+          </div>
+          <div class="form-group">
+            <label>Port</label>
+            <input class="form-control" id="ec_terminal_port" type="number" placeholder="20007">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>ZVT-Passwort <small>(6 Stellen, Standard: 010203)</small></label>
+          <input class="form-control" id="ec_zvt_passwort" maxlength="6"
+                 inputmode="numeric" pattern="[0-9]{6}"
+                 style="font-family:monospace; letter-spacing:0.1em;">
+        </div>
+        <div class="form-group">
+          <label>Tagesabschluss</label>
+          <select class="form-control" id="ec_tagesabschluss">
+            <option value="manuell">Manuell – nur am Geraet</option>
+            <option value="auto">Empfohlen beim Z-Bon – Button im Tagesabschluss</option>
+            <option value="auto_vergleich">Empfohlen + Vergleich – EC-Summe vs. App</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- DATEV-Konten -->
+    <div class="card">
+      <h2 style="font-size:18px; margin-bottom:6px;">Konten (Kassenbuch)</h2>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:14px;">
+        SKR03/SKR04-Kontonummern fuer DATEV-Zuordnung (optional).
+      </div>
+      <div class="form-group">
+        <label>Bankkonto <small>(z.B. 1200)</small></label>
+        <input class="form-control" id="konto_bank" placeholder="1200">
+      </div>
+      <div class="form-group">
+        <label>Nebenkasse <small>(z.B. 1610)</small></label>
+        <input class="form-control" id="konto_nebenkasse" placeholder="1610">
+      </div>
+      <div class="form-group">
+        <label>Kassendifferenz Manko <small>(Sonst. Aufwand)</small></label>
+        <input class="form-control" id="konto_kassendiff_aufwand" placeholder="z.B. 2309">
+      </div>
+      <div class="form-group">
+        <label>Kassendifferenz Mehrbetrag <small>(Sonst. Ertrag)</small></label>
+        <input class="form-control" id="konto_kassendiff_ertrag" placeholder="z.B. 2309">
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; margin-bottom:24px;">
+      <button class="btn btn-primary" onclick="speichern()">💾 Speichern</button>
+      <a class="btn btn-neutral" href="/terminals">← Zurueck</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_style %}
+<style>
+.checkbox-zeile { display:flex; align-items:center; gap:10px; cursor:pointer;
+                  font-size:14px; }
+.checkbox-zeile input[type=checkbox] { width:20px; height:20px; cursor:pointer; }
+.card { margin-bottom:16px; }
+</style>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const TNR = {{ terminal_nr }};
+let geladen = null;
+
+const TEXT_FELDER = ['BEZEICHNUNG','FIRMA_NAME','FIRMA_ZUSATZ','DRUCKER_IP',
+  'KONTO_BANK','KONTO_NEBENKASSE','KONTO_KASSENDIFF_AUFWAND','KONTO_KASSENDIFF_ERTRAG',
+  'EC_TERMINAL_IP','EC_ZVT_PASSWORT'];
+const INT_FELDER = ['DRUCKER_PORT','KASSENLADE','SOFORT_DRUCKEN',
+  'SCHUBLADE_AUTO_OEFFNEN','QR_CODE','TRAININGS_MODUS','EC_TERMINAL_PORT'];
+const ENUM_FELDER = ['EC_MODUS','EC_TAGESABSCHLUSS'];
+
+function elem(feld) { return document.getElementById(feld.toLowerCase()); }
+
+async function laden() {
+  const r = await api('GET', '/api/terminals/' + TNR);
+  if (!r.ok) {
+    document.getElementById('ladeHinweis').textContent = 'Fehler: ' + r.msg;
+    return;
+  }
+  geladen = r.terminal || {};
+  document.getElementById('kopf').textContent =
+    '💻 Terminal ' + TNR + (geladen.BEZEICHNUNG ? ' – ' + geladen.BEZEICHNUNG : '');
+  // Felder befuellen
+  TEXT_FELDER.forEach(f => { const e = elem(f); if (e) e.value = geladen[f] ?? ''; });
+  INT_FELDER.forEach(f => {
+    const e = elem(f); if (!e) return;
+    if (e.type === 'checkbox') e.checked = !!geladen[f];
+    else e.value = geladen[f] ?? '';
+  });
+  ENUM_FELDER.forEach(f => {
+    const e = elem(f); if (e) e.value = geladen[f] || '';
+  });
+  ecModusGeaendert();
+  document.getElementById('ladeHinweis').classList.add('hidden');
+  document.getElementById('formular').classList.remove('hidden');
+}
+
+function ecModusGeaendert() {
+  const modus = elem('EC_MODUS').value;
+  document.getElementById('ecZvtFelder').style.display = (modus === 'zvt') ? 'block' : 'none';
+}
+
+async function speichern() {
+  const body = {};
+  TEXT_FELDER.forEach(f => { const e = elem(f); if (e) body[f.toLowerCase()] = e.value; });
+  INT_FELDER.forEach(f => {
+    const e = elem(f); if (!e) return;
+    body[f.toLowerCase()] = (e.type === 'checkbox') ? (e.checked ? 1 : 0) : (e.value || 0);
+  });
+  ENUM_FELDER.forEach(f => { const e = elem(f); if (e) body[f.toLowerCase()] = e.value; });
+  const r = await api('PUT', '/api/terminals/' + TNR, body);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) laden();
+}
+
+async function druckerTest() {
+  const status = document.getElementById('druckerStatus');
+  status.textContent = '⏳ wird gesendet …';
+  status.style.color = 'var(--text-dim)';
+  const r = await api('POST', '/api/terminals/' + TNR + '/drucker/test');
+  status.textContent = (r.ok ? '✓ ' : '✗ ') + (r.msg || '');
+  status.style.color = r.ok ? 'var(--gruen-mitte)' : 'var(--status-rot)';
+}
+
+laden();
+</script>
+{% endblock %}

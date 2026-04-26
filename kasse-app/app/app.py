@@ -1445,6 +1445,19 @@ def admin_terminal():
                            mitarbeiter=_mitarbeiter())
 
 
+@app.get('/admin/terminal')
+@_login_required
+def admin_terminal_redirect():
+    """Terminal-Konfig wandert in die Admin-App. Wenn ADMIN_URL bekannt ist,
+    direkt dorthin weiterleiten – sonst Hinweis flashen und auf /admin/."""
+    admin_url = config.ADMIN_URL or (
+        f'{request.scheme}://{request.host.split(":")[0]}:{config.ADMIN_PORT}'
+        if config.ADMIN_PORT else '')
+    if admin_url:
+        return redirect(f'{admin_url}/terminals/{config.TERMINAL_NR}')
+    return redirect(url_for('admin_index'))
+
+
 @app.post('/admin/terminal')
 @_login_required
 def admin_terminal_speichern():

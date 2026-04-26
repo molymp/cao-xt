@@ -520,6 +520,14 @@ def terminals():
     return render_template('terminals.html')
 
 
+@app.route('/terminals/<int:terminal_nr>')
+@_login_required
+def terminal_detail(terminal_nr):
+    """Vollstaendige Terminal-Konfiguration. Loest die fruehere
+    /admin/terminal-Seite der Kasse-App ab (Brand-Light-Look)."""
+    return render_template('terminal_detail.html', terminal_nr=terminal_nr)
+
+
 @app.get('/api/terminals')
 @_login_required
 def api_terminals_list():
@@ -531,19 +539,134 @@ def api_terminals_list():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+@app.get('/api/terminals/<int:terminal_nr>')
+@_login_required
+def api_terminal_einzeln(terminal_nr):
+    """Liefert die komplette Konfig eines Terminals fuer die Detail-Seite."""
+    try:
+        with get_db() as cur:
+            cur.execute("SELECT * FROM XT_KASSE_TERMINALS WHERE TERMINAL_NR=%s",
+                        (terminal_nr,))
+            row = cur.fetchone()
+        if not row:
+            return jsonify(ok=False, msg='Terminal nicht gefunden.'), 404
+        return jsonify(ok=True, terminal=row)
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# Whitelist: Felder, die ueber die zentrale Admin-API gepflegt werden.
+# TSE-bezogene Felder (TSE_ID, FISKALY_*, SWISSBIT_PFAD) liegen in /tse,
+# nicht hier – die nicht-TSE-Konfig wandert komplett aus der Kasse-App in
+# die Admin-App.
+_TERMINAL_TEXT_FELDER = (
+    'BEZEICHNUNG', 'FIRMA_NAME', 'FIRMA_ZUSATZ',
+    'DRUCKER_IP',
+    'KONTO_BANK', 'KONTO_NEBENKASSE',
+    'KONTO_KASSENDIFF_AUFWAND', 'KONTO_KASSENDIFF_ERTRAG',
+    'EC_TERMINAL_IP', 'EC_ZVT_PASSWORT',
+)
+_TERMINAL_INT_FELDER = (
+    'DRUCKER_PORT', 'KASSENLADE',
+    'SOFORT_DRUCKEN', 'SCHUBLADE_AUTO_OEFFNEN', 'QR_CODE',
+    'TRAININGS_MODUS',
+    'EC_TERMINAL_PORT',
+)
+_TERMINAL_ENUM_FELDER = {
+    'EC_MODUS':          ('manuell', 'zvt'),
+    'EC_TAGESABSCHLUSS': ('manuell', 'auto', 'auto_vergleich'),
+}
+
+
 @app.put('/api/terminals/<int:terminal_nr>')
 @_login_required
 def api_terminal_update(terminal_nr):
-    d = request.get_json(force=True)
+    """Aktualisiert die Terminal-Konfig. Akzeptiert *eine Teilmenge* der
+    Felder als JSON; alle nicht uebergebenen Felder bleiben unveraendert.
+    Whitelist-basiert (TSE-Felder werden ignoriert).
+    """
+    d = request.get_json(force=True) or {}
+    setze: list[tuple[str, object]] = []
+    for feld in _TERMINAL_TEXT_FELDER:
+        key = feld.lower()
+        if key in d:
+            wert = d[key]
+            setze.append((feld, (wert.strip() if isinstance(wert, str) else wert) or None))
+    for feld in _TERMINAL_INT_FELDER:
+        key = feld.lower()
+        if key in d:
+            try:
+                setze.append((feld, int(d[key]) if d[key] not in ('', None) else 0))
+            except (ValueError, TypeError):
+                return jsonify(ok=False,
+                               msg=f'{feld} muss ganzzahlig sein.'), 400
+    for feld, gueltige in _TERMINAL_ENUM_FELDER.items():
+        key = feld.lower()
+        if key in d:
+            wert = (d[key] or '').strip()
+            if wert not in gueltige:
+                return jsonify(ok=False,
+                               msg=f'{feld} muss eines von {gueltige} sein.'), 400
+            setze.append((feld, wert))
+    if not setze:
+        return jsonify(ok=False, msg='Keine Aenderungen.'), 400
+    sql = ("UPDATE XT_KASSE_TERMINALS SET "
+           + ", ".join(f"{feld}=%s" for feld, _ in setze)
+           + " WHERE TERMINAL_NR=%s")
+    werte = [w for _, w in setze] + [terminal_nr]
+    try:
+        with get_db() as cur:
+            cur.execute(sql, werte)
+            if cur.rowcount == 0:
+                # Kein UPDATE -> Eintrag fehlt; Insert mit den uebergebenen Feldern.
+                cols = [feld for feld, _ in setze]
+                cur.execute(
+                    f"INSERT INTO XT_KASSE_TERMINALS (TERMINAL_NR, {', '.join(cols)}) "
+                    f"VALUES (%s, {', '.join(['%s']*len(cols))})",
+                    [terminal_nr] + [w for _, w in setze]
+                )
+        return jsonify(ok=True, msg='Terminal aktualisiert.',
+                       felder=[f for f, _ in setze])
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/terminals/<int:terminal_nr>/drucker/test')
+@_login_required
+def api_terminal_drucker_test(terminal_nr):
+    """Sendet eine kleine ESC/POS-Testseite an den Bondrucker des Terminals.
+    Frueher in kasse-app/.../admin_drucker_test – jetzt zentral in Admin,
+    damit alle Terminal-Tests aus dem Admin-Backoffice ausgeloest werden
+    koennen, nicht nur vom Kassen-Terminal selbst.
+    """
     try:
         with get_db() as cur:
             cur.execute(
-                "UPDATE XT_KASSE_TERMINALS SET BEZEICHNUNG=%s WHERE TERMINAL_NR=%s",
-                (d.get('bezeichnung', ''), terminal_nr),
-            )
-        return jsonify(ok=True, msg='Terminal aktualisiert.')
+                "SELECT DRUCKER_IP, DRUCKER_PORT FROM XT_KASSE_TERMINALS "
+                "WHERE TERMINAL_NR=%s", (terminal_nr,))
+            row = cur.fetchone()
+        if not row or not row.get('DRUCKER_IP'):
+            return jsonify(ok=False,
+                           msg='Keine Drucker-IP konfiguriert.'), 400
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((row['DRUCKER_IP'], int(row.get('DRUCKER_PORT') or 9100)))
+        sock.sendall(
+            b'\x1b\x40'                # Reset
+            b'\x1b\x61\x01'            # zentriert
+            b'\x1b\x45\x01'            # Fett
+            b'CAO-XT Admin-App\n'
+            b'\x1b\x45\x00'
+            b'Druckertest Terminal '
+            + str(terminal_nr).encode() + b'\n'
+            b'\n\n\n\n\n\n'
+            b'\x1d\x56\x01'            # Schnitt
+        )
+        sock.close()
+        return jsonify(ok=True, msg='Testseite gesendet.')
     except Exception as e:
-        return jsonify(ok=False, msg=str(e)), 500
+        return jsonify(ok=False, msg=f'Drucker nicht erreichbar: {e}'), 502
 
 
 # ── Phase D: TSE-Admin ─────────────────────────────────────
