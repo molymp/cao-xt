@@ -66,6 +66,19 @@
     {% endif %}
   </div>
   <div class="form-group">
+    <label>
+      RFID-Tag <small>optional</small>
+      <span style="color:var(--text-dim); font-weight:400; font-size:11px;">
+        Alarm-RFID als Alternative zur Mitarbeiterkarte
+      </span>
+    </label>
+    <input type="text" name="rfid_tag" class="alpha-touch" maxlength="64"
+           value="{{ ma.RFID_TAG or '' }}"
+           placeholder="z.B. 04:A2:B5:91 oder 04A2B591"
+           data-touch-titel="RFID-Tag"
+           autocomplete="off" autocapitalize="characters" spellcheck="false">
+  </div>
+  <div class="form-group">
     <label>Telefon</label>
     <input type="text" name="telefon" class="tel-touch" maxlength="50"
            value="{{ ma.TELEFON or '' }}"

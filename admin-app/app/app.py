@@ -231,6 +231,13 @@ _terminal_registry_initialisieren()
 _permission_initialisieren()
 _aktivierung_initialisieren()
 
+# RFID-Tabelle (Mitarbeiter alternativ ueber Alarm-RFID-Tag identifizieren)
+try:
+    from common import rfid as _rfid_mod
+    _rfid_mod.run_migration()
+except Exception as _exc:
+    log.warning("RFID-Migration uebersprungen: %s", _exc)
+
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
 
