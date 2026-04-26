@@ -344,6 +344,9 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 
     <div class="nav-group-title">Kapitel 5</div>
     <a href="#kap5" class="kapitel">💻 Terminals</a>
+    <a href="#kap5-uebersicht" class="unter">Übersicht</a>
+    <a href="#kap5-detail" class="unter">Detail-Seite</a>
+    <a href="#kap5-drucker-test" class="unter">Drucker-Test</a>
 
     <div class="nav-group-title">Kapitel 6</div>
     <a href="#kap6" class="kapitel">🔐 TSE-Geräte</a>
@@ -390,10 +393,22 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <div><h1>Anmeldung</h1><div class="untertitel">Login per Karte oder Passwort</div></div>
   </div>
 
-  <h2 id="kap1-karte">Kartenlogin (Barcode-Scan)</h2>
+  <h2 id="kap1-karte">Kartenlogin (Barcode-Scan oder RFID)</h2>
   <p>Standardmäßig ist der Tab <strong>„Karte scannen"</strong> aktiv. Mitarbeiterausweis vor den
-  Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten
-  akzeptiert (KARTEN.TYP='M').</p>
+  Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden Mitarbeiterkarten
+  (<code>KARTEN.TYP='M'</code>) <em>und</em> RFID-Tags akzeptiert.</p>
+
+  <div class="hinweis">
+    <div class="hinweis-titel">🔖 RFID als Alternative</div>
+    Mitarbeitende, die schon einen RFID-Tag fuer die Alarmanlage haben,
+    koennen denselben Tag fuer den App-Login und die Stempeluhr nutzen.
+    Der Tag wird im <strong>Orga → Personal → Mitarbeiter</strong>
+    direkt unter dem CAO-Login eingetragen (Feld
+    <em>„RFID-Tag"</em>). Format: 4–64 Zeichen, erlaubt sind
+    <code>A–Z</code>, <code>0–9</code>, <code>:</code> und <code>-</code>;
+    Eingabe wird automatisch in Großbuchstaben normiert. Ein Tag kann
+    nur einer Person zugeordnet sein – Kollisionen werden abgewiesen.
+  </div>
 
   <h2 id="kap1-passwort">Passwort-Login mit Touch-Tastatur</h2>
   <p>Tab <strong>„Passwort"</strong> wählen. Benutzername und Passwort eingeben – bei Bedarf
@@ -463,11 +478,87 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 <section id="kap5" class="abschnitt">
   <div class="kapitel-header">
     <div class="kapitel-nr">5</div>
-    <div><h1>Terminals</h1><div class="untertitel">Terminal-Nummern konfigurieren</div></div>
+    <div><h1>Terminals</h1><div class="untertitel">Zentrale Konfiguration aller Kassen-Terminals</div></div>
   </div>
 
-  <p>Übersicht und Bearbeitung der Terminal-Konfiguration in der Tabelle <code>XT_TERMINAL</code>.
-  Jedes Terminal hat eine eindeutige Nummer, die für Bondruck, TSE und Kassen-Zuordnung verwendet wird.</p>
+  <p>
+    Auf der Seite <strong>Terminals</strong> wird die komplette Konfiguration
+    eines Kassen- bzw. Kiosk-Terminals gepflegt. Frueher waren diese
+    Einstellungen in der Kasse-App selbst – mit Dorfkern v2 sind sie
+    zentral hierhin umgezogen, damit man alle Filial-Geraete von einem
+    Platz aus verwaltet und die Kasse fuer Konfig-Aenderungen nicht offen
+    sein muss.
+  </p>
+
+  <h2 id="kap5-uebersicht">Übersicht</h2>
+  <p>
+    Die Tabelle zeigt pro Zeile <strong>Nummer · Bezeichnung · Drucker-IP ·
+    Modus</strong> (<em>Live</em> oder <em>Training</em>) und einen
+    <span class="taste">✏️ Bearbeiten</span>-Knopf. Klick darauf öffnet
+    die Detail-Seite.
+  </p>
+
+  <h2 id="kap5-detail">Detail-Seite eines Terminals</h2>
+  <p>Die Detail-Seite ist in Bloecke gruppiert:</p>
+  <table>
+    <tr><th>Block</th><th>Felder</th></tr>
+    <tr><td><strong>Allgemein</strong></td><td>Bezeichnung (Anzeigename, z.&nbsp;B. „Hauptkasse")</td></tr>
+    <tr>
+      <td><strong>Bon-Kopf</strong></td>
+      <td>Firmenname-Override und Zusatzzeile (leer = Werte aus FIRMA-Tabelle nutzen)</td>
+    </tr>
+    <tr>
+      <td><strong>Bondrucker</strong></td>
+      <td>
+        IP / Port (ESC/POS, Standard-Port 9100), Kassenlade (Pin&nbsp;2 oder Pin&nbsp;5),
+        <em>Sofort drucken</em>, <em>Schublade automatisch öffnen</em>,
+        <em>QR-Code auf Bon</em>. Mit dem Knopf
+        <span class="taste">🖨 Drucker-Test</span> wird ein
+        Test-Bon direkt aus dem Admin-Backoffice an die Drucker-IP
+        gesendet.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Trainings-/Demo-Modus</strong></td>
+      <td>
+        Setzt das Terminal in den Schulungsmodus. Bons werden mit dem
+        Aufdruck <em>TRAININGSBON</em> gedruckt und sind nicht steuerlich
+        relevant. Nuetzlich fuer Schulungen und die Erst-Einrichtung.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>EC-Terminal</strong></td>
+      <td>
+        Modus (Manuell oder ZVT-Vollintegration), Terminal-IP/Port,
+        ZVT-Passwort und Tagesabschluss-Modus.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>DATEV-Konten</strong></td>
+      <td>Bankkonto, Nebenkasse, Manko-/Mehrbetragskonten fuer die Kassenbuch-Auswertung.</td>
+    </tr>
+  </table>
+
+  <div class="hinweis">
+    <div class="hinweis-titel">📍 Was bleibt in der Kasse?</div>
+    Nur noch KassenSichV-/TSE-spezifische Themen: TSE-Geraete (Kapitel 6),
+    DSFinV-K-Export, Tagesabschluesse. Den Trainings-Modus kann man
+    zusaetzlich auch direkt in der Kasse umlegen – als Notausstieg, falls
+    der Admin-Server gerade nicht erreichbar ist.
+  </div>
+
+  <h2 id="kap5-drucker-test">Drucker-Test</h2>
+  <p>
+    Auf der Detail-Seite eines Terminals den Knopf
+    <span class="taste">🖨 Drucker-Test</span> druecken. Der Admin-Server
+    sendet eine kleine ESC/POS-Testseite an die hinterlegte
+    <code>DRUCKER_IP:DRUCKER_PORT</code>. Wenn der Drucker erreichbar
+    ist, kommt ein Bon mit Markierung <em>„CAO-XT Admin-App – Druckertest
+    Terminal N"</em> raus und der Status springt auf
+    <em>✓ Testseite gesendet</em>. Bei Fehlern erscheint eine rote
+    Meldung mit der Ursache (z.&nbsp;B. „Drucker nicht erreichbar:
+    Connection refused").
+  </p>
 </section>
 
 <hr>

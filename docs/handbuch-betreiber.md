@@ -170,8 +170,33 @@ aktuellen Commit-Hash; `install.sh --rollback` stellt ihn wieder her.
 Alles andere (SMTP, HACCP-API-Key, Google-Sheet-IDs, Integrations-
 Tokens, …) → Admin-UI.
 
-**Wichtig:** `caoxt.ini` enthält DB-Zugangsdaten. Datei-Rechte **0600**,
-nicht in Versionskontrolle einchecken, nicht in Backups im Klartext.
+**Terminal-Konfiguration** (Drucker, Kassenlade, EC-Terminal,
+DATEV-Konten, Trainings-Modus) liegt zentral in der Admin-App unter
+`💻 Terminals → ✏️ Bearbeiten`. Drucker-Test wird ebenfalls von dort
+ausgelöst. Die Kasse-App selbst zeigt unter `/admin/` nur noch
+KassenSichV-spezifische Themen (TSE-Geräte, DSFinV-K-Export,
+Tagesabschluss, Trainings-Modus als Notausstieg).
+
+**Wichtig:** `caoxt.ini` enthält DB-Zugangsdaten und ist seit Phase 7b
+**nicht mehr in Git getrackt** (`/caoxt/caoxt.ini` in `.gitignore`).
+Repo-Vorlage: `caoxt/caoxt.ini.example` – wird beim ersten App-Start
+automatisch nach `caoxt.ini` kopiert, falls keine lokale Datei
+existiert. Datei-Rechte **0600** setzen, nicht in Backups im Klartext.
+
+### 7.1 RFID-Tags für Mitarbeiter
+
+Mitarbeitende können ihren bereits vorhandenen Alarm-RFID-Tag als
+Login-Alternative zur Mitarbeiterkarte nutzen. Pflege über
+**Orga → 🪪 Personal → Mitarbeiter → Feld „RFID-Tag"** (direkt unter
+dem CAO-Login).
+
+- DB-Tabelle: `XT_MITARBEITER_RFID` (1:1 zu `MITARBEITER.MA_ID`).
+- Format: 4–64 Zeichen aus `A–Z`, `0–9`, `:`, `-`. Eingabe wird
+  uppercase-normalisiert; Kollisionen werden abgewiesen.
+- Wirkt automatisch in **allen Karten-Scan-Endpoints** (App-Login der
+  4 Apps, Stempeluhr im Kiosk) – über den gemeinsamen
+  `mitarbeiter_login_karte`-Pfad mit RFID-Fallback.
+- Die CAO-`MITARBEITER`-Tabelle wird **nicht** verändert (CAO-Kompat).
 
 ---
 

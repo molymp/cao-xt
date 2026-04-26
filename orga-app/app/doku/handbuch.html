@@ -388,6 +388,9 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <a href="#cfo-liste" class="unter">Verfügbare Berichte</a>
     <a href="#cfo-filter" class="unter">Zeitraumfilter</a>
     <a href="#cfo-export" class="unter">CSV-Export</a>
+    <a href="#personal" class="kapitel">Personal</a>
+    <a href="#personal-cao-login" class="unter">CAO-Login verknüpfen</a>
+    <a href="#personal-rfid" class="unter">RFID-Tag</a>
   </nav>
 </aside>
 
@@ -420,8 +423,8 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 
   <p>Die Orga bietet zwei Anmeldearten:</p>
 
-  <h2 id="login-karte">Kartenlogin (Barcode-Scan)</h2>
-  <p>Standardmäßig ist der Tab <strong>„Karte scannen"</strong> aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden nur Mitarbeiterkarten akzeptiert (KARTEN.TYP='M').</p>
+  <h2 id="login-karte">Kartenlogin (Barcode-Scan oder RFID)</h2>
+  <p>Standardmäßig ist der Tab <strong>„Karte scannen"</strong> aktiv. Mitarbeiterausweis vor den Barcode-Scanner halten – die Anmeldung erfolgt automatisch. Es werden Mitarbeiterkarten (<code>KARTEN.TYP='M'</code>) <em>und</em> RFID-Tags akzeptiert (siehe <a href="#personal-rfid">Personal → RFID-Tag</a>).</p>
 
   <h2 id="login-passwort">Passwort-Login mit Touch-Tastatur</h2>
   <p>Tab <strong>„Passwort"</strong> wählen. Benutzername und Passwort eingeben – bei Bedarf über die eingeblendete Touch-Tastatur (QWERTZ-Layout). <span class="taste">⇧</span> für Großbuchstaben, <span class="taste grau">⌫</span> für Löschen, <span class="taste">OK</span> zum Absenden.</p>
@@ -659,6 +662,59 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 
   <h2 id="cfo-export">CSV-Export</h2>
   <p>Jeder Bericht hat einen <span class="taste">CSV exportieren</span>-Button. Die heruntergeladene Datei ist UTF-8-BOM-kodiert für direkte Öffnung in Excel (ohne Zeichensatzprobleme bei Umlauten).</p>
+</div>
+
+<hr>
+
+<!-- ══════ PERSONAL ══════ -->
+<div class="abschnitt" id="personal">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">7</div>
+    <div><h1>Personal</h1><div class="untertitel">Mitarbeiter-Stammdaten · CAO-Login · RFID-Tag</div></div>
+  </div>
+
+  <p>Unter <strong>Sidebar → 🪪 Personal → Mitarbeiter</strong> liegen die Personal-Stammdaten des Dorfladens. Jeder Eintrag hat eine eigene <code>PERS_ID</code> in <code>XT_PERSONAL_MITARBEITER</code> und ist optional mit einem CAO-Mitarbeiter (<code>CAO_MA_ID → MITARBEITER.MA_ID</code>) verknüpft.</p>
+
+  <h2 id="personal-cao-login">CAO-Login verknüpfen</h2>
+  <p>Im Form-Feld <strong>„CAO-Login (für Stempelkarte)"</strong> wird der zugehörige CAO-Mitarbeiter ausgewählt. Mit dieser Verknüpfung kann sich die Person per <em>Mitarbeiterkarte</em> (<code>KARTEN.TYP='M'</code>) in den Apps anmelden und an der Stempeluhr (Kiosk) ein-/auschecken.</p>
+
+  <h2 id="personal-rfid">RFID-Tag</h2>
+  <p>Direkt unter dem CAO-Login gibt es das Feld <strong>„RFID-Tag"</strong>. Viele Mitarbeitende haben bereits einen RFID-Tag im Einsatz, etwa zur De-/Aktivierung der Alarmanlage. Dieser Tag kann hier hinterlegt werden und funktioniert dann <em>genau wie eine Mitarbeiterkarte</em> – für App-Login und Stempeluhr.</p>
+  <ol class="schritte">
+    <li>
+      <div class="schritt-nr">1</div>
+      <div class="schritt-text">
+        <strong>CAO-Login verknüpfen</strong>
+        Ohne CAO-Verknüpfung lehnt das System einen RFID-Tag ab – der Tag muss schließlich auf einen CAO-Mitarbeiter zeigen.
+      </div>
+    </li>
+    <li>
+      <div class="schritt-nr">2</div>
+      <div class="schritt-text">
+        <strong>Tag eintragen</strong>
+        Den Tag als Hex-Zeichenfolge ins Feld schreiben, z.&nbsp;B. <code>04:A2:B5:91</code> oder <code>04A2B591</code>. Klein-/Großschreibung und Trennzeichen <code>:</code> oder <code>-</code> sind beide erlaubt – das System normalisiert automatisch auf Großbuchstaben.
+      </div>
+    </li>
+    <li>
+      <div class="schritt-nr">3</div>
+      <div class="schritt-text">
+        <strong>Speichern (Auto-Save)</strong>
+        Der Tag wird gespeichert, sobald das Feld den Fokus verlässt. Eine Toast-Meldung bestätigt den Erfolg.
+      </div>
+    </li>
+  </ol>
+
+  <table>
+    <tr><th>Regel</th><th>Bedeutung</th></tr>
+    <tr><td>Format</td><td>4–64 Zeichen aus <code>A–Z</code>, <code>0–9</code>, <code>:</code>, <code>-</code></td></tr>
+    <tr><td>Eindeutigkeit</td><td>Ein Tag kann nur einer Person zugeordnet sein. Doppelte Eingaben werden abgewiesen.</td></tr>
+    <tr><td>Entfernen</td><td>Feld leeren und Fokus wechseln – der Eintrag wird gelöscht. Die Mitarbeiterkarte bleibt unberührt.</td></tr>
+  </table>
+
+  <div class="hinweis">
+    <div class="hinweis-titel">📍 Wo wird der Tag gespeichert?</div>
+    Eigene Tabelle <code>XT_MITARBEITER_RFID</code> (MA_ID, RFID_TAG, geändert_am, geändert_von_MA_ID). Die CAO-Tabellen werden <em>nicht</em> verändert – das ist wichtig, weil CAO sonst beim nächsten Update Stress macht.
+  </div>
 </div>
 
 </div><!-- /inhalt -->

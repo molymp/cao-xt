@@ -423,6 +423,7 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <a href="#kap1" class="kapitel">🖥️ Kassieren</a>
     <a href="#kap1-artikel" class="unter">Artikel erfassen</a>
     <a href="#kap1-warenkorb" class="unter">Warenkorb</a>
+    <a href="#kap1-vorgang" class="unter">Vorgang verwalten</a>
     <a href="#kap1-zahlung" class="unter">Zahlung</a>
     <a href="#kap1-lieferschein" class="unter">Rechnung / Lieferschein</a>
 
@@ -457,7 +458,8 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 
     <div class="nav-group-title">Kapitel 7</div>
     <a href="#kap7" class="kapitel">⚙️ Administration</a>
-    <a href="#kap7-terminal" class="unter">Terminal</a>
+    <a href="#kap7-status-bubbles" class="unter">Status-Bubbles</a>
+    <a href="#kap7-terminal" class="unter">Terminal-Konfiguration</a>
     <a href="#kap7-tse" class="unter">TSE-Gerät</a>
     <a href="#kap7-export" class="unter">DSFinV-K Export</a>
   </nav>
@@ -607,8 +609,8 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
   <li>
     <div class="schritt-nr">3</div>
     <div class="schritt-text">
-      <strong>Position entfernen</strong>
-      Menge auf 0 setzen – die Position verschwindet automatisch.
+      <strong>Einzelne Position entfernen</strong>
+      Menge auf <strong>0</strong> setzen – die Position verschwindet automatisch. Ist sie versehentlich draufgekommen oder hat der Kunde sie zurückgegeben, einfach so wegnehmen.
     </div>
   </li>
   <li>
@@ -629,6 +631,116 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
       onchange="uploadScreenshot(this,'ss-warenkorb','Warenkorb')">📷 Bild hochladen</label>
   </div>
 </div>
+
+<h2 id="kap1-vorgang">Vorgang verwalten – Parken, Abbrechen</h2>
+<p>
+  Solange noch <strong>nicht bezahlt</strong> wurde (kein Bon gedruckt),
+  gibt es drei Möglichkeiten, mit einem laufenden Vorgang umzugehen.
+  Die Knöpfe stehen in der rechten Spalte direkt unter der Bonnummer:
+  <span class="taste">🅿 Parken</span>,
+  <span class="taste">📋 Geparkt</span> und
+  <span class="taste">✕ Abbrechen</span>.
+</p>
+
+<h3 id="kap1-vorgang-parken">Vorgang parken</h3>
+<p>
+  Wird ein Kunde zwischendurch in einer anderen Schlange weitergeleitet,
+  oder muss kurz etwas geholt werden, wird der aktuelle Bon
+  <strong>geparkt</strong>: alle Positionen bleiben erhalten, der Vorgang
+  wandert in die Liste der geparkten Bons. Die Kasse ist sofort frei für
+  die nächste Kundin oder den nächsten Kunden.
+</p>
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      Auf <span class="taste">🅿 Parken</span> tippen. Der aktuelle
+      Vorgang verschwindet aus der Anzeige, alle Positionen bleiben
+      gespeichert.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      Später auf <span class="taste">📋 Geparkt</span> tippen, in der
+      Liste den richtigen Bon auswählen – er wird wieder geöffnet und
+      kann normal kassiert werden.
+    </div>
+  </li>
+</ol>
+<div class="hinweis">
+  <strong>Wofür?</strong> Parken ist die richtige Wahl, wenn der Vorgang
+  weitergeht – nur eben nicht jetzt. Es gehen keine Daten verloren, es
+  entsteht kein zusätzlicher Bon.
+</div>
+
+<h3 id="kap1-vorgang-abbrechen">Vorgang abbrechen</h3>
+<p>
+  Möchte die Kundin den ganzen Einkauf doch nicht mehr, oder muss der
+  Vorgang aus anderen Gründen verworfen werden, kommt
+  <span class="taste">✕ Abbrechen</span> zum Einsatz. Es erscheint ein
+  Bestätigungsdialog mit den Knöpfen <span class="taste">Zurück</span>
+  und <span class="taste rot">Ja, abbrechen</span>.
+</p>
+<ol class="schritte">
+  <li>
+    <div class="schritt-nr">1</div>
+    <div class="schritt-text">
+      Auf <span class="taste">✕ Abbrechen</span> tippen. Der Dialog
+      öffnet sich.
+    </div>
+  </li>
+  <li>
+    <div class="schritt-nr">2</div>
+    <div class="schritt-text">
+      Mit <span class="taste rot">Ja, abbrechen</span> bestätigen. Alle
+      Positionen werden storniert, der Vorgang wird auf Status
+      <em>ABGEBROCHEN</em> gesetzt, und sofort startet ein neuer leerer
+      Vorgang mit der nächsten Bonnummer.
+    </div>
+  </li>
+</ol>
+
+<div class="achtung">
+  <div class="hinweis-titel">📍 KassenSichV: Was passiert technisch?</div>
+  <p style="margin:0 0 6px 0;">
+    Sobald die erste Position auf den Bon gekommen ist, läuft im
+    Hintergrund eine <strong>TSE-Transaktion</strong>. Diese darf nicht
+    einfach „verschwinden" – die KassenSichV (§ 146 Abs. 4 AO) verlangt,
+    dass auch Abbrüche lückenlos dokumentiert werden.
+  </p>
+  <p style="margin:0;">
+    Beim Abbrechen führt die Kasse deshalb automatisch eine
+    <em>Cancel-Transaktion</em> in der TSE durch und behält den
+    abgebrochenen Vorgang für die Prüfberichte. Du musst dafür nichts
+    Besonderes tun – ein Klick auf <span class="taste rot">Ja, abbrechen</span>
+    reicht.
+  </p>
+</div>
+
+<h3 id="kap1-vorgang-warum">Wann was?</h3>
+<table>
+  <tr>
+    <th style="width:34%;">Situation</th>
+    <th>Richtige Aktion</th>
+  </tr>
+  <tr>
+    <td>Eine Position falsch erfasst, z.B. einmal zu viel gescannt</td>
+    <td>Menge anpassen oder mit „−" auf 0 setzen – siehe oben.</td>
+  </tr>
+  <tr>
+    <td>Kunde geht zwischendurch noch etwas holen</td>
+    <td><span class="taste">🅿 Parken</span></td>
+  </tr>
+  <tr>
+    <td>Kunde will den ganzen Einkauf doch nicht mehr</td>
+    <td><span class="taste">✕ Abbrechen</span> – Vorgang wird KassenSichV-konform abgebrochen</td>
+  </tr>
+  <tr>
+    <td>Bon ist bereits gedruckt, Kunde bringt etwas zurück</td>
+    <td><span class="taste rot">↩️ Stornieren</span> im Journal – siehe Kapitel 2</td>
+  </tr>
+</table>
 
 <h2 id="kap1-zahlung">Zahlung</h2>
 <p>Wenn alle Artikel erfasst sind, auf den grünen <span class="taste">💳 Zahlung</span>-Button rechts unten tippen. Es öffnet sich das Zahlungs-Overlay.</p>
@@ -739,6 +851,14 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 
 <h2 id="kap2-storno">Bon stornieren</h2>
 <p>Ein bereits abgeschlossener Bon kann nicht geändert, wohl aber storniert werden. Die Kasse erstellt dann automatisch einen Gegenbon mit negativen Beträgen.</p>
+
+<div class="hinweis">
+  <strong>Storno oder Abbrechen?</strong> Solange der Bon <em>noch nicht
+  bezahlt und nicht gedruckt</em> ist, ist <a href="#kap1-vorgang-abbrechen">Abbrechen</a>
+  in Kapitel 1 die richtige Wahl. Storno ist erst nötig, wenn der Bon
+  schon abgeschlossen wurde und die Kundin z.B. einen Artikel
+  zurückbringt.
+</div>
 
 <ol class="schritte">
   <li>
@@ -1168,16 +1288,59 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
   Die Admin-Einstellungen sind ausschließlich für die Systemverwaltung. Falsche Einstellungen können den Kassenbetrieb beeinträchtigen. Im Zweifelsfall bitte Filialleitung oder IT-Support kontaktieren.
 </div>
 
-<p>Das Admin-Bereich erreicht man über <em>/kasse/admin</em>.</p>
-
-<h2 id="kap7-terminal">Terminal-Konfiguration</h2>
+<h3 id="kap7-status-bubbles">Status-Bubbles in der Navigationsleiste</h3>
+<p>
+  Im Live-Betrieb mit funktionierender Produktiv-TSE zeigt die Navigationsleiste
+  <em>keine</em> zusätzlichen Status-Bubbles – ist also ruhig. Sobald aber
+  etwas Auffälliges vorliegt, erscheinen rechts vom App-Switcher ein oder
+  mehrere farbige Bubbles. Sie sind klickbar und führen direkt zu den
+  passenden Einstellungen.
+</p>
 <table>
-  <tr><th>Einstellung</th><th>Bedeutung</th></tr>
-  <tr><td>Terminal-Nummer</td><td>Eindeutige Kennung dieses Kassenplatzes – nie ändern im laufenden Betrieb</td></tr>
-  <tr><td>Bezeichnung</td><td>Anzeigename (z. B. „Kasse 1 – Backtheke")</td></tr>
-  <tr><td>Trainings-Modus</td><td>Aktiviert den Sandbox-Modus – Bons gelten als Testbons, separate Datenhaltung</td></tr>
-  <tr><td>Drucker-IP/-Port</td><td>Netzwerkadresse des ESC/POS-Druckers</td></tr>
-  <tr><td>QR-Code auf Bon</td><td>Zeigt den TSE-Prüf-QR-Code auf jedem Bon an</td></tr>
+  <tr><th>Bubble</th><th>Bedeutung</th><th>Was tun?</th></tr>
+  <tr>
+    <td><span class="taste rot">🔐 TSE: Störung</span></td>
+    <td>Die TSE ist nicht erreichbar – Signaturen sind aktuell nicht möglich.</td>
+    <td>Klick auf die Bubble führt zur TSE-Diagnose. Im Zweifel Filialleitung anrufen.</td>
+  </tr>
+  <tr>
+    <td><span class="taste" style="background:#f6ecd0; color:#6a4a00;">🎓 Trainingsmodus</span></td>
+    <td>Diese Kasse läuft im Schulungsmodus. Bons werden mit dem Aufdruck
+        <em>TRAININGSBON</em> gedruckt und sind <strong>nicht</strong> steuerlich relevant.</td>
+    <td>Vor echtem Verkauf den Trainingsmodus in den Terminal-Einstellungen wieder ausschalten.</td>
+  </tr>
+  <tr>
+    <td><span class="taste" style="background:#ecdaf2; color:#4a0070;">⚠️ Test-TSE · Sandbox</span></td>
+    <td>Die TSE läuft gegen eine Test-Umgebung (z. B. Fiskaly Sandbox), nicht gegen Produktion.</td>
+    <td>Auf einer Produktiv-Kasse darf das nicht stehen. Klick führt zu den TSE-Einstellungen.</td>
+  </tr>
+</table>
+
+<h2 id="kap7-terminal">Terminal-Konfiguration (Admin-App)</h2>
+<div class="hinweis">
+  <strong>Umgezogen.</strong> Die Konfiguration für Drucker, Kassenlade,
+  EC-Terminal, Konten und Trainings-Modus liegt jetzt zentral in der
+  <strong>Admin-App</strong> unter <em>Terminals → ✏️ Bearbeiten</em>.
+  Damit können alle Filial-Terminals von einem Platz aus gepflegt werden,
+  und die Kasse selbst muss für Konfig-Änderungen nicht offen sein.
+</div>
+<p>
+  In der Kasse zeigt der Bereich unter <em>/kasse/admin</em> nur noch die
+  KassenSichV-relevanten Punkte – TSE-Geräte, DSFinV-K-Export und
+  Tagesabschlüsse. Außerdem bleibt der Trainings-Modus dort als
+  Notausstieg umschaltbar, falls die Admin-App gerade nicht erreichbar
+  ist.
+</p>
+
+<table>
+  <tr><th>Einstellung</th><th>Bedeutung</th><th>Wo gepflegt</th></tr>
+  <tr><td>Terminal-Nummer</td><td>Eindeutige Kennung dieses Kassenplatzes – nie ändern im laufenden Betrieb</td><td>fest, in <code>config_local.py</code></td></tr>
+  <tr><td>Bezeichnung, Bon-Kopf</td><td>Anzeigename, Override für Firma/Zusatz</td><td>Admin-App</td></tr>
+  <tr><td>Drucker (IP, Port, Lade)</td><td>Netzwerkadresse des ESC/POS-Druckers + Pin der Kassenlade. <em>Drucker-Test</em> direkt aus der Admin-App.</td><td>Admin-App</td></tr>
+  <tr><td>EC-Terminal</td><td>Modus (manuell oder ZVT-Vollintegration), Terminal-IP, ZVT-Passwort, Tagesabschluss-Modus</td><td>Admin-App</td></tr>
+  <tr><td>DATEV-Konten</td><td>Bankkonto, Nebenkasse, Manko-/Mehrbetragskonto für die Kassendifferenz</td><td>Admin-App</td></tr>
+  <tr><td>Trainings-Modus</td><td>Aktiviert den Schulungsmodus – Bons als TRAININGSBON, keine TSE-Signatur</td><td>Admin-App (regulär) <em>oder</em> Kasse-/admin (Notausstieg)</td></tr>
+  <tr><td>QR-Code auf Bon</td><td>Druckt den TSE-Prüf-QR-Code auf jeden Bon</td><td>Admin-App</td></tr>
 </table>
 
 <h2 id="kap7-tse">TSE-Gerät</h2>
