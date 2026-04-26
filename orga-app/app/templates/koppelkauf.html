@@ -1,0 +1,695 @@
+{% extends 'base.html' %}
+{% block title %}Koppelkauf-Analyse{% endblock %}
+
+{% block extra_style %}
+<style>
+.berichte-nav {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.berichte-nav a {
+  padding: 9px 18px; border-radius: var(--radius-klein);
+  background: white; border: 1px solid var(--creme-dunkel);
+  font-weight: 700; font-size: 14px; color: var(--text-dunkel);
+  text-decoration: none; transition: background 0.12s, border-color 0.12s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.berichte-nav a:hover { background: var(--grau-hell); }
+.berichte-nav a.aktiv {
+  background: var(--gruen-dunkel); color: var(--gruen-blass);
+  border-color: var(--gruen-dunkel);
+}
+
+/* Aktionsliste */
+.aktions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.aktions-karte {
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein); padding: 14px 16px;
+  box-shadow: var(--schatten);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.aktions-karte.aktiv-jetzt {
+  border-color: var(--gruen-mitte);
+  border-left: 4px solid var(--gruen-mitte);
+}
+.aktions-karte .ak-name {
+  font-weight: 700; font-size: 14px; color: var(--text-dunkel);
+  line-height: 1.3;
+}
+.aktions-karte .ak-preis {
+  font-size: 13px; color: var(--text-mitte);
+}
+.aktions-karte .ak-preis strong { color: var(--gruen-dunkel); }
+.aktions-karte .ak-zeitraum {
+  font-size: 12px; color: var(--text-hell);
+}
+.aktions-karte .ak-badge {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 20px; align-self: flex-start;
+  background: var(--gruen-blass); color: var(--gruen-dunkel);
+}
+.aktions-karte.aktiv-jetzt .ak-badge {
+  background: var(--gruen-mitte); color: white;
+}
+.aktions-karte a.analyse-link {
+  margin-top: 6px; font-size: 12px; font-weight: 700;
+  color: var(--gruen-mitte); text-decoration: none;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.aktions-karte a.analyse-link:hover { color: var(--gruen-dunkel); }
+
+/* Analyse-Header */
+.analyse-header {
+  background: white; border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius); padding: 18px 22px;
+  box-shadow: var(--schatten); margin-bottom: 16px;
+}
+.analyse-header h2 { margin-bottom: 10px; }
+.analyse-meta {
+  display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px;
+}
+.analyse-meta .meta-item {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.analyse-meta .meta-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-hell);
+}
+.analyse-meta .meta-wert { font-weight: 700; color: var(--text-dunkel); }
+.analyse-meta .meta-wert.aktion { color: var(--gruen-dunkel); font-size: 16px; }
+.analyse-meta .meta-wert.rabatt { color: var(--gold); }
+
+/* Perioden-Vergleichstabelle */
+.perioden-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.perioden-table th {
+  background: var(--gruen-dunkel); color: var(--gruen-blass);
+  padding: 10px 12px; text-align: center; font-weight: 700;
+  font-size: 12px;
+}
+.perioden-table th.kennzahl { text-align: left; width: 160px; }
+.perioden-table th.aktion-col {
+  background: var(--gruen-mitte); font-size: 13px;
+}
+.perioden-table td {
+  padding: 9px 12px; border-bottom: 1px solid var(--creme-dunkel);
+  text-align: center;
+}
+.perioden-table td.kennzahl {
+  text-align: left; font-weight: 600; color: var(--text-mitte);
+  background: var(--grau-hell);
+}
+.perioden-table td.aktion-col {
+  background: #edf5e5; font-weight: 700; color: var(--gruen-dunkel);
+}
+.perioden-table td.leer { color: var(--grau-mitte); font-style: italic; }
+
+/* Pfeile / Veränderung */
+.diff-pos { color: var(--gruen-mitte); font-size: 11px; }
+.diff-neg { color: var(--rot); font-size: 11px; }
+.diff-neu { color: var(--gold); font-size: 11px; }
+
+/* Interpretation */
+.interpretation-box {
+  border-radius: var(--radius); padding: 16px 20px;
+  margin-bottom: 16px; border-left: 5px solid;
+}
+.interpretation-box.gut    { background: #e6f5e0; border-color: var(--gruen-mitte); }
+.interpretation-box.mittel { background: #fdf7e0; border-color: var(--gold); }
+.interpretation-box.gering { background: #f5f0e8; border-color: var(--creme-warm); }
+.interpretation-box.rueckgang { background: #fce8e8; border-color: var(--rot); }
+.interpretation-box.keine_daten { background: var(--grau-hell); border-color: var(--grau-mitte); }
+.interpretation-box h3 { margin-bottom: 8px; font-size: 15px; }
+.interpretation-box p { font-size: 13px; line-height: 1.6; color: var(--text-mitte); }
+
+/* Koppelkauf-Tabelle */
+.tabelle { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabelle th {
+  background: var(--gruen-dunkel); color: var(--gruen-blass);
+  padding: 9px 12px; text-align: left; font-weight: 700;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.tabelle th.rechts, .tabelle td.rechts { text-align: right; }
+.tabelle td {
+  padding: 8px 12px; border-bottom: 1px solid var(--creme-dunkel);
+}
+.tabelle tbody tr:hover { background: var(--grau-hell); }
+.tabelle tfoot td {
+  background: var(--gruen-blass); font-weight: 700;
+  border-top: 2px solid var(--gruen-mitte);
+}
+
+.kopplungsrate-bar {
+  display: inline-block; height: 8px; border-radius: 4px;
+  background: var(--gruen-mitte); vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* Chart */
+.chart-wrap {
+  position: relative; height: 220px; margin-bottom: 16px;
+}
+
+/* Perioden-Tabs für Koppelkauf */
+.periode-koppel { margin-bottom: 24px; }
+.periode-koppel h4 {
+  font-size: 13px; font-weight: 700; color: var(--text-mitte);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: 8px; padding-bottom: 4px;
+  border-bottom: 2px solid var(--creme-dunkel);
+}
+
+/* Filter-Form */
+.filter-form {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+  margin-bottom: 20px;
+}
+.filter-form .fg { display: flex; flex-direction: column; gap: 4px; }
+.filter-form label {
+  font-size: 12px; font-weight: 700; color: var(--text-hell);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.filter-form input, .filter-form select {
+  padding: 8px 10px; background: var(--grau-hell);
+  border: 1px solid var(--creme-dunkel); border-radius: var(--radius-klein);
+  font-size: 14px; font-family: 'Nunito', sans-serif; color: var(--text-dunkel);
+}
+.filter-form input:focus, .filter-form select:focus {
+  outline: none; border-color: var(--gruen-mitte);
+}
+
+/* Kein Bestand */
+.leer-hinweis {
+  padding: 24px; text-align: center; color: var(--text-hell); font-size: 13px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>🛒 Koppelkauf-Analyse</h1>
+<p class="text-dim" style="margin-top:4px;margin-bottom:20px;">
+  Welche Artikel werden gemeinsam mit Aktionsprodukten gekauft? Wie wirkt der Aktionspreis?
+</p>
+
+{# ── Navigation ──────────────────────────────────────────────── #}
+<div class="berichte-nav">
+  <a href="{{ url_for('berichte_seite') }}">🏠 Übersicht</a>
+  <a href="{{ url_for('tagesumsatz_seite') }}">💰 Tagesumsatz</a>
+  <a href="{{ url_for('monatsuebersicht_seite') }}">📅 Monatsübersicht</a>
+  <a href="{{ url_for('kassenbuch_seite') }}">📒 Kassenbuch</a>
+  <a href="{{ url_for('ec_umsaetze_seite') }}">💳 EC-Umsätze</a>
+  <a href="{{ url_for('koppelkauf_seite') }}" class="aktiv">🛒 Koppelkauf</a>
+</div>
+
+{# ── Manuelle Artikeleingabe ─────────────────────────────────── #}
+<div class="card" style="margin-bottom:16px;">
+  <form class="filter-form" method="get" action="{{ url_for('koppelkauf_seite') }}">
+    <div class="fg">
+      <label>Artikelnummer</label>
+      <input type="text" name="artnum" placeholder="z.B. 10042"
+             value="{{ artnum or artnum_vorgabe or '' }}" style="width:130px;">
+    </div>
+    <div class="fg">
+      <label>Aktionsbeginn</label>
+      <input type="date" name="von"
+             value="{{ aktions_von.strftime('%Y-%m-%d') if aktions_von else '' }}">
+    </div>
+    <div class="fg">
+      <label>Aktionsende</label>
+      <input type="date" name="bis"
+             value="{{ aktions_bis.strftime('%Y-%m-%d') if aktions_bis else '' }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Analysieren</button>
+    {% if artnum %}
+    <a href="{{ url_for('koppelkauf_seite') }}" class="btn btn-neutral">Zurücksetzen</a>
+    {% endif %}
+  </form>
+</div>
+
+{# ════════════════════════════════════════════════════════════════
+   A. Auswahlseite – keine Analyse gewählt
+   ════════════════════════════════════════════════════════════════ #}
+{% if not analyse %}
+<div class="card">
+  <h2 class="card-titel">Aktuelle & Letzte Aktionspreise</h2>
+  <p class="text-dim" style="margin-bottom:12px;">
+    Klicke auf einen Artikel, um die Koppelkauf-Analyse zu starten.
+    Zeigt Aktionen der letzten 180 Tage.
+  </p>
+
+  {% if aktionen %}
+  <div class="aktions-grid">
+  {% for a in aktionen %}
+    <div class="aktions-karte {% if a.aktiv %}aktiv-jetzt{% endif %}">
+      <div class="ak-badge">{% if a.aktiv %}Aktiv jetzt{% else %}Abgelaufen{% endif %}</div>
+      <div class="ak-name">{{ a.bezeichnung }}</div>
+      <div class="ak-preis">
+        Aktionspreis: <strong>{{ '%.2f'|format(a.aktions_preis) | replace('.', ',') }} €</strong>
+        {% if a.normal_preis > 0 %}
+        · Normal: {{ '%.2f'|format(a.normal_preis) | replace('.', ',') }} €
+        {% endif %}
+        {% if a.rabatt_pct %}
+        <span style="color:var(--gold);font-weight:700;"> –{{ a.rabatt_pct }}%</span>
+        {% endif %}
+      </div>
+      <div class="ak-zeitraum">
+        {{ a.datum_ab.strftime('%d.%m.%Y') if a.datum_ab else '?' }}
+        –
+        {{ a.datum_bis.strftime('%d.%m.%Y') if a.datum_bis else 'offen' }}
+        · Art.-Nr. {{ a.artnum }}
+      </div>
+      <a class="analyse-link"
+         href="{{ url_for('koppelkauf_seite', artnum=a.artnum,
+                  von=a.datum_ab.strftime('%Y-%m-%d') if a.datum_ab else '',
+                  bis=a.datum_bis.strftime('%Y-%m-%d') if a.datum_bis else '') }}">
+        → Analyse starten
+      </a>
+    </div>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="leer-hinweis">Keine Aktionspreise in den letzten 180 Tagen gefunden.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ════════════════════════════════════════════════════════════════
+   B. Analyseergebnis
+   ════════════════════════════════════════════════════════════════ #}
+{% if analyse %}
+
+{# ── Artikel-Header ──────────────────────────────────────────── #}
+<div class="analyse-header">
+  <h2>{{ aktion_info.bezeichnung if aktion_info else artnum }}</h2>
+  <div class="analyse-meta">
+    <div class="meta-item">
+      <span class="meta-label">Artikelnummer</span>
+      <span class="meta-wert">{{ artnum }}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Aktionszeitraum</span>
+      <span class="meta-wert">
+        {{ analyse.aktions_von.strftime('%d.%m.%Y') }}
+        –
+        {{ analyse.aktions_bis.strftime('%d.%m.%Y') }}
+        ({{ (analyse.aktions_bis - analyse.aktions_von).days + 1 }} Tage)
+      </span>
+    </div>
+    {% if aktion_info %}
+    <div class="meta-item">
+      <span class="meta-label">Aktionspreis</span>
+      <span class="meta-wert aktion">{{ '%.2f'|format(aktion_info.aktions_preis) | replace('.', ',') }} €</span>
+    </div>
+    {% if aktion_info.normal_preis > 0 %}
+    <div class="meta-item">
+      <span class="meta-label">Normalpreis (VK5)</span>
+      <span class="meta-wert">{{ '%.2f'|format(aktion_info.normal_preis) | replace('.', ',') }} €</span>
+    </div>
+    {% endif %}
+    {% if aktion_info.rabatt_pct %}
+    <div class="meta-item">
+      <span class="meta-label">Rabatt</span>
+      <span class="meta-wert rabatt">–{{ aktion_info.rabatt_pct }} %</span>
+    </div>
+    {% endif %}
+    {% endif %}
+    <div class="meta-item">
+      <span class="meta-label">Bons im Aktionszeitraum</span>
+      <span class="meta-wert">{{ analyse.aktion_umsatz.anzahl_bons }}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Umsatz Aktionszeitraum</span>
+      <span class="meta-wert">{{ '%.2f'|format(analyse.aktion_umsatz.brutto_umsatz) | replace('.', ',') }} €</span>
+    </div>
+  </div>
+</div>
+
+{# ── Interpretation ──────────────────────────────────────────── #}
+{% set itp = analyse.interpretation %}
+<div class="interpretation-box {{ itp.klasse }}">
+  {% if itp.klasse == 'gut' %}
+    <h3>Aktionseffekt: Klar merkbar +{{ itp.uplift }} %</h3>
+  {% elif itp.klasse == 'mittel' %}
+    <h3>Aktionseffekt: Spürbar +{{ itp.uplift }} %</h3>
+  {% elif itp.klasse == 'gering' %}
+    <h3>Aktionseffekt: Kaum merkbar ({{ itp.uplift }} %)</h3>
+  {% elif itp.klasse == 'rueckgang' %}
+    <h3>Aktionseffekt: Rückgang im Zeitraum ({{ itp.uplift }} %)</h3>
+  {% else %}
+    <h3>Keine Vergleichsdaten</h3>
+  {% endif %}
+  <p>{{ itp.text }}</p>
+</div>
+
+{# ── Periodenvergleich: Umsatz des Aktionsartikels ──────────── #}
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="card-titel">Umsatzvergleich: {{ aktion_info.bezeichnung if aktion_info else artnum }}</h2>
+
+  {# Vorberechnete Differenzen zur Aktionsperiode #}
+  {% set a_bons = analyse.aktion_umsatz.anzahl_bons %}
+  {% set a_stk  = analyse.aktion_umsatz.stueckzahl %}
+  {% set a_um   = analyse.aktion_umsatz.brutto_umsatz %}
+  {% set a_bpt  = analyse.aktion_umsatz.bons_pro_tag %}
+
+  <div class="chart-wrap" style="margin-bottom:20px;">
+    <canvas id="periodenChart"></canvas>
+  </div>
+
+  <div style="overflow-x:auto;">
+  <table class="perioden-table">
+    <thead>
+      <tr>
+        <th class="kennzahl">Kennzahl</th>
+        <th class="aktion-col">Aktionszeitraum</th>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            <th>{{ analyse.perioden[key].label }}</th>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      <tr>
+        <td class="kennzahl" style="font-size:11px;color:var(--text-hell);">Zeitraum</td>
+        <td class="aktion-col" style="font-size:11px;">
+          {{ analyse.aktions_von.strftime('%d.%m.') }}–{{ analyse.aktions_bis.strftime('%d.%m.%Y') }}
+        </td>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            <td style="font-size:11px;color:var(--text-hell);">
+              {{ analyse.perioden[key].von.strftime('%d.%m.') }}–{{ analyse.perioden[key].bis.strftime('%d.%m.%Y') }}
+            </td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {# Tage #}
+      <tr>
+        <td class="kennzahl">Tage im Zeitraum</td>
+        <td class="aktion-col">{{ analyse.aktion_umsatz.tage }}</td>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            <td>{{ analyse.perioden[key].umsatz.tage }}</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {# Kassenbons #}
+      <tr>
+        <td class="kennzahl">Kassenbons</td>
+        <td class="aktion-col">{{ a_bons }}</td>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            {% set vbons = analyse.perioden[key].umsatz.anzahl_bons %}
+            <td>
+              {{ vbons }}
+              {% if a_bons > 0 and vbons > 0 %}
+                {% set diff = ((a_bons - vbons) / vbons * 100) | round(1) %}
+                {% if diff > 0 %}
+                  <span class="diff-pos">(+{{ diff }}%)</span>
+                {% elif diff < 0 %}
+                  <span class="diff-neg">({{ diff }}%)</span>
+                {% endif %}
+              {% elif a_bons > 0 and vbons == 0 %}
+                <span class="diff-neu">(neu)</span>
+              {% endif %}
+            </td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {# Stückzahl #}
+      <tr>
+        <td class="kennzahl">Stückzahl</td>
+        <td class="aktion-col">{{ '%.0f'|format(a_stk) }}</td>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            {% set vstk = analyse.perioden[key].umsatz.stueckzahl %}
+            <td>
+              {{ '%.0f'|format(vstk) }}
+              {% if a_stk > 0 and vstk > 0 %}
+                {% set diff = ((a_stk - vstk) / vstk * 100) | round(1) %}
+                {% if diff > 0 %}<span class="diff-pos">(+{{ diff }}%)</span>
+                {% elif diff < 0 %}<span class="diff-neg">({{ diff }}%)</span>{% endif %}
+              {% endif %}
+            </td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {# Brutto-Umsatz #}
+      <tr>
+        <td class="kennzahl">Brutto-Umsatz</td>
+        <td class="aktion-col">{{ '%.2f'|format(a_um) | replace('.', ',') }} €</td>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            {% set vum = analyse.perioden[key].umsatz.brutto_umsatz %}
+            <td>
+              {{ '%.2f'|format(vum) | replace('.', ',') }} €
+              {% if a_um > 0 and vum > 0 %}
+                {% set diff = ((a_um - vum) / vum * 100) | round(1) %}
+                {% if diff > 0 %}<span class="diff-pos">(+{{ diff }}%)</span>
+                {% elif diff < 0 %}<span class="diff-neg">({{ diff }}%)</span>{% endif %}
+              {% endif %}
+            </td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {# Bons/Tag #}
+      <tr>
+        <td class="kennzahl">Bons / Tag (Ø)</td>
+        <td class="aktion-col">{{ '%.1f'|format(a_bpt) | replace('.', ',') }}</td>
+        {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+          {% if analyse.perioden[key] %}
+            <td>{{ '%.1f'|format(analyse.perioden[key].umsatz.bons_pro_tag) | replace('.', ',') }}</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{# ── Koppelkäufe im Aktionszeitraum ─────────────────────────── #}
+{% if analyse.koppel_aktion %}
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="card-titel">Koppelkäufe im Aktionszeitraum</h2>
+  <p class="text-dim" style="margin-bottom:12px;">
+    Artikel, die am häufigsten im selben Kassenbon wie
+    <strong>{{ aktion_info.bezeichnung if aktion_info else artnum }}</strong>
+    gekauft wurden. Kopplungsrate = Anteil der Aktions-Bons, die diesen Artikel enthielten.
+  </p>
+
+  {# Lookup-Dicts für Vergleich (per Jinja2) #}
+  {% set vw = analyse.perioden.vorwoche %}
+  {% set vj = analyse.perioden.vorjahr %}
+  {% set vj_kw = analyse.perioden.vorjahr_kw %}
+
+  <div style="overflow-x:auto;">
+  <table class="tabelle">
+    <thead>
+      <tr>
+        <th style="width:40px;">#</th>
+        <th>Artikel</th>
+        <th class="rechts" style="width:110px;">Kopplungsrate</th>
+        <th class="rechts">Bons (Aktion)</th>
+        <th class="rechts">Stück</th>
+        <th class="rechts">Umsatz</th>
+        {% if vw %}<th class="rechts" style="width:100px;">Bons Vorwoche</th>{% endif %}
+        {% if vj %}<th class="rechts" style="width:100px;">Bons Vorjahr</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for k in analyse.koppel_aktion %}
+      {# Suche diesen Artikel in Vergleichsperioden #}
+      {% set vw_rate = '-' %}
+      {% if vw %}
+        {% for vk in vw.koppel %}
+          {% if vk.artnum == k.artnum %}{% set vw_rate = vk.anzahl_bons %}{% endif %}
+        {% endfor %}
+      {% endif %}
+      {% set vj_rate = '-' %}
+      {% if vj %}
+        {% for vk in vj.koppel %}
+          {% if vk.artnum == k.artnum %}{% set vj_rate = vk.anzahl_bons %}{% endif %}
+        {% endfor %}
+      {% endif %}
+      <tr>
+        <td style="color:var(--text-hell);">{{ loop.index }}</td>
+        <td>
+          <div style="font-weight:600;">{{ k.bezeichnung }}</div>
+          <div style="font-size:11px;color:var(--text-hell);">Art.-Nr. {{ k.artnum }}</div>
+        </td>
+        <td class="rechts">
+          <span class="kopplungsrate-bar"
+                style="width:{{ [k.kopplungsrate * 0.8, 60] | min }}px;"></span>
+          {{ '%.1f'|format(k.kopplungsrate) | replace('.', ',') }}%
+        </td>
+        <td class="rechts" style="font-weight:700;">{{ k.anzahl_bons }}</td>
+        <td class="rechts">{{ '%.0f'|format(k.stueckzahl) }}</td>
+        <td class="rechts">{{ '%.2f'|format(k.brutto_umsatz) | replace('.', ',') }} €</td>
+        {% if vw %}<td class="rechts">{{ vw_rate }}</td>{% endif %}
+        {% if vj %}<td class="rechts">{{ vj_rate }}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="leer-hinweis">
+    Keine Koppelkäufe gefunden – entweder keine Transaktionen im Zeitraum
+    oder der Artikel wurde immer allein gekauft.
+  </div>
+</div>
+{% endif %}
+
+{# ── Koppelkäufe Vergleichsperioden ─────────────────────────── #}
+{% set zeig_perioden = [] %}
+{% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+  {% if analyse.perioden[key] and analyse.perioden[key].koppel %}
+    {% set _ = zeig_perioden.append(key) %}
+  {% endif %}
+{% endfor %}
+
+{% if zeig_perioden %}
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="card-titel">Koppelkäufe Vergleichsperioden</h2>
+  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr)); gap:16px; margin-top:12px;">
+  {% for key in zeig_perioden %}
+    {% set p = analyse.perioden[key] %}
+    <div class="periode-koppel">
+      <h4>{{ p.label }}
+        <span style="font-size:11px;color:var(--text-hell);font-weight:400;">
+          ({{ p.von.strftime('%d.%m.') }}–{{ p.bis.strftime('%d.%m.%Y') }},
+          {{ p.umsatz.anzahl_bons }} Bons)
+        </span>
+      </h4>
+      {% if p.koppel %}
+      <table class="tabelle" style="font-size:12px;">
+        <thead>
+          <tr>
+            <th>#</th><th>Artikel</th>
+            <th class="rechts">Rate</th>
+            <th class="rechts">Bons</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for k in p.koppel[:10] %}
+          <tr>
+            <td style="color:var(--text-hell);">{{ loop.index }}</td>
+            <td>{{ k.bezeichnung }}</td>
+            <td class="rechts">{{ '%.0f'|format(k.kopplungsrate) }}%</td>
+            <td class="rechts">{{ k.anzahl_bons }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="leer-hinweis" style="padding:12px;">Keine Daten</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Chart.js ────────────────────────────────────────────────── #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const labels = [
+    'Aktionszeitraum'
+    {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+      {% if analyse.perioden[key] %}
+        , '{{ analyse.perioden[key].label }}'
+      {% endif %}
+    {% endfor %}
+  ];
+  const bons = [
+    {{ analyse.aktion_umsatz.anzahl_bons }}
+    {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+      {% if analyse.perioden[key] %}
+        , {{ analyse.perioden[key].umsatz.anzahl_bons }}
+      {% endif %}
+    {% endfor %}
+  ];
+  const umsatz = [
+    {{ analyse.aktion_umsatz.brutto_umsatz }}
+    {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+      {% if analyse.perioden[key] %}
+        , {{ analyse.perioden[key].umsatz.brutto_umsatz }}
+      {% endif %}
+    {% endfor %}
+  ];
+  const farben = [
+    'rgba(46,110,26,0.75)'
+    {% for key in ['vorwoche','folgewoche','vorjahr','vorjahr_kw'] %}
+      {% if analyse.perioden[key] %}, 'rgba(168,184,144,0.65)'{% endif %}
+    {% endfor %}
+  ];
+  farben[0] = 'rgba(46,110,26,0.85)';
+
+  new Chart(document.getElementById('periodenChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Kassenbons',
+          data: bons,
+          backgroundColor: farben,
+          borderColor: farben.map(c => c.replace('0.75','1').replace('0.65','1')),
+          borderWidth: 1, borderRadius: 4, yAxisID: 'y',
+        },
+        {
+          label: 'Brutto-Umsatz (€)',
+          data: umsatz,
+          type: 'line',
+          borderColor: 'rgba(200,120,10,0.9)',
+          backgroundColor: 'rgba(200,120,10,0.1)',
+          borderWidth: 2, pointRadius: 5,
+          yAxisID: 'y2',
+          tension: 0.2,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.dataset.yAxisID === 'y2')
+                return ctx.dataset.label + ': ' +
+                  ctx.parsed.y.toFixed(2).replace('.', ',') + ' €';
+              return ctx.dataset.label + ': ' + ctx.parsed.y;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          position: 'left', title: { display: true, text: 'Bons' },
+          ticks: { precision: 0 }
+        },
+        y2: {
+          position: 'right', grid: { drawOnChartArea: false },
+          title: { display: true, text: 'Umsatz €' },
+          ticks: {
+            callback: function(v) {
+              return v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
+
+{% endif %}{# /analyse #}
+{% endblock %}

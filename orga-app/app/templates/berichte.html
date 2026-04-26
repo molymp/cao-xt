@@ -87,6 +87,9 @@
      class="{% if bericht == 'kassenbuch' %}aktiv{% endif %}">📒 Kassenbuch</a>
   <a href="{{ url_for('ec_umsaetze_seite') }}"
      class="{% if bericht == 'ec_umsaetze' %}aktiv{% endif %}">💳 EC-Umsätze</a>
+  <a href="{{ url_for('umsatz_heatmap_seite') }}"
+     class="{% if bericht == 'umsatz_heatmap' %}aktiv{% endif %}">🌡️ Umsatz-Heatmap</a>
+  <a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf</a>
 </div>
 
 {# ════════════════════════════════════════════════════════════════
@@ -125,6 +128,16 @@
         <td><a href="{{ url_for('ec_umsaetze_seite') }}">💳 EC-Umsätze</a></td>
         <td>täglich/monatlich</td><td>CSV</td>
         <td class="text-dim">EC-Kartenumsätze nach Datum</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('umsatz_heatmap_seite') }}">🌡️ Umsatz-Heatmap</a></td>
+        <td>frei waehlbar</td><td>CSV</td>
+        <td class="text-dim">Durchschnittlicher Umsatz je Wochentag &amp; Stunde – wann ist Hochbetrieb?</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf-Analyse</a></td>
+        <td>Aktionszeitraum</td><td>–</td>
+        <td class="text-dim">Koppelkäufe bei Aktionsprodukten, Periodenvergleich, Aktionseffekt</td>
       </tr>
     </tbody>
   </table>
@@ -481,6 +494,118 @@
   </table>
   {% else %}
   <p class="text-dim">Keine EC-Umsätze für den gewählten Zeitraum.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+
+{# ════════════════════════════════════════════════════════════════
+   5. Umsatz-Heatmap (Wochentag x Stunde)
+   ════════════════════════════════════════════════════════════════ #}
+{% if bericht == 'umsatz_heatmap' %}
+<div class="card">
+  <h2 class="card-titel">🌡️ Umsatz-Heatmap</h2>
+  <p class="text-dim" style="margin-top:-6px; margin-bottom:14px;">
+    Durchschnittlicher Bar-Umsatz je Wochentag und Stunde im gewaehlten
+    Zeitraum. Aggregiert wird zuerst je Tag, dann gemittelt ueber die
+    Tage des selben Wochentags – so verzerren ungleich verteilte
+    Wochentage (z.B. 4 Samstage gegen 3) die Werte nicht.
+  </p>
+
+  <form class="filter-form" method="get" action="{{ url_for('umsatz_heatmap_seite') }}">
+    <div class="fg">
+      <label>Von</label>
+      <input type="date" name="von" value="{{ von }}">
+    </div>
+    <div class="fg">
+      <label>Bis</label>
+      <input type="date" name="bis" value="{{ bis }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Anzeigen</button>
+    {% if heatmap %}
+    <a href="{{ url_for('umsatz_heatmap_export', von=von, bis=bis) }}"
+       class="btn btn-neutral">⬇ CSV</a>
+    {% endif %}
+  </form>
+
+  {% if heatmap and heatmap.max_wert > 0 %}
+    {% set wtage = ['Mo','Di','Mi','Do','Fr','Sa','So'] %}
+    {% set max_w = heatmap.max_wert %}
+    <style>
+      .hm-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums;
+                  font-size: 12px; margin-top: 10px; }
+      .hm-table th, .hm-table td { padding: 6px 4px; text-align: center;
+                                    border: 1px solid var(--creme-dunkel); }
+      .hm-table th.zeit { background: var(--brand-cream); width: 56px;
+                          text-align: right; padding-right: 8px; font-weight: 700; }
+      .hm-table thead th { background: var(--brand-sage); color: var(--gruen-dunkel);
+                            font-size: 11px; text-transform: uppercase;
+                            letter-spacing: 0.04em; font-weight: 800; }
+      .hm-cell { color: var(--brand-ink); font-weight: 600;
+                  position: relative; min-width: 56px; }
+      .hm-cell.leer { color: var(--text-dim); font-weight: 400; opacity: 0.5; }
+      .hm-summary { display: flex; gap: 16px; flex-wrap: wrap;
+                    margin-top: 14px; font-size: 13px; color: var(--text-mitte); }
+      .hm-summary strong { color: var(--brand-ink); font-weight: 800; }
+      .hm-legende { display: flex; gap: 6px; align-items: center;
+                     margin-top: 8px; font-size: 11px; color: var(--text-dim); }
+      .hm-legende .swatch { width: 22px; height: 14px; border-radius: 2px;
+                              border: 1px solid var(--brand-sage-dunkel); }
+    </style>
+
+    <table class="hm-table">
+      <thead>
+        <tr>
+          <th class="zeit">Uhr</th>
+          {% for wt in range(7) %}
+            <th>{{ wtage[wt] }}
+              <div style="font-weight:500; font-size:10px; color:var(--gruen-dunkel); opacity:0.7;">
+                {{ heatmap.tage_pro_wtag[wt] }}&nbsp;Tag{{ '' if heatmap.tage_pro_wtag[wt] == 1 else 'e' }}
+              </div>
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for std in range(heatmap.von_stunde, heatmap.bis_stunde + 1) %}
+          <tr>
+            <th class="zeit">{{ '%02d:00'|format(std) }}</th>
+            {% for wt in range(7) %}
+              {% set wert = heatmap.matrix[wt].get(std, 0) %}
+              {% set anteil = (wert / max_w) if max_w > 0 else 0 %}
+              {# Hellgruen (sage) bis Terracotta-Verlauf via inline-RGB #}
+              {% set r = (217 + (182 - 217) * anteil) | int %}
+              {% set g = (220 + ( 92 - 220) * anteil) | int %}
+              {% set b = (201 + ( 58 - 201) * anteil) | int %}
+              {% if wert > 0 %}
+                <td class="hm-cell" style="background: rgb({{ r }},{{ g }},{{ b }});
+                    color: {{ '#ffffff' if anteil > 0.55 else 'var(--brand-ink)' }};">
+                  {{ '%.0f'|format(wert) }}&nbsp;€
+                </td>
+              {% else %}
+                <td class="hm-cell leer">–</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="hm-legende">
+      <span>wenig</span>
+      <span class="swatch" style="background: rgb(217,220,201);"></span>
+      <span class="swatch" style="background: rgb(199,156,129);"></span>
+      <span class="swatch" style="background: rgb(182,92,58);"></span>
+      <span>viel ({{ '%.0f'|format(heatmap.max_wert) }}&nbsp;€)</span>
+    </div>
+
+    <div class="hm-summary">
+      <span><strong>Zeitraum:</strong> {{ heatmap.von }} bis {{ heatmap.bis }}</span>
+      <span><strong>Stunden:</strong> {{ heatmap.von_stunde }}–{{ heatmap.bis_stunde }} Uhr</span>
+      <span><strong>Hoechster Stundenwert:</strong> {{ '%.2f'|format(heatmap.max_wert) | replace('.', ',') }} €</span>
+    </div>
+  {% else %}
+    <p class="text-dim">Fuer diesen Zeitraum liegen keine Bar-Umsaetze vor.</p>
   {% endif %}
 </div>
 {% endif %}

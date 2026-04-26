@@ -91,6 +91,15 @@
 .tag-spalte.urlaub-geplant { background-color: #fff8e8; }
 .tag-spalte.urlaub-genommen { background-color: #f0e8fd; }
 
+/* Heatmap-Unterlage als feine Streifen je Stunde – liegt unter den
+   Schicht-Bloecken (z-index 0) und nimmt die volle Spaltenbreite ein. */
+.umsatz-overlay-stripe { position: absolute; left: 0; right: 0;
+                          z-index: 0; pointer-events: auto;
+                          border-bottom: 1px dashed rgba(0,0,0,0.05); }
+.umsatz-overlay-stripe.stripe-unter { background: rgba(184,48,48,0.18); }
+.umsatz-overlay-stripe.stripe-ueber { background: rgba(46,158,90,0.16); }
+.umsatz-overlay-stripe.stripe-ok    { background: rgba(217,220,201,0.32); }
+
 .schicht-block { position: absolute; left: 2px; right: 2px; padding: 4px 6px;
                  border-radius: 4px; color: white; font-size: 11px;
                  line-height: 1.25; overflow: hidden;
@@ -105,20 +114,32 @@
                         background: rgba(0,0,0,0.22); display: inline-block;
                         padding: 1px 6px; border-radius: 8px; margin-top: 2px; }
 
-/* Liste unterhalb für flex & aufgabe */
-.liste-karte { background: white; border-radius: var(--radius); overflow: hidden;
-               box-shadow: var(--schatten); margin-bottom: 18px; }
-.liste-karte h2 { margin: 0; padding: 12px 16px; background: var(--gruen-blass);
-                  color: var(--gruen-dunkel); font-size: 13px; text-transform: uppercase;
-                  letter-spacing: 0.06em; font-weight: 800; }
-.liste-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-.liste-tag { border-right: 1px solid var(--creme-dunkel); padding: 10px 8px;
-             min-height: 80px; }
-.liste-tag:last-child { border-right: none; }
-.liste-tag.heute { background: #fffcf0; }
-.liste-tag .lt-datum { font-size: 11px; font-weight: 700; color: var(--grau-mitte);
-                       text-align: center; margin-bottom: 8px;
-                       text-transform: uppercase; letter-spacing: 0.04em; }
+/* Flex & Aufgaben werden direkt unter dem Zeitraster in derselben
+   Karte als zwei zusaetzliche Reihen angezeigt – mit identischen
+   Spalten-Breiten (60px + 7×1fr), damit die Eintraege pro Tag direkt
+   unter dem entsprechenden Tag-Header stehen. */
+.raster-zusatz-sektion {
+    display: grid; grid-template-columns: 60px repeat(7, 1fr);
+    border-top: 2px solid var(--creme-dunkel);
+}
+.raster-zusatz-sektion + .raster-zusatz-sektion { border-top: 1px solid var(--creme-dunkel); }
+.raster-zusatz-label {
+    padding: 10px 8px; text-align: right;
+    background: var(--brand-cream); color: var(--gruen-dunkel);
+    border-right: 1px solid var(--creme-dunkel);
+    font-size: 11px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: flex; align-items: center; justify-content: flex-end;
+}
+.raster-zusatz-zelle {
+    border-right: 1px solid var(--creme-dunkel);
+    padding: 8px 6px; min-height: 56px;
+}
+.raster-zusatz-zelle:last-child { border-right: none; }
+.raster-zusatz-zelle.heute { background: #fffcf0; }
+.raster-zusatz-zelle.urlaub-genehmigt { background: #fde8e8; }
+.raster-zusatz-zelle.urlaub-geplant { background: #fff8e8; }
+.raster-zusatz-zelle.urlaub-genommen { background: #f0e8fd; }
 .liste-chip { display: block; margin-bottom: 4px; padding: 4px 6px; color: white;
               border-radius: 4px; font-size: 11px; font-weight: 700; line-height: 1.3; }
 .liste-chip.typ-aufgabe { background-image: repeating-linear-gradient(
@@ -356,9 +377,50 @@ function setVorlageZielRelativ(tage) {
 </script>
 
 <div class="msg msg-info" style="font-weight: 500;">
-  Zeitraster: fix-Schichten werden als Blöcke auf der Zeitachse dargestellt.
-  Flex-Schichten und Aufgaben stehen in der Liste darunter.
+  Zeitraster: Fix-Schichten als Bloecke auf der Zeitachse, Flex-Schichten
+  und Aufgaben in den Reihen direkt unter dem jeweiligen Tag.
 </div>
+
+{% if bonus_summary and (bonus_summary.erwartet or bonus_summary.soll) %}
+<div class="bonus-banner">
+  <div class="bb-zelle">
+    <div class="bb-label">Zielumsatz / MA-Stunde</div>
+    <div class="bb-wert">{{ bonus_summary.ziel_pro_ma_h|int }}&nbsp;€</div>
+  </div>
+  <div class="bb-zelle">
+    <div class="bb-label">Erwarteter Wochenumsatz</div>
+    <div class="bb-wert">{{ '%.0f'|format(bonus_summary.erwartet) }}&nbsp;€</div>
+    <div class="bb-sub">aus Vorwoche &amp; Vorjahr-KW</div>
+  </div>
+  <div class="bb-zelle">
+    <div class="bb-label">Geplante Soll-Leistung</div>
+    <div class="bb-wert">{{ '%.0f'|format(bonus_summary.soll) }}&nbsp;€</div>
+    <div class="bb-sub">Schicht-Stunden × Ziel</div>
+  </div>
+  <div class="bb-zelle bb-{% if bonus_summary.differenz >= 0 %}plus{% else %}minus{% endif %}">
+    <div class="bb-label">Bonus-Saldo</div>
+    <div class="bb-wert">{{ '%+d'|format(bonus_summary.differenz|int) }}&nbsp;€</div>
+    <div class="bb-sub">{{ bonus_summary.zellen_ueber }} Stunden ueberdeckt ·
+                          {{ bonus_summary.zellen_unter }} unterdeckt</div>
+  </div>
+</div>
+
+<style>
+.bonus-banner { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                gap: 10px; margin-bottom: 14px; }
+.bb-zelle { background: white; border: 1px solid var(--creme-dunkel);
+            border-radius: var(--radius-klein); padding: 10px 14px; }
+.bb-label { font-size: 10px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--grau-mitte); margin-bottom: 2px; }
+.bb-wert  { font-family: 'Fraunces', Georgia, serif; font-size: 20px;
+            color: var(--gruen-dunkel); font-variant-numeric: tabular-nums; }
+.bb-sub   { font-size: 11px; color: var(--text-mitte); margin-top: 2px; }
+.bb-plus  { background: #eef5e8; border-color: var(--gruen-mitte); }
+.bb-plus .bb-wert { color: var(--gruen-mitte); }
+.bb-minus { background: #fde8e8; border-color: var(--rot); }
+.bb-minus .bb-wert { color: var(--rot); }
+</style>
+{% endif %}
 
 <div class="raster-karte {% if woche_gesperrt %}gesperrt{% endif %}">
   <div class="raster-kopf">
@@ -391,7 +453,23 @@ function setVorlageZielRelativ(tage) {
 
     {% for tag in tage %}
       {% set ist_heute = tag == heute %}
-      <div class="tag-spalte {% if ist_heute %}heute{% endif %}">
+      <div class="tag-spalte {% if ist_heute %}heute{% endif %}"
+           data-datum="{{ tag.isoformat() }}"
+           {% if not woche_gesperrt %}onclick="leereZelleKlick(event, this)"{% endif %}>
+        {# Heatmap-Unterlage: pro Stunde ein Streifen, der die
+           Soll-/Ist-Differenz farblich anzeigt. Liegt VOR den
+           Schicht-Bloecken im DOM, damit die Bloecke darueber liegen. #}
+        {% set tag_overlay = umsatz_overlay.get(tag.isoformat(), {}) %}
+        {% for std in stunden %}
+          {% set zelle = tag_overlay.get(std) %}
+          {% if zelle and zelle.klasse != 'leer' %}
+            {% set top_px = ((std * 60) - raster_von_min) * PX_PRO_MIN %}
+            {% set hoehe  = 60 * PX_PRO_MIN %}
+            <div class="umsatz-overlay-stripe stripe-{{ zelle.klasse }}"
+                 style="top: {{ top_px }}px; height: {{ hoehe }}px;"
+                 title="{{ '%02d:00'|format(std) }} – Erwartet {{ zelle.erwartet|int }} €, {{ zelle.ma_anz }} MA × {{ bonus_summary.ziel_pro_ma_h|int }} € = Soll {{ zelle.soll|int }} € ({{ '%+d'|format(zelle.diff|int) }} €)"></div>
+          {% endif %}
+        {% endfor %}
         {% for gr in plan_fix.get(tag, []) %}
           {% set top_px  = (gr._start_min - raster_von_min) * PX_PRO_MIN %}
           {% set hoehe   = (gr._ende_min  - gr._start_min)  * PX_PRO_MIN %}
@@ -421,16 +499,15 @@ function setVorlageZielRelativ(tage) {
       </div>
     {% endfor %}
   </div>
-</div>
 
-{% if plan_flex %}
-<div class="liste-karte">
-  <h2>Flex-Schichten (freie Zeiteinteilung)</h2>
-  <div class="liste-grid">
+  {# Flex-Schichten (freie Zeiteinteilung) – direkt unter Zeitraster
+     in der gleichen Karte. Jede Spalte ist exakt unter ihrem Tag. #}
+  {% if hat_flex %}
+  <div class="raster-zusatz-sektion">
+    <div class="raster-zusatz-label" title="Flex-Schichten (freie Zeiteinteilung)">Flex</div>
     {% for i in range(7) %}
       {% set tag = tage[i] %}
-      <div class="liste-tag {% if tag == heute %}heute{% endif %}">
-        <div class="lt-datum">{{ wtage[i] }} {{ '%02d.%02d.'|format(tag.day, tag.month) }}</div>
+      <div class="raster-zusatz-zelle {% if tag == heute %}heute{% endif %}">
         {% for z in plan_flex.get(tag, []) %}
           <div class="liste-chip" style="background: {{ z.FARBE }}">
             <strong>{{ z.KUERZEL }}</strong>
@@ -443,17 +520,15 @@ function setVorlageZielRelativ(tage) {
       </div>
     {% endfor %}
   </div>
-</div>
-{% endif %}
+  {% endif %}
 
-{% if plan_task %}
-<div class="liste-karte">
-  <h2>Aufgaben ohne Zeit</h2>
-  <div class="liste-grid">
+  {# Aufgaben (ohne feste Zeit) – Reihe unter Flex. #}
+  {% if hat_task %}
+  <div class="raster-zusatz-sektion">
+    <div class="raster-zusatz-label" title="Aufgaben ohne feste Zeit">Aufgaben</div>
     {% for i in range(7) %}
       {% set tag = tage[i] %}
-      <div class="liste-tag {% if tag == heute %}heute{% endif %}">
-        <div class="lt-datum">{{ wtage[i] }} {{ '%02d.%02d.'|format(tag.day, tag.month) }}</div>
+      <div class="raster-zusatz-zelle {% if tag == heute %}heute{% endif %}">
         {% for z in plan_task.get(tag, []) %}
           <div class="liste-chip typ-aufgabe" style="background: {{ z.FARBE }}">
             <strong>{{ z.KUERZEL }}</strong>
@@ -465,8 +540,8 @@ function setVorlageZielRelativ(tage) {
       </div>
     {% endfor %}
   </div>
+  {% endif %}
 </div>
-{% endif %}
 
 {% if not plan_fix and not hat_flex and not hat_task %}
 <div class="empty-hint">
@@ -530,8 +605,114 @@ function setVorlageZielRelativ(tage) {
   </div>
 </div>
 
+{# ── Neues-Schicht-Modal: erscheint beim Klick auf eine leere Zelle ── #}
+{% if not woche_gesperrt %}
+<div id="neuzu-overlay" class="overlay-bg"
+     onclick="if(event.target===this)schliesseNeuzu()">
+  <div class="overlay-sheet">
+    <div class="handle"></div>
+    <h2 id="nz-titel">Neue Schicht</h2>
+    <div class="overlay-meta" id="nz-meta"></div>
+
+    <form method="post" id="nz-form"
+          action="{{ url_for('orga_personal.schichtplan_zuordnung_anlegen') }}">
+      <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
+      <input type="hidden" name="rueck" value="raster">
+      <input type="hidden" name="datum" id="nz-datum">
+      <input type="hidden" name="schicht_id" id="nz-schicht-id">
+      <input type="hidden" name="pers_id"   id="nz-pers-id">
+
+      <div style="font-weight:700; font-size:12px; text-transform:uppercase;
+                  letter-spacing:0.04em; color:var(--text-mitte);
+                  margin-bottom:6px;">
+        1. Schicht waehlen
+      </div>
+      <div id="nz-schichten" class="nz-grid">
+        {% for s in schicht_defs %}
+          <button type="button" class="nz-chip nz-schicht-chip"
+                  data-schicht-id="{{ s.SCHICHT_ID }}"
+                  data-typ="{{ s.TYP }}"
+                  data-startzeit="{{ '%02d:%02d'|format(s.STARTZEIT.seconds // 3600, (s.STARTZEIT.seconds % 3600) // 60) if s.STARTZEIT else '' }}"
+                  data-endzeit="{{ '%02d:%02d'|format(s.ENDZEIT.seconds // 3600, (s.ENDZEIT.seconds % 3600) // 60) if s.ENDZEIT else '' }}"
+                  data-startmin="{% if s.STARTZEIT %}{{ s.STARTZEIT.seconds // 60 }}{% endif %}"
+                  data-endmin="{% if s.ENDZEIT %}{{ s.ENDZEIT.seconds // 60 }}{% endif %}"
+                  style="--chip-farbe: {{ s.FARBE or '#6a6a64' }};"
+                  onclick="nzSchichtWaehlen(this)">
+            <div class="nz-chip-kuerzel">{{ s.KUERZEL }}</div>
+            <div class="nz-chip-bez">{{ s.BEZEICHNUNG }}</div>
+            <div class="nz-chip-zeit">
+              {% if s.TYP == 'fix' and s.STARTZEIT and s.ENDZEIT %}
+                {{ '%02d:%02d'|format(s.STARTZEIT.seconds // 3600, (s.STARTZEIT.seconds % 3600) // 60) }}–{{ '%02d:%02d'|format(s.ENDZEIT.seconds // 3600, (s.ENDZEIT.seconds % 3600) // 60) }}
+              {% elif s.TYP == 'flex' %}
+                Flex · {{ s.DAUER_MIN or '?' }}&nbsp;min
+              {% else %}
+                Aufgabe
+              {% endif %}
+            </div>
+          </button>
+        {% endfor %}
+      </div>
+
+      <div style="font-weight:700; font-size:12px; text-transform:uppercase;
+                  letter-spacing:0.04em; color:var(--text-mitte);
+                  margin: 14px 0 6px 0;">
+        2. Mitarbeiter waehlen
+      </div>
+      <div id="nz-ma-hinweis" style="font-size:12px; color:var(--text-dim);
+           margin-bottom:6px; display:none;"></div>
+      <div id="nz-ma-liste" class="nz-grid">
+        {% for ma in mitarbeiter %}
+          <button type="button" class="nz-chip nz-ma-chip"
+                  data-pers-id="{{ ma.PERS_ID }}"
+                  data-name="{{ ma.VNAME }} {{ ma.NAME }}"
+                  onclick="nzMaWaehlen(this)">
+            {{ ma.VNAME }} {{ ma.NAME[:1] }}.
+          </button>
+        {% endfor %}
+      </div>
+
+      <div class="overlay-buttons" style="margin-top:18px;">
+        <button type="button" class="btn btn-secondary" style="flex:1;"
+                onclick="schliesseNeuzu()">Abbrechen</button>
+        <button type="submit" class="btn" style="flex:1;" id="nz-submit" disabled>
+          ✓ Zuweisen
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+.nz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 6px; }
+.nz-chip { display: flex; flex-direction: column; align-items: flex-start;
+            padding: 8px 10px; border: 2px solid var(--creme-dunkel);
+            background: white; border-radius: var(--radius-klein);
+            cursor: pointer; font-family: inherit; text-align: left;
+            transition: border-color 0.1s; min-height: 56px;
+            -webkit-tap-highlight-color: transparent; }
+.nz-chip.nz-schicht-chip {
+    border-left: 6px solid var(--chip-farbe, var(--gruen-mitte));
+}
+.nz-chip:hover { border-color: var(--gruen-mitte); }
+.nz-chip.aktiv { border-color: var(--gruen-mitte);
+                  background: var(--gruen-blass); font-weight: 700; }
+.nz-chip.gesperrt { opacity: 0.45; cursor: not-allowed;
+                    background: repeating-linear-gradient(
+                      -45deg, transparent, transparent 4px,
+                      var(--creme-dunkel) 4px, var(--creme-dunkel) 8px);
+                    pointer-events: none; }
+.nz-chip-kuerzel { font-weight: 800; font-size: 13px; color: var(--gruen-dunkel); }
+.nz-chip-bez     { font-size: 12px; color: var(--text-mitte); margin-top: 2px; }
+.nz-chip-zeit    { font-size: 11px; color: var(--grau-mitte); margin-top: 4px;
+                    font-variant-numeric: tabular-nums; }
+.nz-chip.nz-schicht-chip.passend { border-color: var(--gruen-mitte); }
+</style>
+{% endif %}
+
 <script>
 const CSRF_WOCHE = '{{ montag.isoformat() }}';
+const ABWESEND_JE_TAG = {{ abwesend_je_tag | tojson }};
 const WOCHE_GESPERRT = {{ 'true' if woche_gesperrt else 'false' }};
 const URL_LOESCHEN_BASIS = '{{ url_for("orga_personal.schichtplan_zuordnung_loeschen", rec_id=0) }}';
 
@@ -615,6 +796,99 @@ function oeffneSchichtOverlay(el) {
 
 function schliesseSchichtOverlay() {
   document.getElementById('schicht-overlay').classList.remove('open');
+}
+
+/* ── Neue Schicht zuweisen (Klick auf leere Zelle) ──────────────
+   Aufgerufen vom onclick einer .tag-spalte. Wenn der Klick nicht
+   auf einem .schicht-block liegt, oeffnen wir den Zuweisungs-Dialog
+   mit Vorab-Datum + (optional) der angeklickten Stunde fuer Schicht-
+   Filterung. */
+function leereZelleKlick(evt, spalte) {
+  if (WOCHE_GESPERRT) return;
+  // Klicks auf bestehende Bloecke werden vom Block-eigenen Handler
+  // abgefangen – bubblen aber bis hier; daher pruefen.
+  if (evt.target.closest('.schicht-block')) return;
+  const datum = spalte.dataset.datum;
+  if (!datum) return;
+  // Y-Klick-Position in Minuten umrechnen, um eine "Wunsch-Stunde"
+  // zu bestimmen (nur fuer Hervorhebung passender Schichten).
+  const rect = spalte.getBoundingClientRect();
+  const PX_PRO_MIN = {{ PX_PRO_MIN }};
+  const VON_MIN    = {{ raster_von_min }};
+  const klickY = evt.clientY - rect.top;
+  const wunschMin = Math.round(klickY / PX_PRO_MIN) + VON_MIN;
+  oeffneNeuzu(datum, wunschMin);
+}
+
+function oeffneNeuzu(datum, wunschMin) {
+  // Hidden-Felder vorbelegen
+  document.getElementById('nz-datum').value     = datum;
+  document.getElementById('nz-schicht-id').value = '';
+  document.getElementById('nz-pers-id').value    = '';
+  document.getElementById('nz-submit').disabled  = true;
+
+  // Header
+  const datumObj = new Date(datum);
+  const dmy = datumObj.toLocaleDateString('de-DE',
+    {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+  const hh = String(Math.floor(wunschMin / 60)).padStart(2,'0');
+  const mm = String(wunschMin % 60).padStart(2,'0');
+  document.getElementById('nz-titel').textContent = 'Neue Schicht – ' + dmy;
+  document.getElementById('nz-meta').textContent  = 'Klick um ' + hh + ':' + mm;
+
+  // Schicht-Chips: vorhandene Auswahl loeschen, Vorschlag vorhervorheben.
+  document.querySelectorAll('#nz-schichten .nz-chip').forEach(c => {
+    c.classList.remove('aktiv', 'passend');
+    const sm = parseInt(c.dataset.startmin || '', 10);
+    const em = parseInt(c.dataset.endmin   || '', 10);
+    if (!isNaN(sm) && !isNaN(em) && wunschMin >= sm && wunschMin <= em) {
+      c.classList.add('passend');
+    }
+  });
+
+  // MA-Chips: Abwesende fuer das Datum sperren.
+  const abwesend = new Set(ABWESEND_JE_TAG[datum] || []);
+  document.querySelectorAll('#nz-ma-liste .nz-chip').forEach(c => {
+    c.classList.remove('aktiv', 'gesperrt');
+    const pid = parseInt(c.dataset.persId, 10);
+    if (abwesend.has(pid)) c.classList.add('gesperrt');
+  });
+  const hinweis = document.getElementById('nz-ma-hinweis');
+  if (abwesend.size > 0) {
+    hinweis.textContent = abwesend.size + ' Mitarbeiter ist/sind an diesem Tag in '
+                        + 'Urlaub/krank und gesperrt.';
+    hinweis.style.display = 'block';
+  } else {
+    hinweis.style.display = 'none';
+  }
+
+  document.getElementById('neuzu-overlay').classList.add('open');
+}
+
+function nzSchichtWaehlen(btn) {
+  document.querySelectorAll('#nz-schichten .nz-chip').forEach(c => c.classList.remove('aktiv'));
+  btn.classList.add('aktiv');
+  document.getElementById('nz-schicht-id').value = btn.dataset.schichtId;
+  pruefeNzReady();
+}
+
+function nzMaWaehlen(btn) {
+  if (btn.classList.contains('gesperrt')) return;
+  document.querySelectorAll('#nz-ma-liste .nz-chip').forEach(c => c.classList.remove('aktiv'));
+  btn.classList.add('aktiv');
+  document.getElementById('nz-pers-id').value = btn.dataset.persId;
+  pruefeNzReady();
+}
+
+function pruefeNzReady() {
+  const ok = document.getElementById('nz-schicht-id').value
+          && document.getElementById('nz-pers-id').value;
+  document.getElementById('nz-submit').disabled = !ok;
+}
+
+function schliesseNeuzu() {
+  const ov = document.getElementById('neuzu-overlay');
+  if (ov) ov.classList.remove('open');
 }
 </script>
 
