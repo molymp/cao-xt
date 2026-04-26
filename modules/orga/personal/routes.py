@@ -1411,23 +1411,39 @@ def schichtplan_ziel_umsatz_setzen():
 @bp.post('/schichtplan/zuordnung')
 @backoffice_required
 def schichtplan_zuordnung_anlegen():
+    """Akzeptiert ein ODER mehrere pers_id-Werte (getlist) – das
+    Click-to-assign-Modal kann mehrere Mitarbeitende gleichzeitig auf
+    dieselbe Schicht zuweisen.
+    """
     montag_raw = request.form.get('woche', '')
     rueck = request.form.get('rueck', 'matrix')
     try:
-        pers_id = int(request.form['pers_id'])
+        pers_ids_raw = request.form.getlist('pers_id')
+        if not pers_ids_raw:
+            raise ValueError('Mindestens ein Mitarbeiter muss gewaehlt sein.')
+        pers_ids = []
+        for raw in pers_ids_raw:
+            raw = (raw or '').strip()
+            if raw:
+                pers_ids.append(int(raw))
+        if not pers_ids:
+            raise ValueError('Mindestens ein Mitarbeiter muss gewaehlt sein.')
         datum = _form_to_date(request.form.get('datum'))
         schicht_id = int(request.form['schicht_id'])
         if not datum:
             raise ValueError('Datum ist Pflicht.')
         dauer_raw = (request.form.get('dauer_min') or '').strip()
         dauer_min = int(dauer_raw) if dauer_raw.isdigit() else None
-        m.schicht_zuordnung_insert(
-            pers_id, datum, schicht_id,
-            request.form.get('kommentar', '').strip() or None,
-            session['ma_id'],
-            dauer_min=dauer_min,
-        )
-        flash('Schicht zugeordnet.', 'ok')
+        kommentar = request.form.get('kommentar', '').strip() or None
+        for pid in pers_ids:
+            m.schicht_zuordnung_insert(
+                pid, datum, schicht_id, kommentar,
+                session['ma_id'], dauer_min=dauer_min,
+            )
+        if len(pers_ids) == 1:
+            flash('Schicht zugeordnet.', 'ok')
+        else:
+            flash(f'Schicht fuer {len(pers_ids)} Mitarbeiter zugeordnet.', 'ok')
     except (ValueError, KeyError) as e:
         flash(f'Fehler: {e}', 'error')
     except Exception as e:
