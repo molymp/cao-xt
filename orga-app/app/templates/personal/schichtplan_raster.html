@@ -700,12 +700,14 @@ async function zielSpeichern() {
     <div class="overlay-meta" id="nz-meta"></div>
 
     <form method="post" id="nz-form"
-          action="{{ url_for('orga_personal.schichtplan_zuordnung_anlegen') }}">
+          action="{{ url_for('orga_personal.schichtplan_zuordnung_anlegen') }}"
+          onsubmit="return nzFormSubmit(this)">
       <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
       <input type="hidden" name="rueck" value="raster">
       <input type="hidden" name="datum" id="nz-datum">
       <input type="hidden" name="schicht_id" id="nz-schicht-id">
-      <input type="hidden" name="pers_id"   id="nz-pers-id">
+      {# Pro aktivem MA-Chip wird vor Submit dynamisch ein hidden
+         <input name="pers_id"> erzeugt – Backend nutzt getlist('pers_id'). #}
 
       <div style="font-weight:700; font-size:12px; text-transform:uppercase;
                   letter-spacing:0.04em; color:var(--text-mitte);
@@ -738,10 +740,16 @@ async function zielSpeichern() {
         {% endfor %}
       </div>
 
-      <div style="font-weight:700; font-size:12px; text-transform:uppercase;
-                  letter-spacing:0.04em; color:var(--text-mitte);
+      <div style="display:flex; align-items:baseline; justify-content:space-between;
                   margin: 14px 0 6px 0;">
-        2. Mitarbeiter waehlen
+        <span style="font-weight:700; font-size:12px; text-transform:uppercase;
+                     letter-spacing:0.04em; color:var(--text-mitte);">
+          2. Mitarbeiter waehlen <small style="font-weight:400; text-transform:none;
+                                                letter-spacing:0; color:var(--grau-mitte);">
+            (mehrere moeglich, Klick = an/aus)</small>
+        </span>
+        <span id="nz-ma-zaehler" style="font-size:12px; color:var(--text-mitte);
+                                          font-weight:700;">0 ausgewaehlt</span>
       </div>
       <div id="nz-ma-hinweis" style="font-size:12px; color:var(--text-dim);
            margin-bottom:6px; display:none;"></div>
@@ -909,7 +917,8 @@ function oeffneNeuzu(datum, wunschMin) {
   // Hidden-Felder vorbelegen
   document.getElementById('nz-datum').value     = datum;
   document.getElementById('nz-schicht-id').value = '';
-  document.getElementById('nz-pers-id').value    = '';
+  // Eventuelle hidden inputs aus vorherigem Submit entfernen.
+  document.querySelectorAll('#nz-form input.nz-ma-hidden').forEach(e => e.remove());
   document.getElementById('nz-submit').disabled  = true;
 
   // Header
@@ -931,13 +940,14 @@ function oeffneNeuzu(datum, wunschMin) {
     }
   });
 
-  // MA-Chips: Abwesende fuer das Datum sperren.
+  // MA-Chips: vorherige Auswahl loeschen, Abwesende fuer das Datum sperren.
   const abwesend = new Set(ABWESEND_JE_TAG[datum] || []);
   document.querySelectorAll('#nz-ma-liste .nz-chip').forEach(c => {
     c.classList.remove('aktiv', 'gesperrt');
     const pid = parseInt(c.dataset.persId, 10);
     if (abwesend.has(pid)) c.classList.add('gesperrt');
   });
+  nzZaehlerAktualisieren();
   const hinweis = document.getElementById('nz-ma-hinweis');
   if (abwesend.size > 0) {
     hinweis.textContent = abwesend.size + ' Mitarbeiter ist/sind an diesem Tag in '
@@ -959,16 +969,41 @@ function nzSchichtWaehlen(btn) {
 
 function nzMaWaehlen(btn) {
   if (btn.classList.contains('gesperrt')) return;
-  document.querySelectorAll('#nz-ma-liste .nz-chip').forEach(c => c.classList.remove('aktiv'));
-  btn.classList.add('aktiv');
-  document.getElementById('nz-pers-id').value = btn.dataset.persId;
+  // Mehrfachauswahl: Klick toggelt – auf-/abklicken selektiert/deselektiert.
+  btn.classList.toggle('aktiv');
+  nzZaehlerAktualisieren();
   pruefeNzReady();
 }
 
+function nzZaehlerAktualisieren() {
+  const n = document.querySelectorAll('#nz-ma-liste .nz-chip.aktiv').length;
+  const z = document.getElementById('nz-ma-zaehler');
+  if (z) z.textContent = n + ' ausgewaehlt';
+}
+
 function pruefeNzReady() {
-  const ok = document.getElementById('nz-schicht-id').value
-          && document.getElementById('nz-pers-id').value;
-  document.getElementById('nz-submit').disabled = !ok;
+  const schichtOk = !!document.getElementById('nz-schicht-id').value;
+  const maAnz = document.querySelectorAll('#nz-ma-liste .nz-chip.aktiv').length;
+  document.getElementById('nz-submit').disabled = !(schichtOk && maAnz > 0);
+}
+
+/* Vor dem Form-Submit: pro aktivem MA-Chip ein hidden input erzeugen.
+   Backend liest die Liste via request.form.getlist('pers_id'). */
+function nzFormSubmit(form) {
+  // alte hidden inputs entfernen, falls jemand nach Validierungsfehler
+  // erneut submitted
+  form.querySelectorAll('input.nz-ma-hidden').forEach(e => e.remove());
+  const aktive = document.querySelectorAll('#nz-ma-liste .nz-chip.aktiv');
+  if (!aktive.length) return false;
+  aktive.forEach(c => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden';
+    inp.name = 'pers_id';
+    inp.value = c.dataset.persId;
+    inp.className = 'nz-ma-hidden';
+    form.appendChild(inp);
+  });
+  return true;
 }
 
 function schliesseNeuzu() {
