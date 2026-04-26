@@ -39,72 +39,31 @@ html, body {
   height: 100%; overflow: hidden; touch-action: manipulation;
   font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
   font-size: 16px;
-  background: var(--creme);
-  color: var(--text-dunkel);
+  background: var(--brand-body-bg);
+  color: var(--brand-ink);
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
 h1, h2, h3 {
   font-family: 'Fraunces', Georgia, serif;
   color: var(--gruen-dunkel);
-  font-weight: 400;
+  font-weight: 500;
 }
 .hidden { display: none !important; }
 
-/* ── Navigationsleiste ───────────────────────────────────── */
+/* ── Navbar (Brand-Light, identisch zu Admin/Orga/Kiosk) ── */
 .navbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 64px;
-  padding: 0 16px;
-  background: var(--gruen-dunkel);
-  box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+  gap: 10px;
+  height: var(--navbar-h);
+  padding: 0 20px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--schatten);
   flex-shrink: 0;
   position: relative;
   z-index: 100;
-}
-.navbar.trainings-aktiv {
-  background: #7a4800;
-  box-shadow: 0 2px 16px rgba(180,100,0,0.45);
-}
-.navbar.sandbox-aktiv {
-  background: #4a0070;
-  box-shadow: 0 2px 16px rgba(120,0,180,0.45);
-}
-.navbar .sandbox-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #cc44ff;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 5px 12px;
-  border-radius: 6px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  animation: training-pulse 2s ease-in-out infinite;
-}
-.navbar .training-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #ffb300;
-  color: #3a2000;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 5px 12px;
-  border-radius: 6px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  animation: training-pulse 2s ease-in-out infinite;
-}
-@keyframes training-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.75; }
 }
 .navbar .logo {
   display: flex;
@@ -112,12 +71,11 @@ h1, h2, h3 {
   align-items: center;
   gap: 10px;
   white-space: nowrap;
-}
-.navbar .logo-icon {
-  width: 48px;
-  height: 48px;
   flex-shrink: 0;
-  color: var(--gruen-blass);
+}
+.navbar .logo > [data-dorfkern-logo] {
+  color: var(--brand-terracotta);
+  flex: 0 0 auto;
 }
 .navbar .logo-text {
   display: flex;
@@ -127,7 +85,7 @@ h1, h2, h3 {
 .navbar .logo-name {
   font-family: 'Fraunces', Georgia, serif;
   font-size: 20px;
-  color: var(--gruen-blass);
+  color: var(--gruen-dunkel);
   line-height: 1.1;
 }
 .navbar .logo-sub {
@@ -135,18 +93,14 @@ h1, h2, h3 {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--grau-mitte);
-  margin-top: 2px;
+  color: var(--brand-terracotta);
+  margin-top: 1px;
 }
-.navbar .ma-info {
-  color: var(--grau-mitte);
-  font-size: 13px;
-  margin-left: auto;
-}
+.navbar .spacer { flex: 1; }
 .navbar .nav-btn {
-  background: rgba(255,255,255,0.08);
-  color: var(--creme-dunkel);
-  border: 1px solid rgba(255,255,255,0.15);
+  background: var(--brand-cream);
+  color: var(--brand-ink);
+  border: 1px solid var(--border);
   border-radius: var(--radius-klein);
   padding: 7px 14px;
   font-size: 13px;
@@ -156,79 +110,103 @@ h1, h2, h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 44px;
+  min-height: 38px;
   white-space: nowrap;
   font-family: 'Nunito', sans-serif;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .navbar .nav-btn:hover, .navbar .nav-btn:active {
-  background: rgba(74,148,40,0.35);
-  color: var(--gruen-blass);
+  background: var(--brand-sage);
+  color: var(--gruen-dunkel);
+  border-color: var(--brand-sage-dunkel);
 }
-.navbar .nav-btn.danger {
-  border-color: rgba(184,48,48,0.5);
-  color: #f9c0c0;
+.navbar .nav-btn-logout {
+  border-color: rgba(184,48,48,0.35);
+  color: var(--status-rot);
 }
-.navbar .nav-btn.danger:hover { background: rgba(184,48,48,0.3); }
-.nav-btn-switch { border-color: rgba(200,120,10,0.4); color: var(--gold-hell); }
-.nav-btn-switch:hover { background: rgba(200,120,10,0.2); }
-/* Update-Badge in der Navbar */
+.navbar .nav-btn-logout:hover {
+  background: var(--status-rot);
+  color: #ffffff;
+  border-color: var(--status-rot);
+}
 .nav-btn-update {
-  border-color: rgba(200,120,10,0.6); color: var(--gold-hell);
+  border-color: var(--brand-terracotta);
+  color: var(--brand-terracotta-dunkel);
+  background: var(--akzent-blass);
   animation: update-pulse 2.5s ease-in-out infinite;
 }
-.nav-btn-update:hover { background: rgba(200,120,10,0.25); }
+.nav-btn-update:hover {
+  background: var(--brand-terracotta);
+  color: #ffffff;
+  border-color: var(--brand-terracotta);
+}
 @keyframes update-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.7; }
 }
 
-/* ── Uhrzeit-Anzeige in Navbar ──────────────────────────── */
+/* ── Status-Bubbles (TSE / Trainingsmodus / Sandbox) ────────
+   Loesen die alten farbigen Navbar-Hintergruende ab. Erscheinen
+   in der Navbar zwischen App-Switcher und Spacer. */
+.status-bubble {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 800;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  white-space: nowrap;
+  text-decoration: none;
+  border: 1px solid transparent;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.06s;
+}
+.status-bubble:hover     { filter: brightness(1.05); }
+.status-bubble:active    { transform: translateY(1px); }
+.status-bubble.tse-ok    { background: var(--brand-sage); color: var(--gruen-dunkel); border-color: var(--brand-sage-dunkel); }
+.status-bubble.tse-warn  { background: #f6ecd0; color: #6a4a00; border-color: var(--status-gelb); }
+.status-bubble.tse-err   { background: #f6d8ce; color: #6a1810; border-color: var(--status-rot); }
+.status-bubble.training  { background: #f6ecd0; color: #6a4a00; border-color: var(--status-gelb); animation: bubble-puls 2s ease-in-out infinite; }
+.status-bubble.sandbox   { background: #ecdaf2; color: #4a0070; border-color: #b06ac7;        animation: bubble-puls 2s ease-in-out infinite; }
+@keyframes bubble-puls {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.75; }
+}
+
+/* ── Navbar-Uhrzeit (Brand-Light) ──────────────────────── */
 .navbar-uhrzeit {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  margin-left: auto;
+  margin-left: 8px;
   line-height: 1.25;
   white-space: nowrap;
   pointer-events: none;
   flex-shrink: 0;
 }
-.navbar-uhrzeit .uhr-user {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--grau-mitte);
-  text-align: right;
-}
 .navbar-uhrzeit .uhr-zeit {
   font-size: 15px;
   font-weight: 800;
-  color: var(--gruen-blass);
+  color: var(--brand-ink);
   letter-spacing: 0.04em;
-}
-.navbar-uhrzeit .uhr-user {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--grau-mitte);
-  text-align: right;
 }
 .navbar-uhrzeit .uhr-datum {
   font-size: 11px;
   font-weight: 600;
-  color: var(--grau-mitte);
+  color: var(--text-dim);
 }
-.nav-btn-app-aktiv {
-  border: 2px solid var(--gold) !important;
-  color: var(--gold-hell);
-  background: rgba(200,120,10,0.15);
+.navbar-uhrzeit .uhr-user {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand-terracotta);
 }
-.nav-btn-app-inaktiv {
-  border-color: rgba(255,255,255,0.08);
-  color: var(--grau-mitte);
-  opacity: 0.55;
-  pointer-events: none;
-  cursor: default;
+
+/* ── DB-Status-Badge ─────────────────────────────────────── */
+.db-badge {
+  font-size: 11px; font-weight: 800;
+  padding: 3px 10px; border-radius: 20px;
 }
+.db-badge.ok  { background: var(--brand-sage); color: var(--gruen-dunkel); }
+.db-badge.err { background: #f6d8ce;          color: var(--status-rot); }
 
 /* ── Touch-Targets (44px minimum) ─────────────────────────── */
 .tab-btn   { min-height: 44px; padding: 10px 18px; }
@@ -406,30 +384,36 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 </head>
 <body>
 {% include '_git_badge.html' %}
-{% set nav_logo_sub      = 'T' ~ terminal_nr ~ ' · ' ~ db_name %}
+{% set nav_logo_sub      = 'Kasse · T' ~ terminal_nr ~ ' · ' ~ db_name %}
 {% set nav_aktive_app    = 'kasse' %}
 {% set nav_aktive_app_url= '/kasse' %}
 {% set nav_user_name     = ma_login_name %}
-{% set nav_logo_theme    = 'dark' %}  {# dunkelgruene Navbar #}
-{% if trainings_modus %}
-  {% set nav_extra_classes = 'trainings-aktiv' %}
-{% elif tse_nicht_produktiv %}
-  {% set nav_extra_classes = 'sandbox-aktiv' %}
-{% endif %}
+{# Status-Bubbles direkt rechts vom App-Switcher: TSE-Status (immer)
+   plus optional Trainings-/Sandbox-Bubble. Klick fuehrt zu /admin/
+   (TSE- und Terminal-Einstellungen). #}
 {% set nav_badges_html %}
+  {% if tse_ok %}
+    <a href="/admin/" class="status-bubble tse-ok"
+       title="TSE erreichbar – Klick fuer Details/Einstellungen">
+      🔐 TSE: In Ordnung
+    </a>
+  {% else %}
+    <a href="/admin/" class="status-bubble tse-err"
+       title="TSE nicht erreichbar – Klick fuer Diagnose/Einstellungen">
+      🔐 TSE: Stoerung
+    </a>
+  {% endif %}
   {% if trainings_modus %}
-    <span class="training-badge">🎓 Trainingsmodus</span>
-  {% elif tse_nicht_produktiv %}
-    <span class="sandbox-badge">⚠️ Test-TSE · Sandbox</span>
+    <span class="status-bubble training">🎓 Trainingsmodus</span>
+  {% endif %}
+  {% if tse_nicht_produktiv and not trainings_modus %}
+    <span class="status-bubble sandbox">⚠️ Test-TSE · Sandbox</span>
   {% endif %}
 {% endset %}
 {% set nav_extra_html %}
   {% block nav_extra %}{% endblock %}
   {% if update_verfuegbar %}
   <a href="/update" class="nav-btn nav-btn-update{% if request.path == '/update' %} aktiv{% endif %}">🔄 Update</a>
-  {% endif %}
-  {% if hat_recht('kasse.einstellungen') %}
-  <a href="/admin/"           class="nav-btn">⚙️ Einstellungen</a>
   {% endif %}
   <a href="/kasse/handbuch"   class="nav-btn">📖 Handbuch</a>
 {% endset %}

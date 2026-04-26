@@ -664,17 +664,23 @@
 
   <!-- ── Rechte Spalte: Aktionen + EAN + Numpad ─────────────── -->
   <div class="aktionen-panel">
-    <!-- Bon-Nr + Parken + Geparkt -->
+    <!-- Bon-Nr + Parken + Geparkt + Abbrechen -->
     <div>
       <span class="wk-bon-nr" id="bonNrAnzeige" style="display:block; margin-bottom:4px;">–</span>
-      {% if parken_aktiv %}
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        {% if parken_aktiv %}
         <button class="btn btn-neutral btn-sm" onclick="vorgangParken()" id="btnParken">🅿 Parken</button>
         <button class="btn btn-neutral btn-sm" onclick="geparkteOverlayOeffnen()" id="btnGeparkt">
           📋 Geparkt<span class="geparkt-badge" id="geparkteAnzahl" style="display:none">0</span>
         </button>
+        {% endif %}
+        {# Abbrechen ruft den GoBD-konformen /abbrechen-Endpoint auf:
+           TSE-Cancel falls TSE-Tx bereits gestartet, dann STATUS=ABGEBROCHEN
+           (keine physische Loeschung – §146 Abs. 4 AO). #}
+        <button class="btn btn-neutral btn-sm" onclick="vorgangAbbrechen()" id="btnAbbrechen">
+          ✕ Abbrechen
+        </button>
       </div>
-      {% endif %}
     </div>
 
     <!-- Netto + MwSt-Aufschlüsselung -->
@@ -1344,6 +1350,28 @@ function epSetProzent(prozent) {
   const neuerEPCents = Math.round(origEPCents * (1 - prozent / 100));
   epEingabe = (neuerEPCents / 100).toFixed(2).replace('.', ',');
   document.getElementById('epDisplay').textContent = epEingabe;
+}
+
+// ── Abbrechen ─────────────────────────────────────────────────
+// Bricht den aktuellen Vorgang KassenSichV-konform ab:
+//   * /api/vorgang/<id>/abbrechen storniert serverseitig alle Positionen,
+//     ruft – wenn schon eine TSE-Transaktion lief – tse_cancel_transaktion()
+//     auf und setzt STATUS='ABGEBROCHEN' (kein physisches Loeschen, §146 AO).
+//   * Anschliessend wird ein neuer leerer Vorgang gestartet.
+async function vorgangAbbrechen() {
+  if (!vorgangId) {
+    toast('Kein offener Vorgang', 'err'); return;
+  }
+  if (positionen.filter(p => !p.STORNIERT).length === 0) {
+    toast('Bon ist leer – nichts zum Abbrechen', 'err'); return;
+  }
+  if (!confirm('Vorgang wirklich abbrechen? Alle Positionen werden storniert.')) return;
+  const r = await api('POST', `/api/vorgang/${vorgangId}/abbrechen`);
+  if (!r.ok) { toast(r.fehler || 'Abbruch fehlgeschlagen', 'err'); return; }
+  toast('Vorgang abgebrochen', 'ok');
+  vorgangId = null; bonNr = null; positionen = [];
+  gewaehlterKunde = null; kundeAnzeigenAktualisieren();
+  aktualisiereBonNr(); renderWarenkorb();
 }
 
 // ── Parken ────────────────────────────────────────────────────
