@@ -53,12 +53,15 @@
     </span>
   </span>
 
-  {% if nav_badges_html %}{{ nav_badges_html|safe }}{% endif %}
-
-  {# App-Switcher: Kiosk → Kasse → Orga → Admin #}
+  {# App-Switcher: Kiosk → Kasse → Orga → Admin (direkt neben Logo, in
+     allen Apps an derselben Stelle). #}
   {% set aktive_app = nav_aktive_app|default('admin') %}
   {% set aktive_app_url = nav_aktive_app_url|default('/') %}
   {% include '_app_switcher.html' %}
+
+  {# Status-Bubbles (TSE / Trainingsmodus / Sandbox / ...). Erscheinen
+     rechts vom App-Switcher, falls die App welche setzt. #}
+  {% if nav_badges_html %}{{ nav_badges_html|safe }}{% endif %}
 
   <div class="spacer" style="flex:1"></div>
 

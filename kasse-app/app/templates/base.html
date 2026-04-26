@@ -388,26 +388,29 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 {% set nav_aktive_app    = 'kasse' %}
 {% set nav_aktive_app_url= '/kasse' %}
 {% set nav_user_name     = ma_login_name %}
-{# Status-Bubbles direkt rechts vom App-Switcher: TSE-Status (immer)
-   plus optional Trainings-/Sandbox-Bubble. Klick fuehrt zu /admin/
-   (TSE- und Terminal-Einstellungen). #}
+{# Status-Bubbles erscheinen nur wenn etwas Auffaelliges zu zeigen ist:
+   * TSE-Stoerung  -> Warnbubble mit Link zu TSE-Settings
+   * Trainingsmodus -> gelbe Bubble (KassenSichV: keine echten Bons)
+   * Sandbox        -> violette Bubble (Test-TSE)
+   Live-Betrieb mit funktionierender Produktiv-TSE: keine Bubble noetig. #}
 {% set nav_badges_html %}
-  {% if tse_ok %}
-    <a href="/admin/" class="status-bubble tse-ok"
-       title="TSE erreichbar – Klick fuer Details/Einstellungen">
-      🔐 TSE: In Ordnung
-    </a>
-  {% else %}
+  {% if not tse_ok %}
     <a href="/admin/" class="status-bubble tse-err"
        title="TSE nicht erreichbar – Klick fuer Diagnose/Einstellungen">
       🔐 TSE: Stoerung
     </a>
   {% endif %}
   {% if trainings_modus %}
-    <span class="status-bubble training">🎓 Trainingsmodus</span>
+    <a href="/admin/" class="status-bubble training"
+       title="Trainingsmodus – Klick fuer Einstellungen">
+      🎓 Trainingsmodus
+    </a>
   {% endif %}
   {% if tse_nicht_produktiv and not trainings_modus %}
-    <span class="status-bubble sandbox">⚠️ Test-TSE · Sandbox</span>
+    <a href="/admin/" class="status-bubble sandbox"
+       title="Test-TSE – Klick fuer TSE-Einstellungen">
+      ⚠️ Test-TSE · Sandbox
+    </a>
   {% endif %}
 {% endset %}
 {% set nav_extra_html %}
@@ -420,6 +423,26 @@ hr { border: none; border-top: 1px solid var(--creme-dunkel); margin: 12px 0; }
 {% include '_dorfkern_navbar.html' %}
 
 {% block content %}{% endblock %}
+
+<!-- ── Bestaetigungs-Overlay (global, wiederverwendbar) ──────── -->
+<div id="confirmOverlay" class="overlay hidden"
+     onclick="if(event.target===this)confirmClose(false)">
+  <div class="modal" style="width:min(420px,95vw); padding:22px;">
+    <div id="confirmText" style="font-size:1.05rem; line-height:1.5;
+         color:var(--text-dunkel); margin-bottom:20px;
+         font-family:'Nunito', sans-serif;"></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button id="confirmNein" class="btn btn-neutral btn-sm"
+              onclick="confirmClose(false)" style="min-height:44px;">
+        Abbrechen
+      </button>
+      <button id="confirmJa" class="btn btn-danger btn-sm"
+              onclick="confirmClose(true)" style="min-height:44px;">
+        Ja, fortfahren
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Ziffernblock-Overlay (global, wiederverwendbar) ──────── -->
 <div id="numpadOverlay" class="overlay hidden" onclick="if(event.target===this)numpadClose()">
@@ -459,6 +482,23 @@ async function api(method, url, body) {
 
 function euro(cent) {
   return (cent / 100).toFixed(2).replace('.', ',') + ' €';
+}
+
+// ── Bestaetigungs-Dialog ───────────────────────────────────────
+// Touch-freundlicher Ersatz fuer browser confirm(). Aufruf:
+//   kassenConfirm('Wirklich loeschen?', () => { ... });
+// Optional dritter Parameter = Label des Bestaetigen-Buttons.
+let _confirmCb = null;
+function kassenConfirm(text, onJa, jaLabel = 'Ja, fortfahren') {
+  _confirmCb = onJa || null;
+  document.getElementById('confirmText').textContent = text || '';
+  document.getElementById('confirmJa').textContent  = jaLabel;
+  document.getElementById('confirmOverlay').classList.remove('hidden');
+}
+function confirmClose(bestaetigt) {
+  document.getElementById('confirmOverlay').classList.add('hidden');
+  const cb = _confirmCb; _confirmCb = null;
+  if (bestaetigt && cb) cb();
 }
 
 // ── Ziffernblock ───────────────────────────────────────────────

@@ -289,12 +289,29 @@ def az_modell_anlegen(pers_id: int):
 def feld_autosave(pers_id: int):
     """JSON-Endpoint fuer Autosave eines einzelnen MA-Stammdatenfelds.
     POST: feld=<FELDNAME>&wert=<wert>  → {ok: bool, anz: int, ...}"""
-    if not m.ma_by_id(pers_id):
+    ma = m.ma_by_id(pers_id)
+    if not ma:
         return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
     feld = (request.form.get('feld') or '').strip()
+    wert_raw = request.form.get('wert', '')
+    # Sonderfall: RFID liegt in eigener Tabelle XT_MITARBEITER_RFID
+    # (an CAO_MA_ID gebunden, nicht an pers_id) – nicht in MA_FELDER.
+    if feld == 'RFID_TAG':
+        cao_ma_id = ma.get('CAO_MA_ID')
+        if not cao_ma_id:
+            return jsonify({'error': 'RFID-Tag nur mit verknuepftem '
+                                     'CAO-Login moeglich.'}), 400
+        try:
+            from common import rfid as _rfid
+            _rfid.set_for_ma(int(cao_ma_id), wert_raw or None,
+                             geaendert_von_ma_id=session.get('ma_id'))
+            return jsonify({'ok': True, 'anz': 1})
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+        except Exception as exc:
+            return jsonify({'error': str(exc)}), 400
     if feld not in m.MA_FELDER:
         return jsonify({'error': f'Unbekanntes Feld: {feld!r}'}), 400
-    wert_raw = request.form.get('wert', '')
     # Datum-Felder
     if feld in ('GEBDATUM', 'EINTRITT', 'AUSTRITT'):
         try:

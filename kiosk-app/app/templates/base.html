@@ -21,6 +21,11 @@
             --kiosk-content-h: calc(100vh - var(--navbar-h) - var(--kiosk-funktionsleiste-h));
             --akzent:        var(--brand-terracotta);
             --akzent-hell:   var(--brand-terracotta-dunkel);
+            /* Legacy-Aliase: Warenkorb-Bereich + Kategorie-Tabs nutzen
+               historisch --braun-* fuer das dunkelgruene Branding. */
+            --braun-dunkel:  var(--gruen-dunkel);
+            --braun-mitte:   var(--gruen-mitte);
+            --braun-hell:    var(--gruen-hell);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -130,7 +135,10 @@
         .db-badge.ok  { background: var(--brand-sage); color: var(--gruen-dunkel); }
         .db-badge.err { background: #f6d8ce;          color: var(--status-rot); }
 
-        /* ── Kiosk-Funktionsleiste (zweite Zeile unter Navbar) ─── */
+        /* ── Kiosk-Funktionsleiste (zweite Zeile unter Navbar) ───
+           Touch-optimiert: kein Hover, jeder Button hat einen
+           dauerhaften feinen Rahmen, der Aktiv-Zustand ist deutlich
+           abgehoben. */
         .kiosk-funktionen {
             background: var(--brand-sage);
             border-bottom: 1px solid var(--brand-sage-dunkel);
@@ -145,31 +153,23 @@
             display: inline-flex; align-items: center;
             color: var(--brand-ink); text-decoration: none;
             padding: 7px 14px; border-radius: var(--radius-klein);
-            border: 1px solid transparent;
-            background: transparent;
+            border: 1px solid var(--brand-sage-dunkel);
+            background: #ffffff;
             font-size: 0.92rem; font-weight: 700;
             min-height: 36px;
-            transition: background 0.15s, color 0.15s, border-color 0.15s;
             white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
         }
-        .kiosk-funktionen a:hover {
-            background: #ffffff;
-            border-color: var(--brand-sage-dunkel);
-            color: var(--gruen-dunkel);
-        }
+        .kiosk-funktionen a:active { transform: scale(0.97); }
         .kiosk-funktionen a.aktiv {
-            background: #ffffff;
-            color: var(--brand-terracotta-dunkel);
-            border-color: var(--brand-sage-dunkel);
+            background: var(--brand-terracotta);
+            color: var(--brand-paper);
+            border-color: var(--brand-terracotta);
         }
         .kiosk-funktionen a.nav-update {
             background: var(--brand-terracotta); color: #ffffff;
             border-color: var(--brand-terracotta);
             animation: update-pulse 2.5s ease-in-out infinite;
-        }
-        .kiosk-funktionen a.nav-update:hover {
-            background: var(--brand-terracotta-dunkel);
-            border-color: var(--brand-terracotta-dunkel);
         }
         @keyframes update-pulse {
             0%, 100% { opacity: 1; }
