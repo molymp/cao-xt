@@ -541,9 +541,13 @@ a { text-decoration: none; color: inherit; }
       <div class="sidebar-section-title">Weitere</div>
       <div class="sidebar-section">
         {% if hat_recht('orga.reporting') %}
+        <a href="/orga/berichte" class="sidebar-item {% if request.path.startswith('/orga/berichte') %}aktiv{% endif %}">
+          <span class="icon">📊</span> Berichte
+          <span class="sub">Tagesumsatz · Monat · Kassenbuch · EC · Heatmap · Koppelkauf</span>
+        </a>
         <a href="/reporting" class="sidebar-item {% if request.path == '/reporting' %}aktiv{% endif %}">
           <span class="icon">📈</span> Reporting
-          <span class="sub">CFO-Reports</span>
+          <span class="sub">MwSt · Warengruppen · KPIs</span>
         </a>
         {% endif %}
 
