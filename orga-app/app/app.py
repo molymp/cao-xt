@@ -823,7 +823,12 @@ def koppelkauf_seite():
         aktions_von = aktions_bis = date.today()
 
     try:
-        analyse = koppelkauf_modul.analyse_komplett(artnum, aktions_von, aktions_bis)
+        # Preise (Aktion vs. Normal) fuer die Margen-/Rabatt-Analyse mitgeben.
+        aktionspreis = (aktion_info or {}).get('aktions_preis')
+        normalpreis  = (aktion_info or {}).get('normal_preis')
+        analyse = koppelkauf_modul.analyse_komplett(
+            artnum, aktions_von, aktions_bis,
+            aktionspreis=aktionspreis, normalpreis=normalpreis)
     except Exception as e:
         log.exception("Koppelkauf-Analyse fehlgeschlagen")
         flash(f'Datenbankfehler bei der Analyse: {e}', 'error')

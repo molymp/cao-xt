@@ -385,6 +385,209 @@ def _uplift_einschaetzen(aktion_bons: int, vergleich_bons: list[int]) -> dict:
     }
 
 
+# ── Margen-/Rabatt-Analyse ─────────────────────────────────────────────────────
+
+def margen_analyse(normalpreis: float, aktionspreis: float,
+                    stueckzahl: float) -> dict:
+    """Aktionsrabatt-Volumen und Bruttowerte pro Stueck.
+
+    Rabatt-Volumen = (Normalpreis - Aktionspreis) × Stueckzahl. Bei
+    Aktionspreisen ist das per Definition der entgangene Bruttoumsatz
+    gegenueber Normalpreis – wir nennen ihn im UI 'Aktionsrabatt' bzw.
+    'Margenverlust' (umgangssprachlich, auch wenn er strenggenommen
+    Bruttoumsatz-Verlust ist; die *Marge* haengt zusaetzlich am EK).
+    """
+    rabatt_pro_stk = max(normalpreis - aktionspreis, 0.0)
+    return {
+        'normal_pro_stk':     round(normalpreis,       4),
+        'aktion_pro_stk':     round(aktionspreis,      4),
+        'rabatt_pro_stk':     round(rabatt_pro_stk,    4),
+        'stueckzahl':         round(stueckzahl,        2),
+        'normal_brutto':      round(normalpreis * stueckzahl,   2),
+        'aktion_brutto':      round(aktionspreis * stueckzahl,  2),
+        'rabatt_volumen':     round(rabatt_pro_stk * stueckzahl, 2),
+    }
+
+
+# ── Bon-Wert-Analyse ───────────────────────────────────────────────────────────
+
+def bon_wert_vergleich(artnum: str, von: date, bis: date) -> dict:
+    """Durchschnittlicher Bon-Wert mit/ohne Aktionsartikel im Zeitraum.
+
+    Liefert:
+      mit_aktion:    Mittelwert NSUMME aller Bons, in denen artnum
+                     mindestens einmal vorkommt.
+      ohne_aktion:   Mittelwert NSUMME aller anderen Bons im Zeitraum.
+      delta_pct:     Prozentualer Aufschlag mit-vs-ohne. None wenn
+                     ohne_aktion = 0.
+    """
+    sql_mit = """
+        SELECT AVG(j.NSUMME) AS avg_summe, COUNT(*) AS anzahl
+        FROM JOURNAL j
+        WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
+          AND DATE(j.RDATUM) BETWEEN %s AND %s
+          AND j.REC_ID IN (
+              SELECT DISTINCT JOURNAL_ID FROM JOURNALPOS WHERE ARTNUM = %s
+          )
+    """
+    sql_ohne = """
+        SELECT AVG(j.NSUMME) AS avg_summe, COUNT(*) AS anzahl
+        FROM JOURNAL j
+        WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
+          AND DATE(j.RDATUM) BETWEEN %s AND %s
+          AND j.REC_ID NOT IN (
+              SELECT DISTINCT JOURNAL_ID FROM JOURNALPOS WHERE ARTNUM = %s
+          )
+    """
+    with get_cao_db() as cur:
+        cur.execute(sql_mit, (von, bis, artnum))
+        mit = cur.fetchone() or {}
+        cur.execute(sql_ohne, (von, bis, artnum))
+        ohne = cur.fetchone() or {}
+    avg_mit  = _float(mit.get('avg_summe'))
+    avg_ohne = _float(ohne.get('avg_summe'))
+    delta = _pct_diff(avg_mit, avg_ohne)
+    return {
+        'mit_aktion_avg':   round(avg_mit, 2),
+        'mit_aktion_anz':   int(mit.get('anzahl') or 0),
+        'ohne_aktion_avg':  round(avg_ohne, 2),
+        'ohne_aktion_anz':  int(ohne.get('anzahl') or 0),
+        'delta_pct':        delta,
+    }
+
+
+# ── Insight-Generator (regelbasiert) ───────────────────────────────────────────
+
+def insights_generieren(analyse: dict) -> list[dict]:
+    """Erzeugt aus den Roh-Kennzahlen 3–5 textuelle Erkenntnisse.
+
+    Rein regelbasiert (kein LLM, kein externes Wissen). Jedes Insight
+    ist ein dict mit ``typ`` ('positiv'|'warn'|'info'), ``titel`` (kurz)
+    und ``text`` (1-2 Saetze).
+
+    Heuristiken (siehe Mockup):
+      1. Top-1 Koppel-Quote ≥ 50 %  -> 'X+Y-Buendel funktioniert'
+      2. Im Top-5 ein Hochpreis-Artikel mit absolut hohem Umsatz aber
+         relativ niedriger Quote -> 'X zieht den Bon-Wert hoch'
+      3. Folgewoche-Umsatz > Vorwoche-Umsatz, Aktion abgeschlossen
+         -> 'Nachzieheffekt erkennbar'
+      4. Vorjahr-KW-Bons + Aktion-Bons > 50 % Uplift  -> 'Vorjahr lag
+         deutlich darunter'
+      5. Rabatt-Volumen >= 100 EUR -> Warn-Insight
+      6. Bon-Wert mit-vs-ohne >= +20 %  -> 'Aktion hebt den Bon-Wert'
+    """
+    insights: list[dict] = []
+    aktion_um   = analyse.get('aktion_umsatz', {}) or {}
+    koppel      = analyse.get('koppel_aktion', []) or []
+    perioden    = analyse.get('perioden', {}) or {}
+    margen      = analyse.get('margen', {}) or {}
+    bon_wert    = analyse.get('bon_wert', {}) or {}
+
+    # 1. Top-1 Koppel-Quote
+    if koppel:
+        top1 = koppel[0]
+        quote = float(top1.get('kopplungsrate') or 0)
+        if quote >= 70:
+            insights.append({
+                'typ': 'positiv',
+                'titel': f"{top1['bezeichnung']} ist ein fest etabliertes "
+                          f"Begleitprodukt.",
+                'text':  f"In {quote:.0f} % der Bons mit dem Aktionsartikel "
+                          f"war auch {top1['bezeichnung']} dabei. "
+                          f"Beim naechsten Mal als kombinierte Display-"
+                          f"Aktion kommunizieren.",
+            })
+        elif quote >= 50:
+            insights.append({
+                'typ': 'positiv',
+                'titel': f"{top1['bezeichnung']}-Buendel funktioniert.",
+                'text':  f"{quote:.0f} % der Bons mit dem Aktionsartikel "
+                          f"enthalten {top1['bezeichnung']} – ein klares "
+                          f"Buendel-Muster.",
+            })
+
+    # 2. Hochpreis-Begleiter im Top-5: niedrige Quote (<35%) aber hoher
+    #    absoluter Umsatz (top-3 in koppel-Liste nach umsatz).
+    if len(koppel) >= 3:
+        top5 = koppel[:5]
+        nach_umsatz = sorted(top5, key=lambda x: -float(x.get('brutto_umsatz', 0) or 0))
+        kand = nach_umsatz[0]
+        kand_quote = float(kand.get('kopplungsrate') or 0)
+        kand_umsatz = float(kand.get('brutto_umsatz') or 0)
+        # Heuristik: Quote < Top-1-Quote / 2 UND Umsatz unter den Top-3 nach Umsatz.
+        if (koppel and kand_quote < float(koppel[0].get('kopplungsrate') or 0) * 0.6
+                and kand_umsatz >= 100):
+            insights.append({
+                'typ': 'info',
+                'titel': f"{kand['bezeichnung']} zieht den Bon-Wert hoch.",
+                'text':  f"Nur {kand_quote:.0f} % der Aktions-Bons enthalten "
+                          f"{kand['bezeichnung']}, der Artikel traegt aber "
+                          f"{kand_umsatz:.0f} € zum Begleitumsatz bei – ein "
+                          f"hochpreisiges Komplementaerprodukt.",
+            })
+
+    # 3. Nachzieheffekt: Folgewoche > Vorwoche
+    vw = perioden.get('vorwoche')
+    fw = perioden.get('folgewoche')
+    if vw and fw:
+        vw_bons = (vw.get('umsatz') or {}).get('anzahl_bons', 0)
+        fw_bons = (fw.get('umsatz') or {}).get('anzahl_bons', 0)
+        if fw_bons > vw_bons * 1.3 and vw_bons > 0:
+            uplift = (fw_bons - vw_bons) / vw_bons * 100
+            insights.append({
+                'typ': 'positiv',
+                'titel': "Folgewoche profitiert nach.",
+                'text':  f"Auch nach Aktionsende liegt der Verkauf um "
+                          f"{uplift:.0f} % ueber der Vorwoche – die Aktion "
+                          f"hat offenbar Stammkunden angezogen, die "
+                          f"erstmal weiterkaufen. Reaktivierung in 4 "
+                          f"Wochen pruefen.",
+            })
+
+    # 4. Vorjahr-KW deutlich darunter
+    vj_kw = perioden.get('vorjahr_kw')
+    if vj_kw:
+        vjk_bons   = (vj_kw.get('umsatz') or {}).get('anzahl_bons', 0)
+        aktion_bons = aktion_um.get('anzahl_bons', 0)
+        if aktion_bons > vjk_bons * 1.5 and vjk_bons > 0:
+            up = (aktion_bons - vjk_bons) / vjk_bons * 100
+            insights.append({
+                'typ': 'info',
+                'titel': "Vorjahr lag deutlich darunter.",
+                'text':  f"Gegenueber der gleichen KW im Vorjahr liegt der "
+                          f"Verkauf um +{up:.0f} %. Der Effekt ist also "
+                          f"echter Aktionsantrieb, kein reiner "
+                          f"Saisoneffekt.",
+            })
+
+    # 5. Rabatt-Volumen-Warnung
+    rab_vol = float(margen.get('rabatt_volumen') or 0)
+    if rab_vol >= 100:
+        insights.append({
+            'typ':   'warn',
+            'titel': "Aktionsrabatt im Auge behalten.",
+            'text':  f"Bei {margen.get('stueckzahl', 0):.0f} verkauften "
+                      f"Stueck wurden {rab_vol:.0f} € Bruttoumsatz gegenueber "
+                      f"Normalpreis nicht erloest. Mehrumsatz aus Koppel-"
+                      f"kaeufen sollte das mehr als ausgleichen.",
+        })
+
+    # 6. Bon-Wert mit-vs-ohne
+    delta = bon_wert.get('delta_pct')
+    if delta is not None and delta >= 20:
+        insights.append({
+            'typ': 'positiv',
+            'titel': "Aktion hebt den Bon-Wert.",
+            'text':  f"Bons mit Aktionsartikel sind im Schnitt "
+                      f"{bon_wert.get('mit_aktion_avg', 0):.2f} € wert – "
+                      f"+{delta:.0f} % gegenueber Bons ohne diesen Artikel "
+                      f"({bon_wert.get('ohne_aktion_avg', 0):.2f} €). Die "
+                      f"Aktion zieht hoehere Warenkoerbe an.",
+        })
+
+    return insights
+
+
 # ── Hauptfunktion ──────────────────────────────────────────────────────────────
 
 def analyse_komplett(
@@ -392,6 +595,8 @@ def analyse_komplett(
     aktions_von: date,
     aktions_bis: date,
     top_n: int = 15,
+    aktionspreis: float | None = None,
+    normalpreis: float | None = None,
 ) -> dict:
     """
     Vollständige Koppelkauf-Analyse für einen Artikel und Aktionszeitraum.
@@ -400,14 +605,11 @@ def analyse_komplett(
     {
         'aktion_umsatz': {...},
         'koppel_aktion': [...],
-        'perioden': {
-            'vorwoche': {'label':..., 'von':..., 'bis':...,
-                         'umsatz': {...}, 'koppel': [...]},
-            'folgewoche': None | {...},
-            'vorjahr': {...},
-            'vorjahr_kw': {...},
-        },
+        'perioden': {...},
         'interpretation': {...},
+        'margen': {...} | None,    # nur wenn Preise vorhanden
+        'bon_wert': {...},
+        'insights': [...],
         'aktions_von': date,
         'aktions_bis': date,
     }
@@ -444,11 +646,29 @@ def analyse_komplett(
 
     interpretation = _uplift_einschaetzen(aktion_bons, vergleich_bons)
 
-    return {
+    # Margen-/Rabatt-Analyse: nur wenn beide Preise bekannt + Verkauf > 0
+    margen = None
+    if (normalpreis is not None and aktionspreis is not None
+            and aktion_um.get('stueckzahl', 0) > 0
+            and normalpreis > aktionspreis):
+        margen = margen_analyse(float(normalpreis), float(aktionspreis),
+                                 float(aktion_um['stueckzahl']))
+
+    # Bon-Wert-Vergleich mit-vs-ohne Aktionsartikel
+    try:
+        bon_wert = bon_wert_vergleich(artnum, aktions_von, aktions_bis)
+    except Exception:
+        bon_wert = None
+
+    ergebnis = {
         'aktions_von':    aktions_von,
         'aktions_bis':    aktions_bis,
         'aktion_umsatz':  aktion_um,
         'koppel_aktion':  koppel_aktion,
         'perioden':       perioden,
         'interpretation': interpretation,
+        'margen':         margen,
+        'bon_wert':       bon_wert,
     }
+    ergebnis['insights'] = insights_generieren(ergebnis)
+    return ergebnis
