@@ -8,12 +8,48 @@ Beispiel:
     from common.config import load_db_config, load_environment
     env = load_environment()   # 'produktion' | 'training'
     cfg = load_db_config("KASSE")   # prueft KASSE_DB_LOC, dann DB_LOC, dann caoxt.ini
+
+caoxt.ini ist nicht im Git getrackt (siehe .gitignore). Bei einer
+Erstinstallation faellt sie deshalb anfangs, und dieses Modul kopiert
+sie beim ersten Lesen aus ``caoxt.ini.example`` (eingecheckte Vorlage).
 """
+import logging
 import os
+import shutil
 import configparser
 
-_REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
-_INI_PATH  = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini')
+log = logging.getLogger(__name__)
+
+_REPO_ROOT     = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+_INI_PATH      = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini')
+_INI_EXAMPLE   = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini.example')
+
+
+def _bootstrap_ini() -> None:
+    """Bei Erstinstallation: caoxt.ini.example -> caoxt.ini kopieren.
+
+    caoxt.ini ist via .gitignore nicht im Repo – ein frischer Clone
+    hat also nur die .example. Damit App-Starts nicht an einer leeren
+    Konfig-Datei scheitern, kopiert dieser Bootstrap die Vorlage einmal
+    ueber. Der Nutzer ergaenzt die echten Zugangsdaten danach selbst.
+    Idempotent: tut nichts, wenn caoxt.ini bereits existiert oder die
+    Vorlage fehlt.
+    """
+    if os.path.exists(_INI_PATH):
+        return
+    if not os.path.exists(_INI_EXAMPLE):
+        return
+    try:
+        shutil.copyfile(_INI_EXAMPLE, _INI_PATH)
+        log.warning(
+            "caoxt.ini fehlte – Vorlage aus caoxt.ini.example kopiert "
+            "nach %s. Bitte echte Zugangsdaten eintragen.", _INI_PATH)
+    except OSError as exc:
+        log.error("caoxt.ini-Bootstrap fehlgeschlagen: %s", exc)
+
+
+# Beim ersten Import des Moduls die Bootstrap-Pruefung anstossen.
+_bootstrap_ini()
 
 _VALID_ENVIRONMENTS = {'produktion', 'training'}
 
