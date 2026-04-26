@@ -18,7 +18,13 @@
            aus dem Viewport rutscht. */
         :root {
             --kiosk-funktionsleiste-h: 48px;
-            --kiosk-content-h: calc(100vh - var(--navbar-h) - var(--kiosk-funktionsleiste-h));
+            /* --kiosk-content-h existiert weiterhin als Fallback fuer
+               Templates die noch die alte calc()-Variante nutzen. Die
+               eigentliche Hoehe kommt jetzt aus dem Flex-Layout des
+               Body, sodass auch wachsende Funktionsleisten (Wrap auf
+               schmalen Schirmen, neue Buttons) den Content nicht aus
+               dem Viewport schieben. */
+            --kiosk-content-h: 100%;
             --akzent:        var(--brand-terracotta);
             --akzent-hell:   var(--brand-terracotta-dunkel);
             /* Legacy-Aliase: Warenkorb-Bereich + Kategorie-Tabs nutzen
@@ -30,14 +36,27 @@
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        html, body {
+        html { height: 100%; }
+        body {
             height: 100%;
+            display: flex; flex-direction: column;
+            overflow: hidden;
             font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
             background: var(--brand-body-bg);
             color: var(--brand-ink);
             -webkit-tap-highlight-color: transparent;
             user-select: none;
         }
+        /* Wrapper-Container fuer den Seiteninhalt zwischen Funktionsleiste
+           und unterem Viewport-Rand. Flex 1 = nimmt den verbleibenden
+           Platz, min-height: 0 erlaubt inneren scroll-Containern (z.B.
+           Produktliste) korrekt zu schrumpfen. */
+        .kiosk-content-wrapper {
+            flex: 1 1 auto; min-height: 0;
+            display: flex; flex-direction: column;
+            position: relative;
+        }
+        .kiosk-content-wrapper > * { flex: 1; min-height: 0; }
 
         h1, h2, h3 {
             font-family: 'Fraunces', Georgia, serif;
@@ -363,7 +382,9 @@
     </div>
 </nav>
 
+<div class="kiosk-content-wrapper">
 {% block inhalt %}{% endblock %}
+</div>
 
 {% include '_toast.html' %}
 

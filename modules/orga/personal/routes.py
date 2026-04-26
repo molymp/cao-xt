@@ -1422,10 +1422,15 @@ def schichtplan_raster():
     mitarbeiter = m.ma_aktiv_am(montag + timedelta(days=6))
     ma_by_id = {ma['PERS_ID']: ma for ma in mitarbeiter}
 
-    # Raster-Fenster dynamisch anhand tatsaechlicher fix-Schichten ermitteln
+    # Raster-Fenster: ein fester Mindestbereich (Ladenoeffnungszeiten),
+    # der bei Bedarf erweitert wird – aber nie kleiner als der Default.
+    # Sonst schrumpft die Sicht nach der ersten Zuweisung auf nur die
+    # bereits geplante Schicht und Nachmittagsschichten lassen sich nicht
+    # mehr per Klick einfuegen.
     fix_z = [z for z in zuordnungen if z.get('TYP') == 'fix'
                                      and z.get('STARTZEIT') and z.get('ENDZEIT')]
-    from_h, to_h = 6, 20
+    DEFAULT_FROM_H, DEFAULT_TO_H = 6, 20
+    from_h, to_h = DEFAULT_FROM_H, DEFAULT_TO_H
     if fix_z:
         starts = [m._zeit_zu_min(z['STARTZEIT']) // 60 for z in fix_z]
         ends_raw = []
@@ -1434,8 +1439,8 @@ def schichtplan_raster():
             e = m._zeit_zu_min(z['ENDZEIT'])
             ends_raw.append(e if e > s else e + 24 * 60)  # Nachtschicht
         ends = [(e + 59) // 60 for e in ends_raw]  # aufrunden
-        from_h = max(0, min(starts) - 1)
-        to_h   = min(26, max(ends) + 1)
+        from_h = max(0, min(DEFAULT_FROM_H, min(starts) - 1))
+        to_h   = min(26, max(DEFAULT_TO_H,   max(ends) + 1))
     stunden = list(range(from_h, to_h))
 
     # Indizes fuer das Template.
@@ -1525,33 +1530,43 @@ def schichtplan_raster():
                 for gr in plan_fix.get(tag, []):
                     if gr['_start_min'] <= std_min < gr['_ende_min']:
                         ma_anz += len(gr.get('mas', []))
+                # Empfohlene MA-Anzahl: erwarteter Umsatz / Ziel je MA-h.
+                # Aufrunden, ab >25 % des Ziel-Umsatzes mindestens 1 MA.
+                empfohlen = 0
+                if erwartet > 0 and ziel_pro_ma_h > 0:
+                    empfohlen = int(erwartet // ziel_pro_ma_h)
+                    rest = erwartet - empfohlen * ziel_pro_ma_h
+                    if rest >= ziel_pro_ma_h * 0.25:
+                        empfohlen += 1
+                # Luecke vs. Plan
+                luecke = empfohlen - ma_anz   # >0: zu wenig MA, <0: ueberdeckt
                 soll = ma_anz * ziel_pro_ma_h
-                diff = soll - erwartet  # >0 ueberdeckt, <0 unterdeckt
-                # Klassifizierung
-                if erwartet < 1 and ma_anz == 0:
+                diff = soll - erwartet
+                # Klassifizierung anhand der MA-Luecke
+                if empfohlen == 0 and ma_anz == 0:
                     klasse = 'leer'
-                elif ma_anz == 0 and erwartet >= ziel_pro_ma_h * 0.5:
-                    klasse = 'unter'
-                elif ma_anz == 0:
-                    klasse = 'leer'
-                elif diff < -ziel_pro_ma_h * 0.4:
-                    klasse = 'unter'
-                elif diff > ziel_pro_ma_h * 0.6:
-                    klasse = 'ueber'
+                elif luecke <= 0:
+                    klasse = 'ueber' if luecke < 0 and erwartet > 0 else 'ok'
+                elif luecke == 1:
+                    klasse = 'unter1'
+                elif luecke == 2:
+                    klasse = 'unter2'
                 else:
-                    klasse = 'ok'
+                    klasse = 'unter3'
                 umsatz_overlay.setdefault(tag.isoformat(), {})[std] = {
-                    'erwartet': round(erwartet, 0),
-                    'ma_anz':   ma_anz,
-                    'soll':     round(soll, 0),
-                    'diff':     round(diff, 0),
-                    'klasse':   klasse,
+                    'erwartet':  round(erwartet, 0),
+                    'ma_anz':    ma_anz,
+                    'empfohlen': empfohlen,
+                    'luecke':    luecke,
+                    'soll':      round(soll, 0),
+                    'diff':      round(diff, 0),
+                    'klasse':    klasse,
                 }
                 bonus_summary['soll']      += soll
                 bonus_summary['erwartet']  += erwartet
                 bonus_summary['differenz'] += diff
-                if klasse == 'unter': bonus_summary['zellen_unter'] += 1
-                elif klasse == 'ueber': bonus_summary['zellen_ueber'] += 1
+                if luecke > 0:    bonus_summary['zellen_unter'] += 1
+                elif luecke < 0:  bonus_summary['zellen_ueber'] += 1
         for k in ('soll', 'erwartet', 'differenz'):
             bonus_summary[k] = round(bonus_summary[k], 0)
     except Exception as exc:

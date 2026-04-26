@@ -92,13 +92,33 @@
 .tag-spalte.urlaub-genommen { background-color: #f0e8fd; }
 
 /* Heatmap-Unterlage als feine Streifen je Stunde – liegt unter den
-   Schicht-Bloecken (z-index 0) und nimmt die volle Spaltenbreite ein. */
+   Schicht-Bloecken (z-index 0) und nimmt die volle Spaltenbreite ein.
+   Farbintensitaet skaliert mit der erwarteten MA-Luecke:
+     ok       sage-Wash    (genug oder ueberdeckt)
+     unter1   sehr blass   (1 MA fehlt)
+     unter2   mittel       (2 MA fehlen)
+     unter3   intensiv     (3+ MA fehlen)
+   So sieht man schon an der Vorein­faerbung wie viele Schichten in
+   diese Stunde gehoeren – nicht nur "Lueckenstunde rosa". */
 .umsatz-overlay-stripe { position: absolute; left: 0; right: 0;
                           z-index: 0; pointer-events: auto;
-                          border-bottom: 1px dashed rgba(0,0,0,0.05); }
-.umsatz-overlay-stripe.stripe-unter { background: rgba(184,48,48,0.18); }
-.umsatz-overlay-stripe.stripe-ueber { background: rgba(46,158,90,0.16); }
-.umsatz-overlay-stripe.stripe-ok    { background: rgba(217,220,201,0.32); }
+                          display: flex; align-items: center;
+                          justify-content: flex-end; padding: 0 4px;
+                          font-size: 9px; font-weight: 800;
+                          color: rgba(20, 40, 8, 0.55);
+                          font-variant-numeric: tabular-nums;
+                          border-bottom: 1px dashed rgba(0,0,0,0.04); }
+.umsatz-overlay-stripe.stripe-ok      { background: rgba(217,220,201,0.32); }
+.umsatz-overlay-stripe.stripe-ueber   { background: rgba( 46,158, 90,0.22); }
+.umsatz-overlay-stripe.stripe-unter1  { background: rgba(245,200,150,0.30); }
+.umsatz-overlay-stripe.stripe-unter2  { background: rgba(220,140, 90,0.40); }
+.umsatz-overlay-stripe.stripe-unter3  { background: rgba(184, 92, 58,0.55); color: white; }
+.umsatz-overlay-stripe .empf {
+    background: rgba(255,255,255,0.65); color: var(--gruen-dunkel);
+    border-radius: 999px; padding: 0 5px; font-size: 9px;
+    font-weight: 800; min-width: 14px; text-align: center;
+}
+.umsatz-overlay-stripe.stripe-unter3 .empf { background: rgba(255,255,255,0.85); }
 
 .schicht-block { position: absolute; left: 2px; right: 2px; padding: 4px 6px;
                  border-radius: 4px; color: white; font-size: 11px;
@@ -467,7 +487,9 @@ function setVorlageZielRelativ(tage) {
             {% set hoehe  = 60 * PX_PRO_MIN %}
             <div class="umsatz-overlay-stripe stripe-{{ zelle.klasse }}"
                  style="top: {{ top_px }}px; height: {{ hoehe }}px;"
-                 title="{{ '%02d:00'|format(std) }} – Erwartet {{ zelle.erwartet|int }} €, {{ zelle.ma_anz }} MA × {{ bonus_summary.ziel_pro_ma_h|int }} € = Soll {{ zelle.soll|int }} € ({{ '%+d'|format(zelle.diff|int) }} €)"></div>
+                 title="{{ '%02d:00'|format(std) }} – Erwartet {{ zelle.erwartet|int }} €. Empfohlen: {{ zelle.empfohlen }} MA, geplant: {{ zelle.ma_anz }} MA{% if zelle.luecke > 0 %} (es fehlen {{ zelle.luecke }}){% elif zelle.luecke < 0 %} ({{ -zelle.luecke }} MA ueberdeckt){% endif %}.">
+              {% if zelle.empfohlen > 0 %}<span class="empf">{{ zelle.empfohlen }}</span>{% endif %}
+            </div>
           {% endif %}
         {% endfor %}
         {% for gr in plan_fix.get(tag, []) %}
@@ -609,7 +631,7 @@ function setVorlageZielRelativ(tage) {
 {% if not woche_gesperrt %}
 <div id="neuzu-overlay" class="overlay-bg"
      onclick="if(event.target===this)schliesseNeuzu()">
-  <div class="overlay-sheet">
+  <div class="overlay-sheet" style="max-width: 880px;">
     <div class="handle"></div>
     <h2 id="nz-titel">Neue Schicht</h2>
     <div class="overlay-meta" id="nz-meta"></div>
