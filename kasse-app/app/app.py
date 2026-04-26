@@ -168,6 +168,27 @@ def _pruefe_update_loop():
 threading.Thread(target=_pruefe_update_loop, daemon=True, name="update-checker").start()
 
 # ── Context-Processor ─────────────────────────────────────────
+
+# Light-Touch-Cache fuer den TSE-Verfuegbar-Status der Navbar-Bubble.
+# tse_verfuegbar() koennte Device-IO machen; wir cachen 30 s, damit
+# nicht jeder Request den Status frisch abfragt.
+_tse_status_cache: dict = {'wert': None, 'expires': 0.0}
+
+
+def _tse_ok_gecacht() -> bool:
+    import time as _t
+    now = _t.monotonic()
+    if _tse_status_cache['wert'] is not None and now < _tse_status_cache['expires']:
+        return _tse_status_cache['wert']
+    try:
+        wert = bool(tse_modul.tse_verfuegbar(config.TERMINAL_NR))
+    except Exception:
+        wert = False
+    _tse_status_cache['wert']    = wert
+    _tse_status_cache['expires'] = now + 30.0
+    return wert
+
+
 @app.context_processor
 def _globals():
     trainings_modus     = False
@@ -182,6 +203,7 @@ def _globals():
         ec_tagesabschluss   = ts['ec_tagesabschluss']
     except Exception:
         pass
+    tse_ok = _tse_ok_gecacht()
     kiosk_url = config.KIOSK_URL or (
         f'{request.scheme}://{request.host.split(":")[0]}:{config.KIOSK_PORT}'
         if config.KIOSK_PORT else '')
@@ -199,13 +221,20 @@ def _globals():
         # ADMIN ist immer aktiv – kein Gating.
     except Exception:
         pass
+    # DB-Status fuer Navbar-Badge (fail-soft auf False)
+    try:
+        db_ok = test_verbindung()
+    except Exception:
+        db_ok = False
     return {
         'terminal_nr':         config.TERMINAL_NR,
         'firma_name':          config.FIRMA_NAME,
         'db_name':             config.DB_NAME,
+        'db_ok':               db_ok,
         'jetzt':               datetime.now(),
         'trainings_modus':     trainings_modus,
         'tse_nicht_produktiv': tse_nicht_produktiv,
+        'tse_ok':              tse_ok,
         'ec_modus':            ec_modus,
         'ec_tagesabschluss':   ec_tagesabschluss,
         'kiosk_url':           kiosk_url,

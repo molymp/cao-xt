@@ -132,6 +132,11 @@ def _inject_globals():
         if not _akt.ist_aktiv('ORGA'):  orga_url  = ''
     except Exception:
         pass
+    # DB-Status fuer Navbar-Badge (light-touch, fail-soft auf False)
+    try:
+        db_ok = db.test_verbindung()
+    except Exception:
+        db_ok = False
     return {
         "terminal_nr":        tnr,
         "ist_kundenterminal": (tnr == 9),
@@ -140,6 +145,7 @@ def _inject_globals():
         "update_verfuegbar":  _update_status["verfuegbar"],
         "firma_name":         config.FIRMA_NAME,
         "db_name":            config.DB_NAME,
+        "db_ok":              db_ok,
         "ma_login_name":      session.get('login_name', ''),
         "kasse_url":          kasse_url,
         "orga_url":           orga_url,
@@ -901,6 +907,35 @@ def abbrechen(wk_id):
                gesperrt_am=NULL, geaendert_am=NOW()
                WHERE id=%s AND gesperrt_von=%s""",
             (wk_id, get_terminal_nr())
+        )
+    return jsonify({"ok": True})
+
+
+@_login_required
+@app.route("/warenkorb/<int:wk_id>/leeren", methods=["POST"])
+def warenkorb_leeren(wk_id):
+    """Loescht alle Positionen des Warenkorbs, behaelt aber die Warenkorb-
+    Nummer. Ersetzt das ehemalige 'Abbrechen' (das einen neuen Warenkorb
+    erzeugt hat). Der User wollte nicht jedes Mal eine neue Bonnummer.
+    """
+    tnr = get_terminal_nr()
+    with get_db_transaction() as cursor:
+        # Eigentuemerschaft pruefen (Lock auf diesem Terminal)
+        cursor.execute(
+            "SELECT id FROM XT_KIOSK_WARENKOERBE WHERE id=%s AND gesperrt_von=%s",
+            (wk_id, tnr)
+        )
+        if not cursor.fetchone():
+            return jsonify({"ok": False, "fehler": "Warenkorb nicht gefunden"}), 404
+        cursor.execute(
+            "DELETE FROM XT_KIOSK_WARENKORB_POS WHERE warenkorb_id=%s",
+            (wk_id,)
+        )
+        cursor.execute(
+            """UPDATE XT_KIOSK_WARENKOERBE
+               SET gesamtbetrag_cent = 0, geaendert_am = NOW()
+               WHERE id = %s""",
+            (wk_id,)
         )
     return jsonify({"ok": True})
 

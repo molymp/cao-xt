@@ -6,7 +6,7 @@
 .kiosk-layout {
     display: grid;
     grid-template-columns: 1fr 420px;
-    height: calc(100vh - 72px);
+    height: var(--kiosk-content-h);
     overflow: hidden;
 }
 
@@ -365,9 +365,16 @@ async function parken() {
 
 async function abbrechen() {
     if (!warenkorbId) return;
-    zeigeBestaetigung('Warenkorb wirklich verwerfen?', async () => {
-        const res = await apiFetch(`/warenkorb/${warenkorbId}/abbrechen`, { method: 'POST' });
-        if (res) { zeigToast('Warenkorb abgebrochen'); setTimeout(() => location.reload(), 800); }
+    zeigeBestaetigung('Alle Positionen verwerfen?', async () => {
+        // Nur Positionen loeschen, Warenkorb-/Bonnummer bleibt erhalten.
+        const res = await apiFetch(`/warenkorb/${warenkorbId}/leeren`, { method: 'POST' });
+        if (!res) return;
+        // Positionen aus dem DOM raeumen + UI auf "leerer Warenkorb"
+        document.querySelectorAll('.position').forEach(el => el.remove());
+        Object.keys(mengen).forEach(pid => { delete mengen[pid]; aktualisiereBadge(parseInt(pid)); });
+        aktualisiereGesamtbetrag(0);
+        pruefeLeererKorb();
+        zeigToast('Warenkorb geleert');
     }, 'Verwerfen');
 }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Habacher Dorfladen – Kiosk{% endblock %}</title>
+    <title>{% block title %}Kiosk{% endblock %} – {{ firma_name }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700;900&family=Nunito:wght@400;600;700;800&display=swap" media="print" onload="this.media='all'">
@@ -11,16 +11,16 @@
     <!-- Dorfkern-Shared-CSS – Themes light/dark/gruen via data-theme -->
     <link rel="stylesheet" href="/common-static/dorfkern.css">
     <style>
-        /* Kiosk-spezifische Aliase – die Theme-Variablen kommen aus
-           dorfkern.css unter [data-theme=...]. Hier nur die Kiosk-
-           eigenen Namen (--braun-*, --akzent, --gruen). */
+        /* Kiosk-Layout-Konstanten: Hoehe Navbar (60px aus dorfkern.css)
+           + Funktionsleiste (48px) wird in den Detail-Templates fuer
+           height-Berechnungen genutzt, damit der Inhalt (z.B. Warenkorb
+           mit Buchen/Abbrechen unten) nicht durch die zweite Menuezeile
+           aus dem Viewport rutscht. */
         :root {
-            --braun-dunkel:  var(--gruen-dunkel);
-            --braun-mitte:   var(--gruen-mitte);
-            --braun-hell:    var(--gruen-hell);
-            --akzent:        var(--gold);
-            --akzent-hell:   var(--gold-hell);
-            --gruen:         var(--gruen-status);
+            --kiosk-funktionsleiste-h: 48px;
+            --kiosk-content-h: calc(100vh - var(--navbar-h) - var(--kiosk-funktionsleiste-h));
+            --akzent:        var(--brand-terracotta);
+            --akzent-hell:   var(--brand-terracotta-dunkel);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,8 +28,8 @@
         html, body {
             height: 100%;
             font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
-            background: var(--creme);
-            color: var(--text-dunkel);
+            background: var(--brand-body-bg);
+            color: var(--brand-ink);
             -webkit-tap-highlight-color: transparent;
             user-select: none;
         }
@@ -37,142 +37,144 @@
         h1, h2, h3 {
             font-family: 'Fraunces', Georgia, serif;
             color: var(--gruen-dunkel);
-            font-weight: 400;
+            font-weight: 500;
         }
 
+        /* ── Navbar (Brand-Light, identisch zu Admin/Orga) ──────── */
         .navbar {
-            background: var(--gruen-dunkel);
-            color: var(--creme);
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 0 28px;
-            height: 72px;
-            box-shadow: 0 2px 16px rgba(0,0,0,0.3);
-            position: relative;
-            z-index: 100;
+            gap: 10px;
+            height: var(--navbar-h);
+            padding: 0 20px;
+            background: #ffffff;
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--schatten);
+            flex-shrink: 0;
+            z-index: 200;
         }
         .navbar .logo {
-            display: flex; align-items: center; gap: 14px;
-            flex-shrink: 0; text-decoration: none;
+            display: flex; align-items: center; gap: 10px;
+            flex-shrink: 0; white-space: nowrap;
         }
-        .navbar .logo-icon {
-            width: 56px; height: 56px; flex-shrink: 0;
-            color: var(--gruen-blass);
+        .navbar .logo > [data-dorfkern-logo] {
+            color: var(--brand-terracotta);
+            flex: 0 0 auto;
         }
         .navbar .logo-text {
+            display: flex; flex-direction: column; gap: 0;
+        }
+        .navbar .logo-name {
             font-family: 'Fraunces', Georgia, serif;
-            font-size: 1.55rem; color: var(--creme); line-height: 1.1;
+            font-size: 20px;
+            color: var(--gruen-dunkel);
+            line-height: 1.1;
         }
-        .navbar .logo-text span {
-            display: block;
-            font-family: 'Nunito', 'Segoe UI', Arial, sans-serif;
-            font-size: 0.65rem; font-weight: 600; letter-spacing: 0.12em;
-            text-transform: uppercase; color: var(--gruen-blass); margin-top: 1px;
+        .navbar .logo-sub {
+            font-size: 10px; font-weight: 800;
+            letter-spacing: 0.14em; text-transform: uppercase;
+            color: var(--brand-terracotta);
+            margin-top: 1px;
         }
-        .navbar nav { display: flex; gap: 4px; flex-wrap: nowrap; }
-        .navbar nav a {
-            display: inline-flex; align-items: center;
-            color: var(--creme-dunkel); text-decoration: none;
-            padding: 9px 15px; border-radius: var(--radius-klein);
-            border: 1px solid rgba(255,255,255,0.15);
-            font-size: 0.88rem; font-weight: 700;
-            transition: background 0.15s, color 0.15s; white-space: nowrap;
-        }
-        .navbar nav a:hover, .navbar nav a.aktiv {
-            background: rgba(74,148,40,0.3); color: var(--gruen-blass);
-        }
-        /* Update-Badge in der Navbar */
-        .navbar nav a.nav-update {
-            background: var(--gold); color: white !important;
-            animation: update-pulse 2.5s ease-in-out infinite;
-        }
-        .navbar nav a.nav-update:hover { background: var(--gold-hell); }
-        @keyframes update-pulse {
-            0%, 100% { opacity: 1; }
-            50%       { opacity: 0.65; }
-        }
-        /* App-Switcher */
-        .navbar .nav-app-aktiv {
-            border: 2px solid var(--gold); color: var(--gold-hell);
-            background: rgba(200,120,10,0.15); border-radius: var(--radius-klein);
-            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
-            text-decoration: none; white-space: nowrap;
-        }
-        .navbar .nav-app-switch {
-            border: 1px solid rgba(200,120,10,0.4); color: var(--gold-hell);
+        .navbar .spacer { flex: 1; }
+        .navbar .nav-btn {
+            background: var(--brand-cream);
+            color: var(--brand-ink);
+            border: 1px solid var(--border);
             border-radius: var(--radius-klein);
-            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
-            text-decoration: none; white-space: nowrap;
-            transition: background 0.15s;
+            padding: 7px 14px;
+            font-size: 13px; font-weight: 700;
+            cursor: pointer; text-decoration: none;
+            display: inline-flex; align-items: center; gap: 6px;
+            min-height: 38px; white-space: nowrap;
+            font-family: 'Nunito', sans-serif;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
         }
-        .navbar .nav-app-switch:hover { background: rgba(200,120,10,0.2); }
-        .navbar .nav-app-inaktiv {
-            border: 1px solid rgba(255,255,255,0.08); color: var(--grau-mitte);
-            border-radius: var(--radius-klein);
-            padding: 9px 15px; font-size: 0.88rem; font-weight: 700;
-            white-space: nowrap; opacity: 0.5; cursor: default;
+        .navbar .nav-btn:hover {
+            background: var(--brand-sage);
+            color: var(--gruen-dunkel);
+            border-color: var(--brand-sage-dunkel);
         }
-        .app-switcher { display: flex; align-items: center; gap: 4px; }
-        .navbar .terminal-info {
-            font-size: 0.78rem; color: var(--grau-mitte);
-            text-align: right; flex-shrink: 0;
+        .navbar .nav-btn-logout {
+            border-color: rgba(184,48,48,0.35);
+            color: var(--status-rot);
         }
-        .navbar .terminal-info .terminal-uhr-user {
-            display: block;
-            font-size: 0.82rem;
-            font-weight: 700;
-            color: var(--gruen-blass);
+        .navbar .nav-btn-logout:hover {
+            background: var(--status-rot);
+            color: #ffffff;
+            border-color: var(--status-rot);
         }
-        .navbar .terminal-info .terminal-uhr-zeit {
-            display: block;
-            font-size: 1rem;
-            font-weight: 800;
-            color: var(--gruen-blass);
-            letter-spacing: 0.04em;
-        }
-        .navbar .terminal-info .terminal-uhr-datum {
-            display: block;
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: var(--grau-mitte);
-        }
-        .navbar .nav-logout {
-            display: inline-flex; align-items: center;
-            font-size: 0.88rem; font-weight: 700;
-            color: #f0a0a0; text-decoration: none;
-            padding: 9px 15px; border-radius: var(--radius-klein);
-            border: 1px solid rgba(184,48,48,0.4);
-            transition: background 0.12s;
-            white-space: nowrap;
-        }
-        .navbar .nav-logout:hover { background: rgba(184,48,48,0.2); color: #fdd; }
 
-        /* Kiosk-Funktions-Tabs (zweite Zeile unter der Navbar) */
+        /* ── Navbar-Uhrzeit (Brand-Light) ──────────────────────── */
+        .navbar-uhrzeit {
+            display: flex; flex-direction: column; align-items: flex-end;
+            margin-left: 8px; line-height: 1.25;
+            white-space: nowrap; pointer-events: none; flex-shrink: 0;
+        }
+        .navbar-uhrzeit .uhr-zeit {
+            font-size: 15px; font-weight: 800;
+            color: var(--brand-ink); letter-spacing: 0.04em;
+        }
+        .navbar-uhrzeit .uhr-datum {
+            font-size: 11px; font-weight: 600; color: var(--text-dim);
+        }
+        .navbar-uhrzeit .uhr-user {
+            font-size: 11px; font-weight: 700; color: var(--brand-terracotta);
+        }
+
+        /* ── DB-Status-Badge ─────────────────────────────────────── */
+        .db-badge {
+            font-size: 11px; font-weight: 800;
+            padding: 3px 10px; border-radius: 20px;
+        }
+        .db-badge.ok  { background: var(--brand-sage); color: var(--gruen-dunkel); }
+        .db-badge.err { background: #f6d8ce;          color: var(--status-rot); }
+
+        /* ── Kiosk-Funktionsleiste (zweite Zeile unter Navbar) ─── */
         .kiosk-funktionen {
-            background: var(--gruen-mitte);
-            display: flex; gap: 4px; flex-wrap: wrap;
-            padding: 8px 28px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background: var(--brand-sage);
+            border-bottom: 1px solid var(--brand-sage-dunkel);
+            display: flex; gap: 6px; flex-wrap: wrap;
+            padding: 6px 20px;
+            min-height: var(--kiosk-funktionsleiste-h);
+            align-items: center;
             position: relative;
             z-index: 90;
         }
         .kiosk-funktionen a {
             display: inline-flex; align-items: center;
-            color: var(--creme-dunkel); text-decoration: none;
-            padding: 9px 15px; border-radius: var(--radius-klein);
-            border: 1px solid rgba(255,255,255,0.15);
-            font-size: 0.88rem; font-weight: 700;
-            transition: background 0.15s, color 0.15s; white-space: nowrap;
+            color: var(--brand-ink); text-decoration: none;
+            padding: 7px 14px; border-radius: var(--radius-klein);
+            border: 1px solid transparent;
+            background: transparent;
+            font-size: 0.92rem; font-weight: 700;
+            min-height: 36px;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            white-space: nowrap;
         }
-        .kiosk-funktionen a:hover, .kiosk-funktionen a.aktiv {
-            background: rgba(74,148,40,0.3); color: var(--gruen-blass);
+        .kiosk-funktionen a:hover {
+            background: #ffffff;
+            border-color: var(--brand-sage-dunkel);
+            color: var(--gruen-dunkel);
+        }
+        .kiosk-funktionen a.aktiv {
+            background: #ffffff;
+            color: var(--brand-terracotta-dunkel);
+            border-color: var(--brand-sage-dunkel);
         }
         .kiosk-funktionen a.nav-update {
-            background: var(--gold); color: white !important;
+            background: var(--brand-terracotta); color: #ffffff;
+            border-color: var(--brand-terracotta);
             animation: update-pulse 2.5s ease-in-out infinite;
         }
-        .kiosk-funktionen a.nav-update:hover { background: var(--gold-hell); }
+        .kiosk-funktionen a.nav-update:hover {
+            background: var(--brand-terracotta-dunkel);
+            border-color: var(--brand-terracotta-dunkel);
+        }
+        @keyframes update-pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.7; }
+        }
 
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -309,7 +311,7 @@
 {% set nav_aktive_app    = 'kiosk' %}
 {% set nav_aktive_app_url= '/' %}
 {% set nav_user_name     = ma_login_name %}
-{% set nav_logo_theme    = 'dark' %}  {# dunkelgruene Navbar #}
+{% set nav_db_status     = db_ok %}
 {% include '_dorfkern_navbar.html' %}
 
 <!-- Kiosk-Funktions-Tabs (Touch-First, zweite Zeile unter der Navbar) -->
@@ -549,13 +551,13 @@ async function aktualisiereBestellBadge() {
 aktualisiereBestellBadge();
 setInterval(aktualisiereBestellBadge, 30000);
 
-// ── Uhrzeit/Datum in Header ───────────────────────────────────
+// ── Uhrzeit/Datum in Header (gemeinsames _navbar_uhrzeit-Markup) ──
 (function() {
     var MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
     function _uhrTick() {
-        var jetzt = new Date();
-        var zeitEl  = document.getElementById('terminal-uhr-zeit');
-        var datumEl = document.getElementById('terminal-uhr-datum');
+        var jetzt   = new Date();
+        var zeitEl  = document.querySelector('#navbar-uhrzeit .uhr-zeit');
+        var datumEl = document.querySelector('#navbar-uhrzeit .uhr-datum');
         if (zeitEl)  zeitEl.textContent  = String(jetzt.getHours()).padStart(2,'0') + ':' + String(jetzt.getMinutes()).padStart(2,'0');
         if (datumEl) datumEl.textContent = String(jetzt.getDate()).padStart(2,'0') + '-' + MONATE[jetzt.getMonth()];
     }
