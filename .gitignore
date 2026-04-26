@@ -21,5 +21,10 @@ datev_exports/
 # Lokale Konfiguration mit Zugangsdaten
 config_local.py
 
+# Lokale CAO-XT-Konfiguration (DB-Credentials, SMTP, ...).
+# Vorlage liegt unter caoxt/caoxt.ini.example und wird beim ersten
+# App-Start automatisch nach caoxt/caoxt.ini kopiert.
+/caoxt/caoxt.ini
+
 # Google Service Account Keys
 *-[0-9a-f]*[0-9a-f].json
