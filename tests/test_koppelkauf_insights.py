@@ -170,5 +170,93 @@ class TestInsightsBonWert(unittest.TestCase):
         self.assertFalse(any('hebt den Bon-Wert' in i['titel'] for i in ins))
 
 
+class TestInsightsAktionUnterVorwoche(unittest.TestCase):
+    """Aktion bringt weniger Bons als die Vorwoche."""
+
+    def test_warn_wenn_aktion_unter_vorwoche(self):
+        analyse = _basis_analyse(
+            aktion_umsatz={'anzahl_bons': 18, 'stueckzahl': 22,
+                           'brutto_umsatz': 77.0, 'tage': 7,
+                           'bons_pro_tag': 2.6},
+            perioden={
+                'vorwoche': {'umsatz': {'anzahl_bons': 21}},
+            },
+        )
+        ins = kk.insights_generieren(analyse)
+        warns = [i for i in ins if i['typ'] == 'warn'
+                                  and 'hinter der Vorwoche' in i['titel']]
+        self.assertTrue(warns)
+        self.assertIn('14', warns[0]['text'])  # ~14% Rueckgang
+
+    def test_kein_warn_wenn_aktion_groesser(self):
+        analyse = _basis_analyse(
+            aktion_umsatz={'anzahl_bons': 30, 'stueckzahl': 35,
+                           'brutto_umsatz': 150, 'tage': 7, 'bons_pro_tag': 4.3},
+            perioden={'vorwoche': {'umsatz': {'anzahl_bons': 21}}},
+        )
+        ins = kk.insights_generieren(analyse)
+        self.assertFalse(any('hinter der Vorwoche' in i['titel'] for i in ins))
+
+
+class TestInsightsFolgewocheEinbruch(unittest.TestCase):
+
+    def test_einbruch_unter_70_prozent(self):
+        # Vorwoche 21, Folgewoche 12 -> 12 < 21*0.7=14.7 -> Einbruch
+        analyse = _basis_analyse(perioden={
+            'vorwoche':   {'umsatz': {'anzahl_bons': 21}},
+            'folgewoche': {'umsatz': {'anzahl_bons': 12}},
+        })
+        ins = kk.insights_generieren(analyse)
+        self.assertTrue(any('Folgewoche-Einbruch' in i['titel'] for i in ins))
+
+    def test_kein_einbruch_bei_stabiler_folgewoche(self):
+        analyse = _basis_analyse(perioden={
+            'vorwoche':   {'umsatz': {'anzahl_bons': 21}},
+            'folgewoche': {'umsatz': {'anzahl_bons': 18}},
+        })
+        ins = kk.insights_generieren(analyse)
+        self.assertFalse(any('Folgewoche-Einbruch' in i['titel'] for i in ins))
+
+
+class TestInsightsRabattOhneWirkung(unittest.TestCase):
+
+    def test_warn_bei_hohem_rabatt_und_geringem_uplift(self):
+        # 19% Rabatt, Aktion 18 vs Schnitt (21+12+23+25)/4=20.25 -> -11%
+        analyse = _basis_analyse(
+            aktion_umsatz={'anzahl_bons': 18, 'stueckzahl': 22,
+                           'brutto_umsatz': 77.0, 'tage': 7, 'bons_pro_tag': 2.6},
+            margen={'normal_pro_stk': 4.29, 'aktion_pro_stk': 3.49,
+                    'rabatt_pro_stk': 0.80, 'stueckzahl': 22.0,
+                    'rabatt_volumen': 17.6, 'normal_brutto': 94.4,
+                    'aktion_brutto': 76.8},
+            perioden={
+                'vorwoche':   {'umsatz': {'anzahl_bons': 21}},
+                'folgewoche': {'umsatz': {'anzahl_bons': 12}},
+                'vorjahr':    {'umsatz': {'anzahl_bons': 23}},
+                'vorjahr_kw': {'umsatz': {'anzahl_bons': 25}},
+            },
+        )
+        ins = kk.insights_generieren(analyse)
+        treffer = [i for i in ins if 'nicht gezuendet' in i['titel']]
+        self.assertTrue(treffer)
+
+    def test_kein_warn_wenn_uplift_da(self):
+        # 19% Rabatt aber +30% Uplift -> kein Insight
+        analyse = _basis_analyse(
+            aktion_umsatz={'anzahl_bons': 30, 'stueckzahl': 35,
+                           'brutto_umsatz': 150, 'tage': 7, 'bons_pro_tag': 4.3},
+            margen={'normal_pro_stk': 4.29, 'aktion_pro_stk': 3.49,
+                    'rabatt_pro_stk': 0.80, 'stueckzahl': 35.0,
+                    'rabatt_volumen': 28.0, 'normal_brutto': 150,
+                    'aktion_brutto': 122},
+            perioden={
+                'vorwoche':   {'umsatz': {'anzahl_bons': 22}},
+                'vorjahr_kw': {'umsatz': {'anzahl_bons': 24}},
+            },
+        )
+        ins = kk.insights_generieren(analyse)
+        self.assertFalse(any('nicht gezuendet' in i['titel'] for i in ins))
+
+
 if __name__ == '__main__':
     unittest.main()
