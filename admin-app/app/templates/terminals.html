@@ -3,13 +3,23 @@
 {% block content %}
 <h1 style="margin-bottom:24px;">💻 Terminal-Admin</h1>
 
+<div class="info-banner" style="margin-bottom:16px;">
+  Hier wird die <strong>komplette Terminal-Konfiguration</strong> gepflegt
+  (Drucker, Kassenlade, EC-Terminal, Konten, Trainings-Modus). TSE-Geraete
+  werden separat unter
+  <a href="/tse" style="color:var(--brand-terracotta-dunkel); font-weight:700;">🔐 TSE-Geräte</a>
+  verwaltet.
+</div>
+
 <div class="card">
   <table class="tbl" id="termTbl">
     <thead>
       <tr>
         <th>Nr.</th>
         <th>Bezeichnung</th>
-        <th>Aktionen</th>
+        <th>Drucker-IP</th>
+        <th style="text-align:center;">Modus</th>
+        <th style="text-align:right;">Aktionen</th>
       </tr>
     </thead>
     <tbody id="termBody"></tbody>
@@ -43,24 +53,27 @@ function render() {
     return;
   }
   leer.classList.add('hidden');
-  body.innerHTML = terminals.map(t => `
-    <tr>
-      <td><strong>${t.TERMINAL_NR}</strong></td>
-      <td>
-        <input class="form-control" style="max-width:300px;display:inline-block;"
-               id="bez-${t.TERMINAL_NR}" value="${t.BEZEICHNUNG || ''}">
-      </td>
-      <td>
-        <button class="btn btn-primary btn-sm" onclick="saveTerminal(${t.TERMINAL_NR})">💾 Speichern</button>
-      </td>
-    </tr>
-  `).join('');
-}
-
-async function saveTerminal(nr) {
-  const bez = document.getElementById('bez-' + nr).value.trim();
-  const r = await api('PUT', '/api/terminals/' + nr, { bezeichnung: bez });
-  toast(r.msg, r.ok ? 'ok' : 'err');
+  body.innerHTML = terminals.map(t => {
+    const modus =
+      t.TRAININGS_MODUS ? '<span class="badge" style="background:#fef3c7; color:#6a4a00;'
+                          + 'border:1px solid var(--status-gelb);">Training</span>'
+                        : '<span class="badge muted">Live</span>';
+    const drucker = t.DRUCKER_IP
+      ? `<code style="font-size:12px;">${t.DRUCKER_IP}:${t.DRUCKER_PORT || 9100}</code>`
+      : '<span style="color:var(--text-dim);">–</span>';
+    return `
+      <tr>
+        <td><strong>${t.TERMINAL_NR}</strong></td>
+        <td>${t.BEZEICHNUNG || '<span style="color:var(--text-dim);">–</span>'}</td>
+        <td>${drucker}</td>
+        <td style="text-align:center;">${modus}</td>
+        <td style="text-align:right;">
+          <a class="btn btn-neutral btn-sm" href="/terminals/${t.TERMINAL_NR}">
+            ✏️ Bearbeiten
+          </a>
+        </td>
+      </tr>`;
+  }).join('');
 }
 
 load();

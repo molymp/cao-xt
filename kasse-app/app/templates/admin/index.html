@@ -185,14 +185,31 @@
   </div>
   {% endif %}
 
-  <!-- Aktionen -->
+  <!-- Hinweis: Nicht-TSE-Settings sind in die Admin-App umgezogen -->
+  {% if admin_url %}
+  <div class="alert alert-info" style="margin-bottom:16px; background:#dde9f4;
+       border:1px solid #4a7aa8; color:#1f3e5f; padding:14px 18px; border-radius:8px;">
+    <strong>Terminal-Konfiguration jetzt zentral in der Admin-App.</strong>
+    Drucker, Kassenlade, EC-Terminal, Konten, Trainings-Modus und alle
+    weiteren Nicht-TSE-Einstellungen werden ueber das zentrale Backoffice
+    gepflegt.<br>
+    <a href="{{ admin_url }}/terminals/{{ terminal_nr }}"
+       class="btn btn-primary btn-sm" style="margin-top:8px;">
+      ⚙️ Terminal {{ terminal_nr }} im Admin oeffnen →
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- TSE-/KassenSichV-spezifische Aktionen, die in der Kasse bleiben -->
   <div class="adm-actions" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
-    <a href="/admin/terminal" class="btn btn-primary">⚙️ Terminal bearbeiten</a>
-    <button class="btn btn-neutral" onclick="druckerTest()">🖨 Drucker testen</button>
-    <a href="/admin/tse" class="btn btn-neutral">🔐 TSE-Admin</a>
+    <a href="/admin/tse" class="btn btn-primary">🔐 TSE-Geräte verwalten</a>
     <a href="/admin/export" class="btn btn-neutral">📦 DSFinV-K Export</a>
     <a href="/kasse/abschluesse" class="btn btn-neutral">📋 Tagesabschlüsse</a>
     {% if not trainings_modus %}
+    {# KassenSichV-relevant: Trainings-Modus zwischen Live und Schulung
+       umschalten, damit waehrend einer Demo keine echten TSE-Signaturen
+       entstehen. Steuerung bleibt zusaetzlich auch im Kasse-Backend
+       greifbar (z.B. wenn der Admin-Server ausfaellt). #}
     <form method="POST" action="/admin/terminal/trainings_modus" style="margin:0;">
       <input type="hidden" name="trainings_modus" value="1">
       <button type="submit" class="btn btn-neutral btn-full" style="width:100%;">
@@ -226,12 +243,4 @@
   </div>
 </div>
 {% endblock %}
-{% block extra_script %}
-<script>
-async function druckerTest() {
-  const r = await api('POST', '/admin/drucker/test');
-  toast(r.ok ? '✅ Drucker erreichbar – Testseite gedruckt' : '❌ Drucker nicht erreichbar',
-        r.ok ? 'ok' : 'err', 3000);
-}
-</script>
-{% endblock %}
+{% block extra_script %}{% endblock %}
