@@ -240,8 +240,9 @@
   .lessons li:last-child { border-bottom: none; }
   .lessons li::before {
     content: '✓'; position: absolute; left: 4px; top: 9px;
-    color: var(--terra); font-weight: 800; font-size: 16px;
+    color: var(--gruen-m); font-weight: 800; font-size: 16px;
   }
+  .lessons li.info::before { content: 'ℹ'; color: var(--terra); }
   .lessons li.warn::before { content: '⚠'; color: var(--gelb); }
   .lessons li strong { color: var(--gruen-d); }
 
@@ -266,7 +267,7 @@
 <div class="seite">
 
   <!-- Mockup-Hinweis -->
-  <span class="mockup-banner">Mockup · Beispieldaten · Dorfkern v2</span>
+  <span class="mockup-banner">Beispieldaten · so rendert die Analyse heute</span>
 
   <!-- Aktionsprodukt-Header -->
   <div class="akt-header">
@@ -579,40 +580,50 @@
 
   <!-- Lessons / Empfehlungen -->
   <div class="lessons">
-    <h2>Lessons Learned</h2>
+    <h2>💡 Lessons Learned</h2>
     <div style="font-size: 13px; color: var(--text-dim); margin-top: 4px;">
-      Was lernen wir aus dieser Aktion?
+      Automatisch aus den Roh-Kennzahlen abgeleitete Erkenntnisse.
+      Die folgenden 6 Aussagen würde der regelbasierte
+      Insight-Generator (<code>orga-app/app/koppelkauf.py ::
+      insights_generieren</code>) für diese Beispieldaten erzeugen.
     </div>
     <ul>
       <li>
-        <strong>Brot-Bergkäse-Bündel funktioniert.</strong> 72 % der
-        Bergkäse-Bons enthielten Bauernbrot – fest etabliertes
-        Käufer-Muster, beim nächsten Mal als kombinierte
+        <strong>Bauernbrot Kruste 750 g ist ein fest etabliertes
+        Begleitprodukt.</strong>
+        In 72 % der Bons mit dem Aktionsartikel war auch Bauernbrot
+        Kruste 750 g dabei. Beim nächsten Mal als kombinierte
         Display-Aktion kommunizieren.
       </li>
-      <li>
-        <strong>Wein zieht den Bon-Wert hoch.</strong> Riesling kommt
-        nur in 28 % der Bons vor, trägt aber 320 € zum Begleitumsatz
-        bei – Top-3-Komplementärprodukt nach absolutem Mehrumsatz.
+      <li class="info">
+        <strong>Riesling QbA 0,75 l zieht den Bon-Wert hoch.</strong>
+        Nur 28 % der Aktions-Bons enthalten Riesling QbA 0,75 l, der
+        Artikel trägt aber 320 € zum Begleitumsatz bei – ein
+        hochpreisiges Komplementärprodukt.
       </li>
       <li>
-        <strong>Folgewoche profitiert nach.</strong> +173 % gegenüber
-        Vorwoche. Empfehlung: in 4 Wochen einen Reaktivierungs-Push
-        mit Begleitprodukt (Walnüsse oder Trauben) bei normalem Preis
-        testen, ob die Käufer wieder zugreifen.
+        <strong>Folgewoche profitiert nach.</strong>
+        Auch nach Aktionsende liegt der Verkauf um 37 % über der
+        Vorwoche – die Aktion hat offenbar Stammkunden angezogen, die
+        erstmal weiterkaufen. Reaktivierung in 4 Wochen prüfen.
+      </li>
+      <li class="info">
+        <strong>Vorjahr lag deutlich darunter.</strong>
+        Gegenüber der gleichen KW im Vorjahr liegt der Verkauf um
+        +390 %. Der Effekt ist also echter Aktionsantrieb, kein reiner
+        Saisoneffekt.
       </li>
       <li class="warn">
-        <strong>Margenverlust beobachten.</strong> Bei 187 verkauften
-        Stück sind 243 € weniger Marge angefallen. Mehrumsatz aus
-        Koppelkäufen (≈ 1 545 € auf den Top-10-Begleitprodukten)
-        kompensiert das deutlich, sollte aber bewusst gegenüberstellt
-        werden.
+        <strong>Aktionsrabatt im Auge behalten.</strong>
+        Bei 187 verkauften Stück wurden 243 € Bruttoumsatz gegenüber
+        Normalpreis nicht erlöst. Mehrumsatz aus Koppelkäufen sollte
+        das mehr als ausgleichen.
       </li>
       <li>
-        <strong>Vorjahr lag deutlich darunter.</strong> +358 / +390 %
-        gegenüber gleicher Kalenderwoche / gleichem Datum 2025 – kein
-        Ausreißer, sondern echter Aktions-Effekt; Saisonalität
-        (Frühjahr) erklärt die Werte nicht.
+        <strong>Aktion hebt den Bon-Wert.</strong>
+        Bons mit Aktionsartikel sind im Schnitt 18,60 € wert –
+        +50 % gegenüber Bons ohne diesen Artikel (12,40 €). Die
+        Aktion zieht höhere Warenkörbe an.
       </li>
     </ul>
   </div>

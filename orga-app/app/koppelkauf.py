@@ -506,25 +506,32 @@ def insights_generieren(analyse: dict) -> list[dict]:
                           f"Buendel-Muster.",
             })
 
-    # 2. Hochpreis-Begleiter im Top-5: niedrige Quote (<35%) aber hoher
-    #    absoluter Umsatz (top-3 in koppel-Liste nach umsatz).
+    # 2. Hochpreis-Begleiter: ein Artikel im Top-5, der NICHT Top-1 ist,
+    #    aber trotzdem viel Umsatz beisteuert obwohl seine Quote
+    #    deutlich niedriger ist als die von Top-1. Solche Artikel ziehen
+    #    erfahrungsgemaess den Bon-Wert hoch.
     if len(koppel) >= 3:
         top5 = koppel[:5]
-        nach_umsatz = sorted(top5, key=lambda x: -float(x.get('brutto_umsatz', 0) or 0))
-        kand = nach_umsatz[0]
-        kand_quote = float(kand.get('kopplungsrate') or 0)
-        kand_umsatz = float(kand.get('brutto_umsatz') or 0)
-        # Heuristik: Quote < Top-1-Quote / 2 UND Umsatz unter den Top-3 nach Umsatz.
-        if (koppel and kand_quote < float(koppel[0].get('kopplungsrate') or 0) * 0.6
-                and kand_umsatz >= 100):
-            insights.append({
-                'typ': 'info',
-                'titel': f"{kand['bezeichnung']} zieht den Bon-Wert hoch.",
-                'text':  f"Nur {kand_quote:.0f} % der Aktions-Bons enthalten "
-                          f"{kand['bezeichnung']}, der Artikel traegt aber "
-                          f"{kand_umsatz:.0f} € zum Begleitumsatz bei – ein "
-                          f"hochpreisiges Komplementaerprodukt.",
-            })
+        top1 = koppel[0]
+        # Top-1 ausschliessen (wird schon in Regel 1 gewuerdigt).
+        kandidaten = [k for k in top5
+                       if k is not top1
+                       and float(k.get('brutto_umsatz') or 0) >= 100]
+        if kandidaten:
+            kand = max(kandidaten,
+                        key=lambda x: float(x.get('brutto_umsatz') or 0))
+            kand_quote  = float(kand.get('kopplungsrate') or 0)
+            kand_umsatz = float(kand.get('brutto_umsatz') or 0)
+            top1_quote  = float(top1.get('kopplungsrate') or 0)
+            if kand_quote < top1_quote * 0.6:
+                insights.append({
+                    'typ': 'info',
+                    'titel': f"{kand['bezeichnung']} zieht den Bon-Wert hoch.",
+                    'text':  f"Nur {kand_quote:.0f} % der Aktions-Bons enthalten "
+                              f"{kand['bezeichnung']}, der Artikel traegt aber "
+                              f"{kand_umsatz:.0f} € zum Begleitumsatz bei – ein "
+                              f"hochpreisiges Komplementaerprodukt.",
+                })
 
     # 3. Nachzieheffekt: Folgewoche > Vorwoche
     vw = perioden.get('vorwoche')
