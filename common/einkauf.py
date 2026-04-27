@@ -128,6 +128,20 @@ def run_migration() -> None:
                   COMMENT='Einkauf: eingegangene Bestellbestaetigungs-Mails (Phase 2)'
             """)
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_EINKAUF_POLLER_STATUS (
+                  REC_ID          TINYINT UNSIGNED NOT NULL DEFAULT 1 PRIMARY KEY,
+                  LAST_RUN_AT     DATETIME NULL,
+                  LAST_SUCCESS_AT DATETIME NULL,
+                  GMAIL_OK        TINYINT(1) NOT NULL DEFAULT 0,
+                  LAST_ERROR      VARCHAR(500) NULL,
+                  ZYKLUS_COUNT    INT UNSIGNED NOT NULL DEFAULT 0,
+                  NEU_GEFUNDEN    INT UNSIGNED NOT NULL DEFAULT 0,
+                  HOSTNAME        VARCHAR(120) NULL,
+                  CHECK (REC_ID = 1)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Einkauf-Poller Single-Row Heartbeat'
+            """)
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS XT_EINKAUF_BESTELLPOS (
                   REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                   BEST_REC_ID       INT UNSIGNED NOT NULL,
@@ -1068,3 +1082,51 @@ def imap_verbindungstest() -> dict:
                 'msg': f'Verbindung fehlgeschlagen: {exc}'}
     finally:
         socket.setdefaulttimeout(alt_timeout)
+
+
+# ── Poller-Heartbeat (Phase 2b) ──────────────────────────────────────────────
+
+def poller_status_lesen() -> Optional[dict]:
+    """Liefert die Heartbeat-Zeile oder None (Daemon noch nie gelaufen)."""
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT * FROM XT_EINKAUF_POLLER_STATUS WHERE REC_ID = 1")
+            return cur.fetchone()
+    except Exception as exc:
+        log.warning("poller_status_lesen: %s", exc)
+        return None
+
+
+def poller_status_schreiben(*, gmail_ok: bool,
+                            last_error: Optional[str],
+                            neu_gefunden: int,
+                            hostname: Optional[str]) -> None:
+    """UPSERT der Single-Row Heartbeat. Bei Erfolg wird LAST_SUCCESS_AT
+    aktualisiert; LAST_ERROR bleibt bis zum naechsten Erfolg stehen.
+    """
+    from datetime import datetime, timezone
+    jetzt = datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("""
+                INSERT INTO XT_EINKAUF_POLLER_STATUS
+                  (REC_ID, LAST_RUN_AT, LAST_SUCCESS_AT, GMAIL_OK,
+                   LAST_ERROR, ZYKLUS_COUNT, NEU_GEFUNDEN, HOSTNAME)
+                VALUES (1, %s, %s, %s, %s, 1, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                  LAST_RUN_AT     = VALUES(LAST_RUN_AT),
+                  LAST_SUCCESS_AT = CASE WHEN VALUES(GMAIL_OK) = 1
+                                          THEN VALUES(LAST_RUN_AT)
+                                          ELSE LAST_SUCCESS_AT END,
+                  GMAIL_OK        = VALUES(GMAIL_OK),
+                  LAST_ERROR      = VALUES(LAST_ERROR),
+                  ZYKLUS_COUNT    = ZYKLUS_COUNT + 1,
+                  NEU_GEFUNDEN    = NEU_GEFUNDEN + VALUES(NEU_GEFUNDEN),
+                  HOSTNAME        = VALUES(HOSTNAME)
+            """, (jetzt, jetzt if gmail_ok else None,
+                  1 if gmail_ok else 0,
+                  (last_error or '')[:500] or None,
+                  int(neu_gefunden), hostname))
+    except Exception as exc:
+        log.warning("poller_status_schreiben: %s", exc)
