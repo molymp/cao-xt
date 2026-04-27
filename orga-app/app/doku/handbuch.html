@@ -388,6 +388,8 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <a href="#cfo-liste" class="unter">Verfügbare Berichte</a>
     <a href="#cfo-filter" class="unter">Zeitraumfilter</a>
     <a href="#cfo-export" class="unter">CSV-Export</a>
+    <a href="#cfo-koppelkauf" class="unter">Koppelkauf-Analyse</a>
+    <a href="#cfo-koppelkauf-beispiele" class="unter">↳ Beispiele</a>
     <a href="#personal" class="kapitel">Personal</a>
     <a href="#personal-cao-login" class="unter">CAO-Login verknüpfen</a>
     <a href="#personal-rfid" class="unter">RFID-Tag</a>
@@ -654,6 +656,8 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
       <tr><td>Monatsübersicht</td><td><code>/orga/berichte/monatsuebersicht</code></td><td>VK/EK je Monat + Balken-Chart (Jahresauswahl)</td></tr>
       <tr><td>Kassenbuch</td><td><code>/orga/berichte/kassenbuch</code></td><td>FiBu-Konto 1000 – Kasseneinnahmen/-ausgaben</td></tr>
       <tr><td>EC-Umsätze</td><td><code>/orga/berichte/ec-umsaetze</code></td><td>EC-Kartentransaktionen nach Zahlungsart</td></tr>
+      <tr><td>Umsatz-Heatmap</td><td><code>/orga/berichte/umsatz-heatmap</code></td><td>Ø Umsatz je Wochentag × Stunde (Sage→Terracotta-Verlauf)</td></tr>
+      <tr><td>Koppelkauf-Analyse</td><td><code>/orga/berichte/koppelkauf</code></td><td>Aktionsartikel + Begleitkäufe + Periodenvergleich + automatische Lessons</td></tr>
     </tbody>
   </table>
 
@@ -662,6 +666,61 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
 
   <h2 id="cfo-export">CSV-Export</h2>
   <p>Jeder Bericht hat einen <span class="taste">CSV exportieren</span>-Button. Die heruntergeladene Datei ist UTF-8-BOM-kodiert für direkte Öffnung in Excel (ohne Zeichensatzprobleme bei Umlauten).</p>
+
+  <h2 id="cfo-koppelkauf">Koppelkauf-Analyse</h2>
+  <p>Die Koppelkauf-Analyse beantwortet die Frage „<em>Hat sich die
+     Aktion gelohnt?</em>" für ein einzelnes Aktionsprodukt. Sie nimmt
+     den Aktionszeitraum aus den CAO-Stammdaten
+     (<code>ARTIKEL_PREIS.PT2='AP'</code>) und vergleicht ihn mit
+     <strong>vier Vergleichsfenstern</strong> – Vorwoche, Folgewoche,
+     Vorjahr (gleiche Daten), Vorjahr (gleiche KW) – und liefert pro
+     Produkt:</p>
+  <ul style="margin: 8px 0 14px 22px;">
+    <li>Eigenverkaufs-Kennzahlen (Bons, Stück, Brutto-Umsatz)</li>
+    <li>Aktionsrabatt-Volumen + Ø Bon-Wert mit-vs.-ohne Aktion</li>
+    <li>Top-15 Begleitprodukte mit Kopplungs-Quote</li>
+    <li>Periodenvergleich-Tabelle mit Delta-%</li>
+    <li><strong>Lessons Learned</strong> – regelbasierte
+        Insights, die direkt aus den Roh-Kennzahlen abgeleitet werden
+        (kein KI-Ratespiel, neun Heuristiken in
+        <code>insights_generieren()</code>)</li>
+  </ul>
+
+  <h3 id="cfo-koppelkauf-beispiele">Beispiel-Auswertungen</h3>
+  <p>Zwei realistische Mockup-Auswertungen zeigen, wie die Seite mit
+     echten Daten gerendert wird – einmal mit deutlichem
+     Aktionserfolg, einmal mit ausbleibender Wirkung. Texte und
+     Zahlen sind <em>identisch</em> zur Ausgabe der Insight-Engine
+     auf den jeweiligen Beispieldaten:</p>
+  <ul style="margin: 8px 0 14px 22px;">
+    <li>
+      <a href="/orga/beispiele/koppelkauf-mockup.html"
+         target="_blank" style="color: var(--gruen-mitte); font-weight: 700;">
+        ✓ Erfolgs-Aktion „Allgäuer Bergkäse 200 g" (+286 %) →
+      </a>
+      <div style="font-size: 13px; color: var(--text-mitte); margin-top: 2px;">
+        72 % Brot-Bündel, +50 % Bon-Wert, deutlicher Vorjahres-Uplift,
+        Folgewoche-Nachzieheffekt.
+      </div>
+    </li>
+    <li style="margin-top: 8px;">
+      <a href="/orga/beispiele/koppelkauf-mockup-flop.html"
+         target="_blank" style="color: var(--rot); font-weight: 700;">
+        ✕ Flop-Aktion „Bio-Apfelsaft 1 l" (−11 %) →
+      </a>
+      <div style="font-size: 13px; color: var(--text-mitte); margin-top: 2px;">
+        Aktion blieb hinter Vorwoche, Folgewoche-Einbruch, Rabatt
+        nicht gezündet. Bewusster Lehrfall: was die Engine bei
+        ausbleibender Wirkung sagt – und was bewusst <em>nicht</em>
+        erscheint.
+      </div>
+    </li>
+  </ul>
+  <div class="hinweis" style="margin-top: 8px;">
+    Die Mockups öffnen sich in einem neuen Tab. Sie sind statische
+    HTML-Demos aus <code>docs/mockups/</code>; die echte Auswertung
+    rechnet jede Kennzahl live aus der CAO-Datenbank.
+  </div>
 </div>
 
 <hr>
