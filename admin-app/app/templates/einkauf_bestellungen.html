@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}Einkauf – Bestellungen{% endblock %}
+
+{% block extra_style %}
+<style>
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.toolbar .filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 18px;
+  background: var(--brand-cream);
+  color: var(--brand-ink);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  user-select: none;
+}
+.toolbar .filter-pill.aktiv {
+  background: var(--brand-terracotta);
+  color: #fff;
+  border-color: var(--brand-terracotta);
+}
+
+.bestell-table td { vertical-align: middle; font-size: 14px; }
+.bestell-table .status-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.bestell-table .status-pill.neu      { background: var(--akzent-blass); color: var(--akzent-hell); }
+.bestell-table .status-pill.geparst  { background: var(--brand-sage); color: var(--gruen-dunkel); }
+.bestell-table .status-pill.in_cao   { background: var(--status-gruen); color: #fff; }
+.bestell-table .status-pill.fehler   { background: #f6d8ce; color: var(--status-rot); }
+.bestell-table .status-pill.verworfen{ background: var(--text-dim); color: #fff; }
+.bestell-table .summe-warn {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  background: #f6ecd0;
+  color: var(--status-gelb);
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--status-gelb);
+  cursor: help;
+}
+
+.detail-card {
+  margin-top: 24px;
+  background: var(--bg-karte);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--schatten);
+  max-width: 1200px;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.detail-grid .detail-zelle .lbl {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.detail-grid .detail-zelle .val {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 22px;
+  color: var(--brand-terracotta);
+}
+.detail-grid .detail-zelle .val.kleiner { font-size: 16px; }
+.detail-grid .detail-zelle .val.muted { color: var(--text-dim); font-style: italic; font-size: 14px; }
+
+.pos-table { font-size: 13px; }
+.pos-table .num { font-family: 'JetBrains Mono', monospace; text-align: right; }
+.pos-table tfoot td {
+  font-weight: 800;
+  border-top: 2px solid var(--border);
+  padding-top: 10px;
+}
+
+.muted { color: var(--text-dim); font-size: 12px; }
+.summen-banner {
+  margin: 8px 0 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-klein);
+  font-size: 13px;
+}
+.summen-banner.warn   { background: #f6ecd0; border: 1px solid var(--status-gelb); color: #4b3a12; }
+.summen-banner.ok     { background: var(--brand-sage); border: 1px solid var(--gruen-mitte); color: var(--gruen-dunkel); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">📥 Einkauf – Bestellungen</h1>
+<p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;">
+  Bestellbestaetigungen, die per Gmail-API aus dem Postfach abgerufen wurden.
+  Klick auf eine Zeile zeigt die Positionen.
+</p>
+
+<div class="toolbar">
+  <button class="btn btn-primary btn-sm" onclick="abrufen()">
+    🔄 Jetzt abrufen
+  </button>
+  <span style="margin-left:14px;color:var(--text-dim);font-size:13px;">
+    Filter:
+  </span>
+  <span class="filter-pill aktiv" data-status="" onclick="setStatus('')">Alle</span>
+  <span class="filter-pill" data-status="neu" onclick="setStatus('neu')">Neu</span>
+  <span class="filter-pill" data-status="geparst" onclick="setStatus('geparst')">Geparst</span>
+  <span class="filter-pill" data-status="in_cao" onclick="setStatus('in_cao')">In CAO</span>
+  <span class="filter-pill" data-status="fehler" onclick="setStatus('fehler')">Fehler</span>
+  <span id="abruf-info" style="margin-left:18px;color:var(--text-dim);font-size:13px;"></span>
+</div>
+
+<div class="card">
+  <table class="tbl bestell-table">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Lieferant</th>
+        <th>Bestell-Nr</th>
+        <th style="text-align:right;">Pos.</th>
+        <th style="text-align:right;">Summe (Mail)</th>
+        <th style="text-align:center;">Status</th>
+        <th>Betreff</th>
+      </tr>
+    </thead>
+    <tbody id="best-tbody">
+      <tr><td colspan="7" class="muted" style="text-align:center;padding:24px;">Lade …</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Detail-Bereich – wird beim Klick auf eine Zeile gefuellt -->
+<div id="detail-area"></div>
+
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _aktuellerStatus = '';
+let _aktuelleListe = [];
+
+function _e(id) { return document.getElementById(id); }
+function _esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _datum(s) {
+  if (!s) return '–';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return `${dd}.${mm}.${d.getFullYear()}`;
+}
+function _eur(n) {
+  if (n == null) return '–';
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency', currency: 'EUR', minimumFractionDigits: 2,
+    maximumFractionDigits: 4
+  }).format(n);
+}
+
+function setStatus(status) {
+  _aktuellerStatus = status;
+  document.querySelectorAll('.filter-pill').forEach(p => {
+    p.classList.toggle('aktiv', p.dataset.status === status);
+  });
+  laden();
+}
+
+async function laden() {
+  const url = '/api/einkauf/bestellungen' +
+              (_aktuellerStatus ? '?status=' + _aktuellerStatus : '');
+  const r = await fetch(url);
+  const d = await r.json();
+  if (!d.ok) { toast(d.msg || 'Laden fehlgeschlagen', 'err'); return; }
+  _aktuelleListe = d.eintraege || [];
+  rendernListe();
+}
+
+function rendernListe() {
+  const tb = _e('best-tbody');
+  if (_aktuelleListe.length === 0) {
+    tb.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px;">Keine Bestellungen.</td></tr>';
+    return;
+  }
+  tb.innerHTML = _aktuelleListe.map(b => `
+    <tr onclick="detailZeigen(${b.REC_ID})" style="cursor:pointer;">
+      <td>${_datum(b.EMAIL_DATUM || b.EINGANG_AT)}</td>
+      <td><b>${_esc(b.LIEF_KUERZEL)}</b> <span class="muted">${_esc(b.LIEF_BEZ)}</span></td>
+      <td>${_esc(b.BESTELL_NR || '–')}</td>
+      <td style="text-align:right;">${b.ANZ_POSITIONEN ?? '–'}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;">${_eur(b.GESAMTSUMME_NETTO)}</td>
+      <td style="text-align:center;">
+        <span class="status-pill ${b.STATUS}">${_esc(b.STATUS)}</span>
+      </td>
+      <td class="muted" style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+        ${_esc(b.BETREFF || '')}
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function detailZeigen(recId) {
+  const r = await fetch('/api/einkauf/bestellungen/' + recId);
+  const d = await r.json();
+  if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+  const e = d.eintrag;
+  const pos = e.positionen || [];
+  const summePos = pos.reduce((s, p) => s + (Number(p.ZEILEN_BETRAG) || 0), 0);
+  const summeMail = Number(e.GESAMTSUMME_NETTO) || 0;
+  const diff = summePos - summeMail;
+  const diffOk = Math.abs(diff) < 0.01;
+
+  const ar = _e('detail-area');
+  ar.innerHTML = `
+    <div class="detail-card">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px;">
+        <div>
+          <h2 style="margin:0;font-size:22px;font-family:'Fraunces',Georgia,serif;color:var(--brand-terracotta);">
+            ${_esc(e.LIEF_KUERZEL)} · Bestellung ${_esc(e.BESTELL_NR || '–')}
+          </h2>
+          <p class="muted" style="margin:4px 0 0;">
+            ${_esc(e.LIEF_BEZ)} · ${_datum(e.EMAIL_DATUM)} ·
+            Kunden-Nr ${_esc(e.KUNDEN_NR || '?')}
+          </p>
+        </div>
+        <button class="btn btn-neutral btn-sm" onclick="_e('detail-area').innerHTML=''">
+          ✕ Schließen
+        </button>
+      </div>
+
+      <div class="detail-grid">
+        <div class="detail-zelle">
+          <div class="lbl">Status</div>
+          <div class="val kleiner">
+            <span class="status-pill ${e.STATUS}">${_esc(e.STATUS)}</span>
+          </div>
+        </div>
+        <div class="detail-zelle">
+          <div class="lbl">Anzahl Positionen</div>
+          <div class="val">${pos.length}</div>
+        </div>
+        <div class="detail-zelle">
+          <div class="lbl">Summe lt. Mail-Footer</div>
+          <div class="val kleiner">${_eur(summeMail)}</div>
+        </div>
+        <div class="detail-zelle">
+          <div class="lbl">Summe Positionen</div>
+          <div class="val kleiner" style="${diffOk?'':'color:var(--status-gelb)'}">
+            ${_eur(summePos)}
+          </div>
+        </div>
+      </div>
+
+      ${diffOk ? '' : `
+        <div class="summen-banner warn">
+          ⚠ Mail-Footer-Summe weicht von der Summe der Positionen ab
+          (Differenz ${_eur(diff)}). Beim Einbuchen in CAO bitte mit dem
+          Lieferschein abgleichen, welcher Wert korrekt ist.
+        </div>
+      `}
+
+      ${e.PARSE_FEHLER ? `
+        <div class="summen-banner warn">
+          ⚠ Parse-Fehler: ${_esc(e.PARSE_FEHLER)}
+        </div>
+      ` : ''}
+
+      <h3 style="margin:18px 0 10px;font-size:15px;">Positionen</h3>
+      <table class="tbl pos-table">
+        <thead>
+          <tr>
+            <th style="text-align:right;width:50px;">#</th>
+            <th style="width:90px;">ArtNr</th>
+            <th>Bezeichnung</th>
+            <th style="text-align:right;width:80px;">Menge</th>
+            <th style="text-align:right;width:110px;">Einzel netto</th>
+            <th style="text-align:right;width:120px;">Zeilenbetrag</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pos.map(p => `
+            <tr>
+              <td class="num">${p.POS_NR}</td>
+              <td><code>${_esc(p.ARTIKEL_NR_LIEF || '')}</code></td>
+              <td>${_esc(p.BESCHREIBUNG_LIEF || '')}</td>
+              <td class="num">${Number(p.MENGE).toFixed(p.MENGE % 1 === 0 ? 0 : 3)}</td>
+              <td class="num">${_eur(p.PREIS_NETTO)}</td>
+              <td class="num">${_eur(p.ZEILEN_BETRAG)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5" style="text-align:right;">Summe Positionen</td>
+            <td class="num">${_eur(summePos)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+  ar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function abrufen() {
+  const info = _e('abruf-info');
+  info.textContent = 'Frage Gmail-API ab …';
+  let d;
+  try {
+    const r = await fetch('/api/einkauf/bestellungen/abrufen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tage: 30, max_pro_lieferant: 30 }),
+    });
+    d = await r.json();
+  } catch (e) {
+    info.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  if (!d.ok) {
+    info.textContent = '';
+    toast('Abrufen fehlgeschlagen: ' + (d.fehler || ''), 'err');
+    return;
+  }
+  const detail = (d.lieferanten || [])
+    .map(l => `${l.kuerzel}: ${l.neu} neu / ${l.gefunden} gefunden`)
+    .join(' · ');
+  info.textContent = `${d.neu} neu, ${d.gefunden} insgesamt geprueft (${detail})`;
+  toast(`${d.neu} neue Bestellung(en) übernommen.`, 'ok');
+  laden();
+}
+
+// Init
+laden();
+</script>
+{% endblock %}

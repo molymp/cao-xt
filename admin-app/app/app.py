@@ -2453,6 +2453,53 @@ def api_einkauf_gmail_test():
     return jsonify(**res), 200 if res.get('ok') else 502
 
 
+# ── Einkauf: eingegangene Bestellungen ──────────────────────────
+
+@app.route('/einkauf/bestellungen')
+@_login_required
+def einkauf_bestellungen_seite():
+    """Liste der eingegangenen Bestellbestaetigungen."""
+    return render_template('einkauf_bestellungen.html')
+
+
+@app.get('/api/einkauf/bestellungen')
+@_login_required
+def api_einkauf_bestellungen_liste():
+    status = request.args.get('status') or None
+    limit  = int(request.args.get('limit', 100))
+    return jsonify(ok=True,
+                   eintraege=_einkauf.bestellungen_liste(
+                       status=status, limit=limit))
+
+
+@app.get('/api/einkauf/bestellungen/<int:rec_id>')
+@_login_required
+def api_einkauf_bestellung_detail(rec_id):
+    e = _einkauf.bestellung_holen(rec_id)
+    if not e:
+        return jsonify(ok=False, msg='Nicht gefunden.'), 404
+    return jsonify(ok=True, eintrag=e)
+
+
+@app.post('/api/einkauf/bestellungen/abrufen')
+@_login_required
+def api_einkauf_bestellungen_abrufen():
+    """Triggert manuelles Polling. Body optional:
+       {'tage': 30, 'max_pro_lieferant': 30}.
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        tage = int(body.get('tage', 30))
+        maxp = int(body.get('max_pro_lieferant', 30))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, msg='tage/max muessen Zahlen sein'), 400
+    res = _einkauf.gmail_fetch_neue_bestellungen(
+        neuer_als_tage=tage,
+        max_pro_lieferant=maxp,
+        ma_id=session.get('ma_id'))
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 # ── App starten ──────────────────────────────────────────────────
 
 if __name__ == '__main__':
