@@ -2339,6 +2339,113 @@ def api_einkauf_imap_test():
     return jsonify(**res), status
 
 
+# ── Einkauf: Gmail-API / OAuth 2.0 ──────────────────────────────
+
+def _gmail_redirect_uri() -> str:
+    """Baut die OAuth-Callback-URL aus der aktuellen Request-URL.
+
+    Wichtig: dieser Pfad muss exakt in der Google-Cloud-Console als
+    Authorized-Redirect-URI hinterlegt sein. Das UI zeigt dem User die
+    aktuell errechnete URL an, damit er sie kopieren kann.
+    """
+    base = request.host_url.rstrip('/')
+    return f'{base}/einkauf/oauth/callback'
+
+
+@app.get('/api/einkauf/gmail')
+@_login_required
+def api_einkauf_gmail_lesen():
+    cfg = _einkauf.gmail_konfig()
+    cfg['redirect_uri'] = _gmail_redirect_uri()
+    return jsonify(ok=True, **cfg)
+
+
+@app.post('/api/einkauf/gmail')
+@_login_required
+def api_einkauf_gmail_speichern():
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    try:
+        poll_min = body.get('poll_min')
+        if poll_min not in (None, ''):
+            poll_min = int(poll_min)
+        else:
+            poll_min = None
+    except (TypeError, ValueError):
+        return jsonify(ok=False,
+                       msg='poll_min muss eine Zahl sein'), 400
+    cfg = _einkauf.gmail_konfig_speichern(
+        client_id=body.get('client_id'),
+        client_secret=body.get('client_secret'),
+        user_email=body.get('user_email'),
+        poll_min=poll_min,
+        ma_id=ma_id,
+    )
+    cfg['redirect_uri'] = _gmail_redirect_uri()
+    return jsonify(ok=True, **cfg)
+
+
+@app.get('/einkauf/oauth/start')
+@_login_required
+def einkauf_oauth_start():
+    """Startet den OAuth-Consent-Flow (Browser-Redirect zu Google)."""
+    import secrets as _secrets
+    state = _secrets.token_urlsafe(32)
+    session['einkauf_oauth_state'] = state
+    try:
+        auth_url, _ = _einkauf.gmail_oauth_url(_gmail_redirect_uri(),
+                                               state=state)
+    except (ValueError, RuntimeError) as exc:
+        return redirect(url_for('einkauf_lieferanten_seite')
+                        + f'?oauth_error={str(exc)[:120]}')
+    return redirect(auth_url)
+
+
+@app.get('/einkauf/oauth/callback')
+@_login_required
+def einkauf_oauth_callback():
+    """Empfaengt den Authorization-Code und tauscht ihn gegen einen
+    Refresh-Token. Bei Erfolg/Fehler Redirect zurueck auf die Lieferanten-
+    Seite mit Status-Query.
+    """
+    code  = request.args.get('code', '')
+    state = request.args.get('state', '')
+    err   = request.args.get('error', '')
+    expected_state = session.pop('einkauf_oauth_state', '')
+
+    if err:
+        return redirect(url_for('einkauf_lieferanten_seite')
+                        + f'?oauth_error={err}')
+    if not code:
+        return redirect(url_for('einkauf_lieferanten_seite')
+                        + '?oauth_error=Kein+Code+empfangen')
+    if not state or state != expected_state:
+        return redirect(url_for('einkauf_lieferanten_seite')
+                        + '?oauth_error=State-Mismatch')
+
+    res = _einkauf.gmail_oauth_token_speichern(
+        code, _gmail_redirect_uri(), ma_id=session.get('ma_id'))
+    if not res.get('ok'):
+        return redirect(url_for('einkauf_lieferanten_seite')
+                        + f'?oauth_error={res.get("msg", "")[:120]}')
+    return redirect(url_for('einkauf_lieferanten_seite')
+                    + f'?oauth_ok=1&email={res.get("email", "")}')
+
+
+@app.post('/api/einkauf/gmail/disconnect')
+@_login_required
+def api_einkauf_gmail_disconnect():
+    return jsonify(**_einkauf.gmail_oauth_disconnect(
+        ma_id=session.get('ma_id')))
+
+
+@app.post('/api/einkauf/gmail/test')
+@_login_required
+def api_einkauf_gmail_test():
+    res = _einkauf.gmail_verbindungstest()
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 # ── App starten ──────────────────────────────────────────────────
 
 if __name__ == '__main__':

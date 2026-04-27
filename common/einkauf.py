@@ -1,18 +1,23 @@
 """
-CAO-XT – Einkauf: Lieferanten-Registry + IMAP-Zugang
+CAO-XT – Einkauf: Lieferanten-Registry + Postfach-Zugang
 
 Phase 1 des Einkaufsprozesses (siehe DECISIONS / Auto-Memory):
   * Lieferanten-Stammdaten in ``XT_EINKAUF_LIEFERANT``
     (Erkennungsmuster fuer eingehende Bestellbestaetigungs-Mails,
     optionale Web-Login-Daten fuer Stammdaten-Anreicherung)
-  * IMAP-Konfiguration zentral in ``DORFKERN_KONFIG`` (Kategorie EINKAUF)
-  * Verbindungstest fuer IMAP (Login, INBOX zaehlen)
+  * Postfach-Zugang zentral in ``DORFKERN_KONFIG`` (Kategorie EINKAUF):
+      - Gmail-API ueber OAuth 2.0 (Refresh-Token), aktueller Default
+        fuer das Habacher Workspace-Postfach
+        ``bestellung@habacher-dorfladen.de``.
+      - IMAP+App-Passwort (Legacy) bleibt im Code fuer Nicht-Gmail-
+        Provider und alte Setups; im UI aktuell ausgeblendet.
+  * Verbindungstest fuer beide Pfade (Gmail-API: messages.list,
+    IMAP: Login + Folder-Select).
 
 Spaetere Phasen (Email-Polling, CAO-Sync, Bestell-Erstellung) bauen auf
-diesem Modul auf. Web-Passwort und IMAP-Passwort werden als
-``TYP='SECRET'`` in ``DORFKERN_KONFIG`` bzw. einem separaten
-Schluessel pro Lieferant abgelegt – Klartext bis Verschluesselungs-Roll-out
-(siehe konfig.py-Hinweis).
+diesem Modul auf. Web-Passwort, IMAP-Passwort, OAuth-Refresh-Token und
+OAuth-Client-Secret werden als ``TYP='SECRET'`` in ``DORFKERN_KONFIG``
+abgelegt – Klartext bis Verschluesselungs-Roll-out (siehe konfig.py).
 
 CAO-Tabellen werden hier NICHT angefasst – die Einbindung des Lieferanten
 in ``ADRESSEN`` erfolgt erst, wenn der Anwender im Admin-UI explizit
@@ -29,6 +34,11 @@ from common.db import get_db, get_db_transaction
 from common import konfig as _konfig
 
 log = logging.getLogger(__name__)
+
+# Gmail-API + OAuth-Imports werden lazy gemacht – das Modul soll auch
+# auf einem System hochkommen, auf dem die google-* Bibliotheken (noch)
+# fehlen. Funktionen, die diese brauchen, faellen mit klarer Meldung.
+GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 
 # ── Konfig-Schluessel (DORFKERN_KONFIG, Kategorie EINKAUF) ───────────────────
@@ -360,6 +370,298 @@ def imap_konfig_speichern(host: Optional[str] = None,
                     beschreibung='Poll-Intervall (Minuten)', ma_id=ma_id)
     return imap_konfig()
 
+
+# ── Gmail-API / OAuth 2.0 ────────────────────────────────────────────────────
+#
+# Workspace-Konten unterstuetzen seit 2025 keinen reinen
+# Username/Passwort-IMAP-Login mehr; App-Passwoerter sind ggf. vom
+# Workspace-Admin ueberhaupt nicht zugelassen. Stattdessen sprechen wir
+# direkt die Gmail-API ueber OAuth 2.0 an.
+#
+# Setup einmalig (User-Aufgabe):
+#   1. Google Cloud Console: Projekt anlegen
+#   2. APIs & Services → Library → "Gmail API" aktivieren
+#   3. APIs & Services → OAuth consent screen → Internal (Workspace) →
+#      App-Name + Support-Mail eintragen, Scope ``gmail.readonly`` adden
+#   4. APIs & Services → Credentials → "Create Credentials" →
+#      "OAuth client ID" → Application type "Web application" →
+#      Authorized redirect URI eintragen (wird im UI angezeigt)
+#   5. Client-ID + Client-Secret im Admin-UI eintragen
+#   6. "Mit Google verbinden" klicken → Consent → Refresh-Token wird
+#      in DORFKERN_KONFIG abgelegt.
+
+KEY_GMAIL_CLIENT_ID     = 'einkauf.gmail.client_id'
+KEY_GMAIL_CLIENT_SECRET = 'einkauf.gmail.client_secret'   # SECRET
+KEY_GMAIL_REFRESH_TOKEN = 'einkauf.gmail.refresh_token'   # SECRET
+KEY_GMAIL_USER_EMAIL    = 'einkauf.gmail.user_email'
+KEY_GMAIL_POLL_MIN      = 'einkauf.gmail.poll_min'
+
+DEFAULT_GMAIL_POLL_MIN = 5
+
+GMAIL_TOKEN_URI = 'https://oauth2.googleapis.com/token'
+GMAIL_AUTH_URI  = 'https://accounts.google.com/o/oauth2/v2/auth'
+
+
+def gmail_konfig() -> dict[str, Any]:
+    """Liefert die Gmail-Konfiguration. Geheimnisse werden NICHT
+    zurueckgegeben – nur Boolean-Flags ``client_secret_gesetzt`` /
+    ``refresh_token_gesetzt`` / ``verbunden``."""
+    return {
+        'client_id':                _konfig.get(KEY_GMAIL_CLIENT_ID, '') or '',
+        'user_email':               _konfig.get(KEY_GMAIL_USER_EMAIL, '') or '',
+        'poll_min':                 int(_konfig.get(KEY_GMAIL_POLL_MIN,
+                                                    DEFAULT_GMAIL_POLL_MIN)
+                                         or DEFAULT_GMAIL_POLL_MIN),
+        'client_secret_gesetzt':    bool(_konfig.get(KEY_GMAIL_CLIENT_SECRET)),
+        'refresh_token_gesetzt':    bool(_konfig.get(KEY_GMAIL_REFRESH_TOKEN)),
+        'verbunden':                bool(_konfig.get(KEY_GMAIL_REFRESH_TOKEN)
+                                          and _konfig.get(KEY_GMAIL_CLIENT_ID)
+                                          and _konfig.get(KEY_GMAIL_CLIENT_SECRET)),
+        'scopes':                   GMAIL_SCOPES,
+    }
+
+
+def gmail_konfig_speichern(client_id: Optional[str] = None,
+                           client_secret: Optional[str] = None,
+                           user_email: Optional[str] = None,
+                           poll_min: Optional[int] = None,
+                           ma_id: Optional[int] = None) -> dict:
+    """Speichert die uebergebenen Felder. ``None`` = nicht aendern.
+    ``client_secret=''`` (leerer String) entfernt das Secret."""
+    if client_id is not None:
+        _konfig.set(KEY_GMAIL_CLIENT_ID, client_id.strip(), typ='STRING',
+                    kategorie='EINKAUF',
+                    beschreibung='Gmail-API OAuth-Client-ID', ma_id=ma_id)
+    if client_secret is not None:
+        if client_secret == '':
+            try:
+                with get_db_transaction() as cur:
+                    cur.execute(
+                        "DELETE FROM DORFKERN_KONFIG WHERE SCHLUESSEL = %s",
+                        (KEY_GMAIL_CLIENT_SECRET,))
+                _konfig.invalidate(KEY_GMAIL_CLIENT_SECRET)
+            except Exception as exc:
+                log.warning("gmail_konfig_speichern: secret-DELETE: %s", exc)
+        else:
+            _konfig.set(KEY_GMAIL_CLIENT_SECRET, client_secret,
+                        typ='SECRET', kategorie='EINKAUF',
+                        beschreibung='Gmail-API OAuth-Client-Secret',
+                        ma_id=ma_id)
+    if user_email is not None:
+        _konfig.set(KEY_GMAIL_USER_EMAIL, user_email.strip(), typ='STRING',
+                    kategorie='EINKAUF',
+                    beschreibung='Gmail-Postfach (zu lesendes Konto)',
+                    ma_id=ma_id)
+    if poll_min is not None:
+        _konfig.set(KEY_GMAIL_POLL_MIN, int(poll_min), typ='INT',
+                    kategorie='EINKAUF',
+                    beschreibung='Gmail-Poll-Intervall (Minuten)',
+                    ma_id=ma_id)
+    return gmail_konfig()
+
+
+def gmail_oauth_url(redirect_uri: str, state: str = '') -> tuple[str, str]:
+    """Baut die Google-Auth-URL. Der Browser wird auf diese URL
+    geleitet; Google leitet nach Consent zurueck zu ``redirect_uri``
+    mit einem ``code``-Query-Parameter, den ``gmail_oauth_token_speichern``
+    in ein Refresh-Token tauscht.
+
+    Returns:
+        (auth_url, state) – ``state`` ist ein CSRF-Token, das die
+        Callback-Route gegen den Session-State pruefen muss.
+    """
+    try:
+        from google_auth_oauthlib.flow import Flow
+    except ImportError as exc:
+        raise RuntimeError(
+            'google-auth-oauthlib nicht installiert: '
+            'pip install -r admin-app/app/requirements.txt'
+        ) from exc
+
+    cfg = gmail_konfig()
+    client_id     = cfg.get('client_id') or ''
+    client_secret = _konfig.get(KEY_GMAIL_CLIENT_SECRET) or ''
+    if not (client_id and client_secret):
+        raise ValueError('Client-ID / Client-Secret fehlen.')
+
+    flow = Flow.from_client_config(
+        {
+            'web': {
+                'client_id':     client_id,
+                'client_secret': client_secret,
+                'auth_uri':      GMAIL_AUTH_URI,
+                'token_uri':     GMAIL_TOKEN_URI,
+                'redirect_uris': [redirect_uri],
+            }
+        },
+        scopes=GMAIL_SCOPES,
+        redirect_uri=redirect_uri,
+    )
+    auth_url, returned_state = flow.authorization_url(
+        # ``offline`` plus ``prompt=consent`` erzwingt einen
+        # Refresh-Token, auch wenn der User vorher schon zugestimmt hatte
+        # (Google liefert sonst nur Access-Tokens).
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='consent',
+        state=state or None,
+    )
+    return auth_url, returned_state
+
+
+def gmail_oauth_token_speichern(code: str, redirect_uri: str,
+                                ma_id: Optional[int] = None) -> dict:
+    """Tauscht den Authorization-Code in einen Refresh-Token und legt
+    ihn in DORFKERN_KONFIG ab.
+
+    Returns: ``{'ok': bool, 'msg': str, 'email': str|None}``.
+    """
+    try:
+        from google_auth_oauthlib.flow import Flow
+    except ImportError as exc:
+        return {'ok': False, 'msg': f'google-auth-oauthlib fehlt: {exc}'}
+
+    cfg = gmail_konfig()
+    client_id     = cfg.get('client_id') or ''
+    client_secret = _konfig.get(KEY_GMAIL_CLIENT_SECRET) or ''
+    if not (client_id and client_secret):
+        return {'ok': False, 'msg': 'Client-ID/Secret nicht gesetzt.'}
+
+    try:
+        flow = Flow.from_client_config(
+            {
+                'web': {
+                    'client_id':     client_id,
+                    'client_secret': client_secret,
+                    'auth_uri':      GMAIL_AUTH_URI,
+                    'token_uri':     GMAIL_TOKEN_URI,
+                    'redirect_uris': [redirect_uri],
+                }
+            },
+            scopes=GMAIL_SCOPES,
+            redirect_uri=redirect_uri,
+        )
+        flow.fetch_token(code=code)
+    except Exception as exc:
+        log.warning("gmail_oauth_token_speichern: fetch_token: %s", exc)
+        return {'ok': False, 'msg': f'Token-Tausch fehlgeschlagen: {exc}'}
+
+    creds = flow.credentials
+    if not creds.refresh_token:
+        return {'ok': False,
+                'msg': 'Kein Refresh-Token zurueckgekommen. '
+                       'Tipp: in Google den Zugriff zuerst entziehen, '
+                       'dann erneut verbinden.'}
+
+    _konfig.set(KEY_GMAIL_REFRESH_TOKEN, creds.refresh_token,
+                typ='SECRET', kategorie='EINKAUF',
+                beschreibung='Gmail-API OAuth Refresh-Token',
+                ma_id=ma_id)
+
+    # Profil-Mail abfragen, damit das UI bestaetigt, welches Postfach
+    # verbunden wurde.
+    email = None
+    try:
+        from googleapiclient.discovery import build
+        service = build('gmail', 'v1', credentials=creds,
+                        cache_discovery=False)
+        prof = service.users().getProfile(userId='me').execute()
+        email = prof.get('emailAddress')
+        if email and not _konfig.get(KEY_GMAIL_USER_EMAIL):
+            _konfig.set(KEY_GMAIL_USER_EMAIL, email, typ='STRING',
+                        kategorie='EINKAUF',
+                        beschreibung='Gmail-Postfach (zu lesendes Konto)',
+                        ma_id=ma_id)
+    except Exception as exc:
+        log.warning("Gmail-Profil-Abfrage nach Verbindung: %s", exc)
+
+    return {'ok': True, 'msg': 'Verbindung gespeichert.', 'email': email}
+
+
+def gmail_oauth_disconnect(ma_id: Optional[int] = None) -> dict:
+    """Loescht den Refresh-Token. Versucht ausserdem, den Token bei
+    Google zu widerrufen (best-effort)."""
+    refresh = _konfig.get(KEY_GMAIL_REFRESH_TOKEN)
+    if refresh:
+        try:
+            import urllib.request
+            import urllib.parse
+            urllib.request.urlopen(
+                'https://oauth2.googleapis.com/revoke',
+                data=urllib.parse.urlencode({'token': refresh}).encode(),
+                timeout=5,
+            )
+        except Exception as exc:
+            log.warning("Gmail-Token-Revoke best-effort fehlgeschlagen: %s",
+                        exc)
+    try:
+        with get_db_transaction() as cur:
+            cur.execute(
+                "DELETE FROM DORFKERN_KONFIG WHERE SCHLUESSEL = %s",
+                (KEY_GMAIL_REFRESH_TOKEN,))
+        _konfig.invalidate(KEY_GMAIL_REFRESH_TOKEN)
+    except Exception as exc:
+        return {'ok': False, 'msg': f'DB-Fehler: {exc}'}
+    return {'ok': True, 'msg': 'Verbindung getrennt.'}
+
+
+def gmail_credentials():
+    """Baut frische ``google.oauth2.credentials.Credentials`` aus dem
+    gespeicherten Refresh-Token (fuer den Daemon und Verbindungstests).
+    Wirft ``RuntimeError`` wenn etwas fehlt.
+    """
+    try:
+        from google.oauth2.credentials import Credentials
+    except ImportError as exc:
+        raise RuntimeError('google-auth nicht installiert.') from exc
+
+    cfg = gmail_konfig()
+    client_id     = cfg.get('client_id') or ''
+    client_secret = _konfig.get(KEY_GMAIL_CLIENT_SECRET) or ''
+    refresh       = _konfig.get(KEY_GMAIL_REFRESH_TOKEN) or ''
+    if not (client_id and client_secret and refresh):
+        raise RuntimeError('Gmail-OAuth nicht vollstaendig konfiguriert.')
+
+    return Credentials(
+        token=None,
+        refresh_token=refresh,
+        token_uri=GMAIL_TOKEN_URI,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=GMAIL_SCOPES,
+    )
+
+
+def gmail_verbindungstest() -> dict:
+    """Macht einen ``users.getProfile``-Call und liefert
+    Profil-Mail + Anzahl ungelesener Mails im INBOX."""
+    try:
+        creds = gmail_credentials()
+    except Exception as exc:
+        return {'ok': False, 'anzahl': None,
+                'msg': f'Konfiguration unvollstaendig: {exc}'}
+    try:
+        from googleapiclient.discovery import build
+        service = build('gmail', 'v1', credentials=creds,
+                        cache_discovery=False)
+        prof = service.users().getProfile(userId='me').execute()
+        # Ungelesene Mails im INBOX zaehlen (cheaper als full list)
+        labels = service.users().labels().get(
+            userId='me', id='INBOX').execute()
+        return {
+            'ok':     True,
+            'anzahl': labels.get('messagesUnread'),
+            'msg':    f'Verbunden mit {prof.get("emailAddress")} · '
+                      f'{labels.get("messagesTotal", "?")} Mails gesamt, '
+                      f'{labels.get("messagesUnread", 0)} ungelesen.',
+            'email':  prof.get('emailAddress'),
+        }
+    except Exception as exc:
+        return {'ok': False, 'anzahl': None,
+                'msg': f'Gmail-API-Fehler: {exc}'}
+
+
+# ── IMAP (Legacy-Pfad – aktuell nicht im UI) ────────────────────────────────
 
 def imap_verbindungstest() -> dict:
     """Versucht ein IMAP-Login mit der gespeicherten Konfiguration und
