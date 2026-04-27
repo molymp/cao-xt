@@ -225,11 +225,28 @@ def _aktivierung_initialisieren():
         log.warning("Aktivierung-Seed fehlgeschlagen: %s", exc)
 
 
+def _einkauf_initialisieren():
+    """Legt XT_EINKAUF_LIEFERANT an und saet UTZ als Default (Phase 1)."""
+    try:
+        from common import einkauf as _ek
+    except Exception as exc:
+        log.warning("Einkauf-Init: Modul-Import fehlgeschlagen: %s", exc)
+        return
+    _ek.run_migration()
+    try:
+        n = _ek.seed_defaults()
+        if n:
+            log.info("XT_EINKAUF_LIEFERANT: %d Default-Eintraege angelegt.", n)
+    except Exception as exc:
+        log.warning("Einkauf-Seed fehlgeschlagen: %s", exc)
+
+
 _migrationen_ausfuehren()
 _dorfkern_konfig_initialisieren()
 _terminal_registry_initialisieren()
 _permission_initialisieren()
 _aktivierung_initialisieren()
+_einkauf_initialisieren()
 
 # RFID-Tabelle (Mitarbeiter alternativ ueber Alarm-RFID-Tag identifizieren)
 try:
@@ -2143,6 +2160,141 @@ def api_dorfkern_aktivierungen_upsert(app_name):
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
     return jsonify(ok=True, msg='Aktivierung gespeichert.')
+
+
+# ── Einkauf: Lieferanten-Registry + IMAP (Phase 1) ───────────────
+
+from common import einkauf as _einkauf  # noqa: E402
+
+
+@app.route('/einkauf/lieferanten')
+@_login_required
+def einkauf_lieferanten_seite():
+    """Verwaltung Einkauf-Lieferanten + IMAP-Zugang."""
+    return render_template('einkauf_lieferanten.html')
+
+
+@app.get('/api/einkauf/lieferanten')
+@_login_required
+def api_einkauf_lieferanten_liste():
+    eintraege = _einkauf.liste()
+    # Pro Eintrag das "web_password_gesetzt"-Flag mitliefern, damit das
+    # UI eine Plomben-Markierung zeigen kann ohne das Passwort zu lesen.
+    for e in eintraege:
+        e['WEB_PASSWORD_GESETZT'] = _einkauf.web_password_gesetzt(
+            e['KUERZEL'])
+    return jsonify(ok=True, eintraege=eintraege)
+
+
+@app.post('/api/einkauf/lieferanten')
+@_login_required
+def api_einkauf_lieferanten_anlegen():
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    try:
+        rec_id = _einkauf.anlegen(body, ma_id=ma_id)
+    except ValueError as exc:
+        return jsonify(ok=False, msg=str(exc)), 400
+    except Exception as exc:
+        log.exception('einkauf.anlegen fehlgeschlagen')
+        msg = str(exc)
+        # Wahrscheinlichster Fall: Duplicate-Key auf KUERZEL → 409.
+        if 'Duplicate' in msg or 'uq_kuerzel' in msg:
+            return jsonify(ok=False,
+                           msg=f'Kuerzel ist bereits vergeben.'), 409
+        return jsonify(ok=False, msg=msg), 500
+    # Web-Passwort optional gleich mit anlegen
+    pw = body.get('WEB_PASSWORD')
+    if pw:
+        kuerzel = (body.get('KUERZEL') or '').strip().upper()
+        _einkauf.web_password_setzen(kuerzel, pw, ma_id=ma_id)
+    return jsonify(ok=True, rec_id=rec_id)
+
+
+@app.put('/api/einkauf/lieferanten/<int:rec_id>')
+@_login_required
+def api_einkauf_lieferanten_aktualisieren(rec_id):
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    eintrag = _einkauf.holen(rec_id)
+    if not eintrag:
+        return jsonify(ok=False, msg='Lieferant nicht gefunden.'), 404
+    try:
+        _einkauf.aktualisieren(rec_id, body, ma_id=ma_id)
+    except Exception as exc:
+        log.exception('einkauf.aktualisieren fehlgeschlagen')
+        return jsonify(ok=False, msg=str(exc)), 500
+    # Optional: Web-Passwort mit-aktualisieren (None = unveraendert,
+    # '' = Passwort entfernen, sonst neu setzen).
+    if 'WEB_PASSWORD' in body:
+        pw = body.get('WEB_PASSWORD')
+        if pw is not None:
+            _einkauf.web_password_setzen(eintrag['KUERZEL'], pw,
+                                         ma_id=ma_id)
+    return jsonify(ok=True)
+
+
+@app.delete('/api/einkauf/lieferanten/<int:rec_id>')
+@_login_required
+def api_einkauf_lieferanten_loeschen(rec_id):
+    eintrag = _einkauf.holen(rec_id)
+    if not eintrag:
+        return jsonify(ok=False, msg='Lieferant nicht gefunden.'), 404
+    try:
+        _einkauf.loeschen(rec_id)
+        # Web-Passwort gleich mit aufraeumen
+        _einkauf.web_password_setzen(eintrag['KUERZEL'], '')
+    except Exception as exc:
+        log.exception('einkauf.loeschen fehlgeschlagen')
+        return jsonify(ok=False, msg=str(exc)), 500
+    return jsonify(ok=True)
+
+
+@app.get('/api/einkauf/imap')
+@_login_required
+def api_einkauf_imap_lesen():
+    return jsonify(ok=True, **_einkauf.imap_konfig())
+
+
+@app.post('/api/einkauf/imap')
+@_login_required
+def api_einkauf_imap_speichern():
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    try:
+        port = body.get('port')
+        if port is not None and port != '':
+            port = int(port)
+        else:
+            port = None
+        poll_min = body.get('poll_min')
+        if poll_min is not None and poll_min != '':
+            poll_min = int(poll_min)
+        else:
+            poll_min = None
+    except (TypeError, ValueError):
+        return jsonify(ok=False,
+                       msg='port/poll_min muessen Zahlen sein'), 400
+    cfg = _einkauf.imap_konfig_speichern(
+        host=body.get('host'),
+        port=port,
+        user=body.get('user'),
+        password=body.get('password'),  # None = unveraendert
+        use_ssl=body.get('use_ssl'),
+        folder=body.get('folder'),
+        poll_min=poll_min,
+        ma_id=ma_id,
+    )
+    return jsonify(ok=True, **cfg)
+
+
+@app.post('/api/einkauf/imap/test')
+@_login_required
+def api_einkauf_imap_test():
+    """Versucht IMAP-Login mit der gespeicherten Konfiguration."""
+    res = _einkauf.imap_verbindungstest()
+    status = 200 if res.get('ok') else 502
+    return jsonify(**res), status
 
 
 # ── App starten ──────────────────────────────────────────────────

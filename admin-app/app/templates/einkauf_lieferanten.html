@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+{% block title %}Einkauf – Lieferanten{% endblock %}
+
+{% block extra_style %}
+<style>
+.einkauf-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  max-width: 1100px;
+}
+@media (min-width: 1100px) {
+  .einkauf-grid { grid-template-columns: 2fr 1fr; }
+}
+
+.lief-table { font-size: 14px; }
+.lief-table td { vertical-align: middle; }
+.lief-table .ke-zelle code {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-dunkel);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.lief-table .pwicon {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.lief-table .pwicon.ja  { background: var(--brand-sage); color: var(--gruen-dunkel); }
+.lief-table .pwicon.nein { background: var(--brand-cream); color: var(--text-dim); border: 1px dashed var(--border); }
+
+.lief-table .aktiv-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lief-table .aktiv-pill.ja  { background: var(--status-gruen); color: #fff; }
+.lief-table .aktiv-pill.nein { background: var(--text-dim); color: #fff; }
+
+.row-aktion {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.imap-card .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.imap-card .form-row.einzeln { grid-template-columns: 1fr; }
+.imap-card .test-area {
+  background: var(--bg-dunkel);
+  border-radius: var(--radius-klein);
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-top: 12px;
+  min-height: 38px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--border);
+}
+.imap-card .test-area.ok  { border-color: var(--status-gruen); }
+.imap-card .test-area.err { border-color: var(--status-rot); }
+
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+.modal-bg.show { display: flex; }
+.modal-card {
+  background: var(--bg-karte);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 600px;
+  width: 95%;
+  box-shadow: var(--schatten-stark);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-card h2 {
+  margin: 0 0 16px;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 22px;
+  color: var(--brand-terracotta);
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.muted { color: var(--text-dim); font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">🚛 Einkauf – Lieferanten</h1>
+<p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;">
+  Lieferanten, deren Bestellbestaetigungen automatisch aus dem
+  Postfach <code id="hint-postfach">…</code> erkannt und nach CAO
+  uebernommen werden sollen. Daten- und Stammartikel-Anreicherung
+  (Barcode, Bild, EK-Preis) erfolgt optional ueber den Web-Login
+  des Lieferanten.
+</p>
+
+<div class="einkauf-grid">
+
+  <!-- Lieferanten-Tabelle -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="margin:0;font-size:16px;">Lieferanten</h3>
+      <button class="btn btn-primary btn-sm" onclick="lieferantNeu()">
+        ➕ Neuer Lieferant
+      </button>
+    </div>
+    <table class="tbl lief-table">
+      <thead>
+        <tr>
+          <th>Kürzel</th>
+          <th>Bezeichnung</th>
+          <th>Email-Erkennung</th>
+          <th style="text-align:center;">Web-PW</th>
+          <th style="text-align:center;">Aktiv</th>
+          <th style="text-align:right;">Aktion</th>
+        </tr>
+      </thead>
+      <tbody id="lief-tbody">
+        <tr><td colspan="6" class="muted" style="text-align:center;padding:24px;">Lade …</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- IMAP-Konfiguration -->
+  <div class="card imap-card">
+    <h3 style="margin:0 0 12px;font-size:16px;">📬 IMAP-Postfach</h3>
+    <p class="muted" style="margin-bottom:14px;">
+      Konto fuer eingehende Bestellbestaetigungen. Bei Gmail
+      App-Passwort verwenden (2FA-aktiv im Google-Konto).
+    </p>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Host</label>
+        <input class="form-control" id="imap-host" placeholder="imap.gmail.com">
+      </div>
+      <div class="form-group">
+        <label>Port</label>
+        <input class="form-control" id="imap-port" type="number" min="1" max="65535">
+      </div>
+    </div>
+    <div class="form-row einzeln">
+      <div class="form-group">
+        <label>Benutzer (E-Mail)</label>
+        <input class="form-control" id="imap-user" placeholder="bestellung@habacher-dorfladen.de">
+      </div>
+    </div>
+    <div class="form-row einzeln">
+      <div class="form-group">
+        <label>Passwort
+          <span class="muted" id="imap-pw-status" style="font-weight:400;"></span>
+        </label>
+        <input class="form-control" id="imap-pw" type="password"
+               placeholder="(unveraendert lassen wenn schon gesetzt)" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Ordner</label>
+        <input class="form-control" id="imap-folder" placeholder="INBOX">
+      </div>
+      <div class="form-group">
+        <label>Poll-Intervall (Min.)</label>
+        <input class="form-control" id="imap-poll" type="number" min="1" max="1440">
+      </div>
+    </div>
+    <div class="form-row einzeln">
+      <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="imap-ssl" style="width:18px;height:18px;">
+        <label for="imap-ssl" style="margin:0;text-transform:none;letter-spacing:0;">
+          SSL/TLS verwenden (empfohlen)
+        </label>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="imapSpeichern()">💾 Speichern</button>
+      <button class="btn btn-neutral btn-sm" onclick="imapTest()">🔌 Verbindung testen</button>
+    </div>
+    <div id="imap-test-out" class="test-area" style="display:none;"></div>
+  </div>
+
+</div>
+
+<!-- Edit-Modal -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal-card">
+    <h2 id="modal-title">Lieferant</h2>
+    <input type="hidden" id="ed-rec-id">
+    <div class="form-group">
+      <label>Kürzel <span style="color:var(--status-rot);">*</span></label>
+      <input class="form-control" id="ed-kuerzel" maxlength="20"
+             placeholder="UTZ" style="text-transform:uppercase;">
+      <p class="muted" style="margin-top:4px;">Kurzer Code (max. 20 Zeichen). Wird intern und in Konfig-Schluesseln verwendet.</p>
+    </div>
+    <div class="form-group">
+      <label>Bezeichnung <span style="color:var(--status-rot);">*</span></label>
+      <input class="form-control" id="ed-bez" maxlength="120">
+    </div>
+    <div class="form-group">
+      <label>CAO-Lieferant (Adressen-ID)</label>
+      <input class="form-control" id="ed-caoid" type="number" min="1"
+             placeholder="leer = noch nicht zugeordnet">
+      <p class="muted" style="margin-top:4px;">Verknuepft mit ADRESSEN.REC_ID. Wird beim ersten Bestellabgleich nachgepflegt.</p>
+    </div>
+
+    <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-top:12px;">
+      <legend class="muted" style="padding:0 6px;">Email-Erkennung</legend>
+      <div class="form-group">
+        <label>Absender enthält</label>
+        <input class="form-control" id="ed-from" placeholder="z.B. webportal@utz24.online">
+      </div>
+      <div class="form-group">
+        <label>Betreff enthält</label>
+        <input class="form-control" id="ed-subj" placeholder="z.B. Ihre Bestellung (UTZ Lebensmittel)">
+      </div>
+      <div class="form-group">
+        <label>Parser-Key</label>
+        <input class="form-control" id="ed-parser" placeholder="utz_v1">
+        <p class="muted" style="margin-top:4px;">Bezeichner des Email-Parsers (Phase 3). Aktuell nur dokumentiert.</p>
+      </div>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-top:12px;">
+      <legend class="muted" style="padding:0 6px;">Web-Login (optional)</legend>
+      <div class="form-group">
+        <label>Login-URL</label>
+        <input class="form-control" id="ed-weburl" placeholder="https://utz24.online/">
+      </div>
+      <div class="form-group">
+        <label>Benutzer</label>
+        <input class="form-control" id="ed-webuser">
+      </div>
+      <div class="form-group">
+        <label>Passwort
+          <span class="muted" id="ed-pw-status" style="font-weight:400;"></span>
+        </label>
+        <input class="form-control" id="ed-webpw" type="password"
+               placeholder="leer lassen = unveraendert" autocomplete="new-password">
+      </div>
+    </fieldset>
+
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="ed-aktiv" style="width:18px;height:18px;" checked>
+      <label for="ed-aktiv" style="margin:0;text-transform:none;letter-spacing:0;">
+        Aktiv (eingehende Mails dieses Lieferanten verarbeiten)
+      </label>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-neutral" onclick="modalSchliessen()">Abbrechen</button>
+      <button class="btn btn-danger" id="btn-loeschen" onclick="lieferantLoeschen()" style="display:none;margin-right:auto;">
+        🗑️ Löschen
+      </button>
+      <button class="btn btn-primary" onclick="lieferantSpeichern()">💾 Speichern</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let _eintraege = [];
+
+function _e(id) { return document.getElementById(id); }
+function _esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Lieferanten ────────────────────────────────────────────────
+async function lieferantenLaden() {
+  const r = await fetch('/api/einkauf/lieferanten');
+  const d = await r.json();
+  if (!d.ok) {
+    toast(d.msg || 'Laden fehlgeschlagen', 'err');
+    return;
+  }
+  _eintraege = d.eintraege || [];
+  const tb = _e('lief-tbody');
+  if (_eintraege.length === 0) {
+    tb.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center;padding:24px;">Noch kein Lieferant angelegt.</td></tr>';
+    return;
+  }
+  tb.innerHTML = _eintraege.map(e => `
+    <tr onclick="lieferantEdit(${e.REC_ID})" style="cursor:pointer;">
+      <td><code>${_esc(e.KUERZEL)}</code></td>
+      <td>${_esc(e.BEZEICHNUNG)}</td>
+      <td class="ke-zelle">
+        ${e.EMAIL_VON_PATTERN ? `<code>${_esc(e.EMAIL_VON_PATTERN)}</code>` : '<span class="muted">–</span>'}
+      </td>
+      <td style="text-align:center;">
+        <span class="pwicon ${e.WEB_PASSWORD_GESETZT ? 'ja' : 'nein'}">
+          ${e.WEB_PASSWORD_GESETZT ? '🔐 Ja' : '–'}
+        </span>
+      </td>
+      <td style="text-align:center;">
+        <span class="aktiv-pill ${e.AKTIV ? 'ja' : 'nein'}">${e.AKTIV ? 'Aktiv' : 'Inaktiv'}</span>
+      </td>
+      <td style="text-align:right;" onclick="event.stopPropagation();">
+        <div class="row-aktion">
+          <button class="btn btn-neutral btn-sm" onclick="lieferantEdit(${e.REC_ID})">✏️</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function lieferantNeu() {
+  _e('modal-title').textContent = 'Neuer Lieferant';
+  _e('ed-rec-id').value = '';
+  _e('ed-kuerzel').value = '';
+  _e('ed-kuerzel').disabled = false;
+  _e('ed-bez').value = '';
+  _e('ed-caoid').value = '';
+  _e('ed-from').value = '';
+  _e('ed-subj').value = '';
+  _e('ed-parser').value = '';
+  _e('ed-weburl').value = '';
+  _e('ed-webuser').value = '';
+  _e('ed-webpw').value = '';
+  _e('ed-pw-status').textContent = '';
+  _e('ed-aktiv').checked = true;
+  _e('btn-loeschen').style.display = 'none';
+  _e('modal-bg').classList.add('show');
+}
+
+function lieferantEdit(recId) {
+  const e = _eintraege.find(x => x.REC_ID === recId);
+  if (!e) return;
+  _e('modal-title').textContent = 'Lieferant: ' + e.BEZEICHNUNG;
+  _e('ed-rec-id').value = e.REC_ID;
+  _e('ed-kuerzel').value = e.KUERZEL;
+  // KUERZEL ist UNIQUE und Schluessel fuer Konfig-Eintraege –
+  // im Edit nicht aenderbar (sonst wird der Web-PW-Konfigschluessel
+  // zur Waise). Neuanlage faellt dann zurueck.
+  _e('ed-kuerzel').disabled = true;
+  _e('ed-bez').value = e.BEZEICHNUNG || '';
+  _e('ed-caoid').value = e.CAO_LIEF_ID || '';
+  _e('ed-from').value = e.EMAIL_VON_PATTERN || '';
+  _e('ed-subj').value = e.EMAIL_SUBJECT_PATTERN || '';
+  _e('ed-parser').value = e.PARSER_KEY || '';
+  _e('ed-weburl').value = e.WEB_LOGIN_URL || '';
+  _e('ed-webuser').value = e.WEB_USERNAME || '';
+  _e('ed-webpw').value = '';
+  _e('ed-pw-status').textContent = e.WEB_PASSWORD_GESETZT ? '· hinterlegt' : '· nicht gesetzt';
+  _e('ed-aktiv').checked = !!e.AKTIV;
+  _e('btn-loeschen').style.display = '';
+  _e('modal-bg').classList.add('show');
+}
+
+function modalSchliessen() {
+  _e('modal-bg').classList.remove('show');
+}
+
+async function lieferantSpeichern() {
+  const recId  = _e('ed-rec-id').value;
+  const body = {
+    KUERZEL: _e('ed-kuerzel').value.trim().toUpperCase(),
+    BEZEICHNUNG: _e('ed-bez').value.trim(),
+    CAO_LIEF_ID: _e('ed-caoid').value || null,
+    EMAIL_VON_PATTERN: _e('ed-from').value.trim(),
+    EMAIL_SUBJECT_PATTERN: _e('ed-subj').value.trim(),
+    PARSER_KEY: _e('ed-parser').value.trim(),
+    WEB_LOGIN_URL: _e('ed-weburl').value.trim(),
+    WEB_USERNAME: _e('ed-webuser').value.trim(),
+    AKTIV: _e('ed-aktiv').checked,
+  };
+  // WEB_PASSWORD nur senden wenn etwas eingegeben wurde
+  // (bzw. explizit "leeren" via " " bewusst nicht angeboten – per
+  // Edit-Tab ist Loeschen ueber Loeschen-Button vorgesehen).
+  const pw = _e('ed-webpw').value;
+  if (pw) body.WEB_PASSWORD = pw;
+
+  if (!body.KUERZEL || !body.BEZEICHNUNG) {
+    toast('Kürzel und Bezeichnung sind Pflicht.', 'err');
+    return;
+  }
+
+  let r, d;
+  if (recId) {
+    r = await fetch('/api/einkauf/lieferanten/' + recId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } else {
+    r = await fetch('/api/einkauf/lieferanten', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+  d = await r.json();
+  if (!d.ok) {
+    toast(d.msg || 'Speichern fehlgeschlagen', 'err');
+    return;
+  }
+  toast('Gespeichert.', 'ok');
+  modalSchliessen();
+  lieferantenLaden();
+}
+
+async function lieferantLoeschen() {
+  const recId = _e('ed-rec-id').value;
+  if (!recId) return;
+  if (!confirm('Lieferant wirklich loeschen?\nWeb-Passwort wird ebenfalls entfernt.')) return;
+  const r = await fetch('/api/einkauf/lieferanten/' + recId, { method: 'DELETE' });
+  const d = await r.json();
+  if (!d.ok) {
+    toast(d.msg || 'Loeschen fehlgeschlagen', 'err');
+    return;
+  }
+  toast('Geloescht.', 'ok');
+  modalSchliessen();
+  lieferantenLaden();
+}
+
+// ── IMAP ───────────────────────────────────────────────────────
+async function imapLaden() {
+  const r = await fetch('/api/einkauf/imap');
+  const d = await r.json();
+  if (!d.ok) return;
+  _e('imap-host').value   = d.host || '';
+  _e('imap-port').value   = d.port || 993;
+  _e('imap-user').value   = d.user || '';
+  _e('imap-folder').value = d.folder || 'INBOX';
+  _e('imap-poll').value   = d.poll_min || 5;
+  _e('imap-ssl').checked  = d.use_ssl !== false;
+  _e('imap-pw-status').textContent = d.password_gesetzt ? '· hinterlegt' : '· nicht gesetzt';
+  _e('hint-postfach').textContent = d.user || '(noch nicht konfiguriert)';
+}
+
+async function imapSpeichern() {
+  const body = {
+    host:    _e('imap-host').value.trim(),
+    port:    _e('imap-port').value || 993,
+    user:    _e('imap-user').value.trim(),
+    folder:  _e('imap-folder').value.trim() || 'INBOX',
+    poll_min:_e('imap-poll').value || 5,
+    use_ssl: _e('imap-ssl').checked,
+  };
+  const pw = _e('imap-pw').value;
+  if (pw) body.password = pw;
+  const r = await fetch('/api/einkauf/imap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (!d.ok) {
+    toast(d.msg || 'Speichern fehlgeschlagen', 'err');
+    return;
+  }
+  toast('IMAP-Konfig gespeichert.', 'ok');
+  _e('imap-pw').value = '';
+  imapLaden();
+}
+
+async function imapTest() {
+  const out = _e('imap-test-out');
+  out.style.display = '';
+  out.className = 'test-area';
+  out.textContent = 'Verbinde …';
+  let d;
+  try {
+    const r = await fetch('/api/einkauf/imap/test', { method: 'POST' });
+    d = await r.json();
+  } catch (e) {
+    out.classList.add('err');
+    out.textContent = 'Verbindungsfehler: ' + e.message;
+    return;
+  }
+  out.classList.add(d.ok ? 'ok' : 'err');
+  out.textContent = d.msg + (d.anzahl != null ? `\n\nNachrichten im Ordner: ${d.anzahl}` : '');
+}
+
+// Modal mit Klick auf Backdrop schliessen
+_e('modal-bg').addEventListener('click', (e) => {
+  if (e.target === _e('modal-bg')) modalSchliessen();
+});
+
+// Init
+lieferantenLaden();
+imapLaden();
+</script>
+{% endblock %}
