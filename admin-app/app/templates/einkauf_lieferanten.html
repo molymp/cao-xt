@@ -144,63 +144,82 @@
     </table>
   </div>
 
-  <!-- IMAP-Konfiguration -->
+  <!-- Gmail-API Konfiguration -->
   <div class="card imap-card">
-    <h3 style="margin:0 0 12px;font-size:16px;">📬 IMAP-Postfach</h3>
+    <h3 style="margin:0 0 12px;font-size:16px;">
+      📬 Gmail-API
+      <span id="gmail-status-pill" style="margin-left:8px;font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;display:none;"></span>
+    </h3>
     <p class="muted" style="margin-bottom:14px;">
-      Konto fuer eingehende Bestellbestaetigungen. Bei Gmail
-      App-Passwort verwenden (2FA-aktiv im Google-Konto).
+      Workspace-Konten brauchen seit 2025 OAuth statt Klartext-Passwort.
+      Einmaliges Setup in der Google-Cloud-Console, danach laeuft das
+      Postfach im Hintergrund.
     </p>
 
-    <div class="form-row">
+    <details id="setup-details" style="margin-bottom:14px;">
+      <summary style="cursor:pointer;color:var(--brand-terracotta);font-weight:700;">
+        📖 Erst-Einrichtung in der Cloud Console (1× pro Postfach)
+      </summary>
+      <ol style="margin:10px 0 4px 18px;font-size:13px;line-height:1.55;">
+        <li>
+          <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer">
+            console.cloud.google.com</a> öffnen → neues Projekt anlegen
+          (z.B. „CAO-XT Habacher Dorfladen").
+        </li>
+        <li>„APIs &amp; Services" → „Library" → <b>Gmail API</b> aktivieren.</li>
+        <li>„OAuth consent screen" → User type <b>Internal</b> →
+            App-Name + Support-E-Mail eintragen → Speichern.</li>
+        <li>„Credentials" → „Create Credentials" → „OAuth client ID" →
+            Application type <b>Web application</b>.</li>
+        <li>Authorized redirect URI eintragen (genau diese URL):
+          <br>
+          <code id="redirect-uri-code" style="display:inline-block;margin-top:4px;padding:4px 8px;background:var(--bg-dunkel);border-radius:4px;font-size:12px;user-select:all;">…</code>
+          <button class="btn btn-neutral btn-sm" style="margin-left:6px;font-size:11px;padding:2px 8px;min-height:0;" onclick="kopiereRedirect()">Kopieren</button>
+        </li>
+        <li>Client ID + Client Secret unten eintragen → Speichern.</li>
+        <li>„🔗 Mit Google verbinden" klicken → Consent → fertig.</li>
+      </ol>
+    </details>
+
+    <div class="form-row einzeln">
       <div class="form-group">
-        <label>Host</label>
-        <input class="form-control" id="imap-host" placeholder="imap.gmail.com">
-      </div>
-      <div class="form-group">
-        <label>Port</label>
-        <input class="form-control" id="imap-port" type="number" min="1" max="65535">
+        <label>Postfach (E-Mail) <span class="muted">– fuer Anzeige</span></label>
+        <input class="form-control" id="gmail-user" placeholder="bestellung@habacher-dorfladen.de">
       </div>
     </div>
     <div class="form-row einzeln">
       <div class="form-group">
-        <label>Benutzer (E-Mail)</label>
-        <input class="form-control" id="imap-user" placeholder="bestellung@habacher-dorfladen.de">
+        <label>Client-ID</label>
+        <input class="form-control" id="gmail-cid"
+               placeholder="123…apps.googleusercontent.com" autocomplete="off">
       </div>
     </div>
     <div class="form-row einzeln">
       <div class="form-group">
-        <label>Passwort
-          <span class="muted" id="imap-pw-status" style="font-weight:400;"></span>
+        <label>Client-Secret
+          <span class="muted" id="gmail-cs-status" style="font-weight:400;"></span>
         </label>
-        <input class="form-control" id="imap-pw" type="password"
-               placeholder="(unveraendert lassen wenn schon gesetzt)" autocomplete="new-password">
+        <input class="form-control" id="gmail-cs" type="password"
+               placeholder="leer lassen = unveraendert" autocomplete="new-password">
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Ordner</label>
-        <input class="form-control" id="imap-folder" placeholder="INBOX">
-      </div>
+    <div class="form-row einzeln">
       <div class="form-group">
         <label>Poll-Intervall (Min.)</label>
-        <input class="form-control" id="imap-poll" type="number" min="1" max="1440">
-      </div>
-    </div>
-    <div class="form-row einzeln">
-      <div class="form-group" style="display:flex;align-items:center;gap:8px;">
-        <input type="checkbox" id="imap-ssl" style="width:18px;height:18px;">
-        <label for="imap-ssl" style="margin:0;text-transform:none;letter-spacing:0;">
-          SSL/TLS verwenden (empfohlen)
-        </label>
+        <input class="form-control" id="gmail-poll" type="number" min="1" max="1440" style="max-width:140px;">
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-primary btn-sm" onclick="imapSpeichern()">💾 Speichern</button>
-      <button class="btn btn-neutral btn-sm" onclick="imapTest()">🔌 Verbindung testen</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-primary btn-sm" onclick="gmailSpeichern()">💾 Speichern</button>
+      <button class="btn btn-success btn-sm" id="btn-connect"
+              onclick="gmailVerbinden()">🔗 Mit Google verbinden</button>
+      <button class="btn btn-neutral btn-sm" id="btn-test"
+              onclick="gmailTest()">🔌 Verbindung testen</button>
+      <button class="btn btn-danger btn-sm" id="btn-disconnect"
+              onclick="gmailTrennen()" style="display:none;">🔌 Trennen</button>
     </div>
-    <div id="imap-test-out" class="test-area" style="display:none;"></div>
+    <div id="gmail-test-out" class="test-area" style="display:none;"></div>
   </div>
 
 </div>
@@ -440,33 +459,57 @@ async function lieferantLoeschen() {
   lieferantenLaden();
 }
 
-// ── IMAP ───────────────────────────────────────────────────────
-async function imapLaden() {
-  const r = await fetch('/api/einkauf/imap');
+// ── Gmail-API / OAuth ─────────────────────────────────────────
+async function gmailLaden() {
+  const r = await fetch('/api/einkauf/gmail');
   const d = await r.json();
   if (!d.ok) return;
-  _e('imap-host').value   = d.host || '';
-  _e('imap-port').value   = d.port || 993;
-  _e('imap-user').value   = d.user || '';
-  _e('imap-folder').value = d.folder || 'INBOX';
-  _e('imap-poll').value   = d.poll_min || 5;
-  _e('imap-ssl').checked  = d.use_ssl !== false;
-  _e('imap-pw-status').textContent = d.password_gesetzt ? '· hinterlegt' : '· nicht gesetzt';
-  _e('hint-postfach').textContent = d.user || '(noch nicht konfiguriert)';
+  _e('gmail-cid').value  = d.client_id || '';
+  _e('gmail-user').value = d.user_email || '';
+  _e('gmail-poll').value = d.poll_min || 5;
+  _e('gmail-cs-status').textContent = d.client_secret_gesetzt
+      ? '· hinterlegt' : '· nicht gesetzt';
+  _e('redirect-uri-code').textContent = d.redirect_uri || '(unbekannt)';
+  _e('hint-postfach').textContent = d.user_email || '(noch nicht konfiguriert)';
+
+  // Status-Pill + Buttons je nach Verbindungsstand umschalten
+  const pill = _e('gmail-status-pill');
+  if (d.verbunden) {
+    pill.style.display = '';
+    pill.style.background = 'var(--status-gruen)';
+    pill.style.color = '#fff';
+    pill.textContent = '🟢 verbunden';
+    _e('btn-connect').textContent = '🔄 Neu verbinden';
+    _e('btn-disconnect').style.display = '';
+    _e('btn-test').disabled = false;
+  } else {
+    if (d.client_secret_gesetzt && d.client_id) {
+      pill.style.display = '';
+      pill.style.background = 'var(--brand-cream)';
+      pill.style.color = 'var(--brand-ink)';
+      pill.style.border = '1px solid var(--border)';
+      pill.textContent = '⚪ bereit zum Verbinden';
+    } else {
+      pill.style.display = '';
+      pill.style.background = '#f6d8ce';
+      pill.style.color = 'var(--status-rot)';
+      pill.textContent = '🔴 nicht konfiguriert';
+    }
+    _e('btn-connect').textContent = '🔗 Mit Google verbinden';
+    _e('btn-disconnect').style.display = 'none';
+    _e('btn-test').disabled = !d.verbunden;
+  }
 }
 
-async function imapSpeichern() {
+async function gmailSpeichern() {
   const body = {
-    host:    _e('imap-host').value.trim(),
-    port:    _e('imap-port').value || 993,
-    user:    _e('imap-user').value.trim(),
-    folder:  _e('imap-folder').value.trim() || 'INBOX',
-    poll_min:_e('imap-poll').value || 5,
-    use_ssl: _e('imap-ssl').checked,
+    client_id:  _e('gmail-cid').value.trim(),
+    user_email: _e('gmail-user').value.trim(),
+    poll_min:   _e('gmail-poll').value || 5,
   };
-  const pw = _e('imap-pw').value;
-  if (pw) body.password = pw;
-  const r = await fetch('/api/einkauf/imap', {
+  const cs = _e('gmail-cs').value;
+  if (cs) body.client_secret = cs;
+  const r = await fetch('/api/einkauf/gmail', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -476,19 +519,37 @@ async function imapSpeichern() {
     toast(d.msg || 'Speichern fehlgeschlagen', 'err');
     return;
   }
-  toast('IMAP-Konfig gespeichert.', 'ok');
-  _e('imap-pw').value = '';
-  imapLaden();
+  toast('Gmail-Konfig gespeichert.', 'ok');
+  _e('gmail-cs').value = '';
+  gmailLaden();
 }
 
-async function imapTest() {
-  const out = _e('imap-test-out');
+function gmailVerbinden() {
+  // Server-side Redirect-Flow – die aktuelle Seite navigiert komplett
+  // weg, kommt nach Consent + Callback automatisch zurueck.
+  window.location.href = '/einkauf/oauth/start';
+}
+
+async function gmailTrennen() {
+  if (!confirm('Verbindung zu Google trennen?\nDer Refresh-Token wird gelöscht.')) return;
+  const r = await fetch('/api/einkauf/gmail/disconnect', { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) {
+    toast(d.msg || 'Trennen fehlgeschlagen', 'err');
+    return;
+  }
+  toast('Verbindung getrennt.', 'ok');
+  gmailLaden();
+}
+
+async function gmailTest() {
+  const out = _e('gmail-test-out');
   out.style.display = '';
   out.className = 'test-area';
-  out.textContent = 'Verbinde …';
+  out.textContent = 'Frage Gmail-API …';
   let d;
   try {
-    const r = await fetch('/api/einkauf/imap/test', { method: 'POST' });
+    const r = await fetch('/api/einkauf/gmail/test', { method: 'POST' });
     d = await r.json();
   } catch (e) {
     out.classList.add('err');
@@ -496,8 +557,30 @@ async function imapTest() {
     return;
   }
   out.classList.add(d.ok ? 'ok' : 'err');
-  out.textContent = d.msg + (d.anzahl != null ? `\n\nNachrichten im Ordner: ${d.anzahl}` : '');
+  out.textContent = d.msg
+    + (d.anzahl != null ? `\n\nUngelesene Mails: ${d.anzahl}` : '');
 }
+
+function kopiereRedirect() {
+  const txt = _e('redirect-uri-code').textContent;
+  navigator.clipboard.writeText(txt).then(
+    () => toast('Redirect-URI kopiert.', 'ok'),
+    () => toast('Kopieren fehlgeschlagen', 'err')
+  );
+}
+
+// OAuth-Callback-Resultat aus der URL aufgreifen (?oauth_ok=1 / ?oauth_error=…)
+(function _zeigeOauthResultat(){
+  const p = new URLSearchParams(window.location.search);
+  if (p.has('oauth_ok')) {
+    const mail = p.get('email') || '';
+    setTimeout(() => toast('Gmail verbunden' + (mail ? ` · ${mail}` : ''), 'ok', 4000), 200);
+    history.replaceState({}, '', window.location.pathname);
+  } else if (p.has('oauth_error')) {
+    setTimeout(() => toast('OAuth-Fehler: ' + p.get('oauth_error'), 'err', 6000), 200);
+    history.replaceState({}, '', window.location.pathname);
+  }
+})();
 
 // Modal mit Klick auf Backdrop schliessen
 _e('modal-bg').addEventListener('click', (e) => {
@@ -506,6 +589,6 @@ _e('modal-bg').addEventListener('click', (e) => {
 
 // Init
 lieferantenLaden();
-imapLaden();
+gmailLaden();
 </script>
 {% endblock %}

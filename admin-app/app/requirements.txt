@@ -5,3 +5,10 @@ flask>=3.0
 mysql-connector-python>=8.0
 holidays>=0.40
 waitress>=3.0           # Prod-WSGI-Server (ersetzt Werkzeug-Dev-Server)
+
+# Einkauf (Phase 1) – Gmail-API/OAuth fuer Bestellbestaetigungs-Mails.
+# google-auth + oauthlib waren schon implizit drin; explizit gepinnt
+# damit ein frischer Klon nichts vergisst.
+google-auth>=2.0
+google-auth-oauthlib>=1.0
+google-api-python-client>=2.0
