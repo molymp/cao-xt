@@ -936,6 +936,11 @@ def datev_download(filename):
 # ── Handbuch (Benutzerhandbuch) ──────────────────────────────
 
 _DOKU_DIR = os.path.join(os.path.dirname(__file__), 'doku')
+# Beispiele/Mockups liegen im Repo unter docs/mockups/ – dort werden
+# sie weiter gepflegt, ohne dass wir sie in orga-app/app/doku
+# duplizieren muessen.
+_MOCKUPS_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(__file__), '..', '..', 'docs', 'mockups'))
 
 
 @app.get('/orga/doku/<path:dateiname>')
@@ -943,6 +948,18 @@ _DOKU_DIR = os.path.join(os.path.dirname(__file__), 'doku')
 def orga_doku_datei(dateiname):
     """Statische Dateien aus dem doku/-Verzeichnis (Bilder für Handbuch)."""
     return send_from_directory(os.path.abspath(_DOKU_DIR), dateiname)
+
+
+@app.get('/orga/beispiele/<path:dateiname>')
+@_login_required
+def orga_beispiel_datei(dateiname):
+    """Liefert die Mockup-/Beispieldateien aus docs/mockups/ aus, damit
+    das Handbuch sie als realistische Demos verlinken kann (z.B.
+    Koppelkauf-Erfolg vs. -Flop). Whitelist-Schutz: nur Dateien direkt
+    in docs/mockups/, keine Subordner-Traversal."""
+    if '..' in dateiname or '/' in dateiname or '\\' in dateiname:
+        return 'Ungueltiger Pfad.', 400
+    return send_from_directory(_MOCKUPS_DIR, dateiname)
 
 
 @app.get('/orga/handbuch')
