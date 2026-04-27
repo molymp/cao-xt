@@ -151,6 +151,21 @@
         ✓ Das System ist aktuell.
       </div>
 
+      <!-- Neustart erforderlich (Working-Tree aktueller als laufender Prozess) -->
+      <div id="restart-needed" class="alert alert-warn" style="display:none;">
+        🔄 <strong>Neustart erforderlich.</strong>
+        <span id="restart-detail" style="margin-left:6px;"></span>
+        <div style="margin-top:10px;">
+          <button class="btn btn-primary btn-sm" id="btn-restart"
+                  onclick="restartAdmin()">
+            🔄 Admin-App neu starten
+          </button>
+          <span style="margin-left:8px;font-size:12px;color:var(--text-dim);">
+            Verbindung bricht für ca. 5 Sekunden ab; Seite lädt sich automatisch neu.
+          </span>
+        </div>
+      </div>
+
       <!-- Update-Button -->
       <div id="update-action" style="display:none;">
         <button class="btn btn-success" id="btn-update" onclick="startUpdate()">
@@ -270,12 +285,37 @@ async function checkUpdates() {
     ca.style.display = 'none';
   }
 
-  // Aktuell vs. Update verfügbar
+  // Drei Zustaende:
+  //   1. Update verfuegbar       → Update-Button
+  //   2. Working-Tree aktueller als laufender Prozess (restart_required)
+  //                              → Neustart-Banner
+  //   3. wirklich aktuell        → "System ist aktuell"-Meldung
   _hasUpdate = data.available;
-  document.getElementById('up-to-date').style.display    = data.available ? 'none' : '';
-  document.getElementById('update-action').style.display = data.available ? ''     : 'none';
+  const rNeeded = !!data.restart_required && !data.available;
+  document.getElementById('update-action').style.display  = data.available ? '' : 'none';
+  document.getElementById('restart-needed').style.display = rNeeded ? '' : 'none';
+  document.getElementById('up-to-date').style.display     =
+      (!data.available && !rNeeded) ? '' : 'none';
+  if (rNeeded) {
+    const rd = document.getElementById('restart-detail');
+    rd.textContent = `Working-Tree ist auf ${data.local_commit}, der Admin-Prozess läuft noch auf ${data.running_commit}.`;
+  }
 
   document.getElementById('result').style.display = '';
+}
+
+async function restartAdmin() {
+  const btn = document.getElementById('btn-restart');
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird neu gestartet …';
+
+  try {
+    await fetch('/api/system/restart-admin', { method: 'POST' });
+  } catch (e) {
+    // Verbindungsabbruch ist hier erwartet, sobald der Restart greift.
+  }
+  // Auto-Reload nach 8s (5s reichen typisch, aber Margin schadet nicht).
+  setTimeout(() => window.location.reload(), 8000);
 }
 
 async function startUpdate() {
