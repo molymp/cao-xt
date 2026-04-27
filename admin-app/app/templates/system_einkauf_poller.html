@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Einkauf-Poller{% endblock %}
+
+{% block extra_style %}
+<style>
+  .karte {
+    padding: 14px 18px;
+    background: var(--bg-karte);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-klein);
+    margin-bottom: 14px;
+    max-width: 760px;
+  }
+  .karte h2 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .zeile {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    align-items: baseline;
+  }
+  .zeile .lbl { color: var(--text-dim); font-size: 12px; }
+  .zeile .val { color: var(--brand-ink); }
+  .zeile .val.mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+  }
+  .zeile .val.leer { color: var(--text-dim); font-style: italic; }
+  .status-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .status-pill.gruen { background: var(--status-gruen); color: #fff; }
+  .status-pill.rot   { background: var(--status-rot);   color: #fff; }
+  .status-pill.grau  { background: var(--brand-cream);  color: var(--text-dim); border: 1px solid var(--border); }
+  .fehler-box {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #f6d8ce;
+    border-left: 3px solid var(--status-rot);
+    color: #6a1810;
+    font-family: monospace;
+    font-size: 12px;
+    border-radius: 3px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .hinweis-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #f6ecd0;
+    border-left: 3px solid var(--status-gelb);
+    color: #4b3a12;
+    font-size: 12px;
+    border-radius: 3px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">📥 Einkauf-Poller</h1>
+<p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;">
+  Status des Hintergrund-Daemons, der zyklisch das Gmail-Postfach
+  nach neuen Bestellbestaetigungen durchsucht. Steuerung
+  (Start/Stop/Restart) erfolgt unter
+  <a href="/system/apps" style="color:var(--brand-terracotta);">App-Steuerung</a>.
+</p>
+
+<div class="karte">
+  <h2>Daemon</h2>
+  <div class="zeile"><span class="lbl">Status</span>
+    <span class="val"><span id="d-status" class="status-pill grau">…</span></span></div>
+  <div class="zeile"><span class="lbl">PID</span>
+    <span class="val mono" id="d-pid">–</span></div>
+  <div class="zeile"><span class="lbl">Modul</span>
+    <span class="val mono" id="d-module">–</span></div>
+  <div class="zeile"><span class="lbl">Logdatei</span>
+    <span class="val mono" id="d-log">–</span></div>
+</div>
+
+<div class="karte">
+  <h2>Heartbeat</h2>
+  <div class="zeile"><span class="lbl">Letzter Lauf</span>
+    <span class="val mono" id="h-run">–</span></div>
+  <div class="zeile"><span class="lbl">Letzter Erfolg</span>
+    <span class="val mono" id="h-success">–</span></div>
+  <div class="zeile"><span class="lbl">Gmail-API</span>
+    <span class="val"><span id="h-gmail" class="status-pill grau">–</span></span></div>
+  <div class="zeile"><span class="lbl">Zyklen total</span>
+    <span class="val mono" id="h-zyklen">–</span></div>
+  <div class="zeile"><span class="lbl">Neu gefunden (kumuliert)</span>
+    <span class="val mono" id="h-neu">–</span></div>
+  <div class="zeile"><span class="lbl">Hostname</span>
+    <span class="val mono" id="h-host">–</span></div>
+  <div id="h-fehler" class="fehler-box" style="display:none;"></div>
+</div>
+
+<div class="karte">
+  <h2>Konfiguration</h2>
+  <div class="zeile"><span class="lbl">Poll-Intervall</span>
+    <span class="val mono" id="k-poll">– min</span></div>
+  <div class="zeile"><span class="lbl">Gmail verbunden</span>
+    <span class="val"><span id="k-gmail" class="status-pill grau">–</span></span></div>
+  <div class="zeile"><span class="lbl">Postfach</span>
+    <span class="val mono" id="k-mail">–</span></div>
+  <div class="hinweis-box" id="k-hinweis"></div>
+</div>
+
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function _e(id){ return document.getElementById(id); }
+function _esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _vorXSek(s){
+  if (s == null) return '';
+  if (s < 60) return ` (vor ${s} s)`;
+  if (s < 3600) return ` (vor ${Math.floor(s/60)} min)`;
+  return ` (vor ${Math.floor(s/3600)} h)`;
+}
+
+async function laden(){
+  let d;
+  try {
+    const r = await fetch('/api/system/einkauf-poller');
+    d = await r.json();
+  } catch (e) {
+    toast('Fehler beim Laden: ' + e.message, 'err');
+    return;
+  }
+  if (!d.ok) {
+    toast(d.msg || 'Fehler', 'err');
+    return;
+  }
+
+  // Daemon
+  const dm = d.daemon || {};
+  const dst = _e('d-status');
+  if (dm.running) {
+    dst.className = 'status-pill gruen';
+    dst.textContent = '🟢 läuft';
+  } else {
+    dst.className = 'status-pill rot';
+    dst.textContent = '🔴 nicht aktiv';
+  }
+  _e('d-pid').textContent    = dm.pid || '–';
+  _e('d-module').textContent = dm.module || '–';
+  _e('d-log').textContent    = dm.log || '–';
+
+  // Heartbeat
+  const hb = d.heartbeat || {};
+  if (hb.vorhanden) {
+    _e('h-run').textContent    = (hb.last_run_at || '–') + _vorXSek(hb.sekunden_seit_run);
+    _e('h-success').textContent = (hb.last_success_at || '–') + _vorXSek(hb.sekunden_seit_success);
+    const gp = _e('h-gmail');
+    if (hb.gmail_ok) {
+      gp.className = 'status-pill gruen';
+      gp.textContent = '🟢 OK';
+    } else {
+      gp.className = 'status-pill rot';
+      gp.textContent = '🔴 Fehler';
+    }
+    _e('h-zyklen').textContent = hb.zyklus_count ?? '–';
+    _e('h-neu').textContent    = hb.neu_gefunden ?? '–';
+    _e('h-host').textContent   = hb.hostname || '–';
+    const fb = _e('h-fehler');
+    if (hb.last_error) {
+      fb.textContent = hb.last_error;
+      fb.style.display = '';
+    } else {
+      fb.style.display = 'none';
+    }
+  } else {
+    _e('h-run').textContent = 'noch kein Lauf';
+    _e('h-run').className = 'val leer';
+  }
+
+  // Konfig
+  const k = d.konfig || {};
+  _e('k-poll').textContent = `${k.poll_min ?? '–'} min`;
+  const kg = _e('k-gmail');
+  if (k.gmail_verbunden) {
+    kg.className = 'status-pill gruen';
+    kg.textContent = '🟢 verbunden';
+  } else {
+    kg.className = 'status-pill rot';
+    kg.textContent = '🔴 nicht verbunden';
+  }
+  _e('k-mail').textContent = k.gmail_user_email || '–';
+  _e('k-hinweis').textContent = k.hinweis || '';
+}
+
+laden();
+setInterval(laden, 15000);
+</script>
+{% endblock %}

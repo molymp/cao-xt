@@ -8,7 +8,8 @@ Flask-Apps (type='web', Port-basiert):
   kiosk       → Port 5001
 
 Daemons (type='daemon', PID-basiert, kein Port):
-  haccp-poller  → zieht zyklisch TFA-Messwerte, schreibt Heartbeat
+  haccp-poller    → zieht zyklisch TFA-Messwerte, schreibt Heartbeat
+  einkauf-poller  → fragt zyklisch Gmail nach Lieferanten-Bestellbestaetigungen
 
 PIDs werden in /tmp/caoxt-pids.json persistiert.
 """
@@ -185,11 +186,18 @@ APPS = {
         'cwd': _REPO_ROOT,
         'log': os.path.join(LOG_DIR, 'caoxt-haccp-poller.log'),
     },
+    'einkauf-poller': {
+        'type': 'daemon',
+        'module': 'installer.einkauf_poller',
+        'cwd': _REPO_ROOT,
+        'log': os.path.join(LOG_DIR, 'caoxt-einkauf-poller.log'),
+    },
 }
 
 # Start-Reihenfolge: Admin zuerst (Stammdaten-Basis), danach Orga
 # (legt HACCP-Tabellen an), dann Poller, dann Kasse, Kiosk zuletzt.
-START_ORDER = ['admin', 'orga', 'haccp-poller', 'kasse', 'kiosk']
+START_ORDER = ['admin', 'orga', 'haccp-poller', 'einkauf-poller',
+               'kasse', 'kiosk']
 
 # Legacy-Aliase: `app_manager verwaltung start` / `app_manager wawi start`
 # werden auf die neuen Namen gemappt. Soll in Dorfkern v2.1 entfernt werden.

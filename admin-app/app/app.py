@@ -2481,6 +2481,24 @@ def api_einkauf_bestellung_detail(rec_id):
     return jsonify(ok=True, eintrag=e)
 
 
+@app.route('/system/einkauf-poller')
+@_login_required
+def system_einkauf_poller_seite():
+    """Status + Konfig-Uebersicht fuer den Einkauf-Poller-Daemon."""
+    return render_template('system_einkauf_poller.html')
+
+
+@app.get('/api/system/einkauf-poller')
+@_login_required
+def api_system_einkauf_poller():
+    import system_einkauf_poller as _ep
+    try:
+        return jsonify(ok=True, **_ep.status())
+    except Exception as e:
+        log.exception('system_einkauf_poller status fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 @app.post('/api/einkauf/bestellungen/abrufen')
 @_login_required
 def api_einkauf_bestellungen_abrufen():
