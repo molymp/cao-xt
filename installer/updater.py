@@ -99,34 +99,54 @@ def _current_branch() -> str:
 
 def check_for_updates(branch: str = '') -> dict:
     """
-    Prüft, ob ein Update verfügbar ist.
+    Prueft, ob ein Update verfuegbar ist – COMMIT-BASIERT.
+
+    Wir vergleichen HEAD gegen origin/<branch>: gibt es Commits, die wir
+    noch nicht haben, ist ein Update verfuegbar. Eine manuell zu pflegende
+    VERSION.json ist NICHT erforderlich (frueher war sie fuer
+    'available' zwingend, was den Mechanismus de facto stillgelegt hat,
+    sobald jemand vergessen hatte zu bumpen).
 
     Returns:
-        dict mit Schlüsseln:
+        dict mit Schluesseln:
             - available (bool)
-            - local_version (str)
-            - remote_version (str)
-            - commits (list[str])   – neue Commits
-            - impact (dict)         – Impact-Flags der Remote-Version
+            - ahead_count (int)         – Anzahl Commits hinter dem Remote
+            - local_commit (str)        – aktueller HEAD short-Hash
+            - remote_commit (str)       – origin/<branch> short-Hash
+            - local_version (str|None)  – aus VERSION.json, nur Anzeige
+            - remote_version (str|None) – aus VERSION.json (origin), Anzeige
+            - commits (list[str])       – Subject-Liste der neuen Commits
+            - impact (dict)             – Flags, falls VERSION.json sie liefert
+            - branch (str)
             - error (str|None)
     """
     result = {
-        'available': False,
-        'local_version': 'unbekannt',
-        'remote_version': 'unbekannt',
-        'commits': [],
-        'impact': {},
-        'error': None,
+        'available':      False,
+        'ahead_count':    0,
+        'local_commit':   '',
+        'remote_commit':  '',
+        'local_version':  None,
+        'remote_version': None,
+        'commits':        [],
+        'impact':         {},
+        'branch':         '',
+        'error':          None,
     }
 
     # Aktuellen Branch ermitteln wenn nicht explizit angegeben
     if not branch:
         branch = _current_branch()
+    result['branch'] = branch
 
-    # Lokale Version
+    # Lokale VERSION.json (optional, nur fuer Anzeige)
     local = load_local_version()
     if local:
-        result['local_version'] = local.get('version', 'unbekannt')
+        result['local_version'] = local.get('version')
+
+    # HEAD-Hash lokal
+    head = _git('rev-parse', '--short', 'HEAD')
+    if head.returncode == 0:
+        result['local_commit'] = head.stdout.strip()
 
     # Git-Fetch (nur wenn online)
     fetch = _git('fetch', 'origin', branch)
@@ -134,43 +154,76 @@ def check_for_updates(branch: str = '') -> dict:
         result['error'] = f"git fetch fehlgeschlagen: {fetch.stderr.strip()}"
         return result
 
-    # Remote-Version
+    # Remote-Hash
+    remote_head = _git('rev-parse', '--short', f'origin/{branch}')
+    if remote_head.returncode == 0:
+        result['remote_commit'] = remote_head.stdout.strip()
+
+    # Remote VERSION.json (optional)
     remote = load_remote_version(branch)
-    if not remote:
-        result['error'] = "VERSION.json auf Remote nicht lesbar"
-        return result
-    result['remote_version'] = remote.get('version', 'unbekannt')
-    result['impact'] = remote.get('impact', {})
+    if remote:
+        result['remote_version'] = remote.get('version')
+        result['impact'] = remote.get('impact', {}) or {}
 
-    # Versionsvergleich
-    local_v  = _semver_tuple(result['local_version'])
-    remote_v = _semver_tuple(result['remote_version'])
-    result['available'] = remote_v > local_v
+    # Wieviele Commits liegen wir hinter dem Remote?
+    rev_list = _git('rev-list', '--count', f'HEAD..origin/{branch}')
+    if rev_list.returncode == 0:
+        try:
+            result['ahead_count'] = int(rev_list.stdout.strip() or '0')
+        except ValueError:
+            result['ahead_count'] = 0
+    result['available'] = result['ahead_count'] > 0
 
-    # Neue Commits auflisten
+    # Neue Commits auflisten (Subject-Zeilen)
     if result['available']:
-        log_r = _git('log', '--oneline', f'HEAD..origin/{branch}')
+        log_r = _git('log', '--pretty=format:%h %s', f'HEAD..origin/{branch}')
         if log_r.returncode == 0:
             result['commits'] = [l for l in log_r.stdout.splitlines() if l.strip()]
 
     return result
 
 
-def perform_update(branch: str = 'master') -> bool:
+def _ensure_caoxt_ini() -> None:
+    """Stellt sicher, dass caoxt/caoxt.ini existiert. Falls die lokale
+    Datei fehlt (frischer Klon, geloeschtes Backup), wird sie aus
+    caoxt/caoxt.ini.example kopiert. Schadet nie etwas zu pruefen.
+    """
+    ini  = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini')
+    ex   = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini.example')
+    if os.path.exists(ini):
+        return
+    if not os.path.exists(ex):
+        _log("  Hinweis: weder caoxt.ini noch .example vorhanden – Konfig manuell anlegen.")
+        return
+    try:
+        import shutil
+        shutil.copy2(ex, ini)
+        _log(f"  caoxt.ini aus Vorlage erzeugt: {ini}")
+        _log("  WICHTIG: DB-Zugangsdaten in caoxt.ini eintragen.")
+    except OSError as exc:
+        _log(f"  Konnte caoxt.ini nicht erzeugen: {exc}")
+
+
+def perform_update(branch: str = '') -> bool:
     """
     Führt ein Update durch.
 
     Ablauf:
       1. Apps stoppen
-      2. git pull
-      3. pip install (wenn requirements_changed)
-      4. DB-Migrationen (wenn db_migration_required)
-      5. Apps starten
-      6. Health-Check
+      2. git pull (mit caoxt.ini-Schutz – sie ist via .gitignore aus
+         dem Tracking ausgeschlossen, aber falls jemand auf einem
+         alten Klon hier steht und sie noch im Index hat: skippen)
+      3. caoxt.ini ggf. aus .example bootstrappen
+      4. pip install (wenn requirements_changed)
+      5. DB-Migrationen (laufen sowieso beim Admin-App-Start)
+      6. Apps starten
+      7. Health-Check
 
     Returns:
         True bei Erfolg, False bei Fehler.
     """
+    if not branch:
+        branch = _current_branch()
     _log("─── CAO-XT Update gestartet ───────────────────────────────")
 
     # Impact-Flags der Remote-Version holen
@@ -191,13 +244,20 @@ def perform_update(branch: str = 'master') -> bool:
         _log(f"  Warnung: Apps konnten nicht gestoppt werden: {e}")
 
     _log("Schritt 2/6: git pull …")
-    pull = _run(['git', 'pull', 'origin', branch], cwd=_REPO_ROOT,
-                capture=True)
+    # Defensive: caoxt.ini soll Git lokal bitte komplett vergessen,
+    # falls jemand auf einem alten Klon noch das frueher getrackte
+    # File hat. Idempotent, schlaegt einfach fehl wenn die Datei
+    # bereits per .gitignore ignoriert wird.
+    _git('update-index', '--skip-worktree', 'caoxt/caoxt.ini')
+    pull = _run(['git', 'pull', '--ff-only', 'origin', branch],
+                cwd=_REPO_ROOT, capture=True)
     if pull.returncode != 0:
         _log(f"  FEHLER: git pull fehlgeschlagen\n{pull.stderr}")
         _rollback(rollback_ref)
         return False
     _log(f"  {pull.stdout.strip()}")
+
+    _ensure_caoxt_ini()
 
     _log("Schritt 3/6: Abhängigkeiten …")
     if req_changed:
@@ -322,18 +382,24 @@ def main() -> int:
         warn(f"Update-Prüfung: {status['error']}")
         return 1
 
-    local_v  = status['local_version']
-    remote_v = status['remote_version']
+    local_c  = status['local_commit']
+    remote_c = status['remote_commit']
     impact   = status['impact']
 
     if not status['available']:
-        ok(f"System ist aktuell (Version {local_v})")
+        ok(f"System ist aktuell (HEAD {local_c} = origin/{status['branch']})")
         return 0
 
     # Update vorhanden
+    n = status['ahead_count']
     print()
-    print(f"  Installierte Version : {local_v}")
-    print(f"  Verfügbare Version   : {remote_v}")
+    print(f"  Aktueller Commit    : {local_c}")
+    print(f"  Remote-Commit       : {remote_c}")
+    print(f"  Neue Commits        : {n}")
+    if status['local_version'] or status['remote_version']:
+        lv = status['local_version'] or '–'
+        rv = status['remote_version'] or '–'
+        print(f"  Version (Anzeige)   : {lv} → {rv}")
     print()
 
     if impact.get('breaking_change'):

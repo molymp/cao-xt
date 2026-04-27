@@ -142,17 +142,64 @@ Für systemd-Autostart: siehe `installer/systemd/` (optional).
 
 ## 6. Updates
 
+Der Update-Mechanismus ist **commit-basiert**: ein Update gilt als
+verfügbar, sobald `origin/<aktueller-branch>` Commits enthält, die der
+lokale `HEAD` noch nicht hat. Eine separate Versions-Pflege (semver)
+ist dafür nicht erforderlich – `VERSION.json` darf existieren und
+liefert dann zusätzliche Anzeige-/Impact-Hints, ist aber für die
+Erkennung selbst irrelevant.
+
+### Empfohlener Weg: aus der Admin-App
+
+**Admin → System → Updates** (Sidebar oder direkt `/system/updates`).
+Klick auf *„🔍 Auf Updates prüfen"*:
+
+* macht ein `git fetch origin <branch>`
+* zeigt lokalen Commit-Hash, Remote-Commit-Hash und die Liste der
+  neuen Commits (Subjects)
+* falls neue Commits da sind, erscheint *„⬆️ Update jetzt installieren"*
+
+Beim Install:
+
+1. Apps werden gestoppt
+2. `caoxt/caoxt.ini` per `git update-index --skip-worktree` lokal
+   geschützt (idempotent)
+3. `git pull --ff-only` 
+4. `caoxt/caoxt.ini` aus `.example` bootstrappen, falls nicht vorhanden
+5. Optional `pip install` (wenn `VERSION.json.impact.requirements_changed`)
+6. Apps neu starten
+7. Health-Check via TCP-Connect auf alle vier Ports
+
+Fortschritt landet in `/tmp/caoxt-update.log`.
+
+### Konsolen-Fallback
+
 ```bash
-./install.sh --update        # git fetch + reset --hard + restart
-./install.sh --check-update  # nur prüfen, nichts ändern
+./install.sh --update        # geführter Lauf mit Bestätigung
+./install.sh --check-update  # nur prüfen
 ```
 
-Die Verwaltungs-App hat dafür auch eine geführte UI unter
-**System → Updates** mit Impact-Anzeige (DB-Migration, Breaking Changes,
-Commit-Liste).
+Beide Wege rufen denselben Code-Pfad (`installer/updater.py`).
 
-Rollback: `installer/updater.py` speichert vor jedem Update den
-aktuellen Commit-Hash; `install.sh --rollback` stellt ihn wieder her.
+### Rollback
+
+`installer/updater.py` merkt sich vor jedem Pull den Commit-Hash und
+ruft bei Fehlschlag `git reset --hard <vorher>`. Manuell ist der
+Befehl `git reflog` + `git reset --hard <hash>` der zuverlässigste
+Weg.
+
+### Was bleibt automatisch erhalten
+
+* **Datenbank-Inhalt komplett** (DORFKERN_KONFIG, alle Stammdaten,
+  Bewegungsdaten, TSE-Geräte, Mitarbeiter-RFID-Tags, Schichtplan,
+  Kassen-Bons, Kassenbuch). Ein git-pull fasst die DB nicht an.
+* `caoxt/caoxt.ini` (lokal, in `.gitignore`)
+* `*-app/app/config_local.py` (lokal, in `.gitignore`)
+* `/tmp/caoxt-*.log`
+
+DB-Migrationen (z.B. neue Tabellen) laufen beim **Admin-App-Start**
+automatisch. Ein Update zieht also auch ohne expliziten
+Migrations-Trigger alles mit.
 
 ---
 

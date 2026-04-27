@@ -1833,86 +1833,25 @@ def system_updates():
 @app.route('/api/system/update-status')
 @_login_required
 def api_update_status():
-    """Prüft auf Updates (git fetch + VERSION.json-Vergleich)."""
-    import json as _json
-    import subprocess as _sp
+    """Prueft auf Updates – commit-basiert via installer.updater.
 
-    repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
-    version_file = os.path.join(repo_root, 'VERSION.json')
-
-    def _git(*args):
-        return _sp.run(
-            ['git'] + list(args),
-            cwd=repo_root, capture_output=True, text=True, timeout=30
-        )
-
-    def _load_json(path):
-        try:
-            with open(path, encoding='utf-8') as fh:
-                return _json.load(fh)
-        except Exception:
-            return None
-
-    # Lokale Version
-    local_data = _load_json(version_file)
-    local_v = local_data.get('version', 'unbekannt') if local_data else 'unbekannt'
-
-    # Aktuellen Branch ermitteln (Fallback: master)
-    branch_r = _git('rev-parse', '--abbrev-ref', 'HEAD')
-    branch = branch_r.stdout.strip() if branch_r.returncode == 0 else 'master'
-    if not branch or branch == 'HEAD':
-        branch = 'master'
-
-    # git fetch
-    fetch = _git('fetch', 'origin', branch)
-    if fetch.returncode != 0:
-        return jsonify({
-            'error': f"git fetch fehlgeschlagen: {fetch.stderr.strip()}",
-            'local_version': local_v,
-        }), 200
-
-    # Remote VERSION.json
-    show = _git('show', f'origin/{branch}:VERSION.json')
-    if show.returncode != 0:
-        return jsonify({
-            'error': 'VERSION.json auf Remote nicht lesbar',
-            'local_version': local_v,
-        }), 200
-
+    Es gibt KEINE manuelle VERSION.json-Pflege mehr: 'available' wird
+    rein aus 'gibt es Commits in origin/<branch> die ich nicht habe?'
+    abgeleitet. VERSION.json wird – wenn vorhanden – nur als
+    Anzeige-Hint gelesen.
+    """
     try:
-        remote_data = _json.loads(show.stdout)
-    except _json.JSONDecodeError:
-        return jsonify({'error': 'VERSION.json ungültig', 'local_version': local_v}), 200
+        from installer import updater as _upd
+    except Exception as exc:
+        return jsonify({'error': f'Updater nicht verfuegbar: {exc}'}), 200
 
-    remote_v = remote_data.get('version', 'unbekannt')
-    impact   = remote_data.get('impact', {})
-    changelog = remote_data.get('changelog_summary', '')
-
-    # Versionsvergleich
-    def _sv(v):
-        try:
-            return tuple(int(x) for x in v.split('.'))
-        except ValueError:
-            return (0, 0, 0)
-
-    available = _sv(remote_v) > _sv(local_v)
-
-    # Neue Commits
-    commits = []
-    if available:
-        log_r = _git('log', '--oneline', 'HEAD..origin/master')
-        if log_r.returncode == 0:
-            commits = [l for l in log_r.stdout.splitlines() if l.strip()]
-
-    return jsonify({
-        'available': available,
-        'local_version': local_v,
-        'remote_version': remote_v,
-        'changelog_summary': changelog,
-        'commits': commits[:30],
-        'impact': impact,
-        'error': None,
-    })
+    status = _upd.check_for_updates()
+    if status.get('error'):
+        return jsonify({'error': status['error'],
+                         'local_commit': status.get('local_commit', '')}), 200
+    # Auf maximal 30 Commits in der Anzeige begrenzen
+    status['commits'] = (status.get('commits') or [])[:30]
+    return jsonify(status)
 
 
 @app.route('/api/system/update', methods=['POST'])
