@@ -460,15 +460,21 @@ def gmail_konfig_speichern(client_id: Optional[str] = None,
     return gmail_konfig()
 
 
-def gmail_oauth_url(redirect_uri: str, state: str = '') -> tuple[str, str]:
+def gmail_oauth_url(redirect_uri: str,
+                    state: str = '') -> tuple[str, str, str]:
     """Baut die Google-Auth-URL. Der Browser wird auf diese URL
     geleitet; Google leitet nach Consent zurueck zu ``redirect_uri``
     mit einem ``code``-Query-Parameter, den ``gmail_oauth_token_speichern``
     in ein Refresh-Token tauscht.
 
+    Wichtig: ``Flow.authorization_url`` erzeugt seit Library-Version
+    1.0+ automatisch ein PKCE-Code-Challenge-Paar. Der passende
+    ``code_verifier`` liegt nur im konkreten Flow-Objekt. Wir geben ihn
+    mit zurueck, damit der Aufrufer ihn in der Session zwischenspeichern
+    und beim Callback ans Token-Tausch-Flow uebergeben kann.
+
     Returns:
-        (auth_url, state) – ``state`` ist ein CSRF-Token, das die
-        Callback-Route gegen den Session-State pruefen muss.
+        ``(auth_url, state, code_verifier)``.
     """
     try:
         from google_auth_oauthlib.flow import Flow
@@ -506,13 +512,24 @@ def gmail_oauth_url(redirect_uri: str, state: str = '') -> tuple[str, str]:
         prompt='consent',
         state=state or None,
     )
-    return auth_url, returned_state
+    return auth_url, returned_state, flow.code_verifier or ''
 
 
 def gmail_oauth_token_speichern(code: str, redirect_uri: str,
+                                code_verifier: str = '',
                                 ma_id: Optional[int] = None) -> dict:
     """Tauscht den Authorization-Code in einen Refresh-Token und legt
     ihn in DORFKERN_KONFIG ab.
+
+    Args:
+        code:          Authorization-Code aus dem OAuth-Callback.
+        redirect_uri:  Muss exakt mit der bei ``gmail_oauth_url``
+                       verwendeten URI uebereinstimmen.
+        code_verifier: PKCE-Verifier aus dem Auth-Start-Flow
+                       (siehe Tuple-Rueckgabe von ``gmail_oauth_url``).
+                       Pflicht wenn der erste Flow PKCE genutzt hat
+                       (Default seit google-auth-oauthlib 1.0).
+        ma_id:         Optional fuer Audit.
 
     Returns: ``{'ok': bool, 'msg': str, 'email': str|None}``.
     """
@@ -541,6 +558,10 @@ def gmail_oauth_token_speichern(code: str, redirect_uri: str,
             scopes=GMAIL_SCOPES,
             redirect_uri=redirect_uri,
         )
+        # PKCE-Code-Verifier wieder einsetzen, damit der Token-Tausch
+        # zum Code-Challenge im Auth-Request passt.
+        if code_verifier:
+            flow.code_verifier = code_verifier
         flow.fetch_token(code=code)
     except Exception as exc:
         log.warning("gmail_oauth_token_speichern: fetch_token: %s", exc)

@@ -2393,11 +2393,15 @@ def einkauf_oauth_start():
     state = _secrets.token_urlsafe(32)
     session['einkauf_oauth_state'] = state
     try:
-        auth_url, _ = _einkauf.gmail_oauth_url(_gmail_redirect_uri(),
-                                               state=state)
+        auth_url, _, code_verifier = _einkauf.gmail_oauth_url(
+            _gmail_redirect_uri(), state=state)
     except (ValueError, RuntimeError) as exc:
         return redirect(url_for('einkauf_lieferanten_seite')
                         + f'?oauth_error={str(exc)[:120]}')
+    # PKCE-Verifier zwischenspeichern – der Callback braucht ihn fuer
+    # den Token-Tausch (sonst antwortet Google mit
+    # 'invalid_grant: Missing code verifier').
+    session['einkauf_oauth_verifier'] = code_verifier
     return redirect(auth_url)
 
 
@@ -2412,6 +2416,7 @@ def einkauf_oauth_callback():
     state = request.args.get('state', '')
     err   = request.args.get('error', '')
     expected_state = session.pop('einkauf_oauth_state', '')
+    verifier       = session.pop('einkauf_oauth_verifier', '')
 
     if err:
         return redirect(url_for('einkauf_lieferanten_seite')
@@ -2424,7 +2429,9 @@ def einkauf_oauth_callback():
                         + '?oauth_error=State-Mismatch')
 
     res = _einkauf.gmail_oauth_token_speichern(
-        code, _gmail_redirect_uri(), ma_id=session.get('ma_id'))
+        code, _gmail_redirect_uri(),
+        code_verifier=verifier,
+        ma_id=session.get('ma_id'))
     if not res.get('ok'):
         return redirect(url_for('einkauf_lieferanten_seite')
                         + f'?oauth_error={res.get("msg", "")[:120]}')
