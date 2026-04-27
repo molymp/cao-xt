@@ -65,11 +65,15 @@ def web_password_key(kuerzel: str) -> str:
 # ── Schema ───────────────────────────────────────────────────────────────────
 
 def run_migration() -> None:
-    """Legt die Lieferanten-Tabelle an. Idempotent.
+    """Legt die Einkauf-Tabellen an. Idempotent.
 
-    Phase-1-Felder. Email-Erkennungs-Patterns werden bei Bedarf
-    spaeter (Phase 3) um regex/glob/Substring-Tags erweitert; aktuell
-    interpretieren wir sie als Substring-Match (case-insensitive).
+    * XT_EINKAUF_LIEFERANT (Phase 1): Lieferanten-Registry
+    * XT_EINKAUF_BESTELLUNG (Phase 2): eingegangene
+      Bestellbestaetigungs-Mails als Roh-Container
+    * XT_EINKAUF_BESTELLPOS (Phase 2): Positionen aus dem Parser
+
+    Email-Erkennungs-Patterns werden aktuell als Substring-Match
+    (case-insensitive) interpretiert.
     """
     try:
         with get_db() as cur:
@@ -93,9 +97,62 @@ def run_migration() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                   COMMENT='Einkauf: Lieferanten-Registry (Phase 1)'
             """)
-        log.info("Migration: XT_EINKAUF_LIEFERANT geprueft/erstellt.")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_EINKAUF_BESTELLUNG (
+                  REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                  LIEF_REC_ID       INT UNSIGNED NOT NULL,
+                  GMAIL_MSG_ID      VARCHAR(64)  NOT NULL,
+                  GMAIL_THREAD_ID   VARCHAR(64)  NULL,
+                  ABSENDER          VARCHAR(255) NULL,
+                  BETREFF           VARCHAR(255) NULL,
+                  EMAIL_DATUM       DATETIME     NULL,
+                  ROHTEXT           MEDIUMTEXT   NULL,
+                  ROHHTML           MEDIUMTEXT   NULL,
+                  STATUS            ENUM('neu','geparst','in_cao','fehler','verworfen')
+                                     NOT NULL DEFAULT 'neu',
+                  BESTELL_NR        VARCHAR(40)  NULL,
+                  KUNDEN_NR         VARCHAR(40)  NULL,
+                  GESAMTSUMME_NETTO DECIMAL(12,4) NULL,
+                  ANZ_POSITIONEN    INT          NULL,
+                  PARSE_FEHLER      TEXT         NULL,
+                  EINGANG_AT        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  GEAENDERT_AT      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+                  BEARBEITET_VON    INT          NULL,
+                  UNIQUE KEY uq_gmail_msg (GMAIL_MSG_ID),
+                  INDEX idx_status (STATUS),
+                  INDEX idx_lief (LIEF_REC_ID),
+                  CONSTRAINT fk_einkauf_best_lief
+                    FOREIGN KEY (LIEF_REC_ID) REFERENCES XT_EINKAUF_LIEFERANT(REC_ID)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Einkauf: eingegangene Bestellbestaetigungs-Mails (Phase 2)'
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_EINKAUF_BESTELLPOS (
+                  REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                  BEST_REC_ID       INT UNSIGNED NOT NULL,
+                  POS_NR            INT UNSIGNED NOT NULL,
+                  ARTIKEL_NR_LIEF   VARCHAR(40)  NULL,
+                  BESCHREIBUNG_LIEF VARCHAR(255) NULL,
+                  MENGE             DECIMAL(12,3) NULL,
+                  PREIS_NETTO       DECIMAL(12,4) NULL,
+                  ZEILEN_BETRAG     DECIMAL(12,4) NULL,
+                  ARTIKEL_REC_ID    INT          NULL,
+                  STATUS            ENUM('neu','matched','in_cao','fehler')
+                                     NOT NULL DEFAULT 'neu',
+                  ANMERKUNG         TEXT         NULL,
+                  ERSTELLT_AT       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX idx_best (BEST_REC_ID),
+                  INDEX idx_artnr_lief (ARTIKEL_NR_LIEF),
+                  CONSTRAINT fk_einkauf_pos_best
+                    FOREIGN KEY (BEST_REC_ID) REFERENCES XT_EINKAUF_BESTELLUNG(REC_ID)
+                    ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Einkauf: Bestellpositionen aus dem Parser (Phase 2)'
+            """)
+        log.info("Migration: XT_EINKAUF_LIEFERANT/BESTELLUNG/BESTELLPOS geprueft.")
     except Exception as exc:
-        log.warning("XT_EINKAUF_LIEFERANT-Migration fehlgeschlagen: %s", exc)
+        log.warning("XT_EINKAUF_*-Migration fehlgeschlagen: %s", exc)
 
 
 def seed_defaults() -> int:
@@ -680,6 +737,287 @@ def gmail_verbindungstest() -> dict:
     except Exception as exc:
         return {'ok': False, 'anzahl': None,
                 'msg': f'Gmail-API-Fehler: {exc}'}
+
+
+# ── Gmail-Fetch: Bestellbestaetigungen abholen + persistieren ───────────────
+
+def _gmail_query_fuer_lieferant(lief: dict, neuer_als_tage: int = 30) -> str:
+    """Baut die Gmail-Search-Query aus den Erkennungs-Patterns eines
+    Lieferanten. Beispiel:
+        from:webportal@utz24.online
+        subject:"Ihre Bestellung (UTZ Lebensmittel)"
+        newer_than:30d
+    """
+    teile: list[str] = []
+    von = (lief.get('EMAIL_VON_PATTERN') or '').strip()
+    if von:
+        teile.append(f'from:{von}')
+    subj = (lief.get('EMAIL_SUBJECT_PATTERN') or '').strip()
+    if subj:
+        # Subject mit Anfuehrungszeichen, falls Leerzeichen darin
+        teile.append(f'subject:"{subj}"')
+    teile.append(f'newer_than:{int(neuer_als_tage)}d')
+    return ' '.join(teile)
+
+
+def _gmail_extract_plain(payload: dict) -> str:
+    """Sucht rekursiv im Gmail-Message-Payload nach text/plain und
+    liefert den dekodierten String. Faellt zurueck auf den ersten
+    text/* Teil falls kein plain.
+    """
+    import base64
+    def _walk(part: dict) -> Optional[str]:
+        mime = (part.get('mimeType') or '').lower()
+        body = part.get('body') or {}
+        data = body.get('data')
+        if mime == 'text/plain' and data:
+            return base64.urlsafe_b64decode(data + '===').decode(
+                'utf-8', errors='replace')
+        for kind in part.get('parts') or []:
+            r = _walk(kind)
+            if r is not None:
+                return r
+        return None
+
+    plain = _walk(payload)
+    if plain is not None:
+        return plain
+    # Fallback: erstes text/html (HTML-Tags grob strippen)
+    def _walk_html(part: dict) -> Optional[str]:
+        mime = (part.get('mimeType') or '').lower()
+        body = part.get('body') or {}
+        data = body.get('data')
+        if mime == 'text/html' and data:
+            raw = base64.urlsafe_b64decode(data + '===').decode(
+                'utf-8', errors='replace')
+            # Sehr roh: alle Tags durch Whitespace ersetzen
+            import re as _re
+            return _re.sub(r'<[^>]+>', ' ', raw)
+        for kind in part.get('parts') or []:
+            r = _walk_html(kind)
+            if r is not None:
+                return r
+        return None
+    return _walk_html(payload) or ''
+
+
+def _gmail_extract_html(payload: dict) -> str:
+    """Liefert den text/html-Teil dekodiert (oder leeren String)."""
+    import base64
+    def _walk(part: dict) -> Optional[str]:
+        mime = (part.get('mimeType') or '').lower()
+        body = part.get('body') or {}
+        data = body.get('data')
+        if mime == 'text/html' and data:
+            return base64.urlsafe_b64decode(data + '===').decode(
+                'utf-8', errors='replace')
+        for kind in part.get('parts') or []:
+            r = _walk(kind)
+            if r is not None:
+                return r
+        return None
+    return _walk(payload) or ''
+
+
+def _gmail_header(payload: dict, name: str) -> str:
+    """Liefert einen Header-Wert (case-insensitiv)."""
+    name_low = name.lower()
+    for h in payload.get('headers') or []:
+        if (h.get('name') or '').lower() == name_low:
+            return h.get('value') or ''
+    return ''
+
+
+def _email_datum_parsen(s: str):
+    """Wandelt einen RFC2822-Datum-String in datetime (oder None)."""
+    if not s:
+        return None
+    try:
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(s)
+    except Exception:
+        return None
+
+
+def gmail_fetch_neue_bestellungen(neuer_als_tage: int = 30,
+                                  max_pro_lieferant: int = 30,
+                                  ma_id: Optional[int] = None) -> dict:
+    """Holt fuer jeden aktiven Lieferanten neue Bestellbestaetigungen
+    aus dem verbundenen Gmail-Postfach, parst sie und persistiert sie
+    in ``XT_EINKAUF_BESTELLUNG`` (mit Positionen in
+    ``XT_EINKAUF_BESTELLPOS``).
+
+    Bereits eingelagerte Mails (UNIQUE-Constraint auf
+    ``GMAIL_MSG_ID``) werden uebersprungen.
+
+    Returns: ``{'ok': bool, 'gefunden': N, 'neu': N, 'lieferanten':
+        [{'kuerzel', 'gefunden', 'neu', 'fehler'}], 'fehler': str|None}``.
+    """
+    try:
+        creds = gmail_credentials()
+    except Exception as exc:
+        return {'ok': False, 'fehler': str(exc),
+                'gefunden': 0, 'neu': 0, 'lieferanten': []}
+
+    try:
+        from googleapiclient.discovery import build
+        service = build('gmail', 'v1', credentials=creds,
+                        cache_discovery=False)
+    except Exception as exc:
+        return {'ok': False, 'fehler': f'Gmail-Client-Build: {exc}',
+                'gefunden': 0, 'neu': 0, 'lieferanten': []}
+
+    from common.einkauf_parser import parse_email
+
+    lieferanten = liste(nur_aktive=True)
+    summe_gefunden = 0
+    summe_neu     = 0
+    pro_lief_log: list[dict] = []
+
+    for lief in lieferanten:
+        kuerzel = lief['KUERZEL']
+        if not lief.get('EMAIL_VON_PATTERN'):
+            continue
+        lief_log = {
+            'kuerzel': kuerzel, 'gefunden': 0, 'neu': 0, 'fehler': None,
+        }
+        try:
+            query = _gmail_query_fuer_lieferant(lief, neuer_als_tage)
+            res = service.users().messages().list(
+                userId='me', q=query,
+                maxResults=max_pro_lieferant).execute()
+            ids = [m['id'] for m in res.get('messages', [])]
+            lief_log['gefunden'] = len(ids)
+            summe_gefunden += len(ids)
+
+            for msg_id in ids:
+                # Schon eingelagert?
+                with get_db() as cur:
+                    cur.execute(
+                        "SELECT REC_ID FROM XT_EINKAUF_BESTELLUNG "
+                        "WHERE GMAIL_MSG_ID = %s",
+                        (msg_id,))
+                    if cur.fetchone():
+                        continue
+
+                msg = service.users().messages().get(
+                    userId='me', id=msg_id, format='full').execute()
+                payload = msg.get('payload', {}) or {}
+                plain = _gmail_extract_plain(payload)
+                htmlb = _gmail_extract_html(payload)
+                betreff = _gmail_header(payload, 'Subject')
+                absender = _gmail_header(payload, 'From')
+                datum = _email_datum_parsen(_gmail_header(payload, 'Date'))
+
+                geparst = parse_email(lief.get('PARSER_KEY') or '', plain)
+                if not geparst.get('fehler') and geparst.get('positionen'):
+                    status = 'geparst'
+                else:
+                    status = 'fehler' if geparst.get('fehler') else 'neu'
+
+                with get_db_transaction() as cur:
+                    cur.execute("""
+                        INSERT INTO XT_EINKAUF_BESTELLUNG
+                          (LIEF_REC_ID, GMAIL_MSG_ID, GMAIL_THREAD_ID,
+                           ABSENDER, BETREFF, EMAIL_DATUM,
+                           ROHTEXT, ROHHTML, STATUS,
+                           BESTELL_NR, KUNDEN_NR,
+                           GESAMTSUMME_NETTO, ANZ_POSITIONEN,
+                           PARSE_FEHLER, BEARBEITET_VON)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, (
+                        lief['REC_ID'], msg_id, msg.get('threadId'),
+                        absender[:255], betreff[:255], datum,
+                        plain, htmlb, status,
+                        (geparst.get('best_nr') or '')[:40] or None,
+                        (geparst.get('kunden_nr') or '')[:40] if geparst.get('kunden_nr') else None,
+                        geparst.get('gesamtsumme_netto'),
+                        len(geparst.get('positionen') or []),
+                        geparst.get('fehler'),
+                        ma_id,
+                    ))
+                    best_id = int(cur.lastrowid)
+                    for p in geparst.get('positionen') or []:
+                        cur.execute("""
+                            INSERT INTO XT_EINKAUF_BESTELLPOS
+                              (BEST_REC_ID, POS_NR, ARTIKEL_NR_LIEF,
+                               BESCHREIBUNG_LIEF, MENGE, PREIS_NETTO,
+                               ZEILEN_BETRAG)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s)
+                        """, (
+                            best_id, p['pos_nr'],
+                            (p.get('artikel_nr_lief') or '')[:40],
+                            (p.get('bezeichnung_lief') or '')[:255],
+                            p.get('menge'),
+                            p.get('preis_netto'),
+                            p.get('zeilen_betrag'),
+                        ))
+                lief_log['neu'] += 1
+                summe_neu += 1
+        except Exception as exc:
+            log.exception("Gmail-Fetch fuer %s fehlgeschlagen", kuerzel)
+            lief_log['fehler'] = str(exc)
+        pro_lief_log.append(lief_log)
+
+    return {'ok': True, 'fehler': None,
+            'gefunden': summe_gefunden, 'neu': summe_neu,
+            'lieferanten': pro_lief_log}
+
+
+# ── Bestellungen-CRUD (Listen-Ansicht im UI) ─────────────────────────────────
+
+def bestellungen_liste(status: Optional[str] = None,
+                       limit: int = 100) -> list[dict]:
+    """Liefert eingegangene Bestellungen sortiert nach EMAIL_DATUM desc."""
+    sql = ("SELECT b.REC_ID, b.LIEF_REC_ID, l.KUERZEL AS LIEF_KUERZEL, "
+           "l.BEZEICHNUNG AS LIEF_BEZ, b.GMAIL_MSG_ID, b.ABSENDER, "
+           "b.BETREFF, b.EMAIL_DATUM, b.STATUS, b.BESTELL_NR, "
+           "b.KUNDEN_NR, b.GESAMTSUMME_NETTO, b.ANZ_POSITIONEN, "
+           "b.PARSE_FEHLER, b.EINGANG_AT "
+           "FROM XT_EINKAUF_BESTELLUNG b "
+           "JOIN XT_EINKAUF_LIEFERANT l ON l.REC_ID = b.LIEF_REC_ID")
+    params: tuple = ()
+    if status:
+        sql += " WHERE b.STATUS = %s"
+        params = (status,)
+    sql += " ORDER BY b.EMAIL_DATUM DESC, b.REC_ID DESC LIMIT %s"
+    params = params + (int(limit),)
+    try:
+        with get_db() as cur:
+            cur.execute(sql, params)
+            return list(cur.fetchall() or [])
+    except Exception as exc:
+        log.warning("bestellungen_liste: %s", exc)
+        return []
+
+
+def bestellung_holen(rec_id: int) -> Optional[dict]:
+    """Liefert Header + Positionen einer Bestellung."""
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT b.*, l.KUERZEL AS LIEF_KUERZEL,
+                       l.BEZEICHNUNG AS LIEF_BEZ
+                FROM XT_EINKAUF_BESTELLUNG b
+                JOIN XT_EINKAUF_LIEFERANT l ON l.REC_ID = b.LIEF_REC_ID
+                WHERE b.REC_ID = %s
+            """, (rec_id,))
+            head = cur.fetchone()
+            if not head:
+                return None
+            cur.execute("""
+                SELECT REC_ID, POS_NR, ARTIKEL_NR_LIEF, BESCHREIBUNG_LIEF,
+                       MENGE, PREIS_NETTO, ZEILEN_BETRAG, ARTIKEL_REC_ID,
+                       STATUS, ANMERKUNG
+                FROM XT_EINKAUF_BESTELLPOS
+                WHERE BEST_REC_ID = %s
+                ORDER BY POS_NR
+            """, (rec_id,))
+            head['positionen'] = list(cur.fetchall() or [])
+        return head
+    except Exception as exc:
+        log.warning("bestellung_holen(%s): %s", rec_id, exc)
+        return None
 
 
 # ── IMAP (Legacy-Pfad – aktuell nicht im UI) ────────────────────────────────
