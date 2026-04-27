@@ -1868,6 +1868,18 @@ def api_update_status():
                          'local_commit': status.get('local_commit', '')}), 200
     # Auf maximal 30 Commits in der Anzeige begrenzen
     status['commits'] = (status.get('commits') or [])[:30]
+
+    # Stand des laufenden App-Prozesses (beim Boot ermittelt) zusaetzlich
+    # mitliefern. Wenn der Working-Tree zwischenzeitlich aktualisiert
+    # wurde (z.B. durch ein vorheriges Update oder manuellen pull), aber
+    # der Admin-App-Prozess noch im Speicher haengt, ist 'available' zwar
+    # false (lokal == remote), trotzdem muss ein Neustart her, damit
+    # neuer Code wirksam wird.
+    status['running_commit']    = GIT_COMMIT_SHORT
+    status['restart_required']  = bool(
+        GIT_COMMIT_SHORT and status.get('local_commit')
+        and GIT_COMMIT_SHORT != status['local_commit']
+    )
     return jsonify(status)
 
 
@@ -1895,6 +1907,36 @@ def api_system_update():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
     return jsonify({'ok': True, 'log': '/tmp/caoxt-update.log'})
+
+
+@app.route('/api/system/restart-admin', methods=['POST'])
+@_login_required
+def api_system_restart_admin():
+    """Startet die Admin-App neu, damit ein bereits aktualisierter
+    Working-Tree wirksam wird (Fall: ``restart_required=True``).
+
+    Wir loesen den Restart ueber ``dorfkern-ctl`` aus, damit dieselbe
+    Stop/Start-Logik wie bei einem regulaeren Update genutzt wird
+    (PID-File, App-Manager). Der Prozess wird in einer neuen Session
+    abgekoppelt – bevor er den eigenen ``admin``-Service killt, hat
+    Flask die HTTP-Antwort bereits ausgeliefert.
+    """
+    repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
+    ctl = os.path.join(repo_root, 'dorfkern-ctl')
+    if not os.path.exists(ctl):
+        return jsonify({'ok': False,
+                        'error': 'dorfkern-ctl nicht gefunden'}), 500
+    try:
+        subprocess.Popen(
+            [ctl, 'restart', 'admin'],
+            cwd=repo_root,
+            stdout=open('/tmp/caoxt-restart.log', 'a'),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True, 'log': '/tmp/caoxt-restart.log'})
 
 
 # ── Zeiten-CSV Import (ShiftJuggler Attendance-Export) ───────────
