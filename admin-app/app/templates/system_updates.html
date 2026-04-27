@@ -95,7 +95,10 @@
 {% block content %}
 <h1 style="margin-bottom:6px;">⬆️ System-Updates</h1>
 <p style="color:var(--text-dim);margin-bottom:28px;font-size:14px;">
-  Prüft auf verfügbare Versionen via Git. Update wird aus der Admin-App heraus gestartet.
+  Vergleicht den lokalen Stand mit <code>origin/&lt;branch&gt;</code>. Wenn neue
+  Commits vorliegen, kann das Update direkt von hier aus gestartet werden:
+  Apps werden gestoppt, <code>git pull</code> ausgeführt, Apps wieder
+  hochgefahren. DB-Migrationen laufen beim Admin-Start automatisch.
 </p>
 
 <div class="card update-card">
@@ -116,12 +119,16 @@
 
       <div class="version-row">
         <div class="version-box">
-          <div class="vb-label">Installierte Version</div>
-          <div class="vb-val" id="local-v">–</div>
+          <div class="vb-label">Lokaler Stand</div>
+          <div class="vb-val" id="local-v" style="font-family: 'JetBrains Mono', monospace; font-size: 22px;">–</div>
+          <div class="vb-sub" id="local-sub"
+               style="font-size: 11px; color: var(--text-dim); margin-top: 2px;"></div>
         </div>
         <div class="version-box" id="remote-box">
-          <div class="vb-label">Verfügbare Version</div>
-          <div class="vb-val" id="remote-v">–</div>
+          <div class="vb-label">Remote-Stand</div>
+          <div class="vb-val" id="remote-v" style="font-family: 'JetBrains Mono', monospace; font-size: 22px;">–</div>
+          <div class="vb-sub" id="remote-sub"
+               style="font-size: 11px; color: var(--text-dim); margin-top: 2px;"></div>
         </div>
       </div>
 
@@ -213,21 +220,18 @@ async function checkUpdates() {
     return;
   }
 
-  // Versionen anzeigen
-  document.getElementById('local-v').textContent = data.local_version || '?';
-  document.getElementById('remote-v').textContent = data.remote_version || '?';
+  // Commit-Hashes als primaere Anzeige, Version (falls vorhanden) als Untertitel
+  document.getElementById('local-v').textContent  = data.local_commit  || '?';
+  document.getElementById('remote-v').textContent = data.remote_commit || '?';
+  const lsub = data.local_version  ? 'v' + data.local_version  : '';
+  const rsub = data.remote_version ? 'v' + data.remote_version
+                : (data.ahead_count ? data.ahead_count + ' Commits voraus' : '');
+  document.getElementById('local-sub').textContent  = lsub;
+  document.getElementById('remote-sub').textContent = rsub +
+    (data.branch ? '  ·  origin/' + data.branch : '');
 
   const remoteBox = document.getElementById('remote-box');
   remoteBox.classList.toggle('neu', data.available);
-
-  // Changelog
-  const cls = document.getElementById('changelog-summary');
-  if (data.changelog_summary) {
-    cls.textContent = data.changelog_summary;
-    cls.style.display = '';
-  } else {
-    cls.style.display = 'none';
-  }
 
   // Impact-Badges
   const il = document.getElementById('impact-list');
