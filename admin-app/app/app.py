@@ -2547,12 +2547,65 @@ def api_einkauf_bestellung_anreichern(rec_id):
     """Reichert die Stammdaten aller Positionen einer Bestellung
     via Web-Treiber an (UTZ Mobile-API + HTML-Detail). Synchron –
     kann bei vielen Positionen einige Zehn-Sekunden dauern.
+    Body: {ueberspringe_aktuelle?: bool} – default true, false = force.
     """
     body = request.get_json(silent=True) or {}
     skip = bool(body.get('ueberspringe_aktuelle', True))
     res = _einkauf.bestellung_anreichern(rec_id,
                                           ueberspringe_aktuelle=skip)
     return jsonify(**res), 200 if res.get('ok') else 502
+
+
+@app.post('/api/einkauf/positionen/<int:pos_id>/anreichern')
+@_login_required
+def api_einkauf_position_anreichern(pos_id):
+    """Reichert eine einzelne Position frisch an (force, ignoriert
+    Cache-Alter) und liefert das Diagnose-Ergebnis zurueck – inkl.
+    Detail-URL, HTTP-Status und HTML-Snippet, damit Parser-Probleme
+    schnell erkennbar sind.
+    """
+    from common import einkauf_lief_web as _web
+    # Position laden, um lief_rec_id + artnr zu bekommen
+    try:
+        from db import get_db
+        with get_db() as cur:
+            cur.execute("""
+                SELECT bp.ARTIKEL_NR_LIEF, b.LIEF_REC_ID
+                FROM XT_EINKAUF_BESTELLPOS bp
+                JOIN XT_EINKAUF_BESTELLUNG b ON b.REC_ID = bp.BEST_REC_ID
+                WHERE bp.REC_ID = %s
+            """, (pos_id,))
+            row = cur.fetchone()
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+    if not row:
+        return jsonify(ok=False, msg='Position nicht gefunden.'), 404
+    artnr = row.get('ARTIKEL_NR_LIEF') or ''
+    lief_rec_id = row.get('LIEF_REC_ID')
+
+    diag = _web.web_artikel_diagnose(lief_rec_id, artnr)
+    # Egal wie's lief: in den Cache schreiben (auch Fehler-Eintrag)
+    parsed = ((diag.get('probe') or {}).get('parsed') or {}) \
+              if diag.get('ok') else {}
+    if diag.get('ok') and parsed:
+        # Bild ggf. herunterladen
+        if parsed.get('bild_url'):
+            try:
+                lief = _einkauf.holen(lief_rec_id) or {}
+                lokal = _einkauf._download_lief_bild(
+                    parsed['bild_url'],
+                    lief.get('KUERZEL') or '',
+                    artnr)
+                if lokal:
+                    parsed['bild_lokal'] = lokal
+            except Exception:
+                pass
+        _einkauf.lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
+    elif not diag.get('ok'):
+        _einkauf.lief_artikel_speichern(
+            lief_rec_id, artnr, parsed=None,
+            fehler=str(diag.get('msg') or 'unbekannt'))
+    return jsonify(ok=diag.get('ok', False), **diag)
 
 
 @app.get('/api/einkauf/bestellungen/<int:rec_id>/cao-sync-plan')

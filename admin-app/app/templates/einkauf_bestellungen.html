@@ -699,6 +699,24 @@ async function _zuordnen(posId, body) {
   if (!d.ok) toast(d.msg || 'Fehler', 'err');
 }
 
+// ── Einzelne Pos neu anreichern (Force, mit Diagnose) ────────────
+async function anreichernPos(posId, bestRecId) {
+  const res = await fetch(`/api/einkauf/positionen/${posId}/anreichern`,
+                          { method: 'POST' });
+  const d = await res.json();
+  if (!d.ok) {
+    toast('Anreichern fehlgeschlagen: ' + (d.msg || ''), 'err');
+    return;
+  }
+  const p = (d.probe || {}).parsed || {};
+  const url = (d.probe || {}).detail_url || '(?)';
+  const have = p.barcode_stueck ? '✓' : '✗';
+  const txt = `Anreichern OK · EAN-Stk ${have} ${p.barcode_stueck || ''} · ${url}`;
+  toast(txt, p.barcode_stueck ? 'ok' : 'err', 8000);
+  console.log('Anreichern-Diagnose Pos', posId, d);
+  if (bestRecId) caoMatch(bestRecId);
+}
+
 // ── Stammdaten-Anreicherung via Lieferanten-Web ──────────────────
 async function anreichern(recId) {
   const btn  = document.getElementById('btn-anreichern-' + recId);
@@ -707,13 +725,16 @@ async function anreichern(recId) {
   btn.disabled = true;
   const altText = btn.textContent;
   btn.textContent = '⏳ Frage Lieferanten ab …';
-  hint.textContent = 'das kann einige Zehn-Sekunden dauern';
+  hint.textContent = 'das kann einige Zehn-Sekunden dauern · Shift+Klick = Force (Cache verwerfen)';
   let d;
   try {
+    // Bei Shift-Klick: Cache komplett neu aufbauen (Force-Refresh)
+    const force = (window.event && window.event.shiftKey) || false;
+    if (force) hint.textContent = 'FORCE-Refresh: Cache wird komplett neu …';
     const r = await fetch(`/api/einkauf/bestellungen/${recId}/anreichern`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ueberspringe_aktuelle: true }),
+      body: JSON.stringify({ ueberspringe_aktuelle: !force }),
     });
     d = await r.json();
   } catch (e) {
