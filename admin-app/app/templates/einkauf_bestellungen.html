@@ -147,6 +147,40 @@
   font-size: 14px;
   color: var(--brand-terracotta);
 }
+
+/* Vorschlags-Zeile unter "NEU"-Positionen */
+.vorschlag-zeile td {
+  background: #fffaf5;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 6px 12px 10px !important;
+  font-size: 12px;
+}
+.vorschlag-zeile .vor-titel {
+  display: inline-block;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-right: 8px;
+}
+.vorschlag-eintrag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--brand-ink);
+  cursor: help;
+}
+.vorschlag-eintrag .v-name { font-family: 'Nunito', sans-serif; }
+.vorschlag-eintrag .v-ek-ok   { color: var(--gruen-dunkel); font-weight: 700; }
+.vorschlag-eintrag .v-ek-warn { color: var(--status-gelb); font-weight: 700; }
 </style>
 {% endblock %}
 
@@ -424,7 +458,14 @@ async function caoMatch(recId) {
   // Pro Pos die Match-Spalten setzen
   const byPosId = {};
   d.matches.forEach(m => byPosId[m.pos_rec_id] = m);
-  tbl.querySelectorAll('tbody tr').forEach(row => {
+
+  // Bereits eingefuegte Vorschlags-Zeilen entfernen (Re-Run)
+  tbl.querySelectorAll('tr.vorschlag-zeile').forEach(r => r.remove());
+
+  // Wir muessen vorwaerts iterieren, aber Zeilen NACH der aktuellen
+  // einfuegen → Snapshot erst, dann anhaengen.
+  const rows = Array.from(tbl.querySelectorAll('tbody tr'));
+  rows.forEach(row => {
     const posId = parseInt(row.dataset.posId);
     const m = byPosId[posId];
     const tds = row.querySelectorAll('.cao-col');
@@ -454,6 +495,33 @@ async function caoMatch(recId) {
     } else {
       tds[2].textContent = '–';
       tds[2].className = 'cao-col num diff-null';
+    }
+
+    // Vorschlags-Zeile fuer NEU-Positionen mit Treffern
+    if (m.match_quelle === 'kein' && Array.isArray(m.vorschlaege)
+        && m.vorschlaege.length > 0) {
+      const vrow = document.createElement('tr');
+      vrow.className = 'vorschlag-zeile';
+      const td = document.createElement('td');
+      td.colSpan = 9;
+      td.innerHTML =
+        '<span class="vor-titel">💡 Möglicherweise schon in CAO:</span>' +
+        m.vorschlaege.map(v => {
+          const ekDiff = (m.preis_netto != null && v.ek_preis)
+            ? (m.preis_netto - v.ek_preis) : null;
+          const ekClass = ekDiff != null && Math.abs(ekDiff) < 0.01
+            ? 'v-ek-ok' : 'v-ek-warn';
+          const ekTxt = ekDiff != null && Math.abs(ekDiff) < 0.01
+            ? '✓ EK gleich' : `EK ${v.ek_preis.toFixed(3)} €`;
+          return `<span class="vorschlag-eintrag" title="WG ${v.warengruppe||'?'} · Lager ${v.lager}">
+                    <code>${_esc(v.artnum||'')}</code>
+                    <span class="v-name">${_esc(v.matchcode||'')}</span>
+                    <span class="${ekClass}">${ekTxt}</span>
+                  </span>`;
+        }).join('');
+      td.firstChild?.remove;  // no-op safety
+      vrow.appendChild(td);
+      row.parentNode.insertBefore(vrow, row.nextSibling);
     }
   });
 }

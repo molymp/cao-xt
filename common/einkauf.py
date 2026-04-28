@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import imaplib
 import logging
+import re
 import socket
 from typing import Any, Optional
 
@@ -1005,6 +1006,115 @@ def bestellungen_liste(status: Optional[str] = None,
         return []
 
 
+# ── Fuzzy-Vorschlag fuer noch nicht zugeordnete Positionen ──────────────────
+#
+# Wenn die BESTNUM-Match nichts findet, kann der CAO-Stammartikel trotzdem
+# bereits da sein – nur unter einer anderen Lieferanten-ArtNr (z.B. weil
+# frueher bei einem anderen Lieferanten gepflegt wurde, oder die
+# Lieferanten-Nr-Verknuepfung in ARTIKEL_PREIS noch fehlt). Dafuer eine
+# heuristische Bezeichnungs-Suche.
+
+# Stoppwoerter, die in der Suche keinen Mehrwert bringen
+_BEZ_STOP = {
+    'bio', 'fettarm', 'ungeschnitten', 'natur', 'frisch', 'klassisch',
+    'classic', 'vegan', 'ohne', 'mit', 'der', 'die', 'das', 'und',
+    'fuer', 'fett', 'lagig', 'pack', 'fuer', 'jeden', 'tag', 'eckig',
+    'rund', 'eis', 'tk', 'gross', 'klein', 'hoch', 'pro',
+    'kg', 'g', 'ml', 'l', 'cl', 'st', 'stk', 'stueck',
+}
+_BEZ_TOKEN = re.compile(r"[A-Za-zÄÖÜäöüß0-9]{4,}")
+
+
+def _bezeichnungs_tokens(bez: str) -> list[str]:
+    """Extrahiert Such-relevante Tokens aus einer Lieferanten-Bezeichnung.
+
+    Strategie: alphanum-Sequenzen >= 4 Zeichen, ohne Stoppwoerter,
+    sortiert nach Laenge absteigend (laengere = spezifischer). Fragezeichen
+    (Encoding-Artefakte aus Plain-Text-Mails) werden ignoriert.
+    """
+    if not bez:
+        return []
+    # Encoding-? aus PHP-Plain-Texten als Wildcard behandeln
+    bez = bez.replace('?', ' ')
+    tokens = _BEZ_TOKEN.findall(bez)
+    nuetzlich = [t for t in tokens if t.lower() not in _BEZ_STOP]
+    # Nach Laenge absteigend, damit wir die spezifischsten zuerst nutzen
+    nuetzlich.sort(key=lambda t: -len(t))
+    return nuetzlich
+
+
+def cao_artikel_vorschlag(bezeichnung_lief: str,
+                          cao_lief_id: Optional[int] = None,
+                          limit: int = 3) -> list[dict]:
+    """Sucht in ARTIKEL nach Bezeichnungs-aehnlichen Stammartikeln.
+
+    Kein Fuzzy im Sinne von Levenshtein – wir nehmen die zwei
+    spezifischsten Tokens (>=4 Zeichen, keine Stoppwoerter) und
+    verlangen, dass beide im MATCHCODE auftauchen. Das ist robust und
+    laesst sich von der DB indizieren.
+
+    Args:
+        bezeichnung_lief: BESCHREIBUNG_LIEF aus der Bestellposition.
+        cao_lief_id:      wenn gesetzt: bevorzugt Treffer, deren
+                          DEFAULT_LIEF_ID auf diesen Lieferanten zeigt.
+        limit:            max Treffer.
+
+    Returns: Liste von dicts {rec_id, artnum, matchcode, kas_name,
+        warengruppe, ek_preis, vk5b, lager, default_lief_id}.
+    """
+    tokens = _bezeichnungs_tokens(bezeichnung_lief)[:2]
+    if not tokens:
+        return []
+
+    # Wir filtern nur aktive (NO_VK_FLAG != 'Y' und USERFELD_02 leer)
+    where = ["a.NO_VK_FLAG <> 'Y'",
+             "(a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')"]
+    params: list = []
+    for tok in tokens:
+        where.append("(a.MATCHCODE LIKE %s OR a.KAS_NAME LIKE %s "
+                     "OR a.KURZNAME LIKE %s)")
+        like = f'%{tok}%'
+        params.extend([like, like, like])
+
+    # Wenn der Lieferant bekannt ist: nach DEFAULT_LIEF_ID-Treffern zuerst.
+    order = ('CASE WHEN a.DEFAULT_LIEF_ID = %s THEN 0 ELSE 1 END, '
+             'CHAR_LENGTH(a.MATCHCODE)')
+    if cao_lief_id:
+        params.append(int(cao_lief_id))
+    else:
+        order = 'CHAR_LENGTH(a.MATCHCODE)'
+
+    sql = f"""
+        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME, a.KURZNAME,
+               a.WARENGRUPPE, a.EK_PREIS, a.VK5B, a.MENGE_AKT,
+               a.DEFAULT_LIEF_ID
+        FROM ARTIKEL a
+        WHERE {' AND '.join(where)}
+        ORDER BY {order}
+        LIMIT %s
+    """
+    params.append(int(limit))
+    try:
+        with get_db() as cur:
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall() or []
+    except Exception as exc:
+        log.warning("cao_artikel_vorschlag: %s", exc)
+        return []
+    return [{
+        'rec_id':           r.get('REC_ID'),
+        'artnum':           r.get('ARTNUM'),
+        'matchcode':        r.get('MATCHCODE'),
+        'kas_name':         (r.get('KAS_NAME') or r.get('KURZNAME')
+                              or r.get('MATCHCODE')),
+        'warengruppe':      r.get('WARENGRUPPE'),
+        'ek_preis':         float(r.get('EK_PREIS') or 0),
+        'vk5b':             float(r.get('VK5B') or 0),
+        'lager':            float(r.get('MENGE_AKT') or 0),
+        'default_lief_id':  r.get('DEFAULT_LIEF_ID'),
+    } for r in rows]
+
+
 def cao_match_positionen(rec_id: int) -> list[dict]:
     """Read-only-Vorschau: pro Position der Bestellung pruefen, ob in CAO
     schon ein passender Artikel hinterlegt ist.
@@ -1130,6 +1240,17 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                                 and not (cao_treffer.get('USERFELD_02') or '').strip()),
             }
 
+        # Bei „kein"-Treffer: Bezeichnungs-Vorschlaege liefern
+        vorschlaege: list[dict] = []
+        if match_quelle == 'kein':
+            try:
+                vorschlaege = cao_artikel_vorschlag(
+                    p.get('BESCHREIBUNG_LIEF') or '',
+                    cao_lief_id=cao_lief, limit=3)
+            except Exception as exc:
+                log.warning("Vorschlag fuer Pos %s: %s", artnr, exc)
+                vorschlaege = []
+
         out.append({
             'pos_rec_id':       p.get('REC_ID'),
             'pos_nr':           p.get('POS_NR'),
@@ -1142,6 +1263,7 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             'cao':              cao_block,
             'ek_diff':          ek_diff,
             'ek_diff_pct':      ek_diff_pct,
+            'vorschlaege':      vorschlaege,
         })
     return out
 
