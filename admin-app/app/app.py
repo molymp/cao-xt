@@ -2287,6 +2287,23 @@ def api_einkauf_lieferanten_web_test(rec_id):
     return jsonify(**res), 200 if res.get('ok') else 502
 
 
+@app.post('/api/einkauf/lieferanten/<int:rec_id>/web-artikel-probe')
+@_login_required
+def api_einkauf_lieferanten_artikel_probe(rec_id):
+    """Diagnose-Endpoint: loggt sich ein und probiert mehrere
+    plausible Artikel-Detail-URLs fuer eine gegebene ArtNr.
+    Body: {'artnr': str}. Returns: best_url, best_score,
+    titel, snippet, raw_snippet, versuche[].
+    """
+    from common import einkauf_lief_web as _web
+    body = request.get_json(silent=True) or {}
+    artnr = (body.get('artnr') or '').strip()
+    if not artnr:
+        return jsonify(ok=False, msg='artnr fehlt'), 400
+    res = _web.web_artikel_diagnose(rec_id, artnr)
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 @app.delete('/api/einkauf/lieferanten/<int:rec_id>')
 @_login_required
 def api_einkauf_lieferanten_loeschen(rec_id):

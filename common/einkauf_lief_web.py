@@ -132,17 +132,34 @@ def _utz_login(sess, creds: dict) -> dict:
     final_url = r.url
     cookies = sorted(c.name for c in sess.cookies)
 
-    # Erfolg = finaler URL hat keinen Login-Anker mehr UND wir sehen
-    # ein Logout-Indiz.
-    nicht_mehr_login = ('b2b-login' not in final_url.lower()
-                        and '?action=shop_login' not in final_url.lower())
-    logout_indiz = any(t in body_low for t in (
-        'logout', 'abmelden', 'shop_logout'))
-    erfolgreich = nicht_mehr_login and logout_indiz
-
     # Title
     m = re.search(r'<title>([^<]{1,200})</title>', body, re.IGNORECASE)
     titel = (m.group(1).strip() if m else '')[:200]
+    titel_low = titel.lower()
+
+    # UTZ leitet nach Login NICHT weiter, sondern rendert die Shop-Seite
+    # unter derselben URL. Erfolgskriterien daher mehrdimensional:
+    #   1. Title hat keinen Login-/Anmelde-/Haendlerportal-Marker mehr
+    #   2. Postlogin-Cookie 'sidgrosshandlung' ist gesetzt
+    #   3. Body enthaelt einen Logout-/Mein-Konto-Marker
+    # Mindestens zwei dieser drei -> eingeloggt.
+    title_zeigt_login = (
+        'login' in titel_low
+        or 'anmeld' in titel_low
+        or 'händlerportal' in titel_low
+    )
+    hat_shop_cookie = any(c.lower() == 'sidgrosshandlung' for c in cookies)
+    hat_logout_indiz = any(
+        t in body_low
+        for t in ('shop_logout', 'action=shop_logout', 'abmelden',
+                  'mein konto', 'meine bestellungen')
+    )
+    indizien = sum([
+        not title_zeigt_login,
+        hat_shop_cookie,
+        hat_logout_indiz,
+    ])
+    erfolgreich = indizien >= 2
 
     # Bei Fehlversuch: Versuche eine konkrete Fehlermeldung aus dem
     # Body zu extrahieren (oft in <div class="alert">, <p class="error">
@@ -186,9 +203,126 @@ def _utz_login(sess, creds: dict) -> dict:
     }
 
 
+def _utz_artikel_probe(sess, artnr: str) -> dict:
+    """Diagnose-Hilfe: Versucht nach erfolgreichem Login mehrere
+    plausible Detail/Such-URLs fuer eine Lieferanten-ArtNr und liefert
+    den vielversprechendsten Response zurueck.
+
+    Da wir das echte UTZ-URL-Schema noch nicht kennen, probieren wir
+    typische Muster:
+      ?suche=<artnr>
+      ?action=search&suche=<artnr>
+      ?action=artikel&id=<artnr>
+      /artikel/<artnr>/
+      /grosshandlung/de/?suche=<artnr>
+    """
+    base = 'https://www.utz24.online/grosshandlung/de/'
+    kandidaten = [
+        f'{base}?suche={artnr}',
+        f'{base}?action=search&suche={artnr}',
+        f'{base}?action=search&q={artnr}',
+        f'{base}?action=artikel&id={artnr}',
+        f'{base}?action=detail&id={artnr}',
+        f'{base}artikel/{artnr}/',
+        f'{base}?artnr={artnr}',
+    ]
+    versuche: list[dict] = []
+    bester: Optional[dict] = None
+    for url in kandidaten:
+        try:
+            r = sess.get(url, timeout=_TIMEOUT, allow_redirects=True)
+            body = r.text or ''
+            # Heuristik: Treffer hat artnr im Body und schickt nicht
+            # einfach die Login-Seite zurueck.
+            hat_artnr = artnr in body
+            ist_login_seite = ('form_shop_login' in body
+                                and 'b2b-login' in r.url.lower())
+            score = 0
+            if hat_artnr:        score += 2
+            if not ist_login_seite: score += 1
+            if r.status_code == 200: score += 1
+            versuche.append({
+                'url':     url,
+                'final':   r.url,
+                'status':  r.status_code,
+                'len':     len(body),
+                'hat_artnr': hat_artnr,
+                'login_seite': ist_login_seite,
+                'score':   score,
+            })
+            if bester is None or score > bester['score']:
+                bester = {**versuche[-1], 'body': body}
+        except Exception as exc:
+            versuche.append({
+                'url': url, 'fehler': str(exc), 'score': -1,
+            })
+
+    # Title + Snippet aus dem besten Kandidaten
+    body = (bester or {}).get('body', '')
+    m = re.search(r'<title>([^<]{1,200})</title>', body, re.IGNORECASE)
+    titel = (m.group(1).strip() if m else '')[:200]
+    sichtbar = re.sub(r'<script[\s\S]*?</script>', ' ', body)
+    sichtbar = re.sub(r'<style[\s\S]*?</style>',  ' ', sichtbar)
+    sichtbar = re.sub(r'<[^>]+>', ' ', sichtbar)
+    sichtbar = re.sub(r'\s+', ' ', sichtbar).strip()
+    # Snippet rund um die ArtNr suchen, falls vorhanden
+    if artnr in sichtbar:
+        i = sichtbar.find(artnr)
+        snippet = sichtbar[max(0, i - 100): i + 700]
+    else:
+        snippet = sichtbar[:800]
+
+    # Sicherheits-Snippet: rohes HTML rund um die ArtNr (bis ~1500 chars)
+    raw_snippet = ''
+    if body and artnr in body:
+        i = body.find(artnr)
+        raw_snippet = body[max(0, i - 200): i + 1300]
+
+    return {
+        'best_url':    (bester or {}).get('url'),
+        'best_final':  (bester or {}).get('final'),
+        'best_score':  (bester or {}).get('score'),
+        'best_status': (bester or {}).get('status'),
+        'best_len':    (bester or {}).get('len'),
+        'titel':       titel,
+        'snippet':     snippet,
+        'raw_snippet': raw_snippet,
+        'versuche':    versuche,
+    }
+
+
+def web_artikel_diagnose(lief_rec_id: int, artnr: str) -> dict:
+    """Loggt sich beim Lieferanten ein und probiert eine ArtNr-Suche.
+    Liefert ein Diagnose-Dict – kein Persistieren, keine Cache-Schreibe.
+
+    Soll uns helfen, das URL-Schema und HTML-Markup pro Lieferant zu
+    verstehen, bevor wir den eigentlichen Artikel-Lookup hart codieren.
+    """
+    lief = _einkauf.holen(lief_rec_id)
+    if not lief:
+        return {'ok': False, 'msg': 'Lieferant nicht gefunden.'}
+    web_key = (lief.get('WEB_KEY') or '').strip()
+    if web_key != 'utz24':
+        return {'ok': False,
+                'msg': f'Diagnose nur fuer utz24 implementiert (WEB_KEY={web_key!r}).'}
+    creds = _credentials(lief)
+    if not all([creds['username'], creds['password'], creds['kunden_nr']]):
+        return {'ok': False, 'msg': 'Zugangsdaten unvollstaendig.'}
+    sess = _make_session()
+    login_res = _utz_login(sess, creds)
+    if not login_res.get('ok'):
+        return {'ok': False, 'msg': 'Login fehlgeschlagen: '
+                + str(login_res.get('msg')),
+                'login': login_res}
+    probe = _utz_artikel_probe(sess, artnr.strip())
+    return {'ok': True, 'login': {'titel': login_res.get('titel'),
+                                   'cookies': login_res.get('cookies')},
+            'probe': probe}
+
+
 _UTZ_TREIBER = {
     'login':            _utz_login,
-    # 'artikel_info':   _utz_artikel_info,   # kommt im naechsten Schritt
+    'artikel_probe':    _utz_artikel_probe,
 }
 
 
