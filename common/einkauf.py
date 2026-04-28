@@ -145,6 +145,38 @@ def run_migration() -> None:
                   COMMENT='Einkauf: eingegangene Bestellbestaetigungs-Mails (Phase 2)'
             """)
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_EINKAUF_LIEF_ARTIKEL (
+                  REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                  LIEF_REC_ID       INT UNSIGNED NOT NULL,
+                  ARTIKEL_NR_LIEF   VARCHAR(40)  NOT NULL,
+                  INTERNAL_ID       VARCHAR(40)  NULL,
+                  SLUG              VARCHAR(160) NULL,
+                  BEZEICHNUNG       VARCHAR(255) NULL,
+                  BARCODE_STUECK    VARCHAR(40)  NULL,
+                  BARCODE_KT        VARCHAR(40)  NULL,
+                  EK_NETTO          DECIMAL(12,4) NULL,
+                  UVP_BRUTTO        DECIMAL(12,4) NULL,
+                  MWST_PCT          TINYINT      NULL,
+                  VPE_EK            INT          NULL,
+                  INHALT            VARCHAR(60)  NULL,
+                  EINHEIT           VARCHAR(40)  NULL,
+                  BILD_URL          VARCHAR(500) NULL,
+                  VERFUEGBARKEIT    VARCHAR(80)  NULL,
+                  ABFRAGE_FEHLER    VARCHAR(500) NULL,
+                  ABGEFRAGT_AT      DATETIME     NULL,
+                  ERSTELLT_AT       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  GEAENDERT_AT      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+                  UNIQUE KEY uq_lief_artnr (LIEF_REC_ID, ARTIKEL_NR_LIEF),
+                  INDEX idx_barcode_stueck (BARCODE_STUECK),
+                  INDEX idx_barcode_kt (BARCODE_KT),
+                  CONSTRAINT fk_einkauf_liefart_lief
+                    FOREIGN KEY (LIEF_REC_ID) REFERENCES XT_EINKAUF_LIEFERANT(REC_ID)
+                    ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Einkauf: Stammdaten-Cache pro Lieferanten-Artikel (Phase 4)'
+            """)
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS XT_EINKAUF_POLLER_STATUS (
                   REC_ID          TINYINT UNSIGNED NOT NULL DEFAULT 1 PRIMARY KEY,
                   LAST_RUN_AT     DATETIME NULL,
@@ -1162,6 +1194,149 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
     } for r in rows]
 
 
+# ── Lieferanten-Artikel-Cache (Phase 4) ─────────────────────────────────────
+
+def lief_artikel_speichern(lief_rec_id: int, artnr: str,
+                           parsed: Optional[dict],
+                           fehler: Optional[str] = None) -> int:
+    """UPSERT eines Stammdaten-Cache-Eintrags pro Lieferanten-Artikel.
+    Liefert die REC_ID. ``parsed`` ist das dict aus
+    ``common.einkauf_lief_web._utz_item_to_parsed`` (kann None sein,
+    wenn nur ein Fehler-Eintrag persistiert werden soll).
+    """
+    p = parsed or {}
+    bild = (p.get('bild_url') or '')[:500]
+    with get_db_transaction() as cur:
+        cur.execute("""
+            INSERT INTO XT_EINKAUF_LIEF_ARTIKEL
+              (LIEF_REC_ID, ARTIKEL_NR_LIEF, INTERNAL_ID, SLUG,
+               BEZEICHNUNG, BARCODE_STUECK, BARCODE_KT,
+               EK_NETTO, UVP_BRUTTO, MWST_PCT, VPE_EK,
+               INHALT, EINHEIT, BILD_URL, VERFUEGBARKEIT,
+               ABFRAGE_FEHLER, ABGEFRAGT_AT)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    CURRENT_TIMESTAMP)
+            ON DUPLICATE KEY UPDATE
+              INTERNAL_ID    = VALUES(INTERNAL_ID),
+              SLUG           = VALUES(SLUG),
+              BEZEICHNUNG    = VALUES(BEZEICHNUNG),
+              BARCODE_STUECK = VALUES(BARCODE_STUECK),
+              BARCODE_KT     = VALUES(BARCODE_KT),
+              EK_NETTO       = VALUES(EK_NETTO),
+              UVP_BRUTTO     = VALUES(UVP_BRUTTO),
+              MWST_PCT       = VALUES(MWST_PCT),
+              VPE_EK         = VALUES(VPE_EK),
+              INHALT         = VALUES(INHALT),
+              EINHEIT        = VALUES(EINHEIT),
+              BILD_URL       = VALUES(BILD_URL),
+              VERFUEGBARKEIT = VALUES(VERFUEGBARKEIT),
+              ABFRAGE_FEHLER = VALUES(ABFRAGE_FEHLER),
+              ABGEFRAGT_AT   = CURRENT_TIMESTAMP
+        """, (
+            int(lief_rec_id),
+            (artnr or '')[:40],
+            str(p.get('internal_id') or '')[:40] or None,
+            (p.get('slug') or '')[:160] or None,
+            (p.get('bezeichnung') or '')[:255] or None,
+            (p.get('barcode_stueck') or '')[:40] or None,
+            (p.get('barcode_kt') or '')[:40] or None,
+            p.get('ek_netto') if p.get('ek_netto') not in (0, 0.0) else None,
+            p.get('uvp_brutto') if p.get('uvp_brutto') not in (0, 0.0) else None,
+            p.get('mwst_pct'),
+            p.get('vpe_ek'),
+            (p.get('inhalt') or '')[:60] or None,
+            (p.get('einheit') or '')[:40] or None,
+            bild or None,
+            (p.get('verfuegbarkeit') or '')[:80] or None,
+            (fehler or '')[:500] or None,
+        ))
+        return int(cur.lastrowid)
+
+
+def lief_artikel_holen(lief_rec_id: int, artnr: str) -> Optional[dict]:
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT * FROM XT_EINKAUF_LIEF_ARTIKEL
+                WHERE LIEF_REC_ID = %s AND ARTIKEL_NR_LIEF = %s
+            """, (int(lief_rec_id), (artnr or '')[:40]))
+            return cur.fetchone()
+    except Exception as exc:
+        log.warning("lief_artikel_holen: %s", exc)
+        return None
+
+
+def lief_artikel_anreichern_position(lief_rec_id: int, artnr: str) -> dict:
+    """Holt frische Stammdaten via Web-Treiber und persistiert sie.
+    Liefert ``{'ok': bool, 'parsed': dict|None, 'msg': str|None}``."""
+    from common import einkauf_lief_web as _web
+    res = _web.web_artikel_diagnose(lief_rec_id, artnr)
+    if not res.get('ok'):
+        # Trotzdem einen Fehler-Eintrag persistieren, damit man im Cache
+        # sieht, was schiefging und nicht alle 5 min neu probiert.
+        lief_artikel_speichern(lief_rec_id, artnr, parsed=None,
+                               fehler=str(res.get('msg') or 'unbekannt'))
+        return {'ok': False, 'parsed': None,
+                'msg': str(res.get('msg') or '')}
+    parsed = (res.get('probe') or {}).get('parsed') or {}
+    lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
+    return {'ok': True, 'parsed': parsed, 'msg': None}
+
+
+def bestellung_anreichern(bestellung_rec_id: int,
+                          ueberspringe_aktuelle: bool = True) -> dict:
+    """Reichert alle Positionen einer Bestellung mit
+    Lieferanten-Stammdaten an. ``ueberspringe_aktuelle`` (Default
+    True) ueberspringt Positionen, fuer die wir den Cache-Eintrag
+    juenger als 24 h haben.
+
+    Synchron – kann bei vielen Positionen einige Minuten dauern.
+    """
+    head = bestellung_holen(bestellung_rec_id)
+    if not head:
+        return {'ok': False, 'msg': 'Bestellung nicht gefunden.'}
+    lief_rec_id = head.get('LIEF_REC_ID')
+    pos = head.get('positionen') or []
+    if not pos:
+        return {'ok': False, 'msg': 'Bestellung hat keine Positionen.'}
+
+    n_total = len(pos)
+    n_ok    = 0
+    n_skip  = 0
+    n_err   = 0
+    fehler_liste: list[str] = []
+    from datetime import datetime, timedelta
+    schwelle = datetime.now() - timedelta(hours=24)
+
+    for p in pos:
+        artnr = (p.get('ARTIKEL_NR_LIEF') or '').strip()
+        if not artnr:
+            n_skip += 1
+            continue
+        if ueberspringe_aktuelle:
+            cached = lief_artikel_holen(lief_rec_id, artnr)
+            cached_at = cached and cached.get('ABGEFRAGT_AT')
+            if cached_at and cached_at >= schwelle and (cached.get('BARCODE_STUECK')
+                                                         or cached.get('BEZEICHNUNG')):
+                n_skip += 1
+                continue
+        res = lief_artikel_anreichern_position(lief_rec_id, artnr)
+        if res.get('ok'):
+            n_ok += 1
+        else:
+            n_err += 1
+            fehler_liste.append(f"{artnr}: {res.get('msg', '?')[:120]}")
+
+    return {
+        'ok':         True,
+        'total':      n_total,
+        'aktualisiert': n_ok,
+        'uebersprungen': n_skip,
+        'fehler':     n_err,
+        'fehler_liste': fehler_liste[:10],
+    }
+
+
 def cao_match_positionen(rec_id: int) -> list[dict]:
     """Read-only-Vorschau: pro Position der Bestellung pruefen, ob in CAO
     schon ein passender Artikel hinterlegt ist.
@@ -1215,10 +1390,38 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
 
         cao_treffer: Optional[dict] = None
         match_quelle = 'kein'
+
+        # Cache-Eintrag des Lieferanten-Artikels (kann Barcode liefern)
+        lief_cache = lief_artikel_holen(head.get('LIEF_REC_ID') or 0, artnr) \
+                     if head.get('LIEF_REC_ID') else None
+        barcode_stk = (lief_cache or {}).get('BARCODE_STUECK') or ''
+        barcode_kt  = (lief_cache or {}).get('BARCODE_KT') or ''
+
         try:
             with get_db() as cur:
+                # 0. Hoechste Prioritaet: Barcode-Match (Stueck-EAN gegen
+                #    ARTIKEL.BARCODE/2/3). Eindeutigste Identifikation,
+                #    deshalb vor allen anderen Pfaden.
+                if barcode_stk:
+                    cur.execute("""
+                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
+                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
+                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
+                               a.USERFELD_02
+                        FROM ARTIKEL a
+                        WHERE a.BARCODE  = %s
+                           OR a.BARCODE2 = %s
+                           OR a.BARCODE3 = %s
+                        ORDER BY (a.NO_VK_FLAG = 'N') DESC, a.REC_ID
+                        LIMIT 1
+                    """, (barcode_stk, barcode_stk, barcode_stk))
+                    row = cur.fetchone()
+                    if row:
+                        cao_treffer = row
+                        match_quelle = 'barcode'
+
                 # 1. Enger Match (Lieferanten-spezifisch)
-                if cao_lief:
+                if cao_treffer is None and cao_lief:
                     cur.execute("""
                         SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
                                a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,

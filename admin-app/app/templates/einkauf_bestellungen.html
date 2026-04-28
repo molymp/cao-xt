@@ -116,6 +116,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.match-pill.barcode     { background: var(--brand-terracotta); color: #fff; }
 .match-pill.lieferant   { background: var(--status-gruen);    color: #fff; }
 .match-pill.global      { background: var(--brand-sage);      color: var(--gruen-dunkel); }
 .match-pill.mehrdeutig  { background: #f6ecd0;                color: var(--status-gelb); border: 1px solid var(--status-gelb); }
@@ -363,8 +364,12 @@ async function detailZeigen(recId) {
         </div>
       ` : ''}
 
-      <div style="display:flex;align-items:center;gap:10px;margin:18px 0 4px;">
+      <div style="display:flex;align-items:center;gap:10px;margin:18px 0 4px;flex-wrap:wrap;">
         <h3 style="margin:0;font-size:15px;">Positionen</h3>
+        <button class="btn btn-neutral btn-sm" id="btn-anreichern-${e.REC_ID}"
+                onclick="anreichern(${e.REC_ID})">
+          🌐 Stammdaten anreichern
+        </button>
         <button class="btn btn-neutral btn-sm" id="btn-cao-match-${e.REC_ID}"
                 onclick="caoMatch(${e.REC_ID})">
           🔍 CAO-Match prüfen
@@ -414,6 +419,45 @@ async function detailZeigen(recId) {
     </div>
   `;
   ar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Stammdaten-Anreicherung via Lieferanten-Web ──────────────────
+async function anreichern(recId) {
+  const btn  = document.getElementById('btn-anreichern-' + recId);
+  const hint = document.getElementById('cao-match-hint-' + recId);
+  if (!btn) return;
+  btn.disabled = true;
+  const altText = btn.textContent;
+  btn.textContent = '⏳ Frage Lieferanten ab …';
+  hint.textContent = 'das kann einige Zehn-Sekunden dauern';
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/anreichern`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ueberspringe_aktuelle: true }),
+    });
+    d = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = altText;
+    hint.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = altText;
+  if (!d.ok) {
+    hint.textContent = 'Fehler: ' + (d.msg || '');
+    return;
+  }
+  hint.textContent = `✓ ${d.aktualisiert} aktualisiert · ${d.uebersprungen} aus Cache · ${d.fehler} Fehler`;
+  if (d.fehler > 0 && d.fehler_liste) {
+    console.warn('Anreicherungs-Fehler:', d.fehler_liste);
+  }
+  toast(`Stammdaten anreichern: ${d.aktualisiert} aktualisiert, ${d.fehler} Fehler`,
+        d.fehler > 0 ? 'err' : 'ok');
+  // Match danach neu laden, damit Barcode-Match greift
+  if (d.aktualisiert > 0) caoMatch(recId);
 }
 
 // ── CAO-Match-Vorschau ──────────────────────────────────────────
@@ -473,8 +517,9 @@ async function caoMatch(recId) {
     // Status-Pille
     const pill = document.createElement('span');
     pill.className = `match-pill ${m.match_quelle}`;
-    if (m.match_quelle === 'lieferant')   pill.textContent = '🟢 Lief';
-    else if (m.match_quelle === 'global') pill.textContent = '🟢 Global';
+    if (m.match_quelle === 'barcode') pill.textContent = '🟢 EAN';
+    else if (m.match_quelle === 'lieferant')  pill.textContent = '🟢 Lief';
+    else if (m.match_quelle === 'global')     pill.textContent = '🟢 Global';
     else if (m.match_quelle === 'mehrdeutig') pill.textContent = '🟡 mehrdeutig';
     else pill.textContent = '🔴 NEU';
     tds[0].innerHTML = '';

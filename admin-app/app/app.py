@@ -2509,6 +2509,20 @@ def api_einkauf_bestellung_detail(rec_id):
     return jsonify(ok=True, eintrag=e)
 
 
+@app.post('/api/einkauf/bestellungen/<int:rec_id>/anreichern')
+@_login_required
+def api_einkauf_bestellung_anreichern(rec_id):
+    """Reichert die Stammdaten aller Positionen einer Bestellung
+    via Web-Treiber an (UTZ Mobile-API + HTML-Detail). Synchron –
+    kann bei vielen Positionen einige Zehn-Sekunden dauern.
+    """
+    body = request.get_json(silent=True) or {}
+    skip = bool(body.get('ueberspringe_aktuelle', True))
+    res = _einkauf.bestellung_anreichern(rec_id,
+                                          ueberspringe_aktuelle=skip)
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 @app.get('/api/einkauf/bestellungen/<int:rec_id>/cao-match')
 @_login_required
 def api_einkauf_bestellung_cao_match(rec_id):
