@@ -222,22 +222,33 @@ _UTZ_DETAIL_LINK = re.compile(
 # Erfordert Session-Cookies vom Login (withCredentials=true).
 _UTZ_API_URL = 'https://www.utz24.online/userdata/dcshop/mobile-api-live-327-int.php'
 
+# Die `customer`-ID in der Mobile-API ist NICHT die Kunden-Nr (101772),
+# sondern die UTZ-Mandanten-ID auf der externen die.app-Such-Plattform.
+# Erkennbar aus der Such-URL der intelligent-search-App:
+# https://intelligent-search.die.app/search/6826/false/<artnr>
+_UTZ_DIE_APP_CUSTOMER = '6826'
 
-def _utz_search_api(sess, artnr: str, kunden_nr: str) -> dict:
+
+def _utz_search_api(sess, artnr: str, _kunden_nr_unused: str = '') -> dict:
     """Ruft die UTZ Mobile-API auf, um alle Suchtreffer zu einer ArtNr
     zu erhalten. Bevorzugter Pfad gegenueber dem HTML-Scraping –
     liefert strukturierte JSON-Daten und braucht keinen Slug-Roulette.
+
+    Args:
+        sess:  requests.Session mit Login-Cookies.
+        artnr: Lieferanten-Artikelnummer.
+        _kunden_nr_unused: belanglos; ``customer`` in der Mobile-API
+            ist die die.app-Mandanten-ID des Shops (6826 fuer UTZ),
+            nicht die Habacher-Kunden-Nr.
 
     Returns: ``{'ok': bool, 'msg': str, 'json': dict|list|None,
         'items': list[dict], 'final_url': str, 'status': int,
         'raw_text': str}``.
     """
-    # UTZ-Frontend ersetzt '&' im Suchterm durch '_'; harmlos fuer
-    # rein numerische ArtNrn, aber wir spiegeln das Format.
     from urllib.parse import quote
     such = quote(artnr.replace('&', '_'), safe='')
     url = (f'{_UTZ_API_URL}?action=getItemsFromSearch'
-           f'&search={such}&customer={kunden_nr}&price=no')
+           f'&search={such}&customer={_UTZ_DIE_APP_CUSTOMER}&price=no')
     headers = {
         'Accept': 'application/json, text/plain, */*',
         'Origin': 'https://intelligent-search.die.app',
@@ -286,10 +297,22 @@ def _utz_search_api(sess, artnr: str, kunden_nr: str) -> dict:
 
 
 def _utz_item_to_parsed(item: dict) -> dict:
-    """Mappt ein API-Item-Dict auf unser geparstes Schema. Die genauen
-    Feldnamen kennen wir noch nicht (haengt vom dynamic-commerce-
-    Backend ab); wir versuchen die naheliegenden Varianten und lassen
-    nicht-erkannte Felder leer.
+    """Mappt ein UTZ-API-Item-Dict auf unser geparstes Schema.
+
+    Bestaetigte Feldnamen (aus dem Live-Test 2026-04-28, raw_keys):
+        id           – interne Produkt-ID, fuer Detail-URL
+                       /grosshandlung/de/<slug>-p<id>/
+        item_no      – Lieferanten-Artikelnummer
+        description  – Kurz-Bezeichnung
+        summary      – Langtext / Untertitel
+        vpe          – Verpackungseinheit
+        uvp          – UVP (in der Such-API stehen Preise auf 0,
+                       echte Werte holen wir aus der Detailseite)
+        price        – EK
+        img          – Produktbild-URL
+        inv          – Verfuegbarkeit (z.B. „Nicht verfuegbar")
+        vt, ld       – noch nicht eindeutig zugeordnet
+        active, allow_invoice_discount – Flags
     """
     def _get(*keys):
         for k in keys:
@@ -299,27 +322,21 @@ def _utz_item_to_parsed(item: dict) -> dict:
         return None
 
     out = {
-        'bezeichnung':    str(_get('itemName', 'name', 'title',
-                                    'bezeichnung', 'productName') or '')[:255],
-        'barcode_stueck': str(_get('eanStueck', 'ean_stueck', 'eanStk',
-                                    'eanPiece', 'gtin', 'ean') or ''),
-        'barcode_kt':     str(_get('eanKarton', 'ean_kt', 'eanKT',
-                                    'eanCarton', 'eanKolli') or ''),
-        'artnr_lief':     str(_get('itemNumber', 'item_number',
-                                    'articleNumber', 'artNr',
-                                    'artikelNummer') or ''),
-        'ek_netto':       _maybe_float(_get('priceNet', 'ekNet', 'ekNetto',
-                                             'price_net', 'preisNetto', 'price')),
-        'uvp_brutto':     _maybe_float(_get('uvp', 'rrp', 'rrpBrutto',
-                                             'uvpBrutto', 'priceUvp')),
-        'mwst_pct':       _maybe_int(_get('vat', 'tax', 'taxRate', 'mwst',
-                                           'mwstSatz', 'taxPct')),
-        'inhalt':         str(_get('content', 'inhalt', 'unitContent') or '')[:60],
-        'einheit':        str(_get('unit', 'einheit', 'salesUnit') or '')[:40],
-        'vpe_ek':         _maybe_int(_get('packageSize', 'vpe', 'vpeEk',
-                                           'kartonGroesse', 'unitsPerPack')),
-        'bild_url':       str(_get('imageUrl', 'image', 'bild',
-                                    'pictureUrl', 'picture') or ''),
+        'bezeichnung':    str(_get('description', 'itemName', 'name',
+                                    'title') or '')[:255],
+        'beschreibung':   str(_get('summary', 'description_long') or '')[:500],
+        'barcode_stueck': '',     # nicht in der Such-API – via Detail-HTML
+        'barcode_kt':     '',
+        'artnr_lief':     str(_get('item_no', 'itemNumber',
+                                    'articleNumber') or ''),
+        'ek_netto':       _maybe_float(_get('price', 'priceNet', 'ekNet')),
+        'uvp_brutto':     _maybe_float(_get('uvp', 'rrp')),
+        'mwst_pct':       None,   # via Detail-HTML
+        'inhalt':         '',     # via Detail-HTML
+        'einheit':        '',     # via Detail-HTML
+        'vpe_ek':         _maybe_int(_get('vpe', 'packageSize')),
+        'bild_url':       str(_get('img', 'imageUrl', 'image') or ''),
+        'verfuegbarkeit': str(_get('inv', 'availability') or ''),
         'internal_id':    _get('id', 'productId', 'itemId'),
         'slug':           _get('slug', 'urlSlug', 'detailUrl'),
         'raw_keys':       sorted(item.keys()) if isinstance(item, dict) else [],
@@ -327,6 +344,24 @@ def _utz_item_to_parsed(item: dict) -> dict:
     if out['bild_url'] and out['bild_url'].startswith('/'):
         out['bild_url'] = 'https://www.utz24.online' + out['bild_url']
     return out
+
+
+def _slug_aus_text(text: str) -> str:
+    """Wandelt eine Bezeichnung in einen URL-Slug fuer UTZ-Detail-URLs.
+    Beispiel: 'Ferrero Kinder-Riegel' -> 'ferrero-kinder-riegel'.
+    Falls das Slug nicht 100%ig matcht, leitet UTZ trotzdem auf das
+    richtige Ziel um (interne -p<id> ist eindeutig).
+    """
+    if not text:
+        return 'p'
+    s = text.lower()
+    # Umlaute ausschreiben
+    s = s.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')
+    s = s.replace('ß', 'ss')
+    # Alles ausser a-z 0-9 zu '-'
+    s = re.sub(r'[^a-z0-9]+', '-', s)
+    s = re.sub(r'-+', '-', s).strip('-')
+    return s or 'p'
 
 
 def _maybe_float(v):
@@ -377,31 +412,76 @@ def _utz_artikel_info(sess, artnr: str, kunden_nr: str = '') -> dict:
         }
     """
     # ── 1. JSON-API probieren (Primary-Pfad) ────────────────────────────
-    if kunden_nr:
-        api = _utz_search_api(sess, artnr, kunden_nr)
-        if api.get('ok') and api.get('items'):
-            # Treffer mit exakter ArtNr suchen
-            match_item = None
+    api = _utz_search_api(sess, artnr)
+    if api.get('ok') and api.get('items'):
+        # Treffer mit exakter ArtNr suchen; "Wichtiger Hinweis"-
+        # Platzhalter (id=0, item_no='') ueberspringen.
+        match_item = None
+        for it in api['items']:
+            if not isinstance(it, dict):
+                continue
+            if (it.get('id') in (0, '0') or not it.get('item_no')):
+                continue
+            if str(it.get('item_no') or '').strip() == artnr.strip():
+                match_item = it
+                break
+        if match_item is None:
+            # Mehrdeutig: ersten echten Treffer nehmen
             for it in api['items']:
-                a = str(_utz_item_to_parsed(it).get('artnr_lief') or '').strip()
-                if a == artnr.strip():
+                if isinstance(it, dict) and it.get('id') and it.get('item_no'):
                     match_item = it
                     break
-            if match_item is None and api['items']:
-                # Fallback: ersten Treffer nehmen, aber als 'mehrdeutig' markieren
-                match_item = api['items'][0]
-            if match_item is not None:
-                parsed = _utz_item_to_parsed(match_item)
-                return {
-                    'ok':           True,
-                    'quelle':       'mobile-api',
-                    'such_url':     api['final_url'],
-                    'such_status':  api['status'],
-                    'api_treffer':  len(api['items']),
-                    'parsed':       parsed,
-                    'raw_snippet':  api['raw_text'],
-                }
-        # Wenn API nichts liefert, weiter mit HTML-Fallback
+        if match_item is not None:
+            parsed = _utz_item_to_parsed(match_item)
+
+            # Detail-HTML holen, um die kunden-spezifischen Preise +
+            # MwSt + Barcodes + Inhalt zu bekommen (die fehlen in der
+            # Such-API).
+            detail_html = ''
+            detail_status = None
+            if parsed.get('internal_id'):
+                slug = _slug_aus_text(parsed.get('bezeichnung') or '')
+                detail_url = (f'https://www.utz24.online/grosshandlung/de/'
+                              f'{slug}-p{parsed["internal_id"]}/')
+                try:
+                    rd = sess.get(detail_url, timeout=_TIMEOUT,
+                                   allow_redirects=True)
+                    detail_status = rd.status_code
+                    if rd.status_code == 200:
+                        detail_html = rd.text or ''
+                except Exception as exc:
+                    log.warning('Detail-GET %s: %s', detail_url, exc)
+
+            if detail_html:
+                from_html = _parse_utz_detail(detail_html)
+                # Detail-Daten ueberlagern API-Daten (Preise/Barcodes
+                # sind dort kunden-spezifisch).
+                for k in ('barcode_stueck', 'barcode_kt', 'mwst_pct',
+                          'inhalt', 'einheit', 'bild_url'):
+                    if from_html.get(k):
+                        parsed[k] = from_html[k]
+                if from_html.get('ek_netto') is not None:
+                    parsed['ek_netto'] = from_html['ek_netto']
+                if from_html.get('uvp_brutto') is not None:
+                    parsed['uvp_brutto'] = from_html['uvp_brutto']
+                if from_html.get('vpe_ek'):
+                    parsed['vpe_ek'] = from_html['vpe_ek']
+                if not parsed.get('bezeichnung') and from_html.get('bezeichnung'):
+                    parsed['bezeichnung'] = from_html['bezeichnung']
+
+            return {
+                'ok':            True,
+                'quelle':        'mobile-api+detail-html',
+                'such_url':      api['final_url'],
+                'such_status':   api['status'],
+                'api_treffer':   len(api['items']),
+                'detail_url':    detail_url if parsed.get('internal_id') else '',
+                'detail_status': detail_status,
+                'detail_len':    len(detail_html),
+                'parsed':        parsed,
+                'raw_snippet':   api['raw_text'],
+            }
+    # Wenn API nichts liefert, weiter mit HTML-Fallback
     # ────────────────────────────────────────────────────────────────────
 
     base = 'https://www.utz24.online/grosshandlung/de/'
