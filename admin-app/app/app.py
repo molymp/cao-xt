@@ -2509,6 +2509,38 @@ def api_einkauf_bestellung_detail(rec_id):
     return jsonify(ok=True, eintrag=e)
 
 
+@app.post('/api/einkauf/positionen/<int:pos_id>/zuordnen')
+@_login_required
+def api_einkauf_position_zuordnen(pos_id):
+    """Manuelle Zuordnung einer Bestellposition.
+
+    Body:
+        {cao_artikel_rec_id: int|null, neu_anlegen?: bool, anmerkung?: str}
+
+    * ``cao_artikel_rec_id`` gesetzt → STATUS='matched', verlinkt
+    * ``neu_anlegen=True``           → STATUS='neu_anlegen'
+    * beides leer/false              → STATUS='neu' (Reset)
+    Schreibt nur in XT-Tabellen, NICHT in CAO.
+    """
+    body = request.get_json(silent=True) or {}
+    rec = body.get('cao_artikel_rec_id')
+    rec_id = None
+    if rec not in (None, '', 0):
+        try:
+            rec_id = int(rec)
+        except (TypeError, ValueError):
+            return jsonify(ok=False,
+                           msg='cao_artikel_rec_id muss int sein'), 400
+    res = _einkauf.position_zuordnen(
+        pos_id,
+        cao_artikel_rec_id=rec_id,
+        neu_anlegen=bool(body.get('neu_anlegen')),
+        anmerkung=body.get('anmerkung'),
+        ma_id=session.get('ma_id'),
+    )
+    return jsonify(**res), 200 if res.get('ok') else 400
+
+
 @app.post('/api/einkauf/bestellungen/<int:rec_id>/anreichern')
 @_login_required
 def api_einkauf_bestellung_anreichern(rec_id):
