@@ -105,6 +105,48 @@
 }
 .summen-banner.warn   { background: #f6ecd0; border: 1px solid var(--status-gelb); color: #4b3a12; }
 .summen-banner.ok     { background: var(--brand-sage); border: 1px solid var(--gruen-mitte); color: var(--gruen-dunkel); }
+
+/* CAO-Match-Spalten in der Positions-Tabelle */
+.match-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.match-pill.lieferant   { background: var(--status-gruen);    color: #fff; }
+.match-pill.global      { background: var(--brand-sage);      color: var(--gruen-dunkel); }
+.match-pill.mehrdeutig  { background: #f6ecd0;                color: var(--status-gelb); border: 1px solid var(--status-gelb); }
+.match-pill.kein        { background: #f6d8ce;                color: var(--status-rot); }
+
+.diff-pos { color: var(--status-rot); }
+.diff-neg { color: var(--gruen-dunkel); }
+.diff-null { color: var(--text-dim); }
+
+.match-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 8px;
+  font-size: 13px;
+}
+.match-summary-bar .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  font-weight: 700;
+}
+.match-summary-bar .chip .zahl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: var(--brand-terracotta);
+}
 </style>
 {% endblock %}
 
@@ -287,8 +329,18 @@ async function detailZeigen(recId) {
         </div>
       ` : ''}
 
-      <h3 style="margin:18px 0 10px;font-size:15px;">Positionen</h3>
-      <table class="tbl pos-table">
+      <div style="display:flex;align-items:center;gap:10px;margin:18px 0 4px;">
+        <h3 style="margin:0;font-size:15px;">Positionen</h3>
+        <button class="btn btn-neutral btn-sm" id="btn-cao-match-${e.REC_ID}"
+                onclick="caoMatch(${e.REC_ID})">
+          🔍 CAO-Match prüfen
+        </button>
+        <span class="muted" id="cao-match-hint-${e.REC_ID}"
+              style="font-size:12px;">read-only · keine CAO-Schreibvorgänge</span>
+      </div>
+      <div id="cao-match-summary-${e.REC_ID}"></div>
+
+      <table class="tbl pos-table" id="pos-table-${e.REC_ID}">
         <thead>
           <tr>
             <th style="text-align:right;width:50px;">#</th>
@@ -297,17 +349,23 @@ async function detailZeigen(recId) {
             <th style="text-align:right;width:80px;">Menge</th>
             <th style="text-align:right;width:110px;">Einzel netto</th>
             <th style="text-align:right;width:120px;">Zeilenbetrag</th>
+            <th class="cao-col" style="display:none;width:90px;">CAO</th>
+            <th class="cao-col" style="display:none;">CAO-Artikel</th>
+            <th class="cao-col" style="display:none;text-align:right;width:120px;">Δ EK</th>
           </tr>
         </thead>
         <tbody>
           ${pos.map(p => `
-            <tr>
+            <tr data-pos-id="${p.REC_ID}">
               <td class="num">${p.POS_NR}</td>
               <td><code>${_esc(p.ARTIKEL_NR_LIEF || '')}</code></td>
               <td>${_esc(p.BESCHREIBUNG_LIEF || '')}</td>
               <td class="num">${Number(p.MENGE).toFixed(p.MENGE % 1 === 0 ? 0 : 3)}</td>
               <td class="num">${_eur(p.PREIS_NETTO)}</td>
               <td class="num">${_eur(p.ZEILEN_BETRAG)}</td>
+              <td class="cao-col" style="display:none;"></td>
+              <td class="cao-col" style="display:none;"></td>
+              <td class="cao-col num" style="display:none;"></td>
             </tr>
           `).join('')}
         </tbody>
@@ -315,12 +373,89 @@ async function detailZeigen(recId) {
           <tr>
             <td colspan="5" style="text-align:right;">Summe Positionen</td>
             <td class="num">${_eur(summePos)}</td>
+            <td class="cao-col" style="display:none;" colspan="3"></td>
           </tr>
         </tfoot>
       </table>
     </div>
   `;
   ar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── CAO-Match-Vorschau ──────────────────────────────────────────
+async function caoMatch(recId) {
+  const btn  = document.getElementById('btn-cao-match-' + recId);
+  const hint = document.getElementById('cao-match-hint-' + recId);
+  const sumEl = document.getElementById('cao-match-summary-' + recId);
+  const tbl  = document.getElementById('pos-table-' + recId);
+  if (!btn || !tbl) return;
+  btn.disabled = true;
+  hint.textContent = 'Frage CAO-Stammdaten ab …';
+
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/cao-match`);
+    d = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    hint.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  btn.disabled = false;
+  if (!d.ok) {
+    hint.textContent = 'Fehler: ' + (d.msg || '?');
+    return;
+  }
+
+  // Summary-Chips
+  const s = d.summary;
+  sumEl.innerHTML = `
+    <div class="match-summary-bar">
+      <span class="chip">📦 Total: <span class="zahl">${s.total}</span></span>
+      <span class="chip">✅ Match: <span class="zahl">${s.match}</span></span>
+      <span class="chip">🆕 Neu anlegen: <span class="zahl">${s.neu}</span></span>
+    </div>
+  `;
+  hint.textContent = '';
+
+  // CAO-Spalten in der Tabelle einblenden
+  tbl.querySelectorAll('.cao-col').forEach(el => el.style.display = '');
+
+  // Pro Pos die Match-Spalten setzen
+  const byPosId = {};
+  d.matches.forEach(m => byPosId[m.pos_rec_id] = m);
+  tbl.querySelectorAll('tbody tr').forEach(row => {
+    const posId = parseInt(row.dataset.posId);
+    const m = byPosId[posId];
+    const tds = row.querySelectorAll('.cao-col');
+    if (!m) return;
+    // Status-Pille
+    const pill = document.createElement('span');
+    pill.className = `match-pill ${m.match_quelle}`;
+    if (m.match_quelle === 'lieferant')   pill.textContent = '🟢 Lief';
+    else if (m.match_quelle === 'global') pill.textContent = '🟢 Global';
+    else if (m.match_quelle === 'mehrdeutig') pill.textContent = '🟡 mehrdeutig';
+    else pill.textContent = '🔴 NEU';
+    tds[0].innerHTML = '';
+    tds[0].appendChild(pill);
+    // CAO-Artikel
+    if (m.cao) {
+      tds[1].innerHTML = `<code>${_esc(m.cao.artnum || '')}</code> ${_esc(m.cao.kas_name || '')}`;
+    } else {
+      tds[1].innerHTML = '<span class="muted">muss angelegt werden</span>';
+    }
+    // EK-Diff
+    if (m.ek_diff != null) {
+      const cls = m.ek_diff > 0.005 ? 'diff-pos' : (m.ek_diff < -0.005 ? 'diff-neg' : 'diff-null');
+      const sign = m.ek_diff > 0 ? '+' : '';
+      const pct = m.ek_diff_pct != null ? ` (${sign}${m.ek_diff_pct.toFixed(1)} %)` : '';
+      tds[2].className = 'cao-col num ' + cls;
+      tds[2].textContent = `${sign}${m.ek_diff.toFixed(4)} €${pct}`;
+    } else {
+      tds[2].textContent = '–';
+      tds[2].className = 'cao-col num diff-null';
+    }
+  });
 }
 
 async function abrufen() {
