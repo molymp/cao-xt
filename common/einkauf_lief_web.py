@@ -329,16 +329,22 @@ def _utz_item_to_parsed(item: dict) -> dict:
         'barcode_kt':     '',
         'artnr_lief':     str(_get('item_no', 'itemNumber',
                                     'articleNumber') or ''),
+        # price ist in der Such-API 0 (kunden-spezifischer EK kommt
+        # nur ueber die Detailseite); UVP ist dort allerdings schon
+        # gefuellt.
         'ek_netto':       _maybe_float(_get('price', 'priceNet', 'ekNet')),
         'uvp_brutto':     _maybe_float(_get('uvp', 'rrp')),
-        'mwst_pct':       None,   # via Detail-HTML
-        'inhalt':         '',     # via Detail-HTML
+        # 'v' = MwSt-Code, hier: '7' fuer 7%
+        'mwst_pct':       _maybe_int(_get('v', 'vat', 'tax')),
+        # 'vt' = Verkaufstext (z.B. '10er')
+        'inhalt':         str(_get('vt', 'content', 'inhalt') or '')[:60],
         'einheit':        '',     # via Detail-HTML
         'vpe_ek':         _maybe_int(_get('vpe', 'packageSize')),
         'bild_url':       str(_get('img', 'imageUrl', 'image') or ''),
         'verfuegbarkeit': str(_get('inv', 'availability') or ''),
         'internal_id':    _get('id', 'productId', 'itemId'),
-        'slug':           _get('slug', 'urlSlug', 'detailUrl'),
+        # 'is' = URL-Slug (z.B. 'ferrero-kinder-riegel')
+        'slug':           str(_get('is', 'slug', 'urlSlug') or ''),
         'raw_keys':       sorted(item.keys()) if isinstance(item, dict) else [],
     }
     if out['bild_url'] and out['bild_url'].startswith('/'):
@@ -440,7 +446,8 @@ def _utz_artikel_info(sess, artnr: str, kunden_nr: str = '') -> dict:
             detail_html = ''
             detail_status = None
             if parsed.get('internal_id'):
-                slug = _slug_aus_text(parsed.get('bezeichnung') or '')
+                slug = (parsed.get('slug')
+                        or _slug_aus_text(parsed.get('bezeichnung') or ''))
                 detail_url = (f'https://www.utz24.online/grosshandlung/de/'
                               f'{slug}-p{parsed["internal_id"]}/')
                 try:
