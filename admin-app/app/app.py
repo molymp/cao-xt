@@ -2555,6 +2555,15 @@ def api_einkauf_bestellung_anreichern(rec_id):
     return jsonify(**res), 200 if res.get('ok') else 502
 
 
+@app.get('/api/einkauf/bestellungen/<int:rec_id>/cao-sync-plan')
+@_login_required
+def api_einkauf_bestellung_cao_sync_plan(rec_id):
+    """Read-only-Vorschau: was wuerde der CAO-Sync (Phase 5/6) tun?
+    KEIN Schreibvorgang in CAO-Tabellen."""
+    res = _einkauf.cao_sync_plan(rec_id)
+    return jsonify(**res), 200 if res.get('ok') else 404
+
+
 @app.get('/api/einkauf/bestellungen/<int:rec_id>/cao-match')
 @_login_required
 def api_einkauf_bestellung_cao_match(rec_id):
