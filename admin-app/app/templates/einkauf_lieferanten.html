@@ -297,6 +297,12 @@
                 onclick="webLoginTest()">🌐 Login testen</button>
         <span id="ed-web-test-out" class="muted" style="font-size:12px;"></span>
       </div>
+      <pre id="ed-web-test-detail" style="display:none;margin-top:8px;
+           background:var(--bg-dunkel);border:1px solid var(--border);
+           border-radius:6px;padding:10px;font-size:11px;
+           font-family:'JetBrains Mono',monospace;white-space:pre-wrap;
+           word-break:break-word;color:var(--text-mitte);max-height:280px;
+           overflow:auto;"></pre>
     </fieldset>
 
     <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:12px;">
@@ -638,6 +644,28 @@ async function webLoginTest() {
   } else {
     out.style.color = 'var(--status-rot)';
     out.textContent = `✗ ${d.msg}` + (d.status ? ` (HTTP ${d.status})` : '');
+  }
+  // Diagnose-Details anzeigen, damit wir bei Fehlversuchen sehen,
+  // was UTZ tatsaechlich zurueckgegeben hat.
+  const det = _e('ed-web-test-detail');
+  if (d.status || d.final_url || d.snippet) {
+    const lines = [
+      `HTTP ${d.status ?? '?'}`,
+      `final_url: ${d.final_url ?? '?'}`,
+      `title:     ${d.titel ?? ''}`,
+      `cookies:   ${(d.cookies || []).join(', ')}`,
+      `body_len:  ${d.response_len ?? '?'}`,
+    ];
+    if (d.fehler_snippet) lines.push(`fehler:    ${d.fehler_snippet}`);
+    if (d.snippet) {
+      lines.push('');
+      lines.push('-- Body-Snippet (erste 600 Zeichen sichtbarer Text) --');
+      lines.push(d.snippet);
+    }
+    det.textContent = lines.join('\n');
+    det.style.display = '';
+  } else {
+    det.style.display = 'none';
   }
 }
 
