@@ -699,35 +699,32 @@ async function webArtikelProbe() {
     return;
   }
   btn.disabled = false;
+  const p = d.probe || {};
   if (!d.ok) {
     out.style.color = 'var(--status-rot)';
-    out.textContent = `✗ ${d.msg}`;
-    if (d.login) {
-      det.textContent = JSON.stringify(d.login, null, 2);
-      det.style.display = '';
-    }
-    return;
+    out.textContent = `✗ ${d.msg || 'Probe fehlgeschlagen'}`;
+  } else {
+    out.style.color = 'var(--gruen-dunkel)';
+    const ps = p.parsed || {};
+    out.textContent = `✓ ${ps.bezeichnung || 'gefunden'} · `
+                      + `EAN ${ps.barcode_stueck || '?'} · EK ${ps.ek_netto ?? '?'} €`;
   }
-  const p = d.probe || {};
-  out.style.color = 'var(--gruen-dunkel)';
-  out.textContent = `✓ Beste URL: ${p.best_url} (Score ${p.best_score})`;
   const lines = [
-    `Login-Title:  ${(d.login || {}).titel || ''}`,
+    `Login-Title:    ${(d.login || {}).titel || ''}`,
     '',
-    '── Probe-Versuche (alle URLs) ──',
-    ...(p.versuche || []).map(v => v.fehler
-        ? `  ${v.url}  →  Fehler: ${v.fehler}`
-        : `  Score ${v.score}  HTTP ${v.status}  len=${v.len}  ${v.hat_artnr?'hat_artnr ':''}${v.login_seite?'(Login!) ':''}${v.url}`),
+    `── Such-Schritt ──`,
+    `Suche:          ${p.such_url || ''}  (HTTP ${p.such_status ?? '?'})`,
+    `Detail-Slugs:   ${(p.detail_links || []).join(', ') || '(keiner gefunden)'}`,
     '',
-    `── Beste URL ──`,
-    `final:    ${p.best_final}`,
-    `title:    ${p.titel}`,
+    `── Detail-Schritt ──`,
+    `URL:            ${p.detail_url || '(nicht aufgerufen)'}`,
+    `Status / Bytes: HTTP ${p.detail_status ?? '?'} / ${p.detail_len ?? '?'}`,
     '',
-    `── Sichtbarer Text rund um ArtNr ──`,
-    p.snippet || '(ArtNr nicht im Body gefunden – evtl. anderes URL-Muster nötig)',
+    '── Geparstes Ergebnis ──',
+    JSON.stringify(p.parsed || {}, null, 2),
     '',
-    `── Roh-HTML rund um ArtNr (~1500 Zeichen) ──`,
-    p.raw_snippet || '(ArtNr nicht im Body)',
+    '── Roh-HTML der Detailseite (erste 3000 Zeichen) ──',
+    p.raw_snippet || '(leer)',
   ];
   det.textContent = lines.join('\n');
   det.style.display = '';

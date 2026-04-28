@@ -203,100 +203,243 @@ def _utz_login(sess, creds: dict) -> dict:
     }
 
 
-def _utz_artikel_probe(sess, artnr: str) -> dict:
-    """Diagnose-Hilfe: Versucht nach erfolgreichem Login mehrere
-    plausible Detail/Such-URLs fuer eine Lieferanten-ArtNr und liefert
-    den vielversprechendsten Response zurueck.
+# Detail-URL-Pattern aus dem UTZ-Markup:
+#   /grosshandlung/de/<slug>-p<internal-id>/
+# Die internal-id ist NICHT die Lieferanten-ArtNr, sondern eine
+# UTZ-interne Produkt-ID; sie ist aus dem Suchergebnis extrahierbar.
+_UTZ_DETAIL_LINK = re.compile(
+    r'/grosshandlung/de/([a-z0-9][a-z0-9\-]*-p\d+)/',
+    re.IGNORECASE,
+)
 
-    Da wir das echte UTZ-URL-Schema noch nicht kennen, probieren wir
-    typische Muster:
-      ?suche=<artnr>
-      ?action=search&suche=<artnr>
-      ?action=artikel&id=<artnr>
-      /artikel/<artnr>/
-      /grosshandlung/de/?suche=<artnr>
+
+def _utz_artikel_info(sess, artnr: str) -> dict:
+    """Holt Stammdaten fuer eine UTZ-ArtNr in zwei Stufen:
+        1. Suche: GET /grosshandlung/de/?suche=<artnr>
+        2. Aus dem Such-Body wird der erste passende Slug-Link
+           </grosshandlung/de/<slug>-p<id>/> extrahiert und gefolgt.
+        3. Parser auf der Detailseite extrahiert Bezeichnung, Barcodes,
+           EK, UVP, MwSt, VPE, Bild-URL.
+
+    Gibt ein Diagnose-Dict zurueck (keine Persistierung):
+        {
+          'ok':            bool,
+          'such_url':      str,
+          'such_status':   int,
+          'detail_links':  list[str],     # alle gefundenen Slug-Links
+          'detail_url':    str | None,
+          'detail_status': int | None,
+          'parsed':        {bezeichnung, barcode_stueck, barcode_kt,
+                            artnr_lief, ek_netto, uvp_brutto, mwst_pct,
+                            inhalt, einheit, vpe_ek, bild_url}
+                           | None,
+          'raw_snippet':   str            # Detailseite, ~3kB
+        }
     """
     base = 'https://www.utz24.online/grosshandlung/de/'
-    kandidaten = [
-        f'{base}?suche={artnr}',
-        f'{base}?action=search&suche={artnr}',
-        f'{base}?action=search&q={artnr}',
-        f'{base}?action=artikel&id={artnr}',
-        f'{base}?action=detail&id={artnr}',
-        f'{base}artikel/{artnr}/',
-        f'{base}?artnr={artnr}',
-    ]
-    versuche: list[dict] = []
-    bester: Optional[dict] = None
-    for url in kandidaten:
-        try:
-            r = sess.get(url, timeout=_TIMEOUT, allow_redirects=True)
-            body = r.text or ''
-            # Heuristik: Treffer hat artnr im Body und schickt nicht
-            # einfach die Login-Seite zurueck.
-            hat_artnr = artnr in body
-            ist_login_seite = ('form_shop_login' in body
-                                and 'b2b-login' in r.url.lower())
-            score = 0
-            if hat_artnr:        score += 2
-            if not ist_login_seite: score += 1
-            if r.status_code == 200: score += 1
-            versuche.append({
-                'url':     url,
-                'final':   r.url,
-                'status':  r.status_code,
-                'len':     len(body),
-                'hat_artnr': hat_artnr,
-                'login_seite': ist_login_seite,
-                'score':   score,
-            })
-            if bester is None or score > bester['score']:
-                bester = {**versuche[-1], 'body': body}
-        except Exception as exc:
-            versuche.append({
-                'url': url, 'fehler': str(exc), 'score': -1,
-            })
-
-    # Title + Snippet aus dem besten Kandidaten
-    body = (bester or {}).get('body', '')
-    m = re.search(r'<title>([^<]{1,200})</title>', body, re.IGNORECASE)
-    titel = (m.group(1).strip() if m else '')[:200]
-    sichtbar = re.sub(r'<script[\s\S]*?</script>', ' ', body)
-    sichtbar = re.sub(r'<style[\s\S]*?</style>',  ' ', sichtbar)
-    sichtbar = re.sub(r'<[^>]+>', ' ', sichtbar)
-    sichtbar = re.sub(r'\s+', ' ', sichtbar).strip()
-    # Snippet rund um die ArtNr suchen, falls vorhanden
-    if artnr in sichtbar:
-        i = sichtbar.find(artnr)
-        snippet = sichtbar[max(0, i - 100): i + 700]
-    else:
-        snippet = sichtbar[:800]
-
-    # Sicherheits-Snippet: rohes HTML rund um die ArtNr (bis ~1500 chars)
-    raw_snippet = ''
-    if body and artnr in body:
-        i = body.find(artnr)
-        raw_snippet = body[max(0, i - 200): i + 1300]
-
+    such_url = f'{base}?suche={artnr}'
+    try:
+        r1 = sess.get(such_url, timeout=_TIMEOUT, allow_redirects=True)
+    except Exception as exc:
+        return {'ok': False, 'msg': f'Such-GET: {exc}',
+                'such_url': such_url}
+    body1 = r1.text or ''
+    # Detail-Link kandidaten (dedup, Reihenfolge erhalten)
+    treffer: list[str] = []
+    seen: set = set()
+    for m in _UTZ_DETAIL_LINK.finditer(body1):
+        slug = m.group(1)
+        if slug not in seen:
+            seen.add(slug)
+            treffer.append(slug)
+    if not treffer:
+        return {
+            'ok': False,
+            'msg': 'Kein Detail-Slug im Suchergebnis gefunden.',
+            'such_url':    such_url,
+            'such_status': r1.status_code,
+            'detail_links': [],
+            'raw_snippet': body1[:3000],
+        }
+    # Erstes Match nehmen
+    detail_url = f'{base}{treffer[0]}/'
+    try:
+        r2 = sess.get(detail_url, timeout=_TIMEOUT, allow_redirects=True)
+    except Exception as exc:
+        return {'ok': False, 'msg': f'Detail-GET: {exc}',
+                'such_url': such_url, 'detail_url': detail_url}
+    body2 = r2.text or ''
+    parsed = _parse_utz_detail(body2)
     return {
-        'best_url':    (bester or {}).get('url'),
-        'best_final':  (bester or {}).get('final'),
-        'best_score':  (bester or {}).get('score'),
-        'best_status': (bester or {}).get('status'),
-        'best_len':    (bester or {}).get('len'),
-        'titel':       titel,
-        'snippet':     snippet,
-        'raw_snippet': raw_snippet,
-        'versuche':    versuche,
+        'ok': bool(parsed and (parsed.get('barcode_stueck')
+                                or parsed.get('bezeichnung'))),
+        'such_url':      such_url,
+        'such_status':   r1.status_code,
+        'detail_links':  treffer[:6],
+        'detail_url':    detail_url,
+        'detail_status': r2.status_code,
+        'detail_len':    len(body2),
+        'parsed':        parsed,
+        'raw_snippet':   body2[:3000],
     }
 
 
-def web_artikel_diagnose(lief_rec_id: int, artnr: str) -> dict:
-    """Loggt sich beim Lieferanten ein und probiert eine ArtNr-Suche.
-    Liefert ein Diagnose-Dict – kein Persistieren, keine Cache-Schreibe.
+def _parse_utz_detail(html: str) -> dict:
+    """Parst die Detailseite eines UTZ-Artikels.
 
-    Soll uns helfen, das URL-Schema und HTML-Markup pro Lieferant zu
-    verstehen, bevor wir den eigentlichen Artikel-Lookup hart codieren.
+    Erwartetes Markup (laut Screenshot vom 2026-04-28):
+      <h1>Ferrero Kinder-Riegel</h1>
+      ... „Barcode" ...
+      „Stück - 4008400221021"
+      „KT    - 4008400222806"
+      „Artikel-Nr 35848" / „mit PZ 35848/4"
+      „2,879 €"  (Verkaufs/EK)
+      „UVP Preis 3,890 €"
+      „zzgl. MwSt. 7%"
+      „x28 Packung"
+      „Inhalt 10er"
+      <img class="..." src="/produktbilder/...">
+
+    Heuristik: BeautifulSoup, dann Regex auf den Sicht-Text plus
+    Verarbeitung wichtiger Spezial-Bereiche.
+    """
+    out: dict = {
+        'bezeichnung':     '',
+        'barcode_stueck':  '',
+        'barcode_kt':      '',
+        'artnr_lief':      '',
+        'ek_netto':        None,   # EUR
+        'uvp_brutto':      None,   # EUR
+        'mwst_pct':        None,   # int (7 oder 19)
+        'inhalt':          '',
+        'einheit':         '',
+        'vpe_ek':          None,   # int
+        'bild_url':        '',
+    }
+    if not html:
+        return out
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        # Fallback ohne bs4: nur grobes Regex-Parsing
+        return _parse_utz_detail_regex(html, out)
+
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # H1 = Bezeichnung
+    h1 = soup.find('h1')
+    if h1:
+        out['bezeichnung'] = h1.get_text(strip=True)[:255]
+
+    # Sichtbarer Text fuer alle weiteren Regex-Treffer
+    for s in soup(['script', 'style', 'noscript']):
+        s.decompose()
+    sicht = soup.get_text(' ', strip=True)
+    sicht = re.sub(r'\s+', ' ', sicht)
+
+    # Barcode: zwei EAN-13-Zeilen, Praefix Stück / KT
+    m = re.search(r'St(?:ü|ue)ck\s*[-–]\s*(\d{8,14})', sicht)
+    if m: out['barcode_stueck'] = m.group(1)
+    m = re.search(r'\bKT\s*[-–]\s*(\d{8,14})', sicht)
+    if m: out['barcode_kt'] = m.group(1)
+
+    # ArtNr (erste Treffer nach „Artikel-Nr.")
+    m = re.search(r'Artikel-?Nr\.?\s*[:.]?\s*(\d{1,9})', sicht)
+    if m: out['artnr_lief'] = m.group(1)
+
+    # EK-Preis (oben grosser Preis): erstes „<komma>,<3-stellig> €" das
+    # nicht direkt nach „UVP" steht.
+    # Wir suchen alle Preis-Zahlen, sortieren in Reihenfolge des Auftretens.
+    preise = list(re.finditer(r'(\d{1,4},\d{2,4})\s*€', sicht))
+    if preise:
+        # UVP-Marker
+        uvp_marker = re.search(r'UVP[\s\w]*?(\d{1,4},\d{2,4})\s*€',
+                               sicht, re.IGNORECASE)
+        if uvp_marker:
+            out['uvp_brutto'] = _komma_zu_float(uvp_marker.group(1))
+        # EK = erster Preis, der nicht der UVP ist
+        for p in preise:
+            wert = _komma_zu_float(p.group(1))
+            if out['uvp_brutto'] is None or abs(
+                    (wert or 0) - (out['uvp_brutto'] or 0)) > 0.001:
+                out['ek_netto'] = wert
+                break
+
+    # MwSt %
+    m = re.search(r'MwSt\.?\s*(\d{1,2})\s*%', sicht, re.IGNORECASE)
+    if m:
+        try: out['mwst_pct'] = int(m.group(1))
+        except ValueError: pass
+
+    # VPE: „x28 Packung"
+    m = re.search(r'x\s*(\d{1,4})\s*([A-Za-zäöüÄÖÜ]+)', sicht)
+    if m:
+        try: out['vpe_ek'] = int(m.group(1))
+        except ValueError: pass
+        out['einheit'] = m.group(2)[:40]
+
+    # Inhalt
+    m = re.search(r'Inhalt\s*[:.]?\s*([^\s][^\n]{0,40})', sicht,
+                  re.IGNORECASE)
+    if m:
+        # Nimm bis zum naechsten Doppel-Leerzeichen oder „Zugabeaktion"
+        wert = m.group(1).strip()
+        wert = re.split(r'\s{2,}|Zugabeaktion|Einheit', wert)[0]
+        out['inhalt'] = wert.strip(' ,;:')[:60]
+
+    # Produktbild: erstes <img>, dessen Quelle „produkt" enthaelt;
+    # sonst das groesste alt-Attribut, das die Bezeichnung enthaelt.
+    bild = ''
+    for img in soup.find_all('img'):
+        src = img.get('src') or ''
+        if not src:
+            continue
+        low = src.lower()
+        if 'produkt' in low or 'artikel' in low or '/p4' in low:
+            bild = src
+            break
+    if not bild and out['bezeichnung']:
+        for img in soup.find_all('img'):
+            alt = (img.get('alt') or '').lower()
+            if alt and out['bezeichnung'].lower()[:15] in alt:
+                bild = img.get('src') or ''
+                break
+    if bild and bild.startswith('/'):
+        bild = 'https://www.utz24.online' + bild
+    out['bild_url'] = bild
+
+    return out
+
+
+def _parse_utz_detail_regex(html: str, out: dict) -> dict:
+    """Notnagel-Parser ohne bs4 (sehr grob)."""
+    text = re.sub(r'<script[\s\S]*?</script>', ' ', html)
+    text = re.sub(r'<style[\s\S]*?</style>',  ' ', text)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    m = re.search(r'St(?:ü|ue)ck\s*[-–]\s*(\d{8,14})', text)
+    if m: out['barcode_stueck'] = m.group(1)
+    m = re.search(r'\bKT\s*[-–]\s*(\d{8,14})', text)
+    if m: out['barcode_kt'] = m.group(1)
+    m = re.search(r'Artikel-?Nr\.?\s*[:.]?\s*(\d{1,9})', text)
+    if m: out['artnr_lief'] = m.group(1)
+    return out
+
+
+def _komma_zu_float(s: str) -> Optional[float]:
+    if not s:
+        return None
+    try:
+        return float(s.replace('.', '').replace(',', '.'))
+    except ValueError:
+        return None
+
+
+def web_artikel_diagnose(lief_rec_id: int, artnr: str) -> dict:
+    """Loggt sich beim Lieferanten ein, holt die Detailseite zur ArtNr
+    (Suche → Slug-Link → Detailseite) und parst sie.
+
+    Reine Diagnose – kein Persistieren, keine Cache-Schreibe.
     """
     lief = _einkauf.holen(lief_rec_id)
     if not lief:
@@ -314,15 +457,17 @@ def web_artikel_diagnose(lief_rec_id: int, artnr: str) -> dict:
         return {'ok': False, 'msg': 'Login fehlgeschlagen: '
                 + str(login_res.get('msg')),
                 'login': login_res}
-    probe = _utz_artikel_probe(sess, artnr.strip())
-    return {'ok': True, 'login': {'titel': login_res.get('titel'),
-                                   'cookies': login_res.get('cookies')},
+    probe = _utz_artikel_info(sess, artnr.strip())
+    return {'ok': probe.get('ok', False),
+            'msg': probe.get('msg'),
+            'login': {'titel':   login_res.get('titel'),
+                      'cookies': login_res.get('cookies')},
             'probe': probe}
 
 
 _UTZ_TREIBER = {
     'login':            _utz_login,
-    'artikel_probe':    _utz_artikel_probe,
+    'artikel_info':     _utz_artikel_info,
 }
 
 
