@@ -292,9 +292,14 @@
         <input class="form-control" id="ed-webpw" type="password"
                placeholder="leer lassen = unveraendert" autocomplete="new-password">
       </div>
-      <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button type="button" class="btn btn-neutral btn-sm" id="ed-web-test-btn"
                 onclick="webLoginTest()">🌐 Login testen</button>
+        <input class="form-control" id="ed-probe-artnr"
+               placeholder="ArtNr fuer Probe (z.B. 35848)"
+               style="width:160px;height:32px;font-size:13px;padding:4px 8px;">
+        <button type="button" class="btn btn-neutral btn-sm" id="ed-probe-btn"
+                onclick="webArtikelProbe()">🔬 Artikel-Probe</button>
         <span id="ed-web-test-out" class="muted" style="font-size:12px;"></span>
       </div>
       <pre id="ed-web-test-detail" style="display:none;margin-top:8px;
@@ -667,6 +672,65 @@ async function webLoginTest() {
   } else {
     det.style.display = 'none';
   }
+}
+
+async function webArtikelProbe() {
+  const recId = _e('ed-rec-id').value;
+  const artnr = (_e('ed-probe-artnr').value || '').trim();
+  if (!recId)  { toast('Erst Lieferanten speichern.', 'err'); return; }
+  if (!artnr)  { toast('ArtNr eingeben.', 'err'); return; }
+  const btn = _e('ed-probe-btn');
+  const out = _e('ed-web-test-out');
+  const det = _e('ed-web-test-detail');
+  btn.disabled = true;
+  out.textContent = `Login + Probe für ArtNr ${artnr} …`;
+  await lieferantSpeichern_silent();
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/lieferanten/${recId}/web-artikel-probe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artnr }),
+    });
+    d = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    out.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  btn.disabled = false;
+  if (!d.ok) {
+    out.style.color = 'var(--status-rot)';
+    out.textContent = `✗ ${d.msg}`;
+    if (d.login) {
+      det.textContent = JSON.stringify(d.login, null, 2);
+      det.style.display = '';
+    }
+    return;
+  }
+  const p = d.probe || {};
+  out.style.color = 'var(--gruen-dunkel)';
+  out.textContent = `✓ Beste URL: ${p.best_url} (Score ${p.best_score})`;
+  const lines = [
+    `Login-Title:  ${(d.login || {}).titel || ''}`,
+    '',
+    '── Probe-Versuche (alle URLs) ──',
+    ...(p.versuche || []).map(v => v.fehler
+        ? `  ${v.url}  →  Fehler: ${v.fehler}`
+        : `  Score ${v.score}  HTTP ${v.status}  len=${v.len}  ${v.hat_artnr?'hat_artnr ':''}${v.login_seite?'(Login!) ':''}${v.url}`),
+    '',
+    `── Beste URL ──`,
+    `final:    ${p.best_final}`,
+    `title:    ${p.titel}`,
+    '',
+    `── Sichtbarer Text rund um ArtNr ──`,
+    p.snippet || '(ArtNr nicht im Body gefunden – evtl. anderes URL-Muster nötig)',
+    '',
+    `── Roh-HTML rund um ArtNr (~1500 Zeichen) ──`,
+    p.raw_snippet || '(ArtNr nicht im Body)',
+  ];
+  det.textContent = lines.join('\n');
+  det.style.display = '';
 }
 
 async function lieferantSpeichern_silent() {
