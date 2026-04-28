@@ -261,26 +261,69 @@ def _utz_artikel_info(sess, artnr: str) -> dict:
             'detail_links': [],
             'raw_snippet': body1[:3000],
         }
-    # Erstes Match nehmen
-    detail_url = f'{base}{treffer[0]}/'
-    try:
-        r2 = sess.get(detail_url, timeout=_TIMEOUT, allow_redirects=True)
-    except Exception as exc:
-        return {'ok': False, 'msg': f'Detail-GET: {exc}',
-                'such_url': such_url, 'detail_url': detail_url}
-    body2 = r2.text or ''
-    parsed = _parse_utz_detail(body2)
+    # Die UTZ-Suche liefert auf der Ergebnisseite oft mehrere Slugs
+    # (Empfehlungen, „Meinten Sie", Aktionen) – der eigentliche
+    # Volltext-Treffer ist nicht zwingend der erste. Wir gehen alle
+    # Kandidaten durch (gekappt auf MAX) und nehmen den, dessen
+    # geparste ``artnr_lief`` exakt matcht. Falls keiner matcht:
+    # ersten Slug als „bester Fallback" liefern – mit warning-msg.
+    MAX = 10
+    versuche: list[dict] = []
+    parsed_match: Optional[dict] = None
+    detail_url_match: Optional[str] = None
+    detail_status_match: Optional[int] = None
+    detail_len_match: Optional[int] = None
+    raw_match: str = ''
+    for slug in treffer[:MAX]:
+        d_url = f'{base}{slug}/'
+        try:
+            r2 = sess.get(d_url, timeout=_TIMEOUT, allow_redirects=True)
+        except Exception as exc:
+            versuche.append({'slug': slug, 'fehler': str(exc)})
+            continue
+        body2 = r2.text or ''
+        parsed = _parse_utz_detail(body2)
+        versuche.append({
+            'slug':        slug,
+            'status':      r2.status_code,
+            'len':         len(body2),
+            'artnr_lief':  parsed.get('artnr_lief', ''),
+            'bezeichnung': parsed.get('bezeichnung', ''),
+        })
+        if (parsed.get('artnr_lief') or '').strip() == artnr.strip():
+            parsed_match        = parsed
+            detail_url_match    = d_url
+            detail_status_match = r2.status_code
+            detail_len_match    = len(body2)
+            raw_match           = body2[:3000]
+            break
+
+    if parsed_match is None:
+        return {
+            'ok': False,
+            'msg': (f'ArtNr {artnr} unter den ersten {len(versuche)} '
+                    'Slug-Treffern nicht gefunden. UTZ-Suche liefert '
+                    'offenbar nur Empfehlungen/Werbeartikel zurueck, '
+                    'der echte Treffer steht im Such-Body unter einem '
+                    'anderen Markup-Element.'),
+            'such_url':     such_url,
+            'such_status':  r1.status_code,
+            'detail_links': treffer[:MAX],
+            'versuche':     versuche,
+            'such_snippet': body1[:3000],
+        }
+
     return {
-        'ok': bool(parsed and (parsed.get('barcode_stueck')
-                                or parsed.get('bezeichnung'))),
+        'ok':            True,
         'such_url':      such_url,
         'such_status':   r1.status_code,
-        'detail_links':  treffer[:6],
-        'detail_url':    detail_url,
-        'detail_status': r2.status_code,
-        'detail_len':    len(body2),
-        'parsed':        parsed,
-        'raw_snippet':   body2[:3000],
+        'detail_links':  treffer[:MAX],
+        'versuche':      versuche,
+        'detail_url':    detail_url_match,
+        'detail_status': detail_status_match,
+        'detail_len':    detail_len_match,
+        'parsed':        parsed_match,
+        'raw_snippet':   raw_match,
     }
 
 
@@ -378,31 +421,43 @@ def _parse_utz_detail(html: str) -> dict:
         except ValueError: pass
         out['einheit'] = m.group(2)[:40]
 
-    # Inhalt
-    m = re.search(r'Inhalt\s*[:.]?\s*([^\s][^\n]{0,40})', sicht,
-                  re.IGNORECASE)
+    # Inhalt: zwischen 'Inhalt' und dem naechsten bekannten Label.
+    # Bekannte Folge-Labels: Zugabeaktion, Einheit, Artikel,
+    # Warenkorb, Stueckpreis, MwSt, UVP, Lieferzeit.
+    m = re.search(
+        r'Inhalt\s*[:.]?\s+([^\s][^\n]{0,80}?)'
+        r'(?=\s{2,}|Zugabeaktion|Einheit\b|Artikel\b|Warenkorb|MwSt|UVP\b|Stueckpr|St\xc3\xbcckpr)',
+        sicht, re.IGNORECASE)
     if m:
-        # Nimm bis zum naechsten Doppel-Leerzeichen oder „Zugabeaktion"
-        wert = m.group(1).strip()
-        wert = re.split(r'\s{2,}|Zugabeaktion|Einheit', wert)[0]
-        out['inhalt'] = wert.strip(' ,;:')[:60]
+        out['inhalt'] = m.group(1).strip(' ,;:')[:60]
 
-    # Produktbild: erstes <img>, dessen Quelle „produkt" enthaelt;
-    # sonst das groesste alt-Attribut, das die Bezeichnung enthaelt.
+    # Produktbild: bevorzugt itemprop="image" (Schema.org), dann
+    # das erste img, dessen src auf eine sinnvolle Bildersammlung
+    # zeigt (data, content, produkte, artikel, p\d+).
     bild = ''
-    for img in soup.find_all('img'):
-        src = img.get('src') or ''
-        if not src:
-            continue
-        low = src.lower()
-        if 'produkt' in low or 'artikel' in low or '/p4' in low:
-            bild = src
-            break
-    if not bild and out['bezeichnung']:
+    img_meta = soup.find('img', attrs={'itemprop': 'image'})
+    if img_meta:
+        bild = img_meta.get('src') or img_meta.get('data-src') or ''
+    if not bild:
+        # OpenGraph/Twitter-Image als Fallback
+        og = soup.find('meta', attrs={'property': 'og:image'})
+        if og and og.get('content'):
+            bild = og['content']
+    if not bild:
         for img in soup.find_all('img'):
-            alt = (img.get('alt') or '').lower()
-            if alt and out['bezeichnung'].lower()[:15] in alt:
-                bild = img.get('src') or ''
+            src = (img.get('src') or img.get('data-src') or '').strip()
+            if not src or src.startswith('data:'):
+                continue
+            low = src.lower()
+            if any(s in low for s in (
+                    '/produkt', '/artikel', '/data/', '/content/',
+                    '/p_', '/pic/', '/upload', '/media',
+                    re.search(r'-p\d+', low) and '-p' or '')):
+                # Layout-Pfade ('/layout/') sind Theme-Assets (Logo,
+                # Icons), die wollen wir nicht.
+                if '/layout/' in low or 'logo' in low or 'icon' in low:
+                    continue
+                bild = src
                 break
     if bild and bild.startswith('/'):
         bild = 'https://www.utz24.online' + bild
