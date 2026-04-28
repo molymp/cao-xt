@@ -149,6 +149,84 @@
 .vorschlag-aktion.neu   { background: #f6d8ce; color: var(--status-rot); border-color: var(--status-rot); }
 .vorschlag-aktion.neu:hover { background: var(--status-rot); color: #fff; }
 
+/* Sync-Plan-Block */
+.sync-plan-card {
+  margin-top: 18px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 16px 18px;
+}
+.sync-plan-card h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.sync-plan-readonly {
+  background: #f6ecd0;
+  border-left: 3px solid var(--status-gelb);
+  color: #4b3a12;
+  padding: 6px 12px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+}
+.sync-aggregat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.sync-aggregat-grid .agg {
+  background: var(--brand-cream);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 8px 12px;
+}
+.sync-aggregat-grid .agg .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.sync-aggregat-grid .agg .val {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 22px;
+  color: var(--brand-terracotta);
+}
+.sync-pos-table { font-size: 12px; }
+.sync-pos-table .num { font-family: 'JetBrains Mono', monospace; text-align: right; }
+.sync-pos-table .akt-pill {
+  display: inline-block; font-size: 10px; font-weight: 800;
+  padding: 1px 7px; border-radius: 10px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.sync-pos-table .akt-pill.preis_verknuepfen { background: var(--brand-sage); color: var(--gruen-dunkel); }
+.sync-pos-table .akt-pill.artikel_anlegen   { background: #f6d8ce;          color: var(--status-rot); }
+.sync-pos-table .akt-pill.in_cao            { background: var(--status-gruen); color: #fff; }
+.sync-pos-table .akt-pill.offen             { background: #f6ecd0;          color: var(--status-gelb); }
+.sync-hinweis-box {
+  margin: 6px 0 0;
+  padding: 4px 8px;
+  background: #f6ecd0;
+  border-left: 2px solid var(--status-gelb);
+  font-size: 11px;
+  color: #4b3a12;
+  border-radius: 3px;
+}
+.sync-bestell-aktion {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--brand-ink);
+}
+
 .diff-pos { color: var(--status-rot); }
 .diff-neg { color: var(--gruen-dunkel); }
 .diff-null { color: var(--text-dim); }
@@ -401,9 +479,14 @@ async function detailZeigen(recId) {
                 onclick="caoMatch(${e.REC_ID})">
           🔍 CAO-Match prüfen
         </button>
+        <button class="btn btn-neutral btn-sm" id="btn-sync-plan-${e.REC_ID}"
+                onclick="syncPlan(${e.REC_ID})">
+          🧪 Sync-Plan anzeigen
+        </button>
         <span class="muted" id="cao-match-hint-${e.REC_ID}"
               style="font-size:12px;">read-only · keine CAO-Schreibvorgänge</span>
       </div>
+      <div id="sync-plan-${e.REC_ID}" style="display:none;"></div>
       <div id="cao-match-summary-${e.REC_ID}"></div>
 
       <table class="tbl pos-table" id="pos-table-${e.REC_ID}">
@@ -446,6 +529,143 @@ async function detailZeigen(recId) {
     </div>
   `;
   ar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── CAO-Sync-Plan (Phase-5/6-Vorschau, read-only) ────────────────
+async function syncPlan(recId) {
+  const tgt = document.getElementById('sync-plan-' + recId);
+  const btn = document.getElementById('btn-sync-plan-' + recId);
+  if (!tgt) return;
+  if (tgt.style.display !== 'none') {
+    tgt.style.display = 'none';
+    btn.textContent = '🧪 Sync-Plan anzeigen';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '⏳ generiere Plan …';
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/cao-sync-plan`);
+    d = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '🧪 Sync-Plan anzeigen';
+    toast('Fehler: ' + e.message, 'err');
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = '🧪 Sync-Plan ausblenden';
+  if (!d.ok) {
+    toast(d.msg || 'Sync-Plan-Fehler', 'err');
+    return;
+  }
+  const a = d.aggregat || {};
+  const b = d.bestellung || {};
+  const hCao = b.cao_lief_id ? `<code>${b.cao_lief_id}</code>` :
+               '<span style="color:var(--status-rot);font-weight:700;">⚠ nicht gesetzt</span>';
+  let html = `
+    <div class="sync-plan-card">
+      <div class="sync-plan-readonly">
+        ⚠ Read-only-Vorschau · zeigt was Phase 5/6 tun WÜRDE.
+        Kein einziger Schreibvorgang in CAO-Tabellen.
+      </div>
+      <h4>Bestellung ${_esc(b.lief_kuerzel)} #${_esc(b.bestell_nr)}
+          · CAO-Lieferant: ${hCao}</h4>
+      <div class="sync-aggregat-grid">
+        <div class="agg"><div class="lbl">In CAO einbuchen</div>
+          <div class="val">${a.n_match + a.n_neu_anlegen}</div></div>
+        <div class="agg"><div class="lbl">Verknüpfen</div>
+          <div class="val">${a.n_match}</div></div>
+        <div class="agg"><div class="lbl">Neu anlegen</div>
+          <div class="val">${a.n_neu_anlegen}</div></div>
+        <div class="agg"><div class="lbl">Offen</div>
+          <div class="val">${a.n_offen}</div></div>
+        <div class="agg"><div class="lbl">Bereits in CAO</div>
+          <div class="val">${a.n_in_cao}</div></div>
+      </div>
+  `;
+  if (a.cao_lief_fehlt) {
+    html += `
+      <div class="summen-banner warn">
+        ⚠ Lieferant hat keinen CAO_LIEF_ID hinterlegt — ohne den
+        kann keine ARTIKEL_PREIS-Verknüpfung geschrieben werden.
+        Bitte unter „Einkauf → Lieferanten" den CAO-Adress-Datensatz
+        zuordnen.
+      </div>`;
+  }
+  if (a.fehlende_warengruppe > 0) {
+    html += `
+      <div class="summen-banner warn">
+        ⚠ ${a.fehlende_warengruppe} neuer Artikel ohne Warengruppe.
+        Vor dem CAO-Sync muss pro Position eine Warengruppe gewählt
+        werden (CAO-Pflichtfeld).
+      </div>`;
+  }
+  // Pos-Tabelle
+  html += `
+    <table class="tbl sync-pos-table">
+      <thead>
+        <tr>
+          <th style="width:40px;text-align:right;">#</th>
+          <th>Lieferanten-Artikel</th>
+          <th>Aktion</th>
+          <th>Ziel in CAO</th>
+          <th>Defaults / Hinweise</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  for (const p of (d.positionen || [])) {
+    let aktTxt = p.aktion;
+    if (p.aktion === 'preis_verknuepfen') aktTxt = '🔗 Preis verknüpfen';
+    else if (p.aktion === 'artikel_anlegen') aktTxt = '🆕 Artikel anlegen';
+    else if (p.aktion === 'in_cao') aktTxt = '✓ schon eingebucht';
+    else aktTxt = '⏸ offen';
+    let defaultsHtml = '';
+    if (p.artikel_insert) {
+      const ai = p.artikel_insert;
+      defaultsHtml += `
+        <details><summary style="cursor:pointer;color:var(--brand-terracotta);">
+          ARTIKEL-Insert anzeigen
+        </summary>
+        <pre style="font-size:11px;background:var(--bg-dunkel);padding:6px;border-radius:4px;
+                    margin-top:4px;white-space:pre-wrap;">${_esc(JSON.stringify(ai, null, 2))}</pre>
+        </details>`;
+    }
+    if (p.artikel_preis_insert) {
+      const pi = p.artikel_preis_insert;
+      defaultsHtml += `
+        <details><summary style="cursor:pointer;color:var(--brand-terracotta);">
+          ARTIKEL_PREIS-Insert anzeigen
+        </summary>
+        <pre style="font-size:11px;background:var(--bg-dunkel);padding:6px;border-radius:4px;
+                    margin-top:4px;white-space:pre-wrap;">${_esc(JSON.stringify(pi, null, 2))}</pre>
+        </details>`;
+    }
+    if (p.hinweise && p.hinweise.length) {
+      defaultsHtml += p.hinweise.map(h =>
+        `<div class="sync-hinweis-box">⚠ ${_esc(h)}</div>`).join('');
+    }
+    html += `
+      <tr>
+        <td class="num">${p.pos_nr}</td>
+        <td><code>${_esc(p.artikel_nr_lief || '')}</code> ${_esc(p.bezeichnung_lief || '')}</td>
+        <td><span class="akt-pill ${p.aktion}">${aktTxt}</span></td>
+        <td>${_esc(p.cao_artikel_label || '')}</td>
+        <td>${defaultsHtml || '<span class="muted">–</span>'}</td>
+      </tr>`;
+  }
+  html += `</tbody></table>`;
+  // Bestell-Aktion
+  html += `
+    <div class="sync-bestell-aktion">
+      <strong>Bestellung-Schritt (Phase 6):</strong><br>
+      ${_esc(JSON.stringify(a.bestell_aktion || {}, null, 2))}
+    </div>
+    </div>
+  `;
+  tgt.innerHTML = html;
+  tgt.style.display = '';
 }
 
 // ── Manuelle Position-Zuordnung ───────────────────────────────────

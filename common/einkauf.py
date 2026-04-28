@@ -1461,6 +1461,216 @@ def bestellung_anreichern(bestellung_rec_id: int,
     }
 
 
+def cao_sync_plan(bestellung_rec_id: int) -> dict:
+    """Generiert eine read-only Vorschau, was ein CAO-Sync (Phase 5/6)
+    pro Position der Bestellung tun WUERDE. KEIN Schreibvorgang.
+
+    Returns: ``{
+      'ok': bool,
+      'bestellung': {rec_id, lief_kuerzel, lief_bez, cao_lief_id,
+                     bestell_nr, datum, gesamtsumme_netto, n_pos},
+      'positionen': [
+        {pos_rec_id, pos_nr, artikel_nr_lief, bezeichnung_lief,
+         menge, preis_netto,
+         match_quelle, cao_artikel_rec_id, cao_artikel_label,
+         aktion: 'preis_verknuepfen' | 'artikel_anlegen' | 'in_cao' | 'offen',
+         hinweise: list[str],
+         artikel_insert: dict | None,         # falls 'artikel_anlegen'
+         artikel_preis_insert: dict | None,   # immer wenn ARTIKEL bekannt/neu
+        }, ...
+      ],
+      'aggregat': {n_match, n_neu_anlegen, n_in_cao, n_offen,
+                   neue_artikel_pro_warengruppe: {...},
+                   neue_preisverknuepfungen: int,
+                   bestell_pos_zu_schreiben: int}
+    }``
+    """
+    head = bestellung_holen(bestellung_rec_id)
+    if not head:
+        return {'ok': False, 'msg': 'Bestellung nicht gefunden.'}
+    matches = cao_match_positionen(bestellung_rec_id)
+    cao_lief_id = head.get('CAO_LIEF_ID')
+
+    # MwSt → CAO STEUER_CODE
+    def _steuer_code(mwst_pct):
+        try:
+            v = int(mwst_pct or 0)
+        except (TypeError, ValueError):
+            return None
+        if v in (19,): return 1
+        if v in (7,):  return 2
+        if v == 0:     return 0
+        return None
+
+    pos_plan: list[dict] = []
+    n_match = n_neu = n_in_cao = n_offen = 0
+    neue_artikel = 0
+    neue_preise  = 0
+    fehlende_warengruppe = 0
+
+    for m in matches:
+        lief = m.get('lief_cache') or {}
+        cao  = m.get('cao') or {}
+        quelle = m.get('match_quelle') or 'kein'
+        pos_status = m.get('pos_status') or 'neu'
+
+        hinweise: list[str] = []
+        artikel_insert  = None
+        preis_insert    = None
+        cao_label = ''
+
+        # Warengruppe: bei Match aus CAO uebernehmen, sonst „klaeren"
+        wg = cao.get('warengruppe') if cao else None
+
+        if pos_status == 'in_cao':
+            aktion = 'in_cao'
+            n_in_cao += 1
+            cao_label = (f'CAO #{cao.get("rec_id")}'
+                         if cao else 'bereits eingebucht')
+        elif quelle in ('barcode', 'lieferant', 'global', 'manuell'):
+            aktion = 'preis_verknuepfen'
+            n_match += 1
+            cao_label = (f'CAO #{cao.get("rec_id")} '
+                         f'{cao.get("matchcode") or cao.get("kas_name") or ""}')
+            preis_insert = {
+                'tabelle':   'ARTIKEL_PREIS',
+                'art':       'INSERT_OR_UPDATE',
+                'ARTIKEL_ID': cao.get('rec_id'),
+                'ADRESS_ID':  cao_lief_id,
+                'PREIS_TYP':  5,
+                'PT2':        'EK',
+                'BESTNUM':    m.get('artikel_nr_lief'),
+                'PREIS':      lief.get('barcode_stueck')  # only used if available
+                                and (m.get('preis_netto') or 0)
+                                or m.get('preis_netto'),
+                'VPE':        None,  # aus lief_cache.vpe_ek setzen
+            }
+            # VPE aus DB, weil lief_cache hier nur die Anzeige-Werte hat
+            cache_lief = lief_artikel_holen(head.get('LIEF_REC_ID') or 0,
+                                             m.get('artikel_nr_lief') or '')
+            if cache_lief and cache_lief.get('VPE_EK'):
+                preis_insert['VPE'] = int(cache_lief['VPE_EK'])
+            neue_preise += 1
+            if not cao_lief_id:
+                hinweise.append('Lieferant ohne CAO_LIEF_ID — '
+                                'ARTIKEL_PREIS-Verknuepfung nicht moeglich; '
+                                'Lieferant zuerst zuordnen.')
+        elif quelle == 'mehrdeutig':
+            aktion = 'offen'
+            n_offen += 1
+            cao_label = 'mehrdeutig — bitte manuell zuordnen'
+            hinweise.append('Mehrere CAO-Treffer mit gleicher BESTNUM '
+                            'unter verschiedenen Lieferanten gefunden.')
+        elif quelle == 'neu_anlegen' or pos_status == 'neu_anlegen':
+            aktion = 'artikel_anlegen'
+            n_neu += 1
+            neue_artikel += 1
+            # Defaults aus dem Lieferanten-Cache
+            cache_lief = lief_artikel_holen(head.get('LIEF_REC_ID') or 0,
+                                             m.get('artikel_nr_lief') or '')
+            cl = cache_lief or {}
+            artikel_insert = {
+                'tabelle':       'ARTIKEL',
+                'art':           'INSERT',
+                'MATCHCODE':     (cl.get('BEZEICHNUNG')
+                                   or m.get('bezeichnung_lief') or '').upper()[:255],
+                'KAS_NAME':      cl.get('BEZEICHNUNG')
+                                  or m.get('bezeichnung_lief') or '',
+                'KURZNAME':      ((cl.get('BEZEICHNUNG')
+                                   or m.get('bezeichnung_lief') or '')[:40]),
+                'BARCODE':       cl.get('BARCODE_STUECK') or '',
+                'BARCODE2':      cl.get('BARCODE_KT') or '',
+                'EK_PREIS':      m.get('preis_netto') or cl.get('EK_NETTO'),
+                'VK1B':          None,
+                'STEUER_CODE':   _steuer_code(cl.get('MWST_PCT')),
+                'WARENGRUPPE':   None,    # offen – User-Entscheidung
+                'DEFAULT_LIEF_ID': cao_lief_id,
+                'NO_VK_FLAG':    'N',
+            }
+            preis_insert = {
+                'tabelle':       'ARTIKEL_PREIS',
+                'art':           'INSERT (nach ARTIKEL-Anlage)',
+                'ARTIKEL_ID':    '<neue ARTIKEL.REC_ID>',
+                'ADRESS_ID':     cao_lief_id,
+                'PREIS_TYP':     5,
+                'PT2':           'EK',
+                'BESTNUM':       m.get('artikel_nr_lief'),
+                'PREIS':         m.get('preis_netto'),
+                'VPE':           cl.get('VPE_EK'),
+            }
+            neue_preise += 1
+            if artikel_insert['STEUER_CODE'] is None:
+                hinweise.append(f'MwSt-Code unklar (mwst_pct={cl.get("MWST_PCT")})'
+                                ' — Default 0 oder bitte klaeren.')
+            if artikel_insert['WARENGRUPPE'] is None:
+                hinweise.append('Warengruppe muss vor dem Anlegen zugeordnet werden.')
+                fehlende_warengruppe += 1
+            if not artikel_insert['BARCODE']:
+                hinweise.append('Stueck-EAN fehlt — Stammdaten anreichern oder '
+                                'manuell setzen.')
+            if not cao_lief_id:
+                hinweise.append('Lieferant ohne CAO_LIEF_ID — bitte ADRESSEN-Eintrag zuordnen.')
+        else:
+            # quelle == 'kein' und kein Status gesetzt
+            aktion = 'offen'
+            n_offen += 1
+            cao_label = 'noch nicht zugeordnet'
+            hinweise.append('Bitte „CAO-Match prüfen" + Vorschlag uebernehmen, '
+                            'oder Position als „neu anlegen" markieren.')
+
+        pos_plan.append({
+            'pos_rec_id':            m.get('pos_rec_id'),
+            'pos_nr':                m.get('pos_nr'),
+            'artikel_nr_lief':       m.get('artikel_nr_lief'),
+            'bezeichnung_lief':      m.get('bezeichnung_lief'),
+            'menge':                 m.get('menge'),
+            'preis_netto':           m.get('preis_netto'),
+            'match_quelle':          quelle,
+            'pos_status':            pos_status,
+            'cao_artikel_rec_id':    (cao.get('rec_id') if cao else None),
+            'cao_artikel_label':     cao_label,
+            'aktion':                aktion,
+            'hinweise':              hinweise,
+            'artikel_insert':        artikel_insert,
+            'artikel_preis_insert':  preis_insert,
+        })
+
+    bestell_aktion = {
+        'tabelle': 'BESTELLUNG',
+        'art':     'INSERT (Phase 6)',
+        'ADRESS_ID':       cao_lief_id,
+        'BEST_DAT':        head.get('EMAIL_DATUM'),
+        'EXT_BESTELL_NR':  head.get('BESTELL_NR'),
+        'GESAMTSUMME':     head.get('GESAMTSUMME_NETTO'),
+        'ANZ_POSITIONEN':  len(pos_plan),
+    }
+
+    return {
+        'ok': True,
+        'bestellung': {
+            'rec_id':            bestellung_rec_id,
+            'lief_kuerzel':      head.get('LIEF_KUERZEL'),
+            'lief_bez':          head.get('LIEF_BEZ'),
+            'cao_lief_id':       cao_lief_id,
+            'bestell_nr':        head.get('BESTELL_NR'),
+            'email_datum':       head.get('EMAIL_DATUM'),
+            'gesamtsumme_netto': float(head.get('GESAMTSUMME_NETTO') or 0),
+        },
+        'positionen': pos_plan,
+        'aggregat': {
+            'n_match':                  n_match,
+            'n_neu_anlegen':            n_neu,
+            'n_in_cao':                 n_in_cao,
+            'n_offen':                  n_offen,
+            'neue_artikel':             neue_artikel,
+            'neue_preisverknuepfungen': neue_preise,
+            'fehlende_warengruppe':     fehlende_warengruppe,
+            'bestell_aktion':           bestell_aktion,
+            'cao_lief_fehlt':           not bool(cao_lief_id),
+        },
+    }
+
+
 def position_zuordnen(pos_rec_id: int,
                       cao_artikel_rec_id: Optional[int] = None,
                       neu_anlegen: bool = False,
