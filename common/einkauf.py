@@ -1005,6 +1005,147 @@ def bestellungen_liste(status: Optional[str] = None,
         return []
 
 
+def cao_match_positionen(rec_id: int) -> list[dict]:
+    """Read-only-Vorschau: pro Position der Bestellung pruefen, ob in CAO
+    schon ein passender Artikel hinterlegt ist.
+
+    Match-Strategie:
+      1. Wenn der Lieferant einen ``CAO_LIEF_ID`` hat: in
+         ``ARTIKEL_PREIS`` nach ``PREIS_TYP=5 AND ADRESS_ID=<lief>
+         AND PT2=<UTZ-ArtNr>`` suchen → eindeutiger Treffer (Lieferanten-
+         spezifisch, „enger" Match).
+      2. Fallback ohne Lieferanten-Filter: ``PREIS_TYP=5 AND PT2=...``.
+         Mehrere Treffer moeglich → wird als ``mehrdeutig`` markiert.
+      3. Kein Match → Position muss neu angelegt werden.
+
+    Liefert pro Position ein dict mit::
+
+        {
+          'pos_rec_id', 'pos_nr', 'artikel_nr_lief', 'bezeichnung_lief',
+          'menge', 'preis_netto', 'zeilen_betrag',
+          'match_quelle': 'lieferant' | 'global' | 'mehrdeutig' | 'kein',
+          'cao': {  # nur wenn match_quelle != 'kein'
+            'rec_id', 'artnum', 'matchcode', 'kas_name', 'warengruppe',
+            'steuer_code', 'ek_preis', 'vk5b', 'lager', 'aktiv'
+          } | None,
+          'ek_diff':  float | None,    # NEUER_EK - CAO_EK
+          'ek_diff_pct': float | None, # in % vom CAO-EK
+        }
+    """
+    head = bestellung_holen(rec_id)
+    if not head:
+        return []
+
+    cao_lief = head.get('CAO_LIEF_ID')
+    out: list[dict] = []
+    for p in head.get('positionen') or []:
+        artnr = (p.get('ARTIKEL_NR_LIEF') or '').strip()
+        if not artnr:
+            out.append({
+                'pos_rec_id':       p.get('REC_ID'),
+                'pos_nr':           p.get('POS_NR'),
+                'artikel_nr_lief':  None,
+                'bezeichnung_lief': p.get('BESCHREIBUNG_LIEF'),
+                'menge':            float(p.get('MENGE') or 0),
+                'preis_netto':      float(p.get('PREIS_NETTO') or 0),
+                'zeilen_betrag':    float(p.get('ZEILEN_BETRAG') or 0),
+                'match_quelle':     'kein',
+                'cao':              None,
+                'ek_diff':          None,
+                'ek_diff_pct':      None,
+            })
+            continue
+
+        cao_treffer: Optional[dict] = None
+        match_quelle = 'kein'
+        try:
+            with get_db() as cur:
+                # 1. Enger Match (Lieferanten-spezifisch)
+                if cao_lief:
+                    cur.execute("""
+                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
+                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
+                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
+                               a.USERFELD_02
+                        FROM ARTIKEL_PREIS ap
+                        JOIN ARTIKEL a ON a.REC_ID = ap.ARTIKEL_ID
+                        WHERE ap.PREIS_TYP = 5
+                          AND ap.BESTNUM = %s
+                          AND ap.ADRESS_ID = %s
+                        ORDER BY ap.GUELTIG_VON DESC
+                        LIMIT 1
+                    """, (artnr, cao_lief))
+                    row = cur.fetchone()
+                    if row:
+                        cao_treffer = row
+                        match_quelle = 'lieferant'
+
+                # 2. Globaler Fallback
+                if cao_treffer is None:
+                    cur.execute("""
+                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
+                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
+                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
+                               a.USERFELD_02,
+                               (SELECT COUNT(*) FROM ARTIKEL_PREIS x
+                                WHERE x.PREIS_TYP = 5 AND x.BESTNUM = %s
+                               ) AS n_treffer
+                        FROM ARTIKEL_PREIS ap
+                        JOIN ARTIKEL a ON a.REC_ID = ap.ARTIKEL_ID
+                        WHERE ap.PREIS_TYP = 5 AND ap.BESTNUM = %s
+                        ORDER BY ap.GUELTIG_VON DESC
+                        LIMIT 1
+                    """, (artnr, artnr))
+                    row = cur.fetchone()
+                    if row:
+                        cao_treffer = row
+                        match_quelle = ('mehrdeutig'
+                                        if int(row.get('n_treffer') or 1) > 1
+                                        else 'global')
+        except Exception as exc:
+            log.warning("cao_match Position %s: %s", artnr, exc)
+
+        cao_block = None
+        ek_diff = None
+        ek_diff_pct = None
+        if cao_treffer:
+            cao_ek = float(cao_treffer.get('EK_PREIS') or 0)
+            neuer_ek = float(p.get('PREIS_NETTO') or 0)
+            ek_diff = neuer_ek - cao_ek if cao_ek else None
+            if cao_ek > 0 and ek_diff is not None:
+                ek_diff_pct = (ek_diff / cao_ek) * 100.0
+            cao_block = {
+                'rec_id':     cao_treffer.get('REC_ID'),
+                'artnum':     cao_treffer.get('ARTNUM'),
+                'matchcode':  cao_treffer.get('MATCHCODE'),
+                'kas_name':   (cao_treffer.get('KAS_NAME')
+                                or cao_treffer.get('KURZNAME')
+                                or cao_treffer.get('MATCHCODE')),
+                'warengruppe': cao_treffer.get('WARENGRUPPE'),
+                'steuer_code': cao_treffer.get('STEUER_CODE'),
+                'ek_preis':    cao_ek,
+                'vk5b':        float(cao_treffer.get('VK5B') or 0),
+                'lager':       float(cao_treffer.get('MENGE_AKT') or 0),
+                'aktiv':       (cao_treffer.get('NO_VK_FLAG') != 'Y'
+                                and not (cao_treffer.get('USERFELD_02') or '').strip()),
+            }
+
+        out.append({
+            'pos_rec_id':       p.get('REC_ID'),
+            'pos_nr':           p.get('POS_NR'),
+            'artikel_nr_lief':  artnr,
+            'bezeichnung_lief': p.get('BESCHREIBUNG_LIEF'),
+            'menge':            float(p.get('MENGE') or 0),
+            'preis_netto':      float(p.get('PREIS_NETTO') or 0),
+            'zeilen_betrag':    float(p.get('ZEILEN_BETRAG') or 0),
+            'match_quelle':     match_quelle,
+            'cao':              cao_block,
+            'ek_diff':          ek_diff,
+            'ek_diff_pct':      ek_diff_pct,
+        })
+    return out
+
+
 def bestellung_holen(rec_id: int) -> Optional[dict]:
     """Liefert Header + Positionen einer Bestellung."""
     try:

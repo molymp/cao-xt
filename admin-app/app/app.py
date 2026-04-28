@@ -2481,6 +2481,27 @@ def api_einkauf_bestellung_detail(rec_id):
     return jsonify(ok=True, eintrag=e)
 
 
+@app.get('/api/einkauf/bestellungen/<int:rec_id>/cao-match')
+@_login_required
+def api_einkauf_bestellung_cao_match(rec_id):
+    """Read-only-Vorschau: pro Position pruefen, ob in CAO ein Artikel
+    existiert (per ARTIKEL_PREIS.PREIS_TYP=5, BESTNUM = UTZ-ArtNr).
+    Gibt eine Liste von Match-Eintraegen zurueck (siehe
+    common.einkauf.cao_match_positionen)."""
+    e = _einkauf.bestellung_holen(rec_id)
+    if not e:
+        return jsonify(ok=False, msg='Nicht gefunden.'), 404
+    matches = _einkauf.cao_match_positionen(rec_id)
+    # Aggregat fuers UI: wie viele Matches/wie viele neu, EK-Diff-Summe
+    n_total = len(matches)
+    n_neu   = sum(1 for m in matches if m['match_quelle'] == 'kein')
+    n_match = n_total - n_neu
+    return jsonify(ok=True,
+                   matches=matches,
+                   summary={'total': n_total, 'match': n_match,
+                            'neu': n_neu})
+
+
 @app.route('/system/einkauf-poller')
 @_login_required
 def system_einkauf_poller_seite():
