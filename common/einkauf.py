@@ -2057,8 +2057,10 @@ def bestellung_holen(rec_id: int) -> Optional[dict]:
     try:
         with get_db() as cur:
             cur.execute("""
-                SELECT b.*, l.KUERZEL AS LIEF_KUERZEL,
-                       l.BEZEICHNUNG AS LIEF_BEZ
+                SELECT b.*,
+                       l.KUERZEL    AS LIEF_KUERZEL,
+                       l.BEZEICHNUNG AS LIEF_BEZ,
+                       l.CAO_LIEF_ID AS CAO_LIEF_ID
                 FROM XT_EINKAUF_BESTELLUNG b
                 JOIN XT_EINKAUF_LIEFERANT l ON l.REC_ID = b.LIEF_REC_ID
                 WHERE b.REC_ID = %s
