@@ -84,10 +84,16 @@ _UTZ_LOGIN_URL_DEFAULT = (
 def _utz_login(sess, creds: dict) -> dict:
     """Macht den Login-POST und prueft den Erfolg.
 
-    Erfolgskriterium (Heuristik): nach dem POST landen wir NICHT mehr
-    auf der Login-Seite, sondern auf einer Shop-/Portal-URL. Wir geben
-    ausserdem Cookies und finalen Pfad zurueck, damit das UI sieht, wo
-    wir gelandet sind.
+    Erfolgskriterium (Heuristik): finaler Pfad enthaelt nicht mehr
+    ``b2b-login`` UND eine Logout-URL ist im Body sichtbar (manche
+    UTZ-Themes zeigen die Login-Form auch nach Login als Sticky-Bar
+    – nur das Wiederauftauchen der Form reicht also nicht als
+    Fehlerzeichen).
+
+    Liefert in jedem Fall ein Diagnose-Dict mit ausreichend Kontext
+    zum Debuggen: HTTP-Status, finaler URL nach Redirects, Cookies,
+    Page-Title, ein Body-Snippet und (bei Fehler) den Text rund um
+    moegliche Error-Marker.
     """
     login_url = creds.get('login_url') or _UTZ_LOGIN_URL_DEFAULT
     if not all([creds.get('username'), creds.get('password'),
@@ -95,7 +101,15 @@ def _utz_login(sess, creds: dict) -> dict:
         return {'ok': False,
                 'msg': 'Login, Kunden-Nr oder Passwort fehlt.'}
 
-    # Erst GET, damit potentielle Session-Cookies (z.B. PHPSESSID) gesetzt sind
+    # Browser-typische Header. Manche PHP-Shops weisen Bots ueber
+    # fehlenden Referer/Origin zurueck.
+    sess.headers.update({
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Origin': 'https://www.utz24.online',
+        'Referer': login_url,
+    })
+
+    # Erst GET, damit Session-Cookies (PHPSESSID, ggf. Antibot) gesetzt sind.
     try:
         r0 = sess.get(login_url, timeout=_TIMEOUT, allow_redirects=True)
     except Exception as exc:
@@ -113,32 +127,62 @@ def _utz_login(sess, creds: dict) -> dict:
     except Exception as exc:
         return {'ok': False, 'msg': f'POST-Fehler: {exc}'}
 
+    body = r.text or ''
+    body_low = body.lower()
     final_url = r.url
-    body_low = (r.text or '').lower()
     cookies = sorted(c.name for c in sess.cookies)
 
-    # Heuristik:
-    # - Falls 'form_shop_login' / 'input_password' wieder im Body
-    #   auftauchen, war der Login NICHT erfolgreich (Form wird neu gerendert).
-    # - Andernfalls Erfolg.
-    fehler_indikatoren = ('form_shop_login', 'input_password',
-                          'falsche', 'ungueltig', 'ungültig', 'fehler')
-    erfolgreich = not any(t in body_low for t in fehler_indikatoren)
+    # Erfolg = finaler URL hat keinen Login-Anker mehr UND wir sehen
+    # ein Logout-Indiz.
+    nicht_mehr_login = ('b2b-login' not in final_url.lower()
+                        and '?action=shop_login' not in final_url.lower())
+    logout_indiz = any(t in body_low for t in (
+        'logout', 'abmelden', 'shop_logout'))
+    erfolgreich = nicht_mehr_login and logout_indiz
 
-    # Versuch: Title aus dem Response-HTML extrahieren
-    m = re.search(r'<title>([^<]{1,200})</title>', r.text or '',
-                  re.IGNORECASE)
+    # Title
+    m = re.search(r'<title>([^<]{1,200})</title>', body, re.IGNORECASE)
     titel = (m.group(1).strip() if m else '')[:200]
+
+    # Bei Fehlversuch: Versuche eine konkrete Fehlermeldung aus dem
+    # Body zu extrahieren (oft in <div class="alert">, <p class="error">
+    # oder einem Text-Block direkt vor der Login-Form).
+    fehler_snippet = ''
+    if not erfolgreich:
+        fehler_pattern = [
+            # Rein generische Hinweise
+            r'<(?:div|p|span)[^>]*class="[^"]*(?:alert|error|warning|message)[^"]*"[^>]*>([^<]{3,200})</',
+            # UTZ-typische Strings
+            r'(falsche?\s+(?:zugangs|login|passwort)[^<\n]{0,100})',
+            r'(zugangsdaten[^<\n]{0,100}falsch[^<\n]{0,100})',
+            r'(ung(?:ue|ü)ltig[^<\n]{0,150})',
+        ]
+        for pat in fehler_pattern:
+            mm = re.search(pat, body, re.IGNORECASE)
+            if mm:
+                fehler_snippet = mm.group(1).strip()[:200]
+                break
+
+    # Body-Snippet zur Diagnose: erste 600 Zeichen sichtbarer Text
+    sichtbar = re.sub(r'<script[\s\S]*?</script>', ' ', body)
+    sichtbar = re.sub(r'<style[\s\S]*?</style>',  ' ', sichtbar)
+    sichtbar = re.sub(r'<[^>]+>', ' ', sichtbar)
+    sichtbar = re.sub(r'\s+', ' ', sichtbar).strip()
+    snippet = sichtbar[:600]
 
     return {
         'ok':       erfolgreich,
         'msg':      ('Login erfolgreich' if erfolgreich
-                     else 'Login lehnte ab (Login-Form wird wieder angezeigt)'),
+                     else (f'Login abgelehnt: {fehler_snippet}'
+                           if fehler_snippet
+                           else 'Login abgelehnt (kein Logout-Marker im Response)')),
         'status':   r.status_code,
         'final_url': final_url,
         'cookies':  cookies,
         'titel':    titel,
-        'response_len': len(r.text or ''),
+        'response_len': len(body),
+        'snippet':  snippet,
+        'fehler_snippet': fehler_snippet,
     }
 
 
