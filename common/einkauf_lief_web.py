@@ -299,6 +299,21 @@ def _utz_artikel_info(sess, artnr: str) -> dict:
             break
 
     if parsed_match is None:
+        # ArtNr im Such-Body lokalisieren – mit Kontext, damit man im
+        # Markup sieht, ob es ein data-Attribut oder einen JS-Handler
+        # gibt, der zur Detail-URL fuehrt.
+        artnr_kontexte = []
+        if artnr in body1:
+            start = 0
+            while True:
+                i = body1.find(artnr, start)
+                if i < 0:
+                    break
+                kontext = body1[max(0, i - 200): i + 1200]
+                artnr_kontexte.append(kontext)
+                start = i + len(artnr)
+                if len(artnr_kontexte) >= 4:
+                    break
         return {
             'ok': False,
             'msg': (f'ArtNr {artnr} unter den ersten {len(versuche)} '
@@ -306,11 +321,12 @@ def _utz_artikel_info(sess, artnr: str) -> dict:
                     'offenbar nur Empfehlungen/Werbeartikel zurueck, '
                     'der echte Treffer steht im Such-Body unter einem '
                     'anderen Markup-Element.'),
-            'such_url':     such_url,
-            'such_status':  r1.status_code,
-            'detail_links': treffer[:MAX],
-            'versuche':     versuche,
-            'such_snippet': body1[:3000],
+            'such_url':       such_url,
+            'such_status':    r1.status_code,
+            'detail_links':   treffer[:MAX],
+            'versuche':       versuche,
+            'artnr_kontexte': artnr_kontexte,
+            'such_snippet':   body1[:3000],
         }
 
     return {

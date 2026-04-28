@@ -728,6 +728,10 @@ async function webArtikelProbe() {
     '── Geparstes Ergebnis ──',
     JSON.stringify(p.parsed || {}, null, 2),
     '',
+    '── Such-HTML rund um ArtNr (max 4 Treffer, je 1.4 kB) ──',
+    ...((p.artnr_kontexte || []).map((ctx, i) =>
+      `[Treffer ${i+1}]\n${ctx}\n`)),
+    '',
     '── Roh-HTML der Such-Seite (3000 Zeichen, falls kein Match) ──',
     p.such_snippet || '(nicht angefragt)',
     '',
