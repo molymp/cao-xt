@@ -1154,9 +1154,43 @@ def _bezeichnungs_tokens(bez: str) -> list[str]:
     return nuetzlich
 
 
+def _barcode_konflikt(lief_barcode: str, cao_artikel_rec_id: int) -> bool:
+    """True wenn der Lieferanten-Barcode bekannt ist UND der
+    CAO-Artikel andere(n) Barcode(s) hat, die nicht uebereinstimmen.
+
+    Ein Konflikt heisst: definitiv NICHT der gleiche Artikel,
+    auch wenn die Bezeichnung passt.
+
+    False, wenn:
+      * lief_barcode leer (wir wissen es nicht)
+      * CAO-Artikel hat keinen Barcode (Stammdaten unvollstaendig
+        – Match noch moeglich)
+      * CAO-Artikel.BARCODE/BARCODE2/BARCODE3 enthaelt den Lief-Barcode
+    """
+    if not lief_barcode or not cao_artikel_rec_id:
+        return False
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT BARCODE, BARCODE2, BARCODE3 FROM ARTIKEL
+                WHERE REC_ID = %s
+            """, (int(cao_artikel_rec_id),))
+            row = cur.fetchone() or {}
+    except Exception:
+        return False
+    cao_barcodes = [str(row.get(k) or '').strip()
+                    for k in ('BARCODE', 'BARCODE2', 'BARCODE3')]
+    cao_barcodes = [b for b in cao_barcodes if b]
+    if not cao_barcodes:
+        # CAO hat keinen Barcode → kein Konflikt feststellbar
+        return False
+    return lief_barcode not in cao_barcodes
+
+
 def cao_artikel_vorschlag(bezeichnung_lief: str,
                           cao_lief_id: Optional[int] = None,
-                          limit: int = 3) -> list[dict]:
+                          limit: int = 3,
+                          ausschluss_barcode: str = '') -> list[dict]:
     """Sucht in ARTIKEL nach Bezeichnungs-aehnlichen Stammartikeln.
 
     Kein Fuzzy im Sinne von Levenshtein – wir nehmen die zwei
@@ -1198,13 +1232,15 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
     sql = f"""
         SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME, a.KURZNAME,
                a.WARENGRUPPE, a.EK_PREIS, a.VK5B, a.MENGE_AKT,
-               a.DEFAULT_LIEF_ID
+               a.DEFAULT_LIEF_ID, a.BARCODE, a.BARCODE2, a.BARCODE3
         FROM ARTIKEL a
         WHERE {' AND '.join(where)}
         ORDER BY {order}
         LIMIT %s
     """
-    params.append(int(limit))
+    # Wir holen mehr Kandidaten als limit, damit der Barcode-Filter
+    # nicht zu wenige uebrig laesst
+    params.append(int(limit) * 3)
     try:
         with get_db() as cur:
             cur.execute(sql, tuple(params))
@@ -1212,6 +1248,24 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
     except Exception as exc:
         log.warning("cao_artikel_vorschlag: %s", exc)
         return []
+
+    # Barcode-Filter: bei bekannter Lieferanten-EAN nur Treffer behalten,
+    # die entweder selbst keinen Barcode haben (kann derselbe Artikel
+    # sein, nur unvollstaendig gepflegt) oder einen passenden enthalten.
+    if ausschluss_barcode:
+        cleaned = []
+        for r in rows:
+            cao_barcodes = [str(r.get(k) or '').strip()
+                            for k in ('BARCODE', 'BARCODE2', 'BARCODE3')]
+            cao_barcodes = [b for b in cao_barcodes if b]
+            if cao_barcodes and ausschluss_barcode not in cao_barcodes:
+                # Definitiv anderer Artikel – ueberspringen
+                continue
+            cleaned.append(r)
+        rows = cleaned[:limit]
+    else:
+        rows = rows[:limit]
+
     return [{
         'rec_id':           r.get('REC_ID'),
         'artnum':           r.get('ARTNUM'),
@@ -1532,24 +1586,56 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
             n_match += 1
             cao_label = (f'CAO #{cao.get("rec_id")} '
                          f'{cao.get("matchcode") or cao.get("kas_name") or ""}')
+            cache_lief = lief_artikel_holen(head.get('LIEF_REC_ID') or 0,
+                                             m.get('artikel_nr_lief') or '')
+            vpe_ek = (int(cache_lief['VPE_EK'])
+                       if cache_lief and cache_lief.get('VPE_EK') else None)
+
+            # Pruefen ob fuer (ARTIKEL_ID, ADRESS_ID, PREIS_TYP=5)
+            # bereits eine ARTIKEL_PREIS-Zeile existiert. Wenn ja:
+            # UPDATE der vorhandenen Zeile (loest auch BESTNUM-
+            # Tippfehler wie '00402088' → '40208' auf, statt eine
+            # zweite Zeile anzulegen).
+            existing = None
+            if cao_lief_id and cao.get('rec_id'):
+                try:
+                    with get_db() as cur:
+                        cur.execute("""
+                            SELECT BESTNUM, PREIS, VPE
+                            FROM ARTIKEL_PREIS
+                            WHERE ARTIKEL_ID = %s
+                              AND ADRESS_ID  = %s
+                              AND PREIS_TYP  = 5
+                            ORDER BY GUELTIG_VON DESC LIMIT 1
+                        """, (int(cao['rec_id']), int(cao_lief_id)))
+                        existing = cur.fetchone()
+                except Exception:
+                    existing = None
+
             preis_insert = {
                 'tabelle':   'ARTIKEL_PREIS',
-                'art':       'INSERT_OR_UPDATE',
+                'art':       'UPDATE' if existing else 'INSERT',
                 'ARTIKEL_ID': cao.get('rec_id'),
                 'ADRESS_ID':  cao_lief_id,
                 'PREIS_TYP':  5,
                 'PT2':        'EK',
                 'BESTNUM':    m.get('artikel_nr_lief'),
-                'PREIS':      lief.get('barcode_stueck')  # only used if available
-                                and (m.get('preis_netto') or 0)
-                                or m.get('preis_netto'),
-                'VPE':        None,  # aus lief_cache.vpe_ek setzen
+                'PREIS':      m.get('preis_netto'),
+                'VPE':        vpe_ek,
             }
-            # VPE aus DB, weil lief_cache hier nur die Anzeige-Werte hat
-            cache_lief = lief_artikel_holen(head.get('LIEF_REC_ID') or 0,
-                                             m.get('artikel_nr_lief') or '')
-            if cache_lief and cache_lief.get('VPE_EK'):
-                preis_insert['VPE'] = int(cache_lief['VPE_EK'])
+            if existing:
+                preis_insert['_alt'] = {
+                    'BESTNUM': existing.get('BESTNUM'),
+                    'PREIS':   float(existing.get('PREIS') or 0),
+                    'VPE':     existing.get('VPE'),
+                }
+                # Hinweis bei tatsaechlicher Aenderung
+                alt_bestnum = (existing.get('BESTNUM') or '').strip()
+                neu_bestnum = (m.get('artikel_nr_lief') or '').strip()
+                if alt_bestnum and alt_bestnum != neu_bestnum:
+                    hinweise.append(
+                        f'Bestehende BESTNUM {alt_bestnum!r} wird auf '
+                        f'{neu_bestnum!r} korrigiert (Tippfehler-Fall).')
             neue_preise += 1
             if not cao_lief_id:
                 hinweise.append('Lieferant ohne CAO_LIEF_ID — '
@@ -1561,6 +1647,15 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
             cao_label = 'mehrdeutig — bitte manuell zuordnen'
             hinweise.append('Mehrere CAO-Treffer mit gleicher BESTNUM '
                             'unter verschiedenen Lieferanten gefunden.')
+        elif quelle == 'unsicher':
+            aktion = 'offen'
+            n_offen += 1
+            cao_label = (f'CAO #{cao.get("rec_id")} '
+                         f'{cao.get("matchcode") or ""} (EAN-Konflikt)')
+            hinweise.append('CAO-Artikel hat einen anderen Stueck-EAN als '
+                            'der Lieferanten-Cache – wahrscheinlich nicht '
+                            'derselbe Artikel. Bitte „neu anlegen" oder '
+                            'manuell den richtigen Stamm zuordnen.')
         elif quelle == 'neu_anlegen' or pos_status == 'neu_anlegen':
             aktion = 'artikel_anlegen'
             n_neu += 1
@@ -1863,6 +1958,15 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         except Exception as exc:
             log.warning("cao_match Position %s: %s", artnr, exc)
 
+        # Barcode-Konflikt-Check fuer 'global'/'mehrdeutig': wenn der
+        # Lief-Cache eine Stueck-EAN hat und der gefundene CAO-Artikel
+        # andere Barcodes hat, ist der Match wackelig – wir markieren
+        # ihn als 'unsicher' und zeigen ihn als gelbe Pille.
+        if (cao_treffer and barcode_stk
+                and match_quelle in ('global', 'mehrdeutig')):
+            if _barcode_konflikt(barcode_stk, cao_treffer.get('REC_ID')):
+                match_quelle = 'unsicher'
+
         cao_block = None
         ek_diff = None
         ek_diff_pct = None
@@ -1888,13 +1992,19 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                                 and not (cao_treffer.get('USERFELD_02') or '').strip()),
             }
 
-        # Bei „kein"-Treffer: Bezeichnungs-Vorschlaege liefern
+        # Bei „kein"-Treffer: Bezeichnungs-Vorschlaege liefern.
+        # Verwendet die saubere Cache-Bezeichnung (falls vorhanden) und
+        # filtert via Stueck-EAN: CAO-Artikel mit anderem Barcode werden
+        # explizit verworfen (waere kein gleicher Artikel mehr).
         vorschlaege: list[dict] = []
         if match_quelle == 'kein':
+            bez_fuer_suche = ((lief_cache or {}).get('BEZEICHNUNG')
+                               or p.get('BESCHREIBUNG_LIEF') or '')
             try:
                 vorschlaege = cao_artikel_vorschlag(
-                    p.get('BESCHREIBUNG_LIEF') or '',
-                    cao_lief_id=cao_lief, limit=3)
+                    bez_fuer_suche,
+                    cao_lief_id=cao_lief, limit=3,
+                    ausschluss_barcode=barcode_stk)
             except Exception as exc:
                 log.warning("Vorschlag fuer Pos %s: %s", artnr, exc)
                 vorschlaege = []
@@ -1914,11 +2024,20 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 'verfuegbarkeit':  lief_cache.get('VERFUEGBARKEIT'),
             }
 
+        # Bezeichnung: bevorzugt aus dem Lief-Cache (saubere
+        # UTZ-API-Bezeichnung), Fallback auf die Email-Bezeichnung
+        # (die oft Encoding-Fehler ?-statt-Umlaut hat).
+        cache_bez = (lief_cache or {}).get('BEZEICHNUNG') or ''
+        email_bez = p.get('BESCHREIBUNG_LIEF') or ''
+        bez_aktiv = cache_bez.strip() or email_bez.strip()
+
         out.append({
             'pos_rec_id':       p.get('REC_ID'),
             'pos_nr':           p.get('POS_NR'),
             'artikel_nr_lief':  artnr,
-            'bezeichnung_lief': p.get('BESCHREIBUNG_LIEF'),
+            'bezeichnung_lief': bez_aktiv,
+            'bezeichnung_email': email_bez,
+            'bezeichnung_cache': cache_bez,
             'menge':            float(p.get('MENGE') or 0),
             'preis_netto':      float(p.get('PREIS_NETTO') or 0),
             'zeilen_betrag':    float(p.get('ZEILEN_BETRAG') or 0),

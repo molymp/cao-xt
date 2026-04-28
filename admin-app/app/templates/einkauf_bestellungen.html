@@ -122,7 +122,9 @@
 .match-pill.lieferant   { background: var(--status-gruen);    color: #fff; }
 .match-pill.global      { background: var(--brand-sage);      color: var(--gruen-dunkel); }
 .match-pill.mehrdeutig  { background: #f6ecd0;                color: var(--status-gelb); border: 1px solid var(--status-gelb); }
+.match-pill.unsicher    { background: #f6ecd0;                color: var(--status-gelb); border: 1px solid var(--status-gelb); }
 .match-pill.kein        { background: #f6d8ce;                color: var(--status-rot); }
+.match-pill { cursor: help; }
 
 .lief-thumb {
   width: 32px; height: 32px;
@@ -793,12 +795,24 @@ async function caoMatch(recId) {
     // Status-Pille
     const pill = document.createElement('span');
     pill.className = `match-pill ${m.match_quelle}`;
+    const tipps = {
+      manuell:    'Manuell zugeordnet via „Vorschlag übernehmen" oder bei Edit gesetzt.',
+      neu_anlegen: 'User hat diese Position als „muss neu angelegt werden" markiert.',
+      barcode:    'CAO-Artikel mit identischer Stück-EAN gefunden — höchste Sicherheit.',
+      lieferant:  'CAO-Artikel mit dieser Lieferanten-Bestellnummer (BESTNUM) bei UTZ als Lieferant gefunden.',
+      global:     'CAO-Artikel mit dieser BESTNUM existiert, aber nicht spezifisch bei UTZ verknüpft (anderer Lieferant oder ohne CAO_LIEF_ID). Wenn die Bezeichnung passt, ist es vermutlich derselbe Artikel.',
+      mehrdeutig: 'Mehrere CAO-Artikel mit dieser BESTNUM bei verschiedenen Lieferanten — bitte manuell entscheiden.',
+      unsicher:   'CAO-Artikel gefunden, aber EAN passt nicht zur Lieferanten-EAN — wahrscheinlich nicht derselbe Artikel.',
+      kein:       'Kein Match in CAO. Vorschläge unten prüfen oder als „neu anlegen" markieren.',
+    };
+    pill.title = tipps[m.match_quelle] || '';
     if (m.match_quelle === 'manuell')     pill.textContent = '✓ manuell';
     else if (m.match_quelle === 'neu_anlegen') pill.textContent = '🆕 neu anlegen';
     else if (m.match_quelle === 'barcode') pill.textContent = '🟢 EAN';
     else if (m.match_quelle === 'lieferant')  pill.textContent = '🟢 Lief';
     else if (m.match_quelle === 'global')     pill.textContent = '🟢 Global';
     else if (m.match_quelle === 'mehrdeutig') pill.textContent = '🟡 mehrdeutig';
+    else if (m.match_quelle === 'unsicher')   pill.textContent = '🟡 EAN-Konflikt';
     else pill.textContent = '🔴 NEU';
     tds[0].innerHTML = '';
     tds[0].appendChild(pill);
@@ -808,17 +822,31 @@ async function caoMatch(recId) {
     } else {
       tds[1].innerHTML = '<span class="muted">muss angelegt werden</span>';
     }
-    // Lieferanten-Bild als Thumbnail in Spalte „Bezeichnung" mergen
-    if (m.lief_cache && m.lief_cache.bild_url) {
-      const bezTd = row.querySelectorAll('td')[2];   // BESCHREIBUNG_LIEF
-      if (bezTd && !bezTd.querySelector('.lief-thumb')) {
+    // Bezeichnungs-Spalte: Cache-Bezeichnung (saubere UTZ-API-Daten,
+    // ohne ?-Encoding-Fehler) bevorzugen, Original-Email-Text als
+    // title-Tooltip anbieten.
+    const bezTd = row.querySelectorAll('td')[2];   // BESCHREIBUNG_LIEF
+    if (bezTd) {
+      const bezAktiv = m.bezeichnung_cache || m.bezeichnung_email
+                        || m.bezeichnung_lief || '';
+      const tooltip = (m.bezeichnung_cache && m.bezeichnung_email
+                        && m.bezeichnung_cache !== m.bezeichnung_email)
+        ? `Email-Original: ${m.bezeichnung_email}`
+        : '';
+      // Lieferanten-Bild als Thumbnail
+      bezTd.innerHTML = '';
+      if (m.lief_cache && m.lief_cache.bild_url) {
         const img = document.createElement('img');
         img.className = 'lief-thumb';
         img.src = m.lief_cache.bild_url;
         img.alt = '';
         img.style.marginRight = '8px';
-        bezTd.insertBefore(img, bezTd.firstChild);
+        bezTd.appendChild(img);
       }
+      const span = document.createElement('span');
+      span.textContent = bezAktiv;
+      if (tooltip) span.title = tooltip;
+      bezTd.appendChild(span);
     }
     // EK-Diff
     if (m.ek_diff != null) {
