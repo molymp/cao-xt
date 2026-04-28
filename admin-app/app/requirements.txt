@@ -12,3 +12,8 @@ waitress>=3.0           # Prod-WSGI-Server (ersetzt Werkzeug-Dev-Server)
 google-auth>=2.0
 google-auth-oauthlib>=1.0
 google-api-python-client>=2.0
+
+# Einkauf (Phase 4) – Lieferanten-Web-Anreicherung (Login + Scraping
+# fuer Barcode/Bild/EK je Lieferanten-ArtNr).
+requests>=2.30
+beautifulsoup4>=4.12

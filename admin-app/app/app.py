@@ -2276,6 +2276,17 @@ def api_einkauf_lieferanten_aktualisieren(rec_id):
     return jsonify(ok=True)
 
 
+@app.post('/api/einkauf/lieferanten/<int:rec_id>/web-test')
+@_login_required
+def api_einkauf_lieferanten_web_test(rec_id):
+    """Versucht den Web-Login fuer einen Lieferanten und liefert
+    Diagnose-Output (Cookies, Status, Title, finale URL).
+    Lese-only – keine Daten werden gespeichert."""
+    from common import einkauf_lief_web as _web
+    res = _web.web_login_test(rec_id)
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 @app.delete('/api/einkauf/lieferanten/<int:rec_id>')
 @_login_required
 def api_einkauf_lieferanten_loeschen(rec_id):
