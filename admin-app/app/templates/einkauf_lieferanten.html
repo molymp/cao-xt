@@ -660,17 +660,44 @@ async function _caoSucheJetzt() {
     tgt.style.display = '';
     return;
   }
-  tgt.innerHTML = d.eintraege.map(a => `
-    <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;"
-         onmouseover="this.style.background='var(--brand-cream)'"
-         onmouseout="this.style.background=''"
-         onclick="caoAdrAuswahl(${a.REC_ID}, ${JSON.stringify(_esc(a.NAME1 || a.MATCHCODE || ''))})">
-      <code style="color:var(--brand-terracotta);">${a.REC_ID}</code>
-      <strong>${_esc(a.MATCHCODE || '')}</strong>
-      ${a.NAME1 ? `· ${_esc(a.NAME1)}` : ''}
-      ${a.PLZ || a.ORT ? `<span class="muted" style="margin-left:6px;">${_esc((a.PLZ || '') + ' ' + (a.ORT || ''))}</span>` : ''}
-    </div>
-  `).join('');
+  // Treffer als DOM-Elemente bauen mit data-Attributen + Eventlistener.
+  // Inline-onclick scheidet aus, weil sowohl _esc (HTML-Escape) als auch
+  // JSON.stringify (JS-Quotes) das doppelte Escaping fuer das
+  // onclick="..."-Attribut nicht sauber hinkriegen.
+  tgt.innerHTML = '';
+  d.eintraege.forEach(a => {
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;cursor:pointer;'
+                        + 'border-bottom:1px solid var(--border);font-size:13px;';
+    div.dataset.recId = a.REC_ID;
+    div.dataset.label = a.NAME1 || a.MATCHCODE || '';
+    const code = document.createElement('code');
+    code.style.color = 'var(--brand-terracotta)';
+    code.textContent = a.REC_ID;
+    const strong = document.createElement('strong');
+    strong.style.marginLeft = '6px';
+    strong.textContent = a.MATCHCODE || '';
+    div.append(code, ' ', strong);
+    if (a.NAME1) {
+      const span = document.createElement('span');
+      span.textContent = ' · ' + a.NAME1;
+      div.append(span);
+    }
+    if (a.PLZ || a.ORT) {
+      const span = document.createElement('span');
+      span.className = 'muted';
+      span.style.marginLeft = '6px';
+      span.textContent = (a.PLZ || '') + ' ' + (a.ORT || '');
+      div.append(span);
+    }
+    div.addEventListener('mouseover', () => div.style.background = 'var(--brand-cream)');
+    div.addEventListener('mouseout',  () => div.style.background = '');
+    div.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      caoAdrAuswahl(parseInt(div.dataset.recId), div.dataset.label);
+    });
+    tgt.append(div);
+  });
   tgt.style.display = '';
 }
 function caoAdrAuswahl(recId, label) {
