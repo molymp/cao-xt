@@ -240,10 +240,21 @@
       <input class="form-control" id="ed-bez" maxlength="120">
     </div>
     <div class="form-group">
-      <label>CAO-Lieferant (Adressen-ID)</label>
-      <input class="form-control" id="ed-caoid" type="number" min="1"
-             placeholder="leer = noch nicht zugeordnet">
-      <p class="muted" style="margin-top:4px;">Verknuepft mit ADRESSEN.REC_ID. Wird beim ersten Bestellabgleich nachgepflegt.</p>
+      <label>CAO-Lieferant (ADRESSEN.REC_ID)</label>
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <input class="form-control" id="ed-caoid" type="number" min="1"
+               style="max-width:120px;"
+               placeholder="—">
+        <div style="flex:1;position:relative;">
+          <input class="form-control" id="ed-caoid-suche"
+                 placeholder="🔍 Suche nach Name/Matchcode (z.B. 'utz')"
+                 oninput="caoAdrSuche()" autocomplete="off">
+          <div id="ed-caoid-treffer" style="display:none;position:absolute;top:100%;left:0;right:0;
+               background:#fff;border:1px solid var(--border);border-radius:var(--radius-klein);
+               max-height:280px;overflow-y:auto;z-index:10;box-shadow:var(--schatten-stark);"></div>
+        </div>
+      </div>
+      <p class="muted" id="ed-caoid-info" style="margin-top:4px;"></p>
     </div>
 
     <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-top:12px;">
@@ -384,6 +395,8 @@ function lieferantNeu() {
   _e('ed-kuerzel').disabled = false;
   _e('ed-bez').value = '';
   _e('ed-caoid').value = '';
+  _e('ed-caoid-suche').value = '';
+  _e('ed-caoid-info').textContent = '';
   _e('ed-from').value = '';
   _e('ed-subj').value = '';
   _e('ed-parser').value = '';
@@ -411,6 +424,11 @@ function lieferantEdit(recId) {
   _e('ed-kuerzel').disabled = true;
   _e('ed-bez').value = e.BEZEICHNUNG || '';
   _e('ed-caoid').value = e.CAO_LIEF_ID || '';
+  _e('ed-caoid-suche').value = '';
+  _e('ed-caoid-info').textContent = e.CAO_LIEF_ID
+    ? `→ Verknüpft mit CAO ADRESSEN.REC_ID ${e.CAO_LIEF_ID}`
+    : 'Lieferant noch nicht mit einem CAO-Adress-Datensatz verknüpft – '
+      + 'BESTNUM-Match liefert daher nur „global"-Pillen.';
   _e('ed-from').value = e.EMAIL_VON_PATTERN || '';
   _e('ed-subj').value = e.EMAIL_SUBJECT_PATTERN || '';
   _e('ed-parser').value = e.PARSER_KEY || '';
@@ -617,6 +635,58 @@ function kopiereRedirect() {
     history.replaceState({}, '', window.location.pathname);
   }
 })();
+
+// ── CAO-ADRESSEN-Suche fuer das CAO-Lieferant-Feld ──────────────
+let _caoSucheTimer = 0;
+async function caoAdrSuche() {
+  clearTimeout(_caoSucheTimer);
+  _caoSucheTimer = setTimeout(_caoSucheJetzt, 300);
+}
+async function _caoSucheJetzt() {
+  const q = (_e('ed-caoid-suche').value || '').trim();
+  const tgt = _e('ed-caoid-treffer');
+  if (q.length < 2) { tgt.style.display = 'none'; return; }
+  let d;
+  try {
+    const r = await fetch('/api/einkauf/adressen-suche?q=' + encodeURIComponent(q));
+    d = await r.json();
+  } catch (e) {
+    tgt.style.display = 'none';
+    return;
+  }
+  if (!d.ok || !d.eintraege || d.eintraege.length === 0) {
+    tgt.innerHTML = '<div style="padding:8px 12px;color:var(--text-dim);font-size:13px;">'
+                    + 'keine Treffer</div>';
+    tgt.style.display = '';
+    return;
+  }
+  tgt.innerHTML = d.eintraege.map(a => `
+    <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;"
+         onmouseover="this.style.background='var(--brand-cream)'"
+         onmouseout="this.style.background=''"
+         onclick="caoAdrAuswahl(${a.REC_ID}, ${JSON.stringify(_esc(a.NAME1 || a.MATCHCODE || ''))})">
+      <code style="color:var(--brand-terracotta);">${a.REC_ID}</code>
+      <strong>${_esc(a.MATCHCODE || '')}</strong>
+      ${a.NAME1 ? `· ${_esc(a.NAME1)}` : ''}
+      ${a.PLZ || a.ORT ? `<span class="muted" style="margin-left:6px;">${_esc((a.PLZ || '') + ' ' + (a.ORT || ''))}</span>` : ''}
+    </div>
+  `).join('');
+  tgt.style.display = '';
+}
+function caoAdrAuswahl(recId, label) {
+  _e('ed-caoid').value = recId;
+  _e('ed-caoid-suche').value = '';
+  _e('ed-caoid-treffer').style.display = 'none';
+  _e('ed-caoid-info').textContent = `✓ Verknüpft mit CAO #${recId} · ${label}`;
+}
+// Suche bei Klick ausserhalb schliessen
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#ed-caoid-suche')
+      && !e.target.closest('#ed-caoid-treffer')) {
+    const tgt = _e('ed-caoid-treffer');
+    if (tgt) tgt.style.display = 'none';
+  }
+});
 
 async function webLoginTest() {
   const recId = _e('ed-rec-id').value;
