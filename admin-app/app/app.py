@@ -2276,6 +2276,32 @@ def api_einkauf_lieferanten_aktualisieren(rec_id):
     return jsonify(ok=True)
 
 
+@app.get('/api/einkauf/adressen-suche')
+@_login_required
+def api_einkauf_adressen_suche():
+    """Suche in ADRESSEN nach Suchtext fuer das CAO-Lieferant-Feld
+    im Lieferanten-Modal. Such-Felder: MATCHCODE / NAME1 / NAME2.
+    Lese-only.
+    """
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify(ok=True, eintraege=[])
+    like = f'%{q}%'
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT REC_ID, MATCHCODE, NAME1, NAME2, PLZ, ORT
+                FROM ADRESSEN
+                WHERE MATCHCODE LIKE %s OR NAME1 LIKE %s OR NAME2 LIKE %s
+                ORDER BY MATCHCODE
+                LIMIT 12
+            """, (like, like, like))
+            rows = cur.fetchall() or []
+    except Exception as exc:
+        return jsonify(ok=False, msg=str(exc)), 500
+    return jsonify(ok=True, eintraege=rows)
+
+
 @app.post('/api/einkauf/lieferanten/<int:rec_id>/web-test')
 @_login_required
 def api_einkauf_lieferanten_web_test(rec_id):
