@@ -212,14 +212,154 @@ _UTZ_DETAIL_LINK = re.compile(
     re.IGNORECASE,
 )
 
+# UTZ Mobile-API (dynamic-commerce). Aus dem Frontend-Bundle der
+# externen Such-App (intelligent-search.die.app) extrahiert:
+#   GET https://www.utz24.online/userdata/dcshop/mobile-api-live-327-int.php
+#       ?action=getItemsFromSearch
+#       &search=<URL-encoded ArtNr; '&' wird zu '_' ersetzt>
+#       &customer=<Kunden-Nr>
+#       &price=no|yes
+# Erfordert Session-Cookies vom Login (withCredentials=true).
+_UTZ_API_URL = 'https://www.utz24.online/userdata/dcshop/mobile-api-live-327-int.php'
 
-def _utz_artikel_info(sess, artnr: str) -> dict:
-    """Holt Stammdaten fuer eine UTZ-ArtNr in zwei Stufen:
-        1. Suche: GET /grosshandlung/de/?suche=<artnr>
-        2. Aus dem Such-Body wird der erste passende Slug-Link
-           </grosshandlung/de/<slug>-p<id>/> extrahiert und gefolgt.
-        3. Parser auf der Detailseite extrahiert Bezeichnung, Barcodes,
-           EK, UVP, MwSt, VPE, Bild-URL.
+
+def _utz_search_api(sess, artnr: str, kunden_nr: str) -> dict:
+    """Ruft die UTZ Mobile-API auf, um alle Suchtreffer zu einer ArtNr
+    zu erhalten. Bevorzugter Pfad gegenueber dem HTML-Scraping –
+    liefert strukturierte JSON-Daten und braucht keinen Slug-Roulette.
+
+    Returns: ``{'ok': bool, 'msg': str, 'json': dict|list|None,
+        'items': list[dict], 'final_url': str, 'status': int,
+        'raw_text': str}``.
+    """
+    # UTZ-Frontend ersetzt '&' im Suchterm durch '_'; harmlos fuer
+    # rein numerische ArtNrn, aber wir spiegeln das Format.
+    from urllib.parse import quote
+    such = quote(artnr.replace('&', '_'), safe='')
+    url = (f'{_UTZ_API_URL}?action=getItemsFromSearch'
+           f'&search={such}&customer={kunden_nr}&price=no')
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://intelligent-search.die.app',
+        'Referer': 'https://intelligent-search.die.app/',
+        'X-Requested-With': 'XMLHttpRequest',
+    }
+    try:
+        r = sess.get(url, headers=headers, timeout=_TIMEOUT)
+    except Exception as exc:
+        return {'ok': False, 'msg': f'GET-Fehler: {exc}', 'json': None,
+                'items': [], 'final_url': url, 'status': 0,
+                'raw_text': ''}
+    raw = r.text or ''
+    js: Any = None
+    items: list[dict] = []
+    msg = ''
+    try:
+        import json as _json
+        js = _json.loads(raw)
+        # Format-Heuristik: kann ein flaches Array sein, oder ein dict
+        # mit Schluessel 'items'/'data'/'result'.
+        if isinstance(js, list):
+            items = js
+        elif isinstance(js, dict):
+            for key in ('items', 'data', 'result', 'list', 'artikel'):
+                v = js.get(key)
+                if isinstance(v, list):
+                    items = v
+                    break
+            if not items and any(isinstance(v, dict) and v.get('itemNumber')
+                                  for v in js.values()):
+                items = [v for v in js.values() if isinstance(v, dict)]
+    except Exception as exc:
+        msg = f'JSON-Parse: {exc}'
+
+    return {
+        'ok':        len(items) > 0,
+        'msg':       msg or (f'{len(items)} Treffer'
+                              if items else 'Keine Treffer in API-Antwort'),
+        'json':      js,
+        'items':     items,
+        'final_url': r.url,
+        'status':    r.status_code,
+        'raw_text':  raw[:2000],
+    }
+
+
+def _utz_item_to_parsed(item: dict) -> dict:
+    """Mappt ein API-Item-Dict auf unser geparstes Schema. Die genauen
+    Feldnamen kennen wir noch nicht (haengt vom dynamic-commerce-
+    Backend ab); wir versuchen die naheliegenden Varianten und lassen
+    nicht-erkannte Felder leer.
+    """
+    def _get(*keys):
+        for k in keys:
+            v = item.get(k)
+            if v not in (None, ''):
+                return v
+        return None
+
+    out = {
+        'bezeichnung':    str(_get('itemName', 'name', 'title',
+                                    'bezeichnung', 'productName') or '')[:255],
+        'barcode_stueck': str(_get('eanStueck', 'ean_stueck', 'eanStk',
+                                    'eanPiece', 'gtin', 'ean') or ''),
+        'barcode_kt':     str(_get('eanKarton', 'ean_kt', 'eanKT',
+                                    'eanCarton', 'eanKolli') or ''),
+        'artnr_lief':     str(_get('itemNumber', 'item_number',
+                                    'articleNumber', 'artNr',
+                                    'artikelNummer') or ''),
+        'ek_netto':       _maybe_float(_get('priceNet', 'ekNet', 'ekNetto',
+                                             'price_net', 'preisNetto', 'price')),
+        'uvp_brutto':     _maybe_float(_get('uvp', 'rrp', 'rrpBrutto',
+                                             'uvpBrutto', 'priceUvp')),
+        'mwst_pct':       _maybe_int(_get('vat', 'tax', 'taxRate', 'mwst',
+                                           'mwstSatz', 'taxPct')),
+        'inhalt':         str(_get('content', 'inhalt', 'unitContent') or '')[:60],
+        'einheit':        str(_get('unit', 'einheit', 'salesUnit') or '')[:40],
+        'vpe_ek':         _maybe_int(_get('packageSize', 'vpe', 'vpeEk',
+                                           'kartonGroesse', 'unitsPerPack')),
+        'bild_url':       str(_get('imageUrl', 'image', 'bild',
+                                    'pictureUrl', 'picture') or ''),
+        'internal_id':    _get('id', 'productId', 'itemId'),
+        'slug':           _get('slug', 'urlSlug', 'detailUrl'),
+        'raw_keys':       sorted(item.keys()) if isinstance(item, dict) else [],
+    }
+    if out['bild_url'] and out['bild_url'].startswith('/'):
+        out['bild_url'] = 'https://www.utz24.online' + out['bild_url']
+    return out
+
+
+def _maybe_float(v):
+    if v is None or v == '':
+        return None
+    try:
+        return float(str(v).replace(',', '.'))
+    except (TypeError, ValueError):
+        return None
+
+
+def _maybe_int(v):
+    if v is None or v == '':
+        return None
+    try:
+        return int(float(str(v).replace(',', '.')))
+    except (TypeError, ValueError):
+        return None
+
+
+def _utz_artikel_info(sess, artnr: str, kunden_nr: str = '') -> dict:
+    """Holt Stammdaten fuer eine UTZ-ArtNr.
+
+    Bevorzugter Pfad: JSON-API
+        GET /userdata/dcshop/mobile-api-live-327-int.php
+            ?action=getItemsFromSearch&search=<artnr>&customer=<kunden_nr>
+        – derselbe Endpoint, den die externe intelligent-search-App
+        nutzt. Liefert strukturierte Daten und braucht keinen
+        Slug-Roulette.
+
+    Fallback: HTML-Scraping ueber /grosshandlung/de/?suche=<artnr>
+        und Slug-Match. Wird beibehalten, falls die API-Antwort einmal
+        unbrauchbar ist.
 
     Gibt ein Diagnose-Dict zurueck (keine Persistierung):
         {
@@ -236,6 +376,34 @@ def _utz_artikel_info(sess, artnr: str) -> dict:
           'raw_snippet':   str            # Detailseite, ~3kB
         }
     """
+    # ── 1. JSON-API probieren (Primary-Pfad) ────────────────────────────
+    if kunden_nr:
+        api = _utz_search_api(sess, artnr, kunden_nr)
+        if api.get('ok') and api.get('items'):
+            # Treffer mit exakter ArtNr suchen
+            match_item = None
+            for it in api['items']:
+                a = str(_utz_item_to_parsed(it).get('artnr_lief') or '').strip()
+                if a == artnr.strip():
+                    match_item = it
+                    break
+            if match_item is None and api['items']:
+                # Fallback: ersten Treffer nehmen, aber als 'mehrdeutig' markieren
+                match_item = api['items'][0]
+            if match_item is not None:
+                parsed = _utz_item_to_parsed(match_item)
+                return {
+                    'ok':           True,
+                    'quelle':       'mobile-api',
+                    'such_url':     api['final_url'],
+                    'such_status':  api['status'],
+                    'api_treffer':  len(api['items']),
+                    'parsed':       parsed,
+                    'raw_snippet':  api['raw_text'],
+                }
+        # Wenn API nichts liefert, weiter mit HTML-Fallback
+    # ────────────────────────────────────────────────────────────────────
+
     base = 'https://www.utz24.online/grosshandlung/de/'
     such_url = f'{base}?suche={artnr}'
     try:
@@ -528,7 +696,8 @@ def web_artikel_diagnose(lief_rec_id: int, artnr: str) -> dict:
         return {'ok': False, 'msg': 'Login fehlgeschlagen: '
                 + str(login_res.get('msg')),
                 'login': login_res}
-    probe = _utz_artikel_info(sess, artnr.strip())
+    probe = _utz_artikel_info(sess, artnr.strip(),
+                              kunden_nr=creds.get('kunden_nr', ''))
     return {'ok': probe.get('ok', False),
             'msg': probe.get('msg'),
             'login': {'titel':   login_res.get('titel'),

@@ -711,33 +711,39 @@ async function webArtikelProbe() {
   }
   const lines = [
     `Login-Title:    ${(d.login || {}).titel || ''}`,
+    `Quelle:         ${p.quelle || 'html-fallback'}`,
     '',
     `── Such-Schritt ──`,
-    `Suche:          ${p.such_url || ''}  (HTTP ${p.such_status ?? '?'})`,
+    `URL:            ${p.such_url || ''}  (HTTP ${p.such_status ?? '?'})`,
+    `API-Treffer:    ${p.api_treffer ?? '–'}`,
     `Slug-Treffer:   ${(p.detail_links || []).length}`,
     '',
-    `── Probe-Versuche (welche Slugs wurden geladen) ──`,
-    ...((p.versuche || []).map(v => v.fehler
-      ? `  ${v.slug}  →  Fehler: ${v.fehler}`
-      : `  ArtNr ${(v.artnr_lief||'?').padEnd(7)}  HTTP ${v.status}  len=${v.len}  ${v.bezeichnung}  (slug=${v.slug})`)),
-    '',
-    `── Match-Detailseite ──`,
-    `URL:            ${p.detail_url || '(kein passender Slug gefunden)'}`,
-    `Status / Bytes: HTTP ${p.detail_status ?? '?'} / ${p.detail_len ?? '?'}`,
-    '',
-    '── Geparstes Ergebnis ──',
-    JSON.stringify(p.parsed || {}, null, 2),
-    '',
-    '── Such-HTML rund um ArtNr (max 4 Treffer, je 1.4 kB) ──',
-    ...((p.artnr_kontexte || []).map((ctx, i) =>
-      `[Treffer ${i+1}]\n${ctx}\n`)),
-    '',
-    '── Roh-HTML der Such-Seite (3000 Zeichen, falls kein Match) ──',
-    p.such_snippet || '(nicht angefragt)',
-    '',
-    '── Roh-HTML der Detailseite (erste 3000 Zeichen) ──',
-    p.raw_snippet || '(leer)',
   ];
+  if (p.versuche && p.versuche.length) {
+    lines.push('── Slug-Probe-Versuche (HTML-Fallback) ──');
+    p.versuche.forEach(v => lines.push(v.fehler
+      ? `  ${v.slug}  →  Fehler: ${v.fehler}`
+      : `  ArtNr ${(v.artnr_lief||'?').padEnd(7)}  HTTP ${v.status}  ${v.bezeichnung}  (slug=${v.slug})`));
+    lines.push('');
+  }
+  lines.push('── Geparstes Ergebnis ──');
+  lines.push(JSON.stringify(p.parsed || {}, null, 2));
+  if (p.artnr_kontexte && p.artnr_kontexte.length) {
+    lines.push('');
+    lines.push('── Such-HTML rund um ArtNr (max 4 Treffer, je 1.4 kB) ──');
+    p.artnr_kontexte.forEach((ctx, i) =>
+      lines.push(`[Treffer ${i+1}]\n${ctx}\n`));
+  }
+  if (p.such_snippet) {
+    lines.push('');
+    lines.push('── Roh-HTML/JSON der Such-Antwort ──');
+    lines.push(p.such_snippet);
+  }
+  if (p.raw_snippet) {
+    lines.push('');
+    lines.push('── Roh-Antwort der Detail/JSON-Quelle ──');
+    lines.push(p.raw_snippet);
+  }
   det.textContent = lines.join('\n');
   det.style.display = '';
 }
