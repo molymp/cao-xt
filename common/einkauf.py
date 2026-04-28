@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import imaplib
 import logging
+import os
 import re
 import socket
 from typing import Any, Optional
@@ -114,6 +115,36 @@ def run_migration() -> None:
                 if int((cur.fetchone() or {}).get('n', 0)) == 0:
                     cur.execute(f"ALTER TABLE XT_EINKAUF_LIEFERANT "
                                 f"ADD COLUMN {col} {ddl}")
+
+            # Cache-Tabelle Erweiterung: BILD_LOKAL fuer offline-faehige
+            # Anzeige von Lieferanten-Bildern (Phase 4).
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = 'XT_EINKAUF_LIEF_ARTIKEL'
+                  AND COLUMN_NAME  = 'BILD_LOKAL'
+            """)
+            if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                cur.execute("ALTER TABLE XT_EINKAUF_LIEF_ARTIKEL "
+                            "ADD COLUMN BILD_LOKAL VARCHAR(255) NULL "
+                            "AFTER BILD_URL")
+
+            # XT_EINKAUF_BESTELLPOS.STATUS: 'neu_anlegen' fuer manuell
+            # bestaetigte „echt neu"-Positionen ergaenzen.
+            cur.execute("""
+                SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = 'XT_EINKAUF_BESTELLPOS'
+                  AND COLUMN_NAME  = 'STATUS'
+            """)
+            row = cur.fetchone()
+            if row and 'neu_anlegen' not in (row.get('COLUMN_TYPE') or ''):
+                cur.execute("""
+                    ALTER TABLE XT_EINKAUF_BESTELLPOS
+                    MODIFY COLUMN STATUS
+                      ENUM('neu','matched','in_cao','fehler','neu_anlegen')
+                      NOT NULL DEFAULT 'neu'
+                """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS XT_EINKAUF_BESTELLUNG (
                   REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -161,6 +192,7 @@ def run_migration() -> None:
                   INHALT            VARCHAR(60)  NULL,
                   EINHEIT           VARCHAR(40)  NULL,
                   BILD_URL          VARCHAR(500) NULL,
+                  BILD_LOKAL        VARCHAR(255) NULL,
                   VERFUEGBARKEIT    VARCHAR(80)  NULL,
                   ABFRAGE_FEHLER    VARCHAR(500) NULL,
                   ABGEFRAGT_AT      DATETIME     NULL,
@@ -1196,6 +1228,79 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
 
 # ── Lieferanten-Artikel-Cache (Phase 4) ─────────────────────────────────────
 
+# Verzeichnis fuer lokal gecachte Lieferanten-Bilder.
+# Wir spiegeln die existierende ``kiosk-app/app/produktbilder/``-Logik
+# (von der die Admin-App ihren ``/produktbilder/<path>``-Endpoint
+# bedient) und legen unsere Bilder unter
+# ``produktbilder/lieferanten/<KUERZEL>/<artnr>.<ext>`` ab.
+_REPO_ROOT_GUESS = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..'))
+_PRODUKTBILDER_BASE = os.environ.get('PRODUKTBILDER_DIR') or os.path.join(
+    _REPO_ROOT_GUESS, 'kiosk-app', 'app', 'produktbilder')
+_LIEF_BILD_DIR = os.path.join(_PRODUKTBILDER_BASE, 'lieferanten')
+
+
+def _download_lief_bild(url: str, lief_kuerzel: str,
+                        artnr: str) -> Optional[str]:
+    """Laedt das Produktbild von ``url`` herunter und speichert es
+    lokal. Liefert den relativen Pfad (zur Verwendung am
+    ``/produktbilder/<path>``-Endpoint), oder ``None`` bei Fehler.
+
+    Pfadschema: ``lieferanten/<KUERZEL>/<artnr>.<ext>``.
+    """
+    if not (url and lief_kuerzel and artnr):
+        return None
+    try:
+        import requests as _req
+    except ImportError:
+        log.warning('requests fehlt – Bild-Download uebersprungen.')
+        return None
+
+    kuerzel = re.sub(r'[^A-Za-z0-9_-]', '_', lief_kuerzel)[:20]
+    artnr_safe = re.sub(r'[^A-Za-z0-9_-]', '_', artnr)[:40]
+    zielordner = os.path.join(_LIEF_BILD_DIR, kuerzel)
+    os.makedirs(zielordner, exist_ok=True)
+
+    try:
+        r = _req.get(url, timeout=15, allow_redirects=True)
+    except Exception as exc:
+        log.warning('Bild-GET %s: %s', url, exc)
+        return None
+    if r.status_code != 200:
+        log.warning('Bild-Status %s fuer %s', r.status_code, url)
+        return None
+
+    ctype = (r.headers.get('Content-Type') or '').lower()
+    ext = 'jpg'
+    if 'png' in ctype:
+        ext = 'png'
+    elif 'webp' in ctype:
+        ext = 'webp'
+    elif 'gif' in ctype:
+        ext = 'gif'
+    else:
+        # Aus der URL ableiten, falls kein Content-Type
+        from urllib.parse import urlparse
+        path = urlparse(url).path
+        if '.' in path:
+            kandidat = path.rsplit('.', 1)[-1].lower()[:5]
+            if kandidat in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+                ext = 'jpeg' if kandidat == 'jpeg' else kandidat
+                if ext == 'jpeg':
+                    ext = 'jpg'
+
+    dateiname = f'{artnr_safe}.{ext}'
+    pfad = os.path.join(zielordner, dateiname)
+    try:
+        with open(pfad, 'wb') as f:
+            f.write(r.content)
+    except Exception as exc:
+        log.warning('Bild-Save %s: %s', pfad, exc)
+        return None
+
+    return f'lieferanten/{kuerzel}/{dateiname}'
+
+
 def lief_artikel_speichern(lief_rec_id: int, artnr: str,
                            parsed: Optional[dict],
                            fehler: Optional[str] = None) -> int:
@@ -1206,15 +1311,16 @@ def lief_artikel_speichern(lief_rec_id: int, artnr: str,
     """
     p = parsed or {}
     bild = (p.get('bild_url') or '')[:500]
+    bild_lokal = (p.get('bild_lokal') or '')[:255]
     with get_db_transaction() as cur:
         cur.execute("""
             INSERT INTO XT_EINKAUF_LIEF_ARTIKEL
               (LIEF_REC_ID, ARTIKEL_NR_LIEF, INTERNAL_ID, SLUG,
                BEZEICHNUNG, BARCODE_STUECK, BARCODE_KT,
                EK_NETTO, UVP_BRUTTO, MWST_PCT, VPE_EK,
-               INHALT, EINHEIT, BILD_URL, VERFUEGBARKEIT,
+               INHALT, EINHEIT, BILD_URL, BILD_LOKAL, VERFUEGBARKEIT,
                ABFRAGE_FEHLER, ABGEFRAGT_AT)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
               INTERNAL_ID    = VALUES(INTERNAL_ID),
@@ -1229,6 +1335,7 @@ def lief_artikel_speichern(lief_rec_id: int, artnr: str,
               INHALT         = VALUES(INHALT),
               EINHEIT        = VALUES(EINHEIT),
               BILD_URL       = VALUES(BILD_URL),
+              BILD_LOKAL     = COALESCE(VALUES(BILD_LOKAL), BILD_LOKAL),
               VERFUEGBARKEIT = VALUES(VERFUEGBARKEIT),
               ABFRAGE_FEHLER = VALUES(ABFRAGE_FEHLER),
               ABGEFRAGT_AT   = CURRENT_TIMESTAMP
@@ -1247,6 +1354,7 @@ def lief_artikel_speichern(lief_rec_id: int, artnr: str,
             (p.get('inhalt') or '')[:60] or None,
             (p.get('einheit') or '')[:40] or None,
             bild or None,
+            bild_lokal or None,
             (p.get('verfuegbarkeit') or '')[:80] or None,
             (fehler or '')[:500] or None,
         ))
@@ -1267,18 +1375,34 @@ def lief_artikel_holen(lief_rec_id: int, artnr: str) -> Optional[dict]:
 
 
 def lief_artikel_anreichern_position(lief_rec_id: int, artnr: str) -> dict:
-    """Holt frische Stammdaten via Web-Treiber und persistiert sie.
+    """Holt frische Stammdaten via Web-Treiber, laedt das Produktbild
+    lokal nach und persistiert alles.
     Liefert ``{'ok': bool, 'parsed': dict|None, 'msg': str|None}``."""
     from common import einkauf_lief_web as _web
     res = _web.web_artikel_diagnose(lief_rec_id, artnr)
     if not res.get('ok'):
-        # Trotzdem einen Fehler-Eintrag persistieren, damit man im Cache
-        # sieht, was schiefging und nicht alle 5 min neu probiert.
         lief_artikel_speichern(lief_rec_id, artnr, parsed=None,
                                fehler=str(res.get('msg') or 'unbekannt'))
         return {'ok': False, 'parsed': None,
                 'msg': str(res.get('msg') or '')}
     parsed = (res.get('probe') or {}).get('parsed') or {}
+
+    # Bild herunterladen, wenn noch nicht im lokalen Cache.
+    if parsed.get('bild_url'):
+        cached = lief_artikel_holen(lief_rec_id, artnr) or {}
+        if not (cached.get('BILD_LOKAL') or '').strip():
+            kuerzel = ''
+            try:
+                lief = holen(lief_rec_id) or {}
+                kuerzel = lief.get('KUERZEL') or ''
+            except Exception:
+                pass
+            lokal = _download_lief_bild(parsed['bild_url'], kuerzel, artnr)
+            if lokal:
+                parsed['bild_lokal'] = lokal
+        else:
+            parsed['bild_lokal'] = cached.get('BILD_LOKAL') or ''
+
     lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
     return {'ok': True, 'parsed': parsed, 'msg': None}
 
@@ -1335,6 +1459,48 @@ def bestellung_anreichern(bestellung_rec_id: int,
         'fehler':     n_err,
         'fehler_liste': fehler_liste[:10],
     }
+
+
+def position_zuordnen(pos_rec_id: int,
+                      cao_artikel_rec_id: Optional[int] = None,
+                      neu_anlegen: bool = False,
+                      anmerkung: Optional[str] = None,
+                      ma_id: Optional[int] = None) -> dict:
+    """Manuelle Zuordnung einer Bestellposition.
+
+    Drei Modi:
+        cao_artikel_rec_id != None  → STATUS='matched', ARTIKEL_REC_ID setzen
+        neu_anlegen=True            → STATUS='neu_anlegen', ARTIKEL_REC_ID=NULL
+        sonst                       → Reset auf STATUS='neu', ARTIKEL_REC_ID=NULL
+
+    Schreibt nur in XT-Tabellen, NICHT in CAO. Die ARTIKEL_PREIS-
+    Verknuepfung in CAO erfolgt erst beim Phase-5-Sync.
+    """
+    if cao_artikel_rec_id is not None:
+        new_status = 'matched'
+        artrec = int(cao_artikel_rec_id)
+    elif neu_anlegen:
+        new_status = 'neu_anlegen'
+        artrec = None
+    else:
+        new_status = 'neu'
+        artrec = None
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("""
+                UPDATE XT_EINKAUF_BESTELLPOS
+                   SET ARTIKEL_REC_ID = %s,
+                       STATUS         = %s,
+                       ANMERKUNG      = COALESCE(%s, ANMERKUNG)
+                 WHERE REC_ID = %s
+            """, (artrec, new_status, anmerkung, int(pos_rec_id)))
+            if cur.rowcount == 0:
+                return {'ok': False, 'msg': 'Position nicht gefunden.'}
+        return {'ok': True, 'status': new_status,
+                'artikel_rec_id': artrec}
+    except Exception as exc:
+        log.exception('position_zuordnen %s', pos_rec_id)
+        return {'ok': False, 'msg': str(exc)}
 
 
 def cao_match_positionen(rec_id: int) -> list[dict]:
@@ -1397,12 +1563,34 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         barcode_stk = (lief_cache or {}).get('BARCODE_STUECK') or ''
         barcode_kt  = (lief_cache or {}).get('BARCODE_KT') or ''
 
+        # Manuelle User-Zuordnung hat hoechste Prioritaet.
+        man_status = (p.get('STATUS') or '').lower()
+        man_rec    = p.get('ARTIKEL_REC_ID')
+        if man_status == 'neu_anlegen':
+            match_quelle = 'neu_anlegen'
+        elif man_rec:
+            try:
+                with get_db() as cur:
+                    cur.execute("""
+                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
+                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
+                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
+                               a.USERFELD_02
+                        FROM ARTIKEL a WHERE a.REC_ID = %s
+                    """, (int(man_rec),))
+                    row = cur.fetchone()
+                if row:
+                    cao_treffer = row
+                    match_quelle = 'manuell'
+            except Exception as exc:
+                log.warning('manuell-Match Position %s: %s', artnr, exc)
+
         try:
             with get_db() as cur:
                 # 0. Hoechste Prioritaet: Barcode-Match (Stueck-EAN gegen
                 #    ARTIKEL.BARCODE/2/3). Eindeutigste Identifikation,
                 #    deshalb vor allen anderen Pfaden.
-                if barcode_stk:
+                if cao_treffer is None and barcode_stk:
                     cur.execute("""
                         SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
                                a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
@@ -1501,6 +1689,21 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 log.warning("Vorschlag fuer Pos %s: %s", artnr, exc)
                 vorschlaege = []
 
+        # Lieferanten-Stammdaten aus dem Cache (fuer Bild + Barcode-Anzeige)
+        lief_block = None
+        if lief_cache:
+            bild_lokal = lief_cache.get('BILD_LOKAL') or ''
+            lief_block = {
+                'bezeichnung':     lief_cache.get('BEZEICHNUNG'),
+                'barcode_stueck':  lief_cache.get('BARCODE_STUECK'),
+                'barcode_kt':      lief_cache.get('BARCODE_KT'),
+                'bild_url':        (f'/produktbilder/{bild_lokal}'
+                                     if bild_lokal else
+                                     (lief_cache.get('BILD_URL') or '')),
+                'bild_lokal':      bool(bild_lokal),
+                'verfuegbarkeit':  lief_cache.get('VERFUEGBARKEIT'),
+            }
+
         out.append({
             'pos_rec_id':       p.get('REC_ID'),
             'pos_nr':           p.get('POS_NR'),
@@ -1509,11 +1712,13 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             'menge':            float(p.get('MENGE') or 0),
             'preis_netto':      float(p.get('PREIS_NETTO') or 0),
             'zeilen_betrag':    float(p.get('ZEILEN_BETRAG') or 0),
+            'pos_status':       p.get('STATUS') or 'neu',
             'match_quelle':     match_quelle,
             'cao':              cao_block,
             'ek_diff':          ek_diff,
             'ek_diff_pct':      ek_diff_pct,
             'vorschlaege':      vorschlaege,
+            'lief_cache':       lief_block,
         })
     return out
 

@@ -116,11 +116,38 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.match-pill.manuell     { background: var(--brand-ink);       color: #fff; }
+.match-pill.neu_anlegen { background: var(--status-rot);      color: #fff; }
 .match-pill.barcode     { background: var(--brand-terracotta); color: #fff; }
 .match-pill.lieferant   { background: var(--status-gruen);    color: #fff; }
 .match-pill.global      { background: var(--brand-sage);      color: var(--gruen-dunkel); }
 .match-pill.mehrdeutig  { background: #f6ecd0;                color: var(--status-gelb); border: 1px solid var(--status-gelb); }
 .match-pill.kein        { background: #f6d8ce;                color: var(--status-rot); }
+
+.lief-thumb {
+  width: 32px; height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-dunkel);
+  vertical-align: middle;
+}
+
+.vorschlag-aktion {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  margin-left: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--brand-cream);
+  color: var(--brand-ink);
+  cursor: pointer;
+}
+.vorschlag-aktion:hover { background: var(--status-gruen); color: #fff; border-color: var(--status-gruen); }
+.vorschlag-aktion.neu   { background: #f6d8ce; color: var(--status-rot); border-color: var(--status-rot); }
+.vorschlag-aktion.neu:hover { background: var(--status-rot); color: #fff; }
 
 .diff-pos { color: var(--status-rot); }
 .diff-neg { color: var(--gruen-dunkel); }
@@ -421,6 +448,35 @@ async function detailZeigen(recId) {
   ar.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ── Manuelle Position-Zuordnung ───────────────────────────────────
+async function positionZuordnen(posId, caoArtRecId, bestRecId) {
+  await _zuordnen(posId, { cao_artikel_rec_id: caoArtRecId });
+  if (bestRecId) caoMatch(bestRecId);
+}
+async function positionNeuAnlegen(posId, bestRecId) {
+  await _zuordnen(posId, { neu_anlegen: true });
+  if (bestRecId) caoMatch(bestRecId);
+}
+async function positionReset(posId, bestRecId) {
+  await _zuordnen(posId, { cao_artikel_rec_id: null, neu_anlegen: false });
+  if (bestRecId) caoMatch(bestRecId);
+}
+async function _zuordnen(posId, body) {
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/positionen/${posId}/zuordnen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    d = await r.json();
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err');
+    return;
+  }
+  if (!d.ok) toast(d.msg || 'Fehler', 'err');
+}
+
 // ── Stammdaten-Anreicherung via Lieferanten-Web ──────────────────
 async function anreichern(recId) {
   const btn  = document.getElementById('btn-anreichern-' + recId);
@@ -517,7 +573,9 @@ async function caoMatch(recId) {
     // Status-Pille
     const pill = document.createElement('span');
     pill.className = `match-pill ${m.match_quelle}`;
-    if (m.match_quelle === 'barcode') pill.textContent = '🟢 EAN';
+    if (m.match_quelle === 'manuell')     pill.textContent = '✓ manuell';
+    else if (m.match_quelle === 'neu_anlegen') pill.textContent = '🆕 neu anlegen';
+    else if (m.match_quelle === 'barcode') pill.textContent = '🟢 EAN';
     else if (m.match_quelle === 'lieferant')  pill.textContent = '🟢 Lief';
     else if (m.match_quelle === 'global')     pill.textContent = '🟢 Global';
     else if (m.match_quelle === 'mehrdeutig') pill.textContent = '🟡 mehrdeutig';
@@ -529,6 +587,18 @@ async function caoMatch(recId) {
       tds[1].innerHTML = `<code>${_esc(m.cao.artnum || '')}</code> ${_esc(m.cao.kas_name || '')}`;
     } else {
       tds[1].innerHTML = '<span class="muted">muss angelegt werden</span>';
+    }
+    // Lieferanten-Bild als Thumbnail in Spalte „Bezeichnung" mergen
+    if (m.lief_cache && m.lief_cache.bild_url) {
+      const bezTd = row.querySelectorAll('td')[2];   // BESCHREIBUNG_LIEF
+      if (bezTd && !bezTd.querySelector('.lief-thumb')) {
+        const img = document.createElement('img');
+        img.className = 'lief-thumb';
+        img.src = m.lief_cache.bild_url;
+        img.alt = '';
+        img.style.marginRight = '8px';
+        bezTd.insertBefore(img, bezTd.firstChild);
+      }
     }
     // EK-Diff
     if (m.ek_diff != null) {
@@ -542,8 +612,10 @@ async function caoMatch(recId) {
       tds[2].className = 'cao-col num diff-null';
     }
 
-    // Vorschlags-Zeile fuer NEU-Positionen mit Treffern
-    if (m.match_quelle === 'kein' && Array.isArray(m.vorschlaege)
+    // Vorschlags-Zeile fuer NEU-Positionen mit Treffern + Action-Buttons
+    const istNeuOhneZuordnung =
+      m.match_quelle === 'kein' && (m.pos_status || 'neu') === 'neu';
+    if (istNeuOhneZuordnung && Array.isArray(m.vorschlaege)
         && m.vorschlaege.length > 0) {
       const vrow = document.createElement('tr');
       vrow.className = 'vorschlag-zeile';
@@ -562,9 +634,33 @@ async function caoMatch(recId) {
                     <code>${_esc(v.artnum||'')}</code>
                     <span class="v-name">${_esc(v.matchcode||'')}</span>
                     <span class="${ekClass}">${ekTxt}</span>
+                    <span class="vorschlag-aktion"
+                          onclick="positionZuordnen(${m.pos_rec_id}, ${v.rec_id}, ${recId})">
+                      ✓ übernehmen
+                    </span>
                   </span>`;
-        }).join('');
-      td.firstChild?.remove;  // no-op safety
+        }).join('') +
+        `<span class="vorschlag-aktion neu" style="margin-left:14px;"
+               onclick="positionNeuAnlegen(${m.pos_rec_id}, ${recId})">
+           🆕 keiner — neu anlegen
+         </span>`;
+      td.firstChild?.remove;
+      vrow.appendChild(td);
+      row.parentNode.insertBefore(vrow, row.nextSibling);
+    }
+    // Bei manueller Zuordnung: kleine Reset-Zeile fuer 'verknüpfung lösen'
+    else if (m.match_quelle === 'manuell' || m.match_quelle === 'neu_anlegen') {
+      const vrow = document.createElement('tr');
+      vrow.className = 'vorschlag-zeile';
+      const td = document.createElement('td');
+      td.colSpan = 9;
+      const txt = m.match_quelle === 'manuell'
+        ? `✓ manuell verknüpft mit CAO #${m.cao?.rec_id ?? '?'} (${_esc(m.cao?.kas_name || '')})`
+        : '🆕 als neuer Artikel markiert';
+      td.innerHTML = `<span class="vor-titel">${txt}</span>
+        <span class="vorschlag-aktion neu" onclick="positionReset(${m.pos_rec_id}, ${recId})">
+          ↶ Zuordnung lösen
+        </span>`;
       vrow.appendChild(td);
       row.parentNode.insertBefore(vrow, row.nextSibling);
     }
