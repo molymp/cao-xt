@@ -88,6 +88,8 @@ def run_migration() -> None:
                   EMAIL_SUBJECT_PATTERN  VARCHAR(255) NULL,
                   WEB_LOGIN_URL          VARCHAR(255) NULL,
                   WEB_USERNAME           VARCHAR(120) NULL,
+                  WEB_KUNDEN_NR          VARCHAR(40)  NULL,
+                  WEB_KEY                VARCHAR(40)  NULL,
                   PARSER_KEY             VARCHAR(40)  NULL,
                   AKTIV                  TINYINT(1)   NOT NULL DEFAULT 1,
                   ERSTELLT_AM            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -98,6 +100,20 @@ def run_migration() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                   COMMENT='Einkauf: Lieferanten-Registry (Phase 1)'
             """)
+            # Idempotente Spalten-Erweiterung fuer bestehende Installationen
+            for col, ddl in [
+                ('WEB_KUNDEN_NR', 'VARCHAR(40)  NULL AFTER WEB_USERNAME'),
+                ('WEB_KEY',       'VARCHAR(40)  NULL AFTER WEB_KUNDEN_NR'),
+            ]:
+                cur.execute("""
+                    SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME   = 'XT_EINKAUF_LIEFERANT'
+                      AND COLUMN_NAME  = %s
+                """, (col,))
+                if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                    cur.execute(f"ALTER TABLE XT_EINKAUF_LIEFERANT "
+                                f"ADD COLUMN {col} {ddl}")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS XT_EINKAUF_BESTELLUNG (
                   REC_ID            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -177,6 +193,12 @@ def seed_defaults() -> int:
     (siehe Auto-Memory-Notiz Einkaufsprozess). ``INSERT IGNORE``
     (UNIQUE auf KUERZEL) – nachtraegliche Aenderungen im Admin-UI
     bleiben erhalten.
+
+    Zusaetzlich: zarter Backfill fuer den UTZ-Bestandseintrag, der
+    aus aelteren Migrationen (Phase 1) noch ohne ``WEB_KEY`` und mit
+    der vorlaeufigen Login-URL existieren kann. ``WEB_USERNAME`` /
+    ``WEB_KUNDEN_NR`` / Passwort werden NIE ueberschrieben (sind
+    User-Daten).
     """
     anzahl = 0
     try:
@@ -184,13 +206,33 @@ def seed_defaults() -> int:
             cur.execute("""
                 INSERT IGNORE INTO XT_EINKAUF_LIEFERANT
                   (KUERZEL, BEZEICHNUNG, EMAIL_VON_PATTERN,
-                   EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, PARSER_KEY, AKTIV)
+                   EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, WEB_KEY,
+                   PARSER_KEY, AKTIV)
                 VALUES
                   ('UTZ', 'UTZ Lebensmittel', 'webportal@utz24.online',
                    'Ihre Bestellung (UTZ Lebensmittel)',
-                   'https://utz24.online/', 'utz_v1', 1)
+                   'https://www.utz24.online/grosshandlung/de/?action=shop_login',
+                   'utz24', 'utz_v1', 1)
             """)
             anzahl = cur.rowcount
+            # Backfill nur, wenn WEB_KEY noch nicht gesetzt ist
+            cur.execute("""
+                UPDATE XT_EINKAUF_LIEFERANT
+                   SET WEB_KEY = 'utz24',
+                       WEB_LOGIN_URL = COALESCE(NULLIF(WEB_LOGIN_URL, ''),
+                           'https://www.utz24.online/grosshandlung/de/?action=shop_login')
+                 WHERE KUERZEL = 'UTZ'
+                   AND (WEB_KEY IS NULL OR WEB_KEY = '')
+            """)
+            # Zweiter Backfill: alten Default 'https://utz24.online/' auf
+            # den korrekten Login-Endpoint hochziehen.
+            cur.execute("""
+                UPDATE XT_EINKAUF_LIEFERANT
+                   SET WEB_LOGIN_URL =
+                       'https://www.utz24.online/grosshandlung/de/?action=shop_login'
+                 WHERE KUERZEL = 'UTZ'
+                   AND WEB_LOGIN_URL = 'https://utz24.online/'
+            """)
     except Exception as exc:
         log.warning("seed_defaults Einkauf: %s", exc)
     if anzahl:
@@ -215,7 +257,8 @@ def liste(nur_aktive: bool = False) -> list[dict]:
     """Liefert alle Lieferanten (sortiert nach KUERZEL)."""
     sql = ("SELECT REC_ID, KUERZEL, BEZEICHNUNG, CAO_LIEF_ID, "
            "EMAIL_VON_PATTERN, EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, "
-           "WEB_USERNAME, PARSER_KEY, AKTIV, ERSTELLT_AM, GEAENDERT_AM "
+           "WEB_USERNAME, WEB_KUNDEN_NR, WEB_KEY, PARSER_KEY, AKTIV, "
+           "ERSTELLT_AM, GEAENDERT_AM "
            "FROM XT_EINKAUF_LIEFERANT")
     params: tuple = ()
     if nur_aktive:
@@ -237,7 +280,8 @@ def holen(rec_id: int) -> Optional[dict]:
             cur.execute(
                 "SELECT REC_ID, KUERZEL, BEZEICHNUNG, CAO_LIEF_ID, "
                 "EMAIL_VON_PATTERN, EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, "
-                "WEB_USERNAME, PARSER_KEY, AKTIV, ERSTELLT_AM, GEAENDERT_AM "
+                "WEB_USERNAME, WEB_KUNDEN_NR, WEB_KEY, PARSER_KEY, "
+                "AKTIV, ERSTELLT_AM, GEAENDERT_AM "
                 "FROM XT_EINKAUF_LIEFERANT WHERE REC_ID = %s",
                 (rec_id,),
             )
@@ -265,8 +309,8 @@ def anlegen(daten: dict, ma_id: Optional[int] = None) -> int:
             INSERT INTO XT_EINKAUF_LIEFERANT
               (KUERZEL, BEZEICHNUNG, CAO_LIEF_ID, EMAIL_VON_PATTERN,
                EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, WEB_USERNAME,
-               PARSER_KEY, AKTIV, GEAENDERT_VON)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               WEB_KUNDEN_NR, WEB_KEY, PARSER_KEY, AKTIV, GEAENDERT_VON)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             kuerzel, bez,
             daten.get('CAO_LIEF_ID') or None,
@@ -274,6 +318,8 @@ def anlegen(daten: dict, ma_id: Optional[int] = None) -> int:
             (daten.get('EMAIL_SUBJECT_PATTERN') or '').strip() or None,
             (daten.get('WEB_LOGIN_URL') or '').strip() or None,
             (daten.get('WEB_USERNAME') or '').strip() or None,
+            (daten.get('WEB_KUNDEN_NR') or '').strip() or None,
+            (daten.get('WEB_KEY') or '').strip() or None,
             (daten.get('PARSER_KEY') or '').strip() or None,
             1 if daten.get('AKTIV', True) else 0,
             ma_id,
@@ -290,6 +336,7 @@ def aktualisieren(rec_id: int, daten: dict,
     erlaubt = {
         'BEZEICHNUNG', 'CAO_LIEF_ID', 'EMAIL_VON_PATTERN',
         'EMAIL_SUBJECT_PATTERN', 'WEB_LOGIN_URL', 'WEB_USERNAME',
+        'WEB_KUNDEN_NR', 'WEB_KEY',
         'PARSER_KEY', 'AKTIV',
     }
     for k, v in daten.items():

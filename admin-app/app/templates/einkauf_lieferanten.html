@@ -264,13 +264,25 @@
     </fieldset>
 
     <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-top:12px;">
-      <legend class="muted" style="padding:0 6px;">Web-Login (optional)</legend>
+      <legend class="muted" style="padding:0 6px;">Web-Login (optional, fuer Stammdaten-Anreicherung)</legend>
       <div class="form-group">
         <label>Login-URL</label>
-        <input class="form-control" id="ed-weburl" placeholder="https://utz24.online/">
+        <input class="form-control" id="ed-weburl"
+               placeholder="https://www.utz24.online/grosshandlung/de/?action=shop_login">
       </div>
       <div class="form-group">
-        <label>Benutzer</label>
+        <label>Web-Treiber (Schluessel)</label>
+        <input class="form-control" id="ed-webkey" placeholder="utz24">
+        <p class="muted" style="margin-top:4px;">
+          Bezeichner des Web-Treibers (Phase 4). Aktuell unterstuetzt: <code>utz24</code>.
+        </p>
+      </div>
+      <div class="form-group">
+        <label>Kunden-Nr (beim Lieferanten)</label>
+        <input class="form-control" id="ed-webkdnr" placeholder="z.B. 101772">
+      </div>
+      <div class="form-group">
+        <label>Benutzer / Login-Name</label>
         <input class="form-control" id="ed-webuser">
       </div>
       <div class="form-group">
@@ -279,6 +291,11 @@
         </label>
         <input class="form-control" id="ed-webpw" type="password"
                placeholder="leer lassen = unveraendert" autocomplete="new-password">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="btn btn-neutral btn-sm" id="ed-web-test-btn"
+                onclick="webLoginTest()">🌐 Login testen</button>
+        <span id="ed-web-test-out" class="muted" style="font-size:12px;"></span>
       </div>
     </fieldset>
 
@@ -360,9 +377,12 @@ function lieferantNeu() {
   _e('ed-subj').value = '';
   _e('ed-parser').value = '';
   _e('ed-weburl').value = '';
+  _e('ed-webkey').value = '';
+  _e('ed-webkdnr').value = '';
   _e('ed-webuser').value = '';
   _e('ed-webpw').value = '';
   _e('ed-pw-status').textContent = '';
+  _e('ed-web-test-out').textContent = '';
   _e('ed-aktiv').checked = true;
   _e('btn-loeschen').style.display = 'none';
   _e('modal-bg').classList.add('show');
@@ -384,9 +404,12 @@ function lieferantEdit(recId) {
   _e('ed-subj').value = e.EMAIL_SUBJECT_PATTERN || '';
   _e('ed-parser').value = e.PARSER_KEY || '';
   _e('ed-weburl').value = e.WEB_LOGIN_URL || '';
+  _e('ed-webkey').value = e.WEB_KEY || '';
+  _e('ed-webkdnr').value = e.WEB_KUNDEN_NR || '';
   _e('ed-webuser').value = e.WEB_USERNAME || '';
   _e('ed-webpw').value = '';
   _e('ed-pw-status').textContent = e.WEB_PASSWORD_GESETZT ? '· hinterlegt' : '· nicht gesetzt';
+  _e('ed-web-test-out').textContent = '';
   _e('ed-aktiv').checked = !!e.AKTIV;
   _e('btn-loeschen').style.display = '';
   _e('modal-bg').classList.add('show');
@@ -406,6 +429,8 @@ async function lieferantSpeichern() {
     EMAIL_SUBJECT_PATTERN: _e('ed-subj').value.trim(),
     PARSER_KEY: _e('ed-parser').value.trim(),
     WEB_LOGIN_URL: _e('ed-weburl').value.trim(),
+    WEB_KEY: _e('ed-webkey').value.trim(),
+    WEB_KUNDEN_NR: _e('ed-webkdnr').value.trim(),
     WEB_USERNAME: _e('ed-webuser').value.trim(),
     AKTIV: _e('ed-aktiv').checked,
   };
@@ -581,6 +606,69 @@ function kopiereRedirect() {
     history.replaceState({}, '', window.location.pathname);
   }
 })();
+
+async function webLoginTest() {
+  const recId = _e('ed-rec-id').value;
+  if (!recId) {
+    toast('Bitte erst speichern, damit der Login getestet werden kann.', 'err');
+    return;
+  }
+  const btn = _e('ed-web-test-btn');
+  const out = _e('ed-web-test-out');
+  btn.disabled = true;
+  out.textContent = 'Verbinde …';
+  // Wenn der User gerade ein neues Passwort eingegeben hat, vorher
+  // die aktuellen Werte speichern – sonst testet der Server gegen
+  // den alten Stand.
+  await lieferantSpeichern_silent();
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/lieferanten/${recId}/web-test`,
+                          { method: 'POST' });
+    d = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    out.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  btn.disabled = false;
+  if (d.ok) {
+    out.style.color = 'var(--gruen-dunkel)';
+    out.textContent = `✓ ${d.msg} · Status ${d.status} · "${d.titel || ''}"`;
+  } else {
+    out.style.color = 'var(--status-rot)';
+    out.textContent = `✗ ${d.msg}` + (d.status ? ` (HTTP ${d.status})` : '');
+  }
+}
+
+async function lieferantSpeichern_silent() {
+  // Wie lieferantSpeichern, aber ohne Toast/Modal-Schliessen.
+  const recId  = _e('ed-rec-id').value;
+  if (!recId) return;
+  const body = {
+    BEZEICHNUNG: _e('ed-bez').value.trim(),
+    CAO_LIEF_ID: _e('ed-caoid').value || null,
+    EMAIL_VON_PATTERN: _e('ed-from').value.trim(),
+    EMAIL_SUBJECT_PATTERN: _e('ed-subj').value.trim(),
+    PARSER_KEY: _e('ed-parser').value.trim(),
+    WEB_LOGIN_URL: _e('ed-weburl').value.trim(),
+    WEB_KEY: _e('ed-webkey').value.trim(),
+    WEB_KUNDEN_NR: _e('ed-webkdnr').value.trim(),
+    WEB_USERNAME: _e('ed-webuser').value.trim(),
+    AKTIV: _e('ed-aktiv').checked,
+  };
+  const pw = _e('ed-webpw').value;
+  if (pw) body.WEB_PASSWORD = pw;
+  await fetch('/api/einkauf/lieferanten/' + recId, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (pw) {
+    _e('ed-webpw').value = '';
+    _e('ed-pw-status').textContent = '· hinterlegt';
+  }
+}
 
 // Modal mit Klick auf Backdrop schliessen
 _e('modal-bg').addEventListener('click', (e) => {
