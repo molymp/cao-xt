@@ -370,14 +370,17 @@ class TestLieferscheinZuJournalSummen(unittest.TestCase):
 class TestLieferscheinZuJournalHashsum(unittest.TestCase):
     """HASHSUM-Berechnung muss identisch zu bon_zu_journal sein."""
 
-    def test_hashsalz_identisch_zu_bon_zu_journal(self):
-        self.assertEqual(
-            kasse_logik._JOURNAL_HASHSALZ,
-            'cZodx62PyrgwlJKuj',
-        )
+    def test_hashsum_nutzt_zentralen_helper(self):
+        # Bon und Lieferschein nutzen denselben common.cao_hashsum-Pfad,
+        # also denselben Konfig-Schluessel und damit denselben Salt.
+        from common import cao_hashsum
+        self.assertEqual(cao_hashsum.KEY_JOURNAL,
+                         'cao.hash_salt.journal')
 
     def test_hashsum_formel(self):
-        salz   = kasse_logik._JOURNAL_HASHSALZ
+        # Salt-Wert kommt zur Laufzeit aus DORFKERN_KONFIG. Hier
+        # nur Form-Check der MD5-Mechanik.
+        salz   = 'beliebiger-test-salt'
         concat = 'Testdaten123'
         expected = hashlib.md5(
             (salz + concat).encode('ascii', errors='replace')

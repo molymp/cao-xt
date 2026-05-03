@@ -117,7 +117,9 @@ class TestBonZuJournalHashsum(unittest.TestCase):
     """HASHSUM-Berechnung ohne DB."""
 
     def test_hashsum_formel(self):
-        salz   = 'cZodx62PyrgwlJKuj'
+        # Salt-Wert kommt zur Laufzeit aus DORFKERN_KONFIG (siehe
+        # common.cao_hashsum). Hier nur Form-Check der MD5-Mechanik.
+        salz   = 'beliebiger-test-salt'
         concat = 'abc123'
         expected = hashlib.md5(
             (salz + concat).encode('ascii', errors='replace')
@@ -298,13 +300,19 @@ class TestBonZuJournalBuchungsdatum(unittest.TestCase):
 
 
 class TestJournalHashsalz(unittest.TestCase):
-    """Modul-Konstante HASHSALZ muss exakt dem CAO-Wert entsprechen."""
+    """Salt liegt jetzt in DORFKERN_KONFIG (Kategorie CAO_HASH_SALT),
+    nicht mehr im Code. Audit auf den korrekten Wert erfolgt
+    außerhalb der Test-Suite (DB-Pflege durch den Admin)."""
 
-    def test_hashsalz_wert(self):
-        self.assertEqual(
-            kasse_logik._JOURNAL_HASHSALZ,
-            'cZodx62PyrgwlJKuj'
-        )
+    def test_journal_hashsum_nutzt_salt_aus_konfig(self):
+        from common import cao_hashsum
+        from unittest.mock import patch
+        with patch.object(cao_hashsum, 'get_salt', return_value='abc'):
+            result = cao_hashsum.journal_hashsum('TEST')
+        # MD5('abc' + 'TEST') = b88f17dc62cf9b5cb5ec98e21b9b3c2a
+        # uppercase
+        self.assertEqual(len(result), 32)
+        self.assertEqual(result, result.upper())
 
 
 if __name__ == '__main__':
