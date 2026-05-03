@@ -27,23 +27,24 @@ JOURNAL / JOURNALPOS (HASHSUM = varchar(40), default ``'$$'``)
 * Bestehende Implementation: ``kasse-app/app/kasse_logik.py``
   nutzt jetzt :func:`journal_hashsum`.
 
-ARTIKEL_LOG (HASHSUM = blob, NOT NULL)
---------------------------------------
-* Format: BLOB, Base64-encoded, variable Laenge ~500-650 Bytes
-* Beobachtung: alle Eintraege starten mit Praefix ``8p4K`` oder
-  ``8q/f`` (PKCS#1-v1.5-Padding-Header → vermutlich RSA-Signatur
-  oder asymmetrische Verschluesselung mit konstantem Initial-Block).
-* Algorithmus noch nicht implementiert. Sobald er bekannt ist:
-  Salt unter :data:`KEY_ARTIKEL_LOG` in DORFKERN_KONFIG ablegen,
-  :func:`artikel_log_hashsum` implementieren, Phase-5b-Sync
-  freischalten.
+ARTIKEL_LOG / NUMMERN_LOG / *_LOG (HASHSUM = blob, NOT NULL)
+------------------------------------------------------------
+CAO-Algorithmus ist nicht reproduzierbar (DCPcrypt + UniDAC, weder
+Block- noch Stream-Cipher-konform, Kandidat-Keys matchen nicht). Die
+gute Nachricht: in den vier CAO-Binaries (cao_faktura, cao_admin,
+cao_lib, cao_kasse_pro) gibt es **kein einziges** ``SELECT`` auf
+``HASHSUM`` aus *_LOG-Tabellen — CAO validiert die Hash-Kette dort
+**nicht**. Die einzige aktive HASHSUM-Validierung in CAO ist die
+``TFRMDATENPRUEFUNG``-Funktion in ``cao_admin.exe``, die ausschliess-
+lich JOURNAL prueft (Kassen-Belegkette, GoBD-Pflicht).
 
-NUMMERN_LOG (HASHSUM = blob, NOT NULL)
---------------------------------------
-* Format wie ARTIKEL_LOG.
-* Eigener Salt unter ``cao.hash_salt.nummern_log``
-  (User-Bestaetigung 2026-05-03: jede *_LOG-Tabelle hat einen
-  eigenen Salt-Wert).
+Konsequenz: wir schreiben in *_LOG-Tabellen unsere **eigenen**
+HASHSUMs mit XT-eigenem Algorithmus. Implementation siehe
+:mod:`common.cao_log_hashsum` (HMAC-SHA-256 + XT-Magic-Prefix
+``XTL\\x01``). Die in ``DORFKERN_KONFIG`` gepflegten
+``cao.hash_salt.*``-Schluessel werden vom XT-Modul als HMAC-Key
+verwendet — der CAO-Algorithmus selbst kommt damit nicht zur
+Anwendung.
 
 Verwaltung in der Admin-UI
 ==========================
@@ -135,8 +136,16 @@ def seed_registry() -> None:
     sie in der Admin-UI sichtbar sind und befuellt werden koennen.
     Bestehende Werte werden NICHT angefasst.
     """
+    # *_LOG-Tabellen nutzen den XT-eigenen HASHSUM-Algorithmus
+    # (HMAC-SHA-256, siehe common.cao_log_hashsum). CAO validiert die
+    # Kette in *_LOG nicht zur Laufzeit, deshalb steht uns die
+    # Salt-Wahl frei. Pro Tabelle eigener Wert empfohlen.
+    _LOG_BESCHR = (
+        'Salt fuer XT-eigenen HASHSUM-Algorithmus '
+        '(HMAC-SHA-256, common.cao_log_hashsum). Frei waehlbar.'
+    )
     eintraege = [
-        # Master-Tabellen
+        # Master-Tabellen (CAO-Algorithmus, MD5 + Salt)
         (KEY_JOURNAL,
          'JOURNAL/JOURNALPOS – MD5(salt + CONCAT(MD5-pro-Zeile)).'),
         (KEY_JOURNAL_ABSCHLAG, 'JOURNAL_ABSCHLAG – Algorithmus offen.'),
@@ -145,23 +154,19 @@ def seed_registry() -> None:
         (KEY_KASSE_ABSCHLUSS,  'KASSE_ABSCHLUSS – offen.'),
         (KEY_VERTRETER_ABR,    'VERTRETER_ABR – offen.'),
         (KEY_LOGIN,            'LOGIN – offen.'),
-        # *_LOG-Tabellen
-        (KEY_ADRESSEN_LOG,                'ADRESSEN_LOG – offen.'),
-        (KEY_ARTIKEL_LOG,
-         'ARTIKEL_LOG – Format BLOB ~500-650 Bytes, Praefix '
-         '8p4K/8q/f. Phase 5b haengt davon ab.'),
-        (KEY_ARTIKEL_SCHNELLZUGRIFF_LOG,  'ARTIKEL_SCHNELLZUGRIFF_LOG – offen.'),
-        (KEY_BENUTZERRECHTE_LOG,          'BENUTZERRECHTE_LOG – offen.'),
-        (KEY_KASSE_LOG,                   'KASSE_LOG – offen.'),
-        (KEY_MITARBEITER_LOG,             'MITARBEITER_LOG – offen.'),
-        (KEY_NUMMERN_LOG,
-         'NUMMERN_LOG – ARTNUM-Vergabe schreibt hier. Phase 5b '
-         'haengt davon ab.'),
-        (KEY_REGISTRY_LOG,                'REGISTRY_LOG – offen.'),
-        (KEY_RKSV_LOG,                    'RKSV_LOG (AT-Kassenpruefung) – offen.'),
-        (KEY_TSE_LOG,                     'TSE_LOG – offen.'),
-        (KEY_WARENGRUPPEN_LOG,            'WARENGRUPPEN_LOG – offen.'),
-        (KEY_ZAHLUNGSARTEN_LOG,           'ZAHLUNGSARTEN_LOG – offen.'),
+        # *_LOG-Tabellen (XT-eigener Algorithmus, HMAC-SHA-256)
+        (KEY_ADRESSEN_LOG,                _LOG_BESCHR),
+        (KEY_ARTIKEL_LOG,                 _LOG_BESCHR),
+        (KEY_ARTIKEL_SCHNELLZUGRIFF_LOG,  _LOG_BESCHR),
+        (KEY_BENUTZERRECHTE_LOG,          _LOG_BESCHR),
+        (KEY_KASSE_LOG,                   _LOG_BESCHR),
+        (KEY_MITARBEITER_LOG,             _LOG_BESCHR),
+        (KEY_NUMMERN_LOG,                 _LOG_BESCHR),
+        (KEY_REGISTRY_LOG,                _LOG_BESCHR),
+        (KEY_RKSV_LOG,                    _LOG_BESCHR),
+        (KEY_TSE_LOG,                     _LOG_BESCHR),
+        (KEY_WARENGRUPPEN_LOG,            _LOG_BESCHR),
+        (KEY_ZAHLUNGSARTEN_LOG,           _LOG_BESCHR),
     ]
     for k, beschr in eintraege:
         if _konfig.get(k) in (None, ''):
@@ -197,34 +202,17 @@ def journal_hashsum(concat_md5_strings: str) -> str:
     ).hexdigest().upper()
 
 
-# ── ARTIKEL_LOG (noch nicht implementiert) ─────────────────────────
-
-def artikel_log_hashsum(*_args, **_kwargs) -> bytes:
-    """Stub fuer den ARTIKEL_LOG-HASHSUM-Algorithmus. Sobald Salt + Algo
-    aus cao_faktura.exe extrahiert sind:
-
-    1. Salt unter :data:`KEY_ARTIKEL_LOG` in DORFKERN_KONFIG hinterlegen
-    2. Diese Funktion implementieren
-    3. Phase 5b (Stammartikel-Anlage) freischalten
-
-    Workaround bis dahin: keine Schreibvorgaenge auf ARTIKEL/ARTIKEL_LOG;
-    Stammartikel-Anlage erfolgt manuell in der CAO-GUI, nur die
-    Lieferantenpreis-Verknuepfung wird automatisiert (Phase 5a).
-    """
-    raise NotImplementedError(
-        'ARTIKEL_LOG-HASHSUM-Algorithmus noch nicht extrahiert. '
-        f'Salt unter DORFKERN_KONFIG-Schluessel {KEY_ARTIKEL_LOG!r} '
-        'hinterlegen, sobald aus cao_faktura.exe bekannt; '
-        'dann diese Funktion implementieren.'
-    )
-
-
-# ── NUMMERN_LOG (noch nicht implementiert) ─────────────────────────
-
-def nummern_log_hashsum(*_args, **_kwargs) -> bytes:
-    """Stub – Algorithmus identisch oder ähnlich zu ARTIKEL_LOG."""
-    raise NotImplementedError(
-        'NUMMERN_LOG-HASHSUM-Algorithmus noch nicht extrahiert. '
-        f'Salt unter DORFKERN_KONFIG-Schluessel {KEY_NUMMERN_LOG!r} '
-        'hinterlegen, sobald aus cao_faktura.exe bekannt.'
-    )
+# ── *_LOG-Tabellen ─────────────────────────────────────────────────
+#
+# Fuer ARTIKEL_LOG, NUMMERN_LOG, ADRESSEN_LOG, MITARBEITER_LOG,
+# WARENGRUPPEN_LOG, BENUTZERRECHTE_LOG, REGISTRY_LOG etc. ist der
+# CAO-Algorithmus nicht reproduzierbar (DCPcrypt + UniDAC). CAO
+# validiert die Kette dort aber auch nicht zur Laufzeit
+# (kein SELECT auf *_LOG.HASHSUM in saemtlichen CAO-Binaries).
+# Wir schreiben unsere eigenen HASHSUMs ueber HMAC-SHA-256 +
+# XT-Magic-Prefix — siehe :mod:`common.cao_log_hashsum`.
+#
+# Die Salts pro Tabelle sind hier (Konfig-Schluessel ``KEY_*_LOG``)
+# definiert und werden vom XT-Algorithmus als HMAC-Key benutzt. Salts
+# liegen in ``DORFKERN_KONFIG`` (Kategorie ``CAO_HASH_SALT``), Werte
+# selbst NIE im Code. Pro Instanz frei waehlbar.
