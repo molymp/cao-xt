@@ -485,8 +485,13 @@ async function detailZeigen(recId) {
                 onclick="syncPlan(${e.REC_ID})">
           🧪 Sync-Plan anzeigen
         </button>
+        <button class="btn btn-primary btn-sm" id="btn-sync-cao-${e.REC_ID}"
+                onclick="syncCao(${e.REC_ID})"
+                title="Schreibt die Lieferantenpreise nach CAO. Stammartikel-Anlage ist separat (Phase 5b).">
+          🚀 In CAO einbuchen (ARTIKEL_PREIS)
+        </button>
         <span class="muted" id="cao-match-hint-${e.REC_ID}"
-              style="font-size:12px;">read-only · keine CAO-Schreibvorgänge</span>
+              style="font-size:12px;">Vorschau erst, dann Bestätigung</span>
       </div>
       <div id="sync-plan-${e.REC_ID}" style="display:none;"></div>
       <div id="cao-match-summary-${e.REC_ID}"></div>
@@ -681,6 +686,85 @@ async function syncPlan(recId) {
   `;
   tgt.innerHTML = html;
   tgt.style.display = '';
+}
+
+// ── In CAO einbuchen (Phase 5a: ARTIKEL_PREIS-Sync) ───────────────
+async function syncCao(recId) {
+  const btn  = document.getElementById('btn-sync-cao-' + recId);
+  const hint = document.getElementById('cao-match-hint-' + recId);
+  if (!btn) return;
+
+  // Schritt 1: Dry-Run – Vorschau holen
+  btn.disabled = true;
+  hint.textContent = 'Vorschau wird berechnet …';
+  let plan;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-cao`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: true }),
+    });
+    plan = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    hint.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  btn.disabled = false;
+  if (!plan.ok) {
+    hint.textContent = 'Fehler: ' + (plan.msg || '');
+    return;
+  }
+
+  // Schritt 2: Bestätigung
+  const txt =
+    `In CAO einbuchen?\n\n` +
+    `  ${plan.inserted}× INSERT (neue Lieferantenpreis-Zeile)\n` +
+    `  ${plan.updated}× UPDATE (bestehende Zeile aktualisieren)\n` +
+    `  ${plan.unchanged}× unverändert (nur Status-Update)\n` +
+    `  ${plan.skipped}× übersprungen (kein Match / schon eingebucht)\n\n` +
+    `Insgesamt ${plan.inserted + plan.updated} Schreibvorgänge auf ARTIKEL_PREIS. ` +
+    `Stammartikel werden NICHT angelegt.`;
+  if (!confirm(txt)) {
+    hint.textContent = 'abgebrochen';
+    return;
+  }
+
+  // Schritt 3: Live-Sync
+  btn.disabled = true;
+  hint.textContent = 'Schreibe nach CAO …';
+  let res;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-cao`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: false }),
+    });
+    res = await r.json();
+  } catch (e) {
+    btn.disabled = false;
+    hint.textContent = 'Fehler: ' + e.message;
+    return;
+  }
+  btn.disabled = false;
+  if (!res.ok) {
+    hint.textContent = 'Fehler: ' + (res.msg || '');
+    return;
+  }
+  const fz = res.fehler ? res.fehler.length : 0;
+  hint.textContent =
+    `✓ ${res.inserted} INSERT, ${res.updated} UPDATE, ` +
+    `${res.unchanged} unverändert, ${res.skipped} übersprungen` +
+    (fz > 0 ? `, ${fz} Fehler` : '');
+  toast(
+    `CAO-Sync: ${res.inserted}+${res.updated} geschrieben` +
+    (fz > 0 ? `, ${fz} Fehler` : ''),
+    fz > 0 ? 'err' : 'ok'
+  );
+  if (fz > 0) console.warn('CAO-Sync-Fehler:', res.fehler);
+  // Match-Tabelle neu laden, damit die jetzt 'in_cao'-Positionen korrekt
+  // angezeigt werden (wurde in cao_match_positionen schon erkannt).
+  caoMatch(recId);
 }
 
 // ── Manuelle Position-Zuordnung ───────────────────────────────────

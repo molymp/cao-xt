@@ -1771,6 +1771,183 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
     }
 
 
+def cao_sync_artikel_preis(bestellung_rec_id: int,
+                            dry_run: bool = False,
+                            ma_name: Optional[str] = None) -> dict:
+    """Schreibt die Lieferantenpreis-Verknuepfungen einer Bestellung
+    nach CAO (Phase 5a). Nur ``ARTIKEL_PREIS``-Tabelle, KEIN
+    Stammartikel-Anlegen (Phase 5b).
+
+    Pro Position mit aktiver Match-Quelle (barcode/lieferant/global/
+    manuell) und Status ``neu`` oder ``matched``:
+
+        UNVERAENDERT  → nichts schreiben, Status auf 'in_cao' setzen
+        UPDATE        → UPDATE ARTIKEL_PREIS SET PREIS, VPE, GEAEND,
+                        GEAEND_NAME (Match auf
+                        ARTIKEL_ID + ADRESS_ID + PREIS_TYP=5 + BESTNUM)
+        INSERT        → INSERT INTO ARTIKEL_PREIS – Defaults:
+                        PT2='EK', PREIS_TYP=5, GUELTIG_VON=NULL,
+                        VPE, GEAEND=NOW(), GEAEND_NAME=ma_name
+        NICHT_MOEGLICH → Skip mit Begruendung
+
+    Positionen mit Status ``in_cao``, ``neu_anlegen``, ``fehler`` oder
+    Match-Quelle ``kein`` werden uebersprungen.
+
+    Returns:
+        ``{'ok', 'dry_run', 'updated', 'inserted', 'unchanged',
+            'skipped', 'fehler': [{pos_nr, artnr, msg}], 'aktionen'}``
+    """
+    head = bestellung_holen(bestellung_rec_id)
+    if not head:
+        return {'ok': False, 'msg': 'Bestellung nicht gefunden.'}
+    matches = cao_match_positionen(bestellung_rec_id)
+    if not matches:
+        return {'ok': False, 'msg': 'Bestellung hat keine Positionen.'}
+
+    n_upd = n_ins = n_unch = n_skip = 0
+    fehler: list[dict] = []
+    aktionen: list[dict] = []
+
+    for m in matches:
+        pos_id = m.get('pos_rec_id')
+        pos_nr = m.get('pos_nr')
+        artnr  = m.get('artikel_nr_lief') or ''
+        pa     = m.get('preis_aktion') or {}
+        art    = pa.get('art')
+        cao    = m.get('cao') or {}
+        pos_status_alt = (m.get('pos_status') or 'neu').lower()
+
+        if pos_status_alt in ('in_cao', 'neu_anlegen', 'fehler'):
+            n_skip += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                              'grund': f'Status={pos_status_alt}'})
+            continue
+        if m.get('match_quelle') == 'kein':
+            n_skip += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                              'grund': 'kein CAO-Match'})
+            continue
+        if art == 'NICHT_MOEGLICH':
+            n_skip += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                              'grund': pa.get('grund') or 'nicht moeglich'})
+            continue
+        if art not in ('UNVERAENDERT', 'UPDATE', 'INSERT'):
+            n_skip += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                              'grund': 'unbekannte Aktion'})
+            continue
+
+        artikel_id = int(cao.get('rec_id') or 0)
+        adress_id  = int(head.get('CAO_LIEF_ID') or 0)
+        if not (artikel_id and adress_id) and art != 'UNVERAENDERT':
+            n_skip += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                              'grund': 'CAO-Lief- oder Artikel-ID fehlt'})
+            continue
+
+        preis = float(m.get('preis_netto') or 0)
+        vpe   = m.get('vpe_lief')
+
+        if dry_run:
+            if art == 'UNVERAENDERT': n_unch += 1
+            elif art == 'UPDATE':     n_upd += 1
+            elif art == 'INSERT':     n_ins += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': art,
+                              'artnr': artnr, 'cao_id': artikel_id,
+                              'preis': preis, 'vpe': vpe,
+                              'grund': pa.get('grund')})
+            continue
+
+        # Live-Schreiben
+        try:
+            if art == 'UNVERAENDERT':
+                n_unch += 1
+            elif art == 'UPDATE':
+                with get_db_transaction() as cur:
+                    cur.execute("""
+                        UPDATE ARTIKEL_PREIS
+                           SET PREIS       = %s,
+                               VPE         = %s,
+                               GEAEND      = NOW(),
+                               GEAEND_NAME = %s
+                         WHERE ARTIKEL_ID = %s
+                           AND ADRESS_ID  = %s
+                           AND PREIS_TYP  = 5
+                           AND BESTNUM    = %s
+                    """, (preis, vpe, (ma_name or 'CAO-XT')[:100],
+                          artikel_id, adress_id, artnr))
+                n_upd += 1
+            elif art == 'INSERT':
+                with get_db_transaction() as cur:
+                    cur.execute("""
+                        INSERT INTO ARTIKEL_PREIS
+                          (ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PT2,
+                           BESTNUM, PREIS, VPE,
+                           GUELTIG_VON, GUELTIG_BIS,
+                           GEAEND, GEAEND_NAME)
+                        VALUES (%s, %s, 5, 'EK', %s, %s, %s,
+                                NULL, NULL, NOW(), %s)
+                    """, (artikel_id, adress_id, artnr, preis, vpe,
+                          (ma_name or 'CAO-XT')[:100]))
+                n_ins += 1
+            with get_db_transaction() as cur:
+                cur.execute("""
+                    UPDATE XT_EINKAUF_BESTELLPOS
+                       SET STATUS = 'in_cao'
+                     WHERE REC_ID = %s
+                """, (pos_id,))
+            aktionen.append({'pos_nr': pos_nr, 'art': art,
+                              'artnr': artnr, 'cao_id': artikel_id,
+                              'preis': preis, 'vpe': vpe})
+        except Exception as exc:
+            log.exception('cao_sync_artikel_preis pos %s', pos_nr)
+            fehler.append({'pos_nr': pos_nr, 'artnr': artnr,
+                            'msg': str(exc)[:200]})
+            try:
+                with get_db_transaction() as cur:
+                    cur.execute("""
+                        UPDATE XT_EINKAUF_BESTELLPOS
+                           SET STATUS = 'fehler',
+                               ANMERKUNG = %s
+                         WHERE REC_ID = %s
+                    """, (f'CAO-Sync: {str(exc)[:240]}', pos_id))
+            except Exception:
+                pass
+
+    # Bestellung-Status: nur wenn keine Position mehr offen ist
+    if not dry_run:
+        try:
+            with get_db_transaction() as cur:
+                cur.execute("""
+                    SELECT COUNT(*) AS n_offen
+                    FROM XT_EINKAUF_BESTELLPOS
+                    WHERE BEST_REC_ID = %s
+                      AND STATUS NOT IN ('in_cao', 'neu_anlegen', 'fehler')
+                """, (bestellung_rec_id,))
+                offen = int((cur.fetchone() or {'n_offen': 0})['n_offen'])
+                if offen == 0:
+                    cur.execute("""
+                        UPDATE XT_EINKAUF_BESTELLUNG
+                           SET STATUS = 'in_cao'
+                         WHERE REC_ID = %s
+                    """, (bestellung_rec_id,))
+        except Exception as exc:
+            log.warning('Bestellung-Status-Update %s: %s',
+                        bestellung_rec_id, exc)
+
+    return {
+        'ok':        True,
+        'dry_run':   dry_run,
+        'updated':   n_upd,
+        'inserted':  n_ins,
+        'unchanged': n_unch,
+        'skipped':   n_skip,
+        'fehler':    fehler,
+        'aktionen':  aktionen,
+    }
+
+
 def position_zuordnen(pos_rec_id: int,
                       cao_artikel_rec_id: Optional[int] = None,
                       neu_anlegen: bool = False,
