@@ -138,11 +138,23 @@ def run_migration() -> None:
                   AND COLUMN_NAME  = 'STATUS'
             """)
             row = cur.fetchone()
-            if row and 'neu_anlegen' not in (row.get('COLUMN_TYPE') or ''):
+            ctype = (row or {}).get('COLUMN_TYPE') or ''
+            if row and 'neu_anlegen' not in ctype:
                 cur.execute("""
                     ALTER TABLE XT_EINKAUF_BESTELLPOS
                     MODIFY COLUMN STATUS
                       ENUM('neu','matched','in_cao','fehler','neu_anlegen')
+                      NOT NULL DEFAULT 'neu'
+                """)
+                ctype = "enum('neu','matched','in_cao','fehler','neu_anlegen')"
+            if 'manuell_klaeren' not in ctype:
+                # Positionen ohne Lieferanten-Stammdaten (Cache leer)
+                # bleiben fuer manuelle Nacharbeit liegen.
+                cur.execute("""
+                    ALTER TABLE XT_EINKAUF_BESTELLPOS
+                    MODIFY COLUMN STATUS
+                      ENUM('neu','matched','in_cao','fehler',
+                           'neu_anlegen','manuell_klaeren')
                       NOT NULL DEFAULT 'neu'
                 """)
             cur.execute("""
@@ -244,6 +256,48 @@ def run_migration() -> None:
                     ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                   COMMENT='Einkauf: Bestellpositionen aus dem Parser (Phase 2)'
+            """)
+
+            # Phase 5b: Spalte WARENGRUPPE_ID fuer User-Auswahl pro
+            # neu-anzulegender Position (CAO-Pflichtfeld). NULL bis
+            # User explizit eine Warengruppe waehlt; Sync-Trigger
+            # blockiert bei pos_status='neu_anlegen' + WG_ID=NULL.
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = 'XT_EINKAUF_BESTELLPOS'
+                  AND COLUMN_NAME  = 'WARENGRUPPE_ID'
+            """)
+            if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                cur.execute("""
+                    ALTER TABLE XT_EINKAUF_BESTELLPOS
+                    ADD COLUMN WARENGRUPPE_ID INT NULL
+                    AFTER ARTIKEL_REC_ID
+                """)
+
+            # Phase 5b: XT_ARTIKEL_VK_KONTROLLE — Audit-Liste der
+            # Artikel die nach einem CAO-Sync (Anlage oder EK-Aenderung)
+            # eine VK-Pruefung brauchen. UI in Orga/Artikel/Preispflege
+            # zeigt offene Eintraege als „⚠ VK-Kontrolle ausstehend".
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_ARTIKEL_VK_KONTROLLE (
+                  REC_ID         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                  ARTIKEL_REC_ID INT          NOT NULL,
+                  GRUND          ENUM('neu','ek_geaendert')
+                                  NOT NULL DEFAULT 'neu',
+                  ALT_EK         DECIMAL(12,4) NULL,
+                  NEU_EK         DECIMAL(12,4) NULL,
+                  QUELLE_BEST    INT UNSIGNED  NULL,
+                  ANGELEGT_AT    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  ANGELEGT_VON   INT           NULL,
+                  ERLEDIGT_AT    DATETIME      NULL,
+                  ERLEDIGT_VON   INT           NULL,
+                  ANMERKUNG      TEXT          NULL,
+                  INDEX idx_artikel (ARTIKEL_REC_ID),
+                  INDEX idx_offen (ERLEDIGT_AT, GRUND),
+                  INDEX idx_quelle_best (QUELLE_BEST)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Phase 5b: VK-Kontrolle bei neu angelegtem Artikel oder EK-Aenderung'
             """)
         log.info("Migration: XT_EINKAUF_LIEFERANT/BESTELLUNG/BESTELLPOS geprueft.")
     except Exception as exc:
@@ -1817,7 +1871,8 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
         cao    = m.get('cao') or {}
         pos_status_alt = (m.get('pos_status') or 'neu').lower()
 
-        if pos_status_alt in ('in_cao', 'neu_anlegen', 'fehler'):
+        if pos_status_alt in ('in_cao', 'neu_anlegen', 'fehler',
+                               'manuell_klaeren'):
             n_skip += 1
             aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
                               'grund': f'Status={pos_status_alt}'})
@@ -1923,7 +1978,8 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
                     SELECT COUNT(*) AS n_offen
                     FROM XT_EINKAUF_BESTELLPOS
                     WHERE BEST_REC_ID = %s
-                      AND STATUS NOT IN ('in_cao', 'neu_anlegen', 'fehler')
+                      AND STATUS NOT IN ('in_cao', 'neu_anlegen',
+                                          'fehler', 'manuell_klaeren')
                 """, (bestellung_rec_id,))
                 offen = int((cur.fetchone() or {'n_offen': 0})['n_offen'])
                 if offen == 0:
@@ -1951,23 +2007,30 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
 def position_zuordnen(pos_rec_id: int,
                       cao_artikel_rec_id: Optional[int] = None,
                       neu_anlegen: bool = False,
+                      manuell_klaeren: bool = False,
                       anmerkung: Optional[str] = None,
                       ma_id: Optional[int] = None) -> dict:
     """Manuelle Zuordnung einer Bestellposition.
 
-    Drei Modi:
-        cao_artikel_rec_id != None  → STATUS='matched', ARTIKEL_REC_ID setzen
-        neu_anlegen=True            → STATUS='neu_anlegen', ARTIKEL_REC_ID=NULL
-        sonst                       → Reset auf STATUS='neu', ARTIKEL_REC_ID=NULL
+    Modi:
+        cao_artikel_rec_id != None  → STATUS='matched', ARTIKEL_REC_ID
+        neu_anlegen=True            → STATUS='neu_anlegen' (Phase 5b
+                                       wird Artikel anlegen)
+        manuell_klaeren=True        → STATUS='manuell_klaeren' (kein
+                                       Auto-Sync; Lieferant kontaktieren,
+                                       Stammdaten manuell ergaenzen)
+        sonst                       → Reset auf STATUS='neu'
 
-    Schreibt nur in XT-Tabellen, NICHT in CAO. Die ARTIKEL_PREIS-
-    Verknuepfung in CAO erfolgt erst beim Phase-5-Sync.
+    Schreibt nur in XT-Tabellen, NICHT in CAO.
     """
     if cao_artikel_rec_id is not None:
         new_status = 'matched'
         artrec = int(cao_artikel_rec_id)
     elif neu_anlegen:
         new_status = 'neu_anlegen'
+        artrec = None
+    elif manuell_klaeren:
+        new_status = 'manuell_klaeren'
         artrec = None
     else:
         new_status = 'neu'
@@ -2153,7 +2216,9 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         # Manuelle User-Zuordnung hat hoechste Prioritaet.
         man_status = (p.get('STATUS') or '').lower()
         man_rec    = p.get('ARTIKEL_REC_ID')
-        if man_status == 'neu_anlegen':
+        if man_status == 'manuell_klaeren':
+            match_quelle = 'manuell_klaeren'
+        elif man_status == 'neu_anlegen':
             match_quelle = 'neu_anlegen'
         elif man_rec:
             try:
@@ -2363,6 +2428,17 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         email_bez = p.get('BESCHREIBUNG_LIEF') or ''
         bez_aktiv = cache_bez.strip() or email_bez.strip()
 
+        # WARENGRUPPE-Vorschlag fuer neu-anzulegende Positionen
+        # (Phase 5b). Nur wenn die Vorschlags-Liste konsistent ist
+        # (alle Vorschlaege haben dieselbe WG), wird der Wert als
+        # Vorschlag gemeldet — der User muss bestaetigen.
+        wg_vorschlag_id = None
+        if vorschlaege and not cao_block:
+            wgs = {v.get('warengruppe') for v in vorschlaege
+                    if v.get('warengruppe')}
+            if len(wgs) == 1:
+                wg_vorschlag_id = next(iter(wgs))
+
         out.append({
             'pos_rec_id':       p.get('REC_ID'),
             'pos_nr':           p.get('POS_NR'),
@@ -2382,6 +2458,19 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             'lief_cache':       lief_block,
             'vpe_lief':         vpe_lief,
             'preis_aktion':     preis_aktion,
+            # Stammdaten-Vollstaendigkeits-Check fuer Phase 5b:
+            # Position kann nur dann sauber als neuer CAO-Artikel
+            # angelegt werden, wenn der Lieferanten-Cache zumindest
+            # Bezeichnung + Stueck-EAN liefert. Sonst „manuell klaeren".
+            'kann_angelegt_werden': bool(
+                lief_cache
+                and (lief_cache.get('BEZEICHNUNG') or '').strip()
+                and (lief_cache.get('BARCODE_STUECK') or '').strip()
+            ),
+            # Phase 5b: User-gewaehlte WARENGRUPPE_ID (NULL bis
+            # explizit gesetzt). + Vorschlag aus Match-Hits.
+            'warengruppe_id':    p.get('WARENGRUPPE_ID'),
+            'wg_vorschlag_id':   wg_vorschlag_id,
         })
     return out
 
@@ -2405,7 +2494,7 @@ def bestellung_holen(rec_id: int) -> Optional[dict]:
             cur.execute("""
                 SELECT REC_ID, POS_NR, ARTIKEL_NR_LIEF, BESCHREIBUNG_LIEF,
                        MENGE, PREIS_NETTO, ZEILEN_BETRAG, ARTIKEL_REC_ID,
-                       STATUS, ANMERKUNG
+                       WARENGRUPPE_ID, STATUS, ANMERKUNG
                 FROM XT_EINKAUF_BESTELLPOS
                 WHERE BEST_REC_ID = %s
                 ORDER BY POS_NR
@@ -2513,3 +2602,446 @@ def poller_status_schreiben(*, gmail_ok: bool,
                   int(neu_gefunden), hostname))
     except Exception as exc:
         log.warning("poller_status_schreiben: %s", exc)
+
+
+# ── Phase 5b: Stammartikel-Anlage in CAO ──────────────────────────────
+
+def cao_warengruppen_baum() -> dict:
+    """Liefert die CAO-WARENGRUPPEN als Baum + Flachliste (fuer UI).
+
+    Returns::
+
+        {
+          'baum':  [ {id, name, kinder: [...], def_ekto, def_akto,
+                      steuer_code, vk5_faktor}, ... ],
+          'flach': [ {id, name, top_id, def_ekto, def_akto,
+                      steuer_code, vk5_faktor}, ... ],
+        }
+
+    Sortierung: SORT-Spalte, dann NAME. Top-Level = TOP_ID = -1.
+    """
+    flach: list[dict] = []
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT ID, TOP_ID, NAME, DEF_EKTO, DEF_AKTO,
+                       STEUER_CODE, VK1_FAKTOR, VK5_FAKTOR, SORT
+                FROM WARENGRUPPEN
+                ORDER BY TOP_ID, SORT, NAME
+            """)
+            for r in cur.fetchall() or []:
+                flach.append({
+                    'id':           int(r['ID']),
+                    'top_id':       int(r['TOP_ID']) if r['TOP_ID'] is not None else -1,
+                    'name':         r['NAME'] or '',
+                    'def_ekto':     r['DEF_EKTO'],
+                    'def_akto':     r['DEF_AKTO'],
+                    'steuer_code':  int(r['STEUER_CODE']) if r['STEUER_CODE'] is not None else 0,
+                    'vk1_faktor':   float(r['VK1_FAKTOR'] or 0),
+                    'vk5_faktor':   float(r['VK5_FAKTOR'] or 0),
+                })
+    except Exception as exc:
+        log.warning('cao_warengruppen_baum: %s', exc)
+        return {'baum': [], 'flach': []}
+
+    # Baum aufbauen: zuerst per ID indexieren, dann Kinder anhaengen.
+    by_id = {n['id']: dict(n, kinder=[]) for n in flach}
+    roots: list[dict] = []
+    for n in flach:
+        node = by_id[n['id']]
+        if n['top_id'] == -1 or n['top_id'] not in by_id:
+            roots.append(node)
+        else:
+            by_id[n['top_id']]['kinder'].append(node)
+    return {'baum': roots, 'flach': flach}
+
+
+def position_warengruppe_setzen(pos_rec_id: int,
+                                 warengruppe_id: Optional[int]) -> dict:
+    """Setzt die WARENGRUPPE_ID einer Bestellposition (Phase 5b).
+
+    ``warengruppe_id=None`` loescht die Auswahl wieder. Validiert die
+    WG-ID gegen ``WARENGRUPPEN`` (verhindert Tippfehler/Phantom-IDs).
+    """
+    try:
+        with get_db_transaction() as cur:
+            if warengruppe_id is not None:
+                cur.execute("SELECT ID FROM WARENGRUPPEN WHERE ID = %s",
+                            (int(warengruppe_id),))
+                if not cur.fetchone():
+                    return {'ok': False,
+                            'msg': f'Warengruppe {warengruppe_id} existiert nicht.'}
+            cur.execute("""
+                UPDATE XT_EINKAUF_BESTELLPOS
+                   SET WARENGRUPPE_ID = %s
+                 WHERE REC_ID = %s
+            """, (int(warengruppe_id) if warengruppe_id is not None else None,
+                  int(pos_rec_id)))
+            if cur.rowcount == 0:
+                return {'ok': False, 'msg': 'Position nicht gefunden.'}
+        return {'ok': True, 'warengruppe_id': warengruppe_id}
+    except Exception as exc:
+        log.exception('position_warengruppe_setzen %s', pos_rec_id)
+        return {'ok': False, 'msg': str(exc)}
+
+
+# ── ARTNUM-Vergabe via REGISTRY ──────────────────────────────────────
+
+def _next_artnum(cur) -> str:
+    """Holt die naechste ARTNUM aus dem REGISTRY-Counter und erhoeht ihn.
+
+    REGISTRY-Eintrag fuer ARTIKELNUMMER:
+      MAINKEY='MAIN\\NUMBERS', NAME='ARTIKELNUMMER',
+      VAL_INT=98 (QUELLE-Code), VAL_INT2=<letzte vergebene Nummer>,
+      VAL_CHAR='000000' (Padding-Format, hier 6-stellig, fuehrende Nullen).
+
+    Aufruf MUSS innerhalb einer Transaktion erfolgen, damit zwei
+    parallele Insert-Threads nicht dieselbe Nummer bekommen.
+    """
+    cur.execute("""
+        SELECT VAL_INT2, VAL_CHAR
+        FROM REGISTRY
+        WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = 'ARTIKELNUMMER'
+        FOR UPDATE
+    """)
+    row = cur.fetchone()
+    if not row:
+        raise RuntimeError(
+            "REGISTRY-Eintrag MAIN\\NUMBERS / ARTIKELNUMMER fehlt — "
+            "CAO Faktura sollte ihn beim ersten Start anlegen."
+        )
+    naechste = int(row['VAL_INT2'] or 0) + 1
+    pad = (row['VAL_CHAR'] or '000000')
+    # Padding-Format: Anzahl '0'-Zeichen ergibt die Stellenanzahl
+    n_stellen = pad.count('0') if pad.count('0') > 0 else 6
+    artnum = f"{naechste:0{n_stellen}d}"
+    cur.execute("""
+        UPDATE REGISTRY
+        SET VAL_INT2 = %s
+        WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = 'ARTIKELNUMMER'
+    """, (naechste,))
+    return artnum
+
+
+# ── ARTIKEL_LOG-CONCAT_WS (aus cao_faktura.exe) ──────────────────────
+
+# Reverse-engineered aus cao_faktura.exe, Offset 0x1300696. Format-
+# Version 'V1', 41 Felder. Diese Formel reproduziert exakt das, was
+# CAO selbst beim Schreiben in ARTIKEL_LOG als HASHSTRING benutzt.
+_ARTIKEL_LOG_HASHSTRING_SQL = """
+SELECT CONCAT_WS('|',
+   'V1', REC_ID, ARTIKEL_ID, IFNULL(ARTNUM,'-'), IFNULL(EK_PREIS,0),
+   IFNULL(VK1,0), IFNULL(VK2,0), IFNULL(VK3,0), IFNULL(VK4,0),
+   IFNULL(VK5,0), SHOP_PREIS_LISTE, VPE, VPE_EK, PR_EINHEIT,
+   INVENTUR_WERT, PROVIS_PROZ, STEUER_CODE, ALTTEIL_FLAG, ME,
+   IFNULL(ERLOES_KTO,0), IFNULL(AUFW_KTO,0), INFO, GEAEND, GEAND_NAME,
+   IFNULL(KURZNAME,''),
+   IFNULL(AKTION_VK1,0), IFNULL(AKTION_VK2,0), IFNULL(AKTION_VK3,0),
+   IFNULL(AKTION_VK4,0), IFNULL(AKTION_VK5,0),
+   IFNULL(AKTION_VON,0), IFNULL(AKTION_BIS,0),
+   IFNULL(STAFEL_MENGE2,0), IFNULL(STAFEL_PROZ2,0),
+   IFNULL(STAFEL_MENGE3,0), IFNULL(STAFEL_PROZ3,0),
+   IFNULL(STAFEL_MENGE4,0), IFNULL(STAFEL_PROZ4,0),
+   IFNULL(STAFEL_MENGE5,0), IFNULL(STAFEL_PROZ5,0),
+   IFNULL(STEUER_SATZ,0)
+) AS HASHSTRING
+FROM ARTIKEL_LOG WHERE REC_ID = %s
+"""
+
+
+def cao_sync_artikel(bestellung_rec_id: int,
+                      dry_run: bool = False,
+                      ma_id: Optional[int] = None,
+                      ma_name: Optional[str] = None) -> dict:
+    """Phase 5b: Legt Stammartikel in CAO an + ARTIKEL_LOG-Snapshot
+    + XT_ARTIKEL_VK_KONTROLLE-Eintrag.
+
+    Pro Position mit STATUS='neu_anlegen', WARENGRUPPE_ID gesetzt und
+    Lief-Cache vollstaendig (BEZEICHNUNG + BARCODE_STUECK):
+
+        1. ARTNUM aus REGISTRY-Counter holen + UPDATE
+        2. WARENGRUPPE-Defaults laden (DEF_EKTO/AKTO, STEUER_CODE,
+           VK5_FAKTOR)
+        3. INSERT INTO ARTIKEL — Defaults aus WG, Daten aus
+           Position + Lief-Cache, HASHSUM='$$' (CAO-Default)
+        4. ARTIKEL_LOG-CONCAT_WS holen (V1-Formel von CAO)
+        5. HASHSUM via cao_log_hashsum.compute('ARTIKEL_LOG', ...)
+        6. INSERT INTO ARTIKEL_LOG mit XT-HASHSUM
+        7. UPDATE XT_EINKAUF_BESTELLPOS: STATUS='matched',
+           ARTIKEL_REC_ID=neue ID — damit der nachfolgende
+           ARTIKEL_PREIS-Sync (Phase 5a) ihn als Match aufgreift
+        8. XT_ARTIKEL_VK_KONTROLLE-Eintrag mit GRUND='neu' anlegen
+           (User pflegt VK manuell nach)
+
+    Positionen ohne WG_ID werden als FEHLER gemeldet (User soll erst
+    waehlen). Positionen mit Lief-Cache-Luecken werden uebersprungen.
+
+    Returns::
+
+        {'ok': bool,
+         'dry_run': bool,
+         'angelegt': int,                # erfolgreiche Anlagen
+         'uebersprungen': int,
+         'fehler': [{pos_nr, artnr, msg}, ...],
+         'aktionen': [...],              # detail-log
+         'artikel_rec_ids': [int, ...]   # neu erzeugte ARTIKEL.REC_IDs
+        }
+    """
+    from common import cao_log_hashsum  # lokaler Import (vermeidet Zyklus)
+
+    head = bestellung_holen(bestellung_rec_id)
+    if not head:
+        return {'ok': False, 'msg': 'Bestellung nicht gefunden.'}
+    matches = cao_match_positionen(bestellung_rec_id)
+    if not matches:
+        return {'ok': False, 'msg': 'Bestellung hat keine Positionen.'}
+
+    n_neu = n_skip = 0
+    fehler: list[dict] = []
+    aktionen: list[dict] = []
+    neue_ids: list[int] = []
+
+    # Cache: WARENGRUPPEN-Defaults pro WG_ID, einmal je Sync laden
+    wg_defaults: dict[int, dict] = {}
+
+    def _wg_defaults(cur, wg_id: int) -> Optional[dict]:
+        if wg_id in wg_defaults:
+            return wg_defaults[wg_id]
+        cur.execute("""
+            SELECT ID, NAME, DEF_EKTO, DEF_AKTO, STEUER_CODE,
+                   VK1_FAKTOR, VK5_FAKTOR
+            FROM WARENGRUPPEN WHERE ID = %s
+        """, (wg_id,))
+        wg_defaults[wg_id] = cur.fetchone()
+        return wg_defaults[wg_id]
+
+    # MWST-Saetze aus REGISTRY (MAIN\MWST/NAME='0','1','2',...) fuer
+    # ARTIKEL_LOG.STEUER_SATZ (CAO speichert dort den prozentualen
+    # Wert, nicht nur den Code).
+    mwst_map: dict[int, float] = {}
+    try:
+        with get_db() as cur:
+            cur.execute("""SELECT NAME, VAL_DOUBLE FROM REGISTRY
+                           WHERE MAINKEY = 'MAIN\\\\MWST'
+                             AND VAL_DOUBLE IS NOT NULL""")
+            for r in cur.fetchall() or []:
+                try:
+                    mwst_map[int(r['NAME'])] = float(r['VAL_DOUBLE'])
+                except (TypeError, ValueError):
+                    pass
+    except Exception as exc:
+        log.warning('mwst-map laden: %s', exc)
+
+    for m in matches:
+        pos_id = m.get('pos_rec_id')
+        pos_nr = m.get('pos_nr')
+        artnr  = m.get('artikel_nr_lief') or ''
+        pos_status = (m.get('pos_status') or 'neu').lower()
+
+        # Nur Positionen mit explizitem 'neu_anlegen'-Auftrag
+        if pos_status != 'neu_anlegen':
+            n_skip += 1
+            continue
+        # Stammdaten muessen vorhanden sein
+        if not m.get('kann_angelegt_werden'):
+            n_skip += 1
+            aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                              'grund': 'Lief-Cache unvollstaendig'})
+            continue
+        # Warengruppe muss gesetzt sein
+        wg_id = m.get('warengruppe_id')
+        if not wg_id:
+            fehler.append({'pos_nr': pos_nr, 'artnr': artnr,
+                           'msg': 'Warengruppe nicht gewaehlt'})
+            n_skip += 1
+            continue
+
+        lief_block = m.get('lief_cache') or {}
+        bez       = (lief_block.get('bezeichnung') or
+                     m.get('bezeichnung_lief') or '')[:255]
+        barcode_s = lief_block.get('barcode_stueck') or ''
+        barcode_k = lief_block.get('barcode_kt') or ''
+        ek_preis  = float(m.get('preis_netto') or 0)
+        vpe_ek    = m.get('vpe_lief')
+
+        try:
+            with get_db_transaction() as cur:
+                # 1. WG-Defaults laden
+                wg = _wg_defaults(cur, int(wg_id))
+                if not wg:
+                    raise RuntimeError(f'Warengruppe {wg_id} verschwunden')
+
+                # VK5: nur wenn Faktor > 0 setzen, sonst 0 lassen
+                vk5_faktor = float(wg.get('VK5_FAKTOR') or 0)
+                vk5 = round(ek_preis * (1 + vk5_faktor), 4) \
+                       if vk5_faktor > 0 else 0
+
+                # 2. ARTNUM holen (nur Live-Sync; Dry-Run liest nur)
+                if dry_run:
+                    cur.execute("""
+                        SELECT VAL_INT2, VAL_CHAR FROM REGISTRY
+                        WHERE MAINKEY='MAIN\\\\NUMBERS' AND NAME='ARTIKELNUMMER'
+                    """)
+                    row = cur.fetchone() or {}
+                    naechste = int(row.get('VAL_INT2') or 0) + 1
+                    pad = (row.get('VAL_CHAR') or '000000')
+                    n_stellen = pad.count('0') if pad.count('0') > 0 else 6
+                    artnum = f"{naechste:0{n_stellen}d}"
+                    aktionen.append({
+                        'pos_nr': pos_nr, 'art': 'DRY_RUN',
+                        'artnum': artnum, 'wg_id': int(wg_id),
+                        'wg_name': wg.get('NAME'),
+                        'matchcode': bez,
+                        'ek_preis': ek_preis, 'vk5': vk5,
+                        'barcode': barcode_s,
+                    })
+                    n_neu += 1
+                    continue
+
+                artnum = _next_artnum(cur)
+
+                # 3. ARTIKEL-INSERT
+                cur.execute("""
+                    INSERT INTO ARTIKEL
+                      (ARTNUM, MATCHCODE, KAS_NAME, KURZNAME,
+                       WARENGRUPPE, BARCODE, BARCODE2,
+                       EK_PREIS, VK1, VK2, VK3, VK4, VK5,
+                       VPE_EK, STEUER_CODE,
+                       ERLOES_KTO, AUFW_KTO,
+                       ERSTELLT, ERST_NAME)
+                    VALUES
+                      (%s, %s, %s, %s,
+                       %s, %s, %s,
+                       %s, 0, 0, 0, 0, %s,
+                       %s, %s,
+                       %s, %s,
+                       NOW(), %s)
+                """, (
+                    artnum, bez, bez[:150], bez[:150],
+                    int(wg_id),
+                    barcode_s or None,
+                    barcode_k or None,
+                    ek_preis,
+                    vk5,
+                    int(vpe_ek) if vpe_ek else 1,
+                    wg.get('STEUER_CODE') or 2,
+                    wg.get('DEF_EKTO'),
+                    wg.get('DEF_AKTO'),
+                    (ma_name or 'XT-Einkauf')[:100],
+                ))
+                artikel_id = cur.lastrowid
+                neue_ids.append(int(artikel_id))
+
+                # 4. ARTIKEL_LOG-INSERT (HASHSUM zunaechst leer; wird in
+                # Schritt 7 ueberschrieben)
+                steuer_satz = mwst_map.get(int(wg.get('STEUER_CODE') or 0), 0.0)
+                cur.execute("""
+                    INSERT INTO ARTIKEL_LOG
+                      (ARTIKEL_ID, ARTNUM, EK_PREIS,
+                       VK1, VK2, VK3, VK4, VK5,
+                       VPE, VPE_EK, PR_EINHEIT, INVENTUR_WERT, PROVIS_PROZ,
+                       STEUER_CODE, ALTTEIL_FLAG, ME,
+                       ERLOES_KTO, AUFW_KTO,
+                       INFO, GEAEND, GEAND_NAME,
+                       KURZNAME, STEUER_SATZ,
+                       HASHSUM)
+                    SELECT
+                      a.REC_ID, a.ARTNUM, a.EK_PREIS,
+                      a.VK1, a.VK2, a.VK3, a.VK4, a.VK5,
+                      a.VPE, a.VPE_EK, a.PR_EINHEIT, a.INVENTUR_WERT, a.PROVIS_PROZ,
+                      a.STEUER_CODE, a.ALTTEIL_FLAG,
+                      IFNULL(m.BEZEICHNUNG, '-'),
+                      a.ERLOES_KTO, a.AUFW_KTO,
+                      'Artikel angelegt', NOW(), %s,
+                      a.KURZNAME,
+                      %s,
+                      ''
+                    FROM ARTIKEL a
+                    LEFT JOIN MENGENEINHEIT m ON m.REC_ID = a.ME_ID
+                    WHERE a.REC_ID = %s
+                """, ((ma_name or 'XT-Einkauf')[:50], steuer_satz,
+                       int(artikel_id)))
+                log_rec_id = cur.lastrowid
+
+                # 5. HASHSTRING aus dem frisch geschriebenen LOG-Eintrag holen
+                cur.execute(_ARTIKEL_LOG_HASHSTRING_SQL, (log_rec_id,))
+                hs_row = cur.fetchone()
+                hashstring = (hs_row or {}).get('HASHSTRING') or ''
+
+                # 6. Vorgaenger-HASHSUM (wenn vorhanden)
+                cur.execute("""
+                    SELECT HASHSUM FROM ARTIKEL_LOG
+                    WHERE REC_ID < %s
+                    ORDER BY REC_ID DESC LIMIT 1
+                """, (log_rec_id,))
+                prev_row = cur.fetchone()
+                prev_hashsum = (prev_row or {}).get('HASHSUM')
+
+                # 7. XT-HASHSUM berechnen + UPDATE
+                neue_hashsum = cao_log_hashsum.compute(
+                    table_name='ARTIKEL_LOG',
+                    hashstring=hashstring,
+                    previous_hashsum=prev_hashsum,
+                )
+                cur.execute("""
+                    UPDATE ARTIKEL_LOG SET HASHSUM = %s WHERE REC_ID = %s
+                """, (neue_hashsum, log_rec_id))
+
+                # 8. XT_EINKAUF_BESTELLPOS aktualisieren — diese Position
+                #    ist jetzt 'matched' und triggert den ARTIKEL_PREIS-
+                #    Sync (Phase 5a) im Folgeschritt korrekt.
+                cur.execute("""
+                    UPDATE XT_EINKAUF_BESTELLPOS
+                       SET ARTIKEL_REC_ID = %s, STATUS = 'matched'
+                     WHERE REC_ID = %s
+                """, (int(artikel_id), int(pos_id)))
+
+                # 9. VK-Kontrolle-Eintrag (Erinnerung an User)
+                cur.execute("""
+                    INSERT INTO XT_ARTIKEL_VK_KONTROLLE
+                      (ARTIKEL_REC_ID, GRUND, NEU_EK, QUELLE_BEST,
+                       ANGELEGT_VON, ANMERKUNG)
+                    VALUES (%s, 'neu', %s, %s, %s, %s)
+                """, (int(artikel_id), ek_preis,
+                      int(bestellung_rec_id), ma_id,
+                      f'Phase 5b: angelegt ueber Bestellung '
+                      f'{head.get("BESTELL_NR") or bestellung_rec_id} '
+                      f'(Lief={head.get("LIEF_KUERZEL") or "?"}). '
+                      f'VK5={vk5} (Faktor={vk5_faktor})'))
+
+                aktionen.append({
+                    'pos_nr': pos_nr, 'art': 'INSERT',
+                    'artikel_rec_id': int(artikel_id),
+                    'artnum': artnum, 'matchcode': bez,
+                    'wg_id': int(wg_id), 'wg_name': wg.get('NAME'),
+                    'ek_preis': ek_preis, 'vk5': vk5,
+                    'log_rec_id': log_rec_id,
+                })
+                n_neu += 1
+
+        except Exception as exc:
+            log.exception('cao_sync_artikel pos %s', pos_id)
+            fehler.append({'pos_nr': pos_nr, 'artnr': artnr,
+                            'msg': str(exc)})
+            # Position als 'fehler' markieren
+            try:
+                with get_db_transaction() as cur2:
+                    cur2.execute("""
+                        UPDATE XT_EINKAUF_BESTELLPOS
+                           SET STATUS = 'fehler',
+                               ANMERKUNG = CONCAT(IFNULL(ANMERKUNG,''),
+                                                   '\nPhase 5b: ', %s)
+                         WHERE REC_ID = %s
+                    """, (str(exc)[:300], int(pos_id)))
+            except Exception:
+                pass
+
+    return {
+        'ok':              True,
+        'dry_run':         dry_run,
+        'angelegt':        n_neu,
+        'uebersprungen':   n_skip,
+        'fehler':          fehler,
+        'aktionen':        aktionen,
+        'artikel_rec_ids': neue_ids,
+    }
