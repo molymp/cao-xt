@@ -1591,12 +1591,16 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
             vpe_ek = (int(cache_lief['VPE_EK'])
                        if cache_lief and cache_lief.get('VPE_EK') else None)
 
-            # Pruefen ob fuer (ARTIKEL_ID, ADRESS_ID, PREIS_TYP=5)
-            # bereits eine ARTIKEL_PREIS-Zeile existiert. Wenn ja:
-            # UPDATE der vorhandenen Zeile (loest auch BESTNUM-
-            # Tippfehler wie '00402088' → '40208' auf, statt eine
-            # zweite Zeile anzulegen).
+            # Match-Key fuer ARTIKEL_PREIS: (ARTIKEL_ID, ADRESS_ID,
+            # PREIS_TYP=5, BESTNUM). Nur wenn EXAKT diese BESTNUM bei
+            # diesem Artikel/Lieferanten schon existiert, machen wir
+            # ein UPDATE (Preis-Aktualisierung). Sonst INSERT als neue
+            # Zeile – auch wenn der CAO-Artikel bereits andere BESTNUMs
+            # bei UTZ hat. Bestehende „falsche" BESTNUM-Eintraege
+            # bleiben bewusst unangetastet; deren Bereinigung ist ein
+            # eigenstaendiger Teilprozess.
             existing = None
+            other_bestnums: list[str] = []
             if cao_lief_id and cao.get('rec_id'):
                 try:
                     with get_db() as cur:
@@ -1606,9 +1610,26 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
                             WHERE ARTIKEL_ID = %s
                               AND ADRESS_ID  = %s
                               AND PREIS_TYP  = 5
+                              AND BESTNUM    = %s
                             ORDER BY GUELTIG_VON DESC LIMIT 1
-                        """, (int(cao['rec_id']), int(cao_lief_id)))
+                        """, (int(cao['rec_id']), int(cao_lief_id),
+                              m.get('artikel_nr_lief') or ''))
                         existing = cur.fetchone()
+                        # Andere BESTNUMs am selben Artikel/Lief – nur
+                        # informativ, NICHT zu aendern.
+                        cur.execute("""
+                            SELECT BESTNUM FROM ARTIKEL_PREIS
+                            WHERE ARTIKEL_ID = %s
+                              AND ADRESS_ID  = %s
+                              AND PREIS_TYP  = 5
+                              AND BESTNUM   <> %s
+                              AND BESTNUM IS NOT NULL
+                              AND BESTNUM   <> ''
+                            ORDER BY GUELTIG_VON DESC LIMIT 5
+                        """, (int(cao['rec_id']), int(cao_lief_id),
+                              m.get('artikel_nr_lief') or ''))
+                        other_bestnums = [(r.get('BESTNUM') or '').strip()
+                                          for r in (cur.fetchall() or [])]
                 except Exception:
                     existing = None
 
@@ -1629,13 +1650,14 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
                     'PREIS':   float(existing.get('PREIS') or 0),
                     'VPE':     existing.get('VPE'),
                 }
-                # Hinweis bei tatsaechlicher Aenderung
-                alt_bestnum = (existing.get('BESTNUM') or '').strip()
-                neu_bestnum = (m.get('artikel_nr_lief') or '').strip()
-                if alt_bestnum and alt_bestnum != neu_bestnum:
-                    hinweise.append(
-                        f'Bestehende BESTNUM {alt_bestnum!r} wird auf '
-                        f'{neu_bestnum!r} korrigiert (Tippfehler-Fall).')
+            if other_bestnums:
+                preis_insert['_andere_bestnums'] = other_bestnums
+                hinweise.append(
+                    f'CAO hat bei diesem Artikel bereits andere Lieferanten-'
+                    f'Bestellnummern unter UTZ: {", ".join(other_bestnums)}. '
+                    f'Diese werden NICHT veraendert – wir legen '
+                    f'{m.get("artikel_nr_lief")!r} als zusaetzliche Zeile an. '
+                    f'Bereinigung der Alt-Eintraege ist ein separater Prozess.')
             neue_preise += 1
             if not cao_lief_id:
                 hinweise.append('Lieferant ohne CAO_LIEF_ID — '
