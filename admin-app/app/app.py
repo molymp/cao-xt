@@ -2576,6 +2576,55 @@ def api_einkauf_bestellung_sync_cao(rec_id):
     return jsonify(**res), 200 if res.get('ok') else 502
 
 
+@app.post('/api/einkauf/bestellungen/<int:rec_id>/sync-artikel')
+@_login_required
+def api_einkauf_bestellung_sync_artikel(rec_id):
+    """Phase 5b: legt Stammartikel in CAO an + ARTIKEL_LOG-Snapshot
+    + XT_ARTIKEL_VK_KONTROLLE-Eintrag fuer alle Positionen mit
+    STATUS='neu_anlegen' und gesetzter WARENGRUPPE_ID.
+
+    Body: {'dry_run': bool}.
+    """
+    body = request.get_json(silent=True) or {}
+    dry_run = bool(body.get('dry_run', False))
+    ma_name = (session.get('vname', '') + ' '
+                + session.get('ma_name', '')).strip() \
+              or session.get('login_name') or 'CAO-XT'
+    res = _einkauf.cao_sync_artikel(
+        rec_id, dry_run=dry_run,
+        ma_id=session.get('ma_id'), ma_name=ma_name,
+    )
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
+@app.get('/api/einkauf/warengruppen')
+@_login_required
+def api_einkauf_warengruppen():
+    """Liefert den CAO-WARENGRUPPEN-Baum + Flachliste fuer das UI.
+    Cache: keiner (105 WGs sind gut so).
+    """
+    return jsonify(ok=True, **_einkauf.cao_warengruppen_baum())
+
+
+@app.post('/api/einkauf/positionen/<int:pos_id>/warengruppe')
+@_login_required
+def api_einkauf_position_warengruppe(pos_id):
+    """Setzt die WARENGRUPPE_ID einer Bestellposition (Phase 5b).
+    Body: {'warengruppe_id': int|null}. ``null`` loescht die Auswahl."""
+    body = request.get_json(silent=True) or {}
+    raw = body.get('warengruppe_id')
+    if raw in (None, '', 0):
+        wg_id = None
+    else:
+        try:
+            wg_id = int(raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False,
+                           msg='warengruppe_id muss int sein'), 400
+    res = _einkauf.position_warengruppe_setzen(pos_id, wg_id)
+    return jsonify(**res), 200 if res.get('ok') else 400
+
+
 @app.post('/api/einkauf/positionen/<int:pos_id>/zuordnen')
 @_login_required
 def api_einkauf_position_zuordnen(pos_id):

@@ -290,6 +290,100 @@
 .vorschlag-eintrag .v-name { font-family: 'Nunito', sans-serif; }
 .vorschlag-eintrag .v-ek-ok   { color: var(--gruen-dunkel); font-weight: 700; }
 .vorschlag-eintrag .v-ek-warn { color: var(--status-gelb); font-weight: 700; }
+
+/* WG-Auswahl-Pille (Phase 5b) */
+.wg-pille {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin-right: 6px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  user-select: none;
+}
+.wg-pille.gesetzt { background: var(--brand-sage); color: var(--gruen-dunkel); border: 1px solid var(--gruen-mitte); }
+.wg-pille.fehlt   { background: #f6d8ce; color: var(--status-rot); border: 1px solid var(--status-rot); }
+.wg-pille:hover { filter: brightness(0.95); }
+
+/* WG-Picker-Modal */
+.wg-modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(20,15,8,0.55);
+  z-index: 1000;
+  display: none;
+  align-items: center; justify-content: center;
+}
+.wg-modal-bg.aktiv { display: flex; }
+.wg-modal {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  width: 90%;
+  max-width: 720px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+.wg-modal h3 {
+  margin: 0 0 14px;
+  color: var(--brand-terracotta);
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 18px;
+}
+.wg-modal .wg-suche {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  margin-bottom: 12px;
+}
+.wg-modal .wg-baum-container {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 8px;
+  background: var(--bg-dunkel);
+}
+.wg-baum {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+}
+.wg-baum ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 18px;
+  border-left: 1px dashed var(--border);
+}
+.wg-baum li { padding: 1px 0; }
+.wg-baum .wg-zeile {
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.wg-baum .wg-zeile:hover { background: var(--brand-sage); color: var(--gruen-dunkel); }
+.wg-baum .wg-zeile.gesetzt { background: var(--brand-terracotta); color: #fff; }
+.wg-baum .wg-zeile .wg-id { font-weight: 700; }
+.wg-baum .wg-zeile .wg-meta { color: var(--text-dim); font-size: 11px; margin-left: auto; }
+.wg-baum .wg-zeile.versteckt { display: none; }
+.wg-modal .wg-modal-aktionen {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
 </style>
 {% endblock %}
 
@@ -336,6 +430,32 @@
 
 <!-- Detail-Bereich – wird beim Klick auf eine Zeile gefuellt -->
 <div id="detail-area"></div>
+
+<!-- Warengruppe-Picker-Modal (Phase 5b) -->
+<div class="wg-modal-bg" id="wg-modal-bg" onclick="if(event.target===this)wgModalSchliessen()">
+  <div class="wg-modal">
+    <h3>Warengruppe wählen <span class="muted" id="wg-modal-pos"
+        style="font-size:13px;font-weight:400;"></span></h3>
+    <input type="text" class="wg-suche" id="wg-suche"
+           placeholder="Suchen (Name oder ID) …"
+           oninput="wgFilter(this.value)">
+    <div class="wg-baum-container">
+      <ul class="wg-baum" id="wg-baum-root">
+        <li class="muted" style="padding:14px;">Lade …</li>
+      </ul>
+    </div>
+    <div class="wg-modal-aktionen">
+      <button class="btn btn-neutral btn-sm" onclick="wgZurueckSetzen()">
+        ↶ Auswahl löschen
+      </button>
+      <div>
+        <button class="btn btn-neutral btn-sm" onclick="wgModalSchliessen()">
+          ✕ Abbrechen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}
 
@@ -486,9 +606,14 @@ async function detailZeigen(recId) {
                 onclick="syncPlan(${e.REC_ID})">
           🧪 Sync-Plan anzeigen
         </button>
+        <button class="btn btn-neutral btn-sm" id="btn-sync-artikel-${e.REC_ID}"
+                onclick="syncArtikelAnlegen(${e.REC_ID})"
+                title="Phase 5b: legt neue Stammartikel in CAO an (alle Positionen mit Status 'neu_anlegen' und Warengruppe).">
+          🆕 Stammartikel anlegen
+        </button>
         <button class="btn btn-primary btn-sm" id="btn-sync-cao-${e.REC_ID}"
                 onclick="syncCao(${e.REC_ID})"
-                title="Schreibt die Lieferantenpreise nach CAO. Stammartikel-Anlage ist separat (Phase 5b).">
+                title="Schreibt die Lieferantenpreise nach CAO (Phase 5a). Lieferantenpreis-Verknüpfungen für gematchte Positionen.">
           🚀 In CAO einbuchen (ARTIKEL_PREIS)
         </button>
         <span class="muted" id="cao-match-hint-${e.REC_ID}"
@@ -803,6 +928,174 @@ async function _zuordnen(posId, body) {
     return;
   }
   if (!d.ok) toast(d.msg || 'Fehler', 'err');
+}
+
+// ── Warengruppe-Picker (Phase 5b) ────────────────────────────────
+let _wgFlach = null;        // Cache der WGs (105 Eintraege)
+let _wgBaumRoots = null;
+let _wgPickerCtx = null;    // {posId, bestRecId} fuer aktiven Pick
+
+async function _wgLaden() {
+  if (_wgFlach) return;
+  const r = await fetch('/api/einkauf/warengruppen');
+  const d = await r.json();
+  if (d.ok) {
+    _wgFlach = d.flach;
+    _wgBaumRoots = d.baum;
+  }
+}
+
+function _wgBaumRendern(roots, gewaehlt) {
+  // rekursiv
+  function ren(node) {
+    const li = document.createElement('li');
+    const z = document.createElement('div');
+    z.className = 'wg-zeile' + (node.id === gewaehlt ? ' gesetzt' : '');
+    z.dataset.wgId = node.id;
+    z.dataset.suchtext = (node.name + ' ' + node.id).toLowerCase();
+    z.innerHTML = `<span class="wg-id">[${node.id}]</span> ${_esc(node.name)}` +
+      `<span class="wg-meta">EK${node.def_ekto||'?'}/AK${node.def_akto||'?'} · ` +
+      `St${node.steuer_code} · VK5×${node.vk5_faktor.toFixed(2)}</span>`;
+    z.onclick = () => _wgPickerWaehlen(node.id);
+    li.appendChild(z);
+    if (node.kinder && node.kinder.length) {
+      const ul = document.createElement('ul');
+      node.kinder.forEach(k => ul.appendChild(ren(k)));
+      li.appendChild(ul);
+    }
+    return li;
+  }
+  const root = _e('wg-baum-root');
+  root.innerHTML = '';
+  roots.forEach(r => root.appendChild(ren(r)));
+}
+
+async function wgPickerOeffnen(posId, bestRecId, gewaehlteWgId, posBezeichnung) {
+  _wgPickerCtx = { posId, bestRecId };
+  _e('wg-modal-pos').textContent = posBezeichnung
+    ? `· Pos: ${posBezeichnung.substring(0,60)}` : '';
+  _e('wg-suche').value = '';
+  _e('wg-modal-bg').classList.add('aktiv');
+  await _wgLaden();
+  _wgBaumRendern(_wgBaumRoots, gewaehlteWgId);
+  setTimeout(() => _e('wg-suche').focus(), 50);
+}
+function wgModalSchliessen() {
+  _e('wg-modal-bg').classList.remove('aktiv');
+  _wgPickerCtx = null;
+}
+function wgFilter(text) {
+  const q = (text || '').toLowerCase().trim();
+  document.querySelectorAll('#wg-baum-root .wg-zeile').forEach(z => {
+    const treffer = !q || z.dataset.suchtext.includes(q);
+    z.classList.toggle('versteckt', !treffer);
+    // bei Treffer: Eltern-LI aufklappen
+    if (treffer) {
+      let p = z.parentElement;
+      while (p && p.tagName !== 'BODY') {
+        if (p.tagName === 'LI') p.style.display = '';
+        p = p.parentElement;
+      }
+    }
+  });
+}
+async function _wgPickerWaehlen(wgId) {
+  if (!_wgPickerCtx) return;
+  const { posId, bestRecId } = _wgPickerCtx;
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/positionen/${posId}/warengruppe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ warengruppe_id: wgId }),
+    });
+    d = await r.json();
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err'); return;
+  }
+  if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+  wgModalSchliessen();
+  if (bestRecId) caoMatch(bestRecId);
+}
+async function wgZurueckSetzen() {
+  if (!_wgPickerCtx) return;
+  await _wgPickerWaehlen(null);
+}
+
+// ── Stammartikel-Anlage (Phase 5b) ───────────────────────────────
+async function syncArtikelAnlegen(recId) {
+  const btn  = _e('btn-sync-artikel-' + recId);
+  const hint = _e('cao-match-hint-' + recId);
+  if (!btn) return;
+  btn.disabled = true;
+  hint.textContent = 'Vorschau wird berechnet …';
+  let plan;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-artikel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: true }),
+    });
+    plan = await r.json();
+  } catch (e) {
+    btn.disabled = false; hint.textContent = 'Fehler: ' + e.message; return;
+  }
+  btn.disabled = false;
+  if (!plan.ok) { hint.textContent = 'Fehler: ' + (plan.msg || ''); return; }
+
+  if (plan.angelegt === 0 && plan.fehler.length === 0) {
+    hint.textContent = '↪ keine neu_anlegen-Positionen mit Warengruppe';
+    return;
+  }
+  if (plan.fehler.length > 0) {
+    const ungeloest = plan.fehler.map(f => `Pos ${f.pos_nr}: ${f.msg}`).join('\n');
+    if (!confirm(
+      `${plan.fehler.length} Position(en) ohne Warengruppe — diese werden ÜBERSPRUNGEN:\n\n` +
+      ungeloest + '\n\n' +
+      `${plan.angelegt} Stammartikel würden angelegt. Trotzdem fortfahren?`
+    )) {
+      hint.textContent = 'abgebrochen';
+      return;
+    }
+  } else {
+    const aktTxt = plan.aktionen.map(a =>
+      `  Pos ${a.pos_nr}: ARTNUM ${a.artnum} · WG [${a.wg_id}] ${a.wg_name} · EK ${a.ek_preis} · VK5 ${a.vk5}`
+    ).join('\n');
+    if (!confirm(
+      `Stammartikel in CAO anlegen?\n\n` +
+      `${plan.angelegt} neue ARTIKEL\n${plan.angelegt} ARTIKEL_LOG-Snapshots (XT-HMAC)\n` +
+      `${plan.angelegt} XT_ARTIKEL_VK_KONTROLLE-Eintraege\n\n` +
+      aktTxt +
+      `\n\nFortfahren?`
+    )) {
+      hint.textContent = 'abgebrochen'; return;
+    }
+  }
+
+  // Live-Sync
+  btn.disabled = true;
+  hint.textContent = 'Lege Stammartikel an …';
+  let res;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-artikel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: false }),
+    });
+    res = await r.json();
+  } catch (e) {
+    btn.disabled = false; hint.textContent = 'Fehler: ' + e.message; return;
+  }
+  btn.disabled = false;
+  if (!res.ok) { hint.textContent = 'Fehler: ' + (res.msg || ''); return; }
+  hint.textContent =
+    `✓ ${res.angelegt} Artikel angelegt` +
+    (res.fehler.length ? `, ${res.fehler.length} Fehler` : '');
+  toast(`Phase 5b: ${res.angelegt} angelegt` +
+        (res.fehler.length ? `, ${res.fehler.length} Fehler` : ''),
+        res.fehler.length ? 'err' : 'ok');
+  if (res.fehler.length) console.warn('Phase-5b-Fehler:', res.fehler);
+  caoMatch(recId);
 }
 
 // Zentraler Listener fuer dynamisch gerenderte Action-Buttons.
@@ -1160,10 +1453,28 @@ async function caoMatch(recId) {
       } else {
         txt = '⚠ als „manuell klären" markiert (Sync überspringt)';
       }
-      td.innerHTML = `<span class="vor-titel">${txt}</span>
-        <span class="vorschlag-aktion neu" onclick="positionReset(${m.pos_rec_id}, ${recId})">
-          ↶ Zuordnung lösen
-        </span>`;
+      let html = `<span class="vor-titel">${txt}</span>`;
+      // Bei 'neu_anlegen': WG-Auswahl-Pille daneben (Pflicht fuer 5b)
+      if (m.match_quelle === 'neu_anlegen') {
+        const wgId = m.warengruppe_id;
+        const wgVorschlag = m.wg_vorschlag_id;
+        const pilleClass = wgId ? 'wg-pille gesetzt' : 'wg-pille fehlt';
+        const pilleTxt   = wgId
+          ? `WG: [${wgId}]`
+          : (wgVorschlag
+              ? `⚠ WG wählen (Vorschlag: [${wgVorschlag}])`
+              : '⚠ WG wählen');
+        const bezForCtx = (m.bezeichnung_lief || '').replace(/'/g, "\\'");
+        html += `<span class="${pilleClass}"
+                       title="Warengruppe für die CAO-Stammartikel-Anlage"
+                       onclick="wgPickerOeffnen(${m.pos_rec_id}, ${recId}, ${wgId || 'null'}, '${bezForCtx}')">
+                   ${pilleTxt}
+                 </span>`;
+      }
+      html += `<span class="vorschlag-aktion neu" onclick="positionReset(${m.pos_rec_id}, ${recId})">
+                 ↶ Zuordnung lösen
+               </span>`;
+      td.innerHTML = html;
       vrow.appendChild(td);
       row.parentNode.insertBefore(vrow, row.nextSibling);
     }
