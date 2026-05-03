@@ -445,19 +445,33 @@ def _utz_artikel_info(sess, artnr: str, kunden_nr: str = '') -> dict:
             # Such-API).
             detail_html = ''
             detail_status = None
+            detail_url = ''
             if parsed.get('internal_id'):
-                slug = (parsed.get('slug')
-                        or _slug_aus_text(parsed.get('bezeichnung') or ''))
-                detail_url = (f'https://www.utz24.online/grosshandlung/de/'
-                              f'{slug}-p{parsed["internal_id"]}/')
-                try:
-                    rd = sess.get(detail_url, timeout=_TIMEOUT,
-                                   allow_redirects=True)
-                    detail_status = rd.status_code
-                    if rd.status_code == 200:
-                        detail_html = rd.text or ''
-                except Exception as exc:
-                    log.warning('Detail-GET %s: %s', detail_url, exc)
+                # Bevorzugt den API-Slug (`is`-Feld). Wenn der fehlt
+                # oder zu einem 404 fuehrt, faellt der zweite Versuch
+                # auf die slug-lose Form '-p<id>/' zurueck – die
+                # akzeptiert UTZ in jedem Fall (echte URL aus dem
+                # Browser-Verhalten beobachtet).
+                slug_api = (parsed.get('slug') or '').strip()
+                kandidaten = []
+                if slug_api:
+                    kandidaten.append(
+                        f'https://www.utz24.online/grosshandlung/de/'
+                        f'{slug_api}-p{parsed["internal_id"]}/')
+                kandidaten.append(
+                    f'https://www.utz24.online/grosshandlung/de/'
+                    f'-p{parsed["internal_id"]}/')
+                for u in kandidaten:
+                    try:
+                        rd = sess.get(u, timeout=_TIMEOUT,
+                                       allow_redirects=True)
+                        detail_url = u
+                        detail_status = rd.status_code
+                        if rd.status_code == 200:
+                            detail_html = rd.text or ''
+                            break
+                    except Exception as exc:
+                        log.warning('Detail-GET %s: %s', u, exc)
 
             if detail_html:
                 from_html = _parse_utz_detail(detail_html)
