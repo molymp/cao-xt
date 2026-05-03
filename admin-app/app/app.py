@@ -2590,7 +2590,10 @@ def api_einkauf_position_anreichern(pos_id):
     Detail-URL, HTTP-Status und HTML-Snippet, damit Parser-Probleme
     schnell erkennbar sind.
     """
+    import time as _t
     from common import einkauf_lief_web as _web
+    t_start = _t.monotonic()
+    log.info('[pos-anreichern] start pos_id=%s', pos_id)
     # Position laden, um lief_rec_id + artnr zu bekommen
     try:
         from db import get_db
@@ -2603,13 +2606,19 @@ def api_einkauf_position_anreichern(pos_id):
             """, (pos_id,))
             row = cur.fetchone()
     except Exception as e:
+        log.exception('[pos-anreichern] db-error pos_id=%s', pos_id)
         return jsonify(ok=False, msg=str(e)), 500
     if not row:
         return jsonify(ok=False, msg='Position nicht gefunden.'), 404
     artnr = row.get('ARTIKEL_NR_LIEF') or ''
     lief_rec_id = row.get('LIEF_REC_ID')
+    log.info('[pos-anreichern] pos_id=%s artnr=%s lief=%s -> web_artikel_diagnose',
+             pos_id, artnr, lief_rec_id)
 
     diag = _web.web_artikel_diagnose(lief_rec_id, artnr)
+    log.info('[pos-anreichern] pos_id=%s artnr=%s diagnose ok=%s msg=%s (%.1fs)',
+             pos_id, artnr, diag.get('ok'), str(diag.get('msg'))[:80],
+             _t.monotonic() - t_start)
     # Egal wie's lief: in den Cache schreiben (auch Fehler-Eintrag)
     parsed = ((diag.get('probe') or {}).get('parsed') or {}) \
               if diag.get('ok') else {}

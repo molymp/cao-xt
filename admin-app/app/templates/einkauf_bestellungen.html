@@ -729,11 +729,27 @@ async function anreichernPos(posId, bestRecId) {
   const diag = document.getElementById('diag-' + bestRecId);
   if (diag) {
     diag.style.display = '';
-    diag.textContent = `Frage Lieferanten ab für Pos ${posId} …`;
+    diag.textContent = `Frage Lieferanten ab für Pos ${posId} …\n`
+                       + `(harter Timeout nach 90 s)`;
   }
-  const res = await fetch(`/api/einkauf/positionen/${posId}/anreichern`,
-                          { method: 'POST' });
-  const d = await res.json();
+  // Hartes Frontend-Timeout, damit ein haengender Server nicht den
+  // ganzen Browser blockiert.
+  const abort = new AbortController();
+  const t = setTimeout(() => abort.abort(), 90000);
+  let res, d;
+  try {
+    res = await fetch(`/api/einkauf/positionen/${posId}/anreichern`,
+                      { method: 'POST', signal: abort.signal });
+    d = await res.json();
+  } catch (e) {
+    clearTimeout(t);
+    if (diag) {
+      diag.textContent = `Fehler bei Pos ${posId}: ${e.name === 'AbortError' ? 'Timeout nach 90 s — Server antwortet nicht' : e.message}`;
+    }
+    toast('Anreichern fehlgeschlagen', 'err');
+    return;
+  }
+  clearTimeout(t);
   if (!d.ok) {
     toast('Anreichern fehlgeschlagen: ' + (d.msg || ''), 'err');
     if (diag) diag.textContent = JSON.stringify(d, null, 2);
