@@ -248,6 +248,22 @@ _permission_initialisieren()
 _aktivierung_initialisieren()
 _einkauf_initialisieren()
 
+
+def _cao_hashsum_initialisieren():
+    """Trägt die CAO-HASHSUM-Salt-Schluessel in DORFKERN_KONFIG ein
+    (Kategorie CAO_HASH_SALT, mit leeren Werten + Hinweis-Beschreibung).
+    Die eigentlichen Salt-Werte muss der Admin manuell pflegen –
+    sie liegen NICHT im Repo."""
+    try:
+        from common import cao_hashsum as _ch
+        _ch.seed_registry()
+        log.info('CAO-Hash-Salt-Registry geprueft (Kategorie CAO_HASH_SALT).')
+    except Exception as exc:
+        log.warning('CAO-Hash-Salt-Registry-Init fehlgeschlagen: %s', exc)
+
+
+_cao_hashsum_initialisieren()
+
 # RFID-Tabelle (Mitarbeiter alternativ ueber Alarm-RFID-Tag identifizieren)
 try:
     from common import rfid as _rfid_mod

@@ -1599,7 +1599,12 @@ _SQL_JOURNAL_HASHSTRING = """
     ORDER BY JP.POSITION, JP.REC_ID
 """
 
-_JOURNAL_HASHSALZ = 'cZodx62PyrgwlJKuj'
+# Salt + Hash-Berechnung siehe common.cao_hashsum.journal_hashsum().
+# Der Salt-Wert selbst liegt NICHT im Code, sondern in
+# DORFKERN_KONFIG (Kategorie CAO_HASH_SALT). Verwaltung im Admin-UI
+# unter Dorfkern → Konfiguration. Frische Installationen brauchen
+# einmalige Eintragung des Salts.
+from common import cao_hashsum as _cao_hashsum
 
 
 def bon_zu_journal(vorgang_id: int, terminal_nr: int) -> int | None:
@@ -1819,9 +1824,7 @@ def _bon_zu_journal_intern(vorgang_id: int, terminal_nr: int) -> int | None:
         cur.execute(_SQL_JOURNAL_HASHSTRING, (journal_id,))
         hash_rows = cur.fetchall()
         concat_hs = ''.join(r['HASHSTRING'] for r in hash_rows if r.get('HASHSTRING'))
-        hashsum   = hashlib.md5(
-            (_JOURNAL_HASHSALZ + concat_hs).encode('ascii', errors='replace')
-        ).hexdigest().upper()
+        hashsum   = _cao_hashsum.journal_hashsum(concat_hs)
         cur.execute(
             "UPDATE JOURNAL SET HASHSUM = %s WHERE REC_ID = %s",
             (hashsum, journal_id)
@@ -2123,9 +2126,7 @@ def lieferschein_zu_journal(vorgang_id: int, adressen_id: int,
         cur.execute(_SQL_JOURNAL_HASHSTRING, (journal_id,))
         hash_rows = cur.fetchall()
         concat_hs = ''.join(r['HASHSTRING'] for r in hash_rows if r.get('HASHSTRING'))
-        hashsum   = hashlib.md5(
-            (_JOURNAL_HASHSALZ + concat_hs).encode('ascii', errors='replace')
-        ).hexdigest().upper()
+        hashsum   = _cao_hashsum.journal_hashsum(concat_hs)
         cur.execute(
             "UPDATE JOURNAL SET HASHSUM = %s WHERE REC_ID = %s",
             (hashsum, journal_id)
