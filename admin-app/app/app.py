@@ -2640,7 +2640,9 @@ def api_einkauf_position_anreichern(pos_id):
         _einkauf.lief_artikel_speichern(
             lief_rec_id, artnr, parsed=None,
             fehler=str(diag.get('msg') or 'unbekannt'))
-    return jsonify(ok=diag.get('ok', False), **diag)
+    # diag hat bereits einen 'ok'-Key – nicht doppelt uebergeben
+    # (sonst TypeError: multiple values for keyword argument).
+    return jsonify(**diag)
 
 
 @app.get('/api/einkauf/bestellungen/<int:rec_id>/cao-sync-plan')
