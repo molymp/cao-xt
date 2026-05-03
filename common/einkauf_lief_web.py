@@ -651,11 +651,41 @@ def _parse_utz_detail(html: str) -> dict:
     sicht = soup.get_text(' ', strip=True)
     sicht = re.sub(r'\s+', ' ', sicht)
 
-    # Barcode: zwei EAN-13-Zeilen, Praefix Stück / KT
-    m = re.search(r'St(?:ü|ue)ck\s*[-–]\s*(\d{8,14})', sicht)
+    # Barcode: zwei EAN-13-Zeilen, Praefix Stück / KT.
+    # Wir akzeptieren mehrere Trennzeichen-Varianten (Bindestrich,
+    # Halbgeviertstrich, Doppelpunkt, Whitespace) und die ueblichen
+    # Encoding-Varianten von "Stück".
+    stueck_pat = (r'(?:St(?:ü|ue|\?)ck|Stk)\s*[-–:]?\s*(\d{8,14})')
+    kt_pat     = (r'(?:\bKT\b|Karton|Kt\.)\s*[-–:]?\s*(\d{8,14})')
+    m = re.search(stueck_pat, sicht, re.IGNORECASE)
     if m: out['barcode_stueck'] = m.group(1)
-    m = re.search(r'\bKT\s*[-–]\s*(\d{8,14})', sicht)
+    m = re.search(kt_pat, sicht, re.IGNORECASE)
     if m: out['barcode_kt'] = m.group(1)
+
+    # Fallback: wenn weder Stueck noch KT gefunden, alle 13-stelligen
+    # Zahlen im Bereich nach „Barcode"-Marker pruefen. EAN-13 startet
+    # nicht mit 0 (mit wenigen Ausnahmen), aber wir nehmen alles was
+    # passt.
+    if not out['barcode_stueck']:
+        bc_zone = ''
+        bc_idx = sicht.lower().find('barcode')
+        if bc_idx >= 0:
+            bc_zone = sicht[bc_idx: bc_idx + 200]
+            eans = re.findall(r'\b(\d{13})\b', bc_zone)
+            if eans:
+                out['barcode_stueck'] = eans[0]
+                if len(eans) > 1 and not out['barcode_kt']:
+                    out['barcode_kt'] = eans[1]
+
+    # Diagnose-Helper: HTML-Bereich rund um "Barcode" mit ausreichend
+    # Kontext, damit man bei fehlschlagendem Parsing das Markup pruefen
+    # kann.
+    out['_diag_barcode_zone'] = ''
+    for marker in ('Barcode', 'Stück', 'St?ck', 'EAN'):
+        i = sicht.find(marker)
+        if i >= 0:
+            out['_diag_barcode_zone'] = sicht[max(0, i - 50):i + 500]
+            break
 
     # ArtNr (erste Treffer nach „Artikel-Nr.")
     m = re.search(r'Artikel-?Nr\.?\s*[:.]?\s*(\d{1,9})', sicht)

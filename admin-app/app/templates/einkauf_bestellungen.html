@@ -490,6 +490,12 @@ async function detailZeigen(recId) {
       </div>
       <div id="sync-plan-${e.REC_ID}" style="display:none;"></div>
       <div id="cao-match-summary-${e.REC_ID}"></div>
+      <pre id="diag-${e.REC_ID}" style="display:none;margin:8px 0;
+           background:var(--bg-dunkel);border:1px solid var(--border);
+           border-radius:6px;padding:10px;font-size:11px;
+           font-family:'JetBrains Mono',monospace;white-space:pre-wrap;
+           word-break:break-word;color:var(--text-mitte);max-height:320px;
+           overflow:auto;"></pre>
 
       <table class="tbl pos-table" id="pos-table-${e.REC_ID}">
         <thead>
@@ -508,7 +514,10 @@ async function detailZeigen(recId) {
         <tbody>
           ${pos.map(p => `
             <tr data-pos-id="${p.REC_ID}">
-              <td class="num">${p.POS_NR}</td>
+              <td class="num">${p.POS_NR}
+                <button class="vorschlag-aktion" style="margin-left:4px;font-size:10px;padding:1px 6px;"
+                        title="Diese Position neu anreichern + Diagnose anzeigen"
+                        onclick="anreichernPos(${p.REC_ID}, ${e.REC_ID})">🔬</button></td>
               <td><code>${_esc(p.ARTIKEL_NR_LIEF || '')}</code></td>
               <td>${_esc(p.BESCHREIBUNG_LIEF || '')}</td>
               <td class="num">${Number(p.MENGE).toFixed(p.MENGE % 1 === 0 ? 0 : 3)}</td>
@@ -701,19 +710,59 @@ async function _zuordnen(posId, body) {
 
 // ── Einzelne Pos neu anreichern (Force, mit Diagnose) ────────────
 async function anreichernPos(posId, bestRecId) {
+  const diag = document.getElementById('diag-' + bestRecId);
+  if (diag) {
+    diag.style.display = '';
+    diag.textContent = `Frage Lieferanten ab für Pos ${posId} …`;
+  }
   const res = await fetch(`/api/einkauf/positionen/${posId}/anreichern`,
                           { method: 'POST' });
   const d = await res.json();
   if (!d.ok) {
     toast('Anreichern fehlgeschlagen: ' + (d.msg || ''), 'err');
+    if (diag) diag.textContent = JSON.stringify(d, null, 2);
     return;
   }
-  const p = (d.probe || {}).parsed || {};
-  const url = (d.probe || {}).detail_url || '(?)';
+  const probe = d.probe || {};
+  const p = probe.parsed || {};
+  const lines = [
+    `Anreichern OK fuer Pos ${posId}`,
+    `Detail-URL:     ${probe.detail_url || ''}`,
+    `Detail-Status:  ${probe.detail_status ?? '?'}  (len=${probe.detail_len ?? '?'})`,
+    `Quelle:         ${probe.quelle || ''}`,
+    '',
+    '── Geparste Daten ──',
+    JSON.stringify({
+      bezeichnung:    p.bezeichnung,
+      artnr_lief:     p.artnr_lief,
+      barcode_stueck: p.barcode_stueck,
+      barcode_kt:     p.barcode_kt,
+      ek_netto:       p.ek_netto,
+      uvp_brutto:     p.uvp_brutto,
+      mwst_pct:       p.mwst_pct,
+      vpe_ek:         p.vpe_ek,
+      inhalt:         p.inhalt,
+      einheit:        p.einheit,
+      bild_url:       p.bild_url,
+    }, null, 2),
+  ];
+  if (p._diag_barcode_zone) {
+    lines.push('');
+    lines.push('── Sichtbarer Text rund um „Barcode" / „Stück" ──');
+    lines.push(p._diag_barcode_zone);
+  }
+  if (probe.raw_snippet) {
+    lines.push('');
+    lines.push('── Roh-Antwort der Detail/JSON-Quelle (3 kB) ──');
+    lines.push(probe.raw_snippet);
+  }
+  if (diag) {
+    diag.textContent = lines.join('\n');
+    diag.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
   const have = p.barcode_stueck ? '✓' : '✗';
-  const txt = `Anreichern OK · EAN-Stk ${have} ${p.barcode_stueck || ''} · ${url}`;
-  toast(txt, p.barcode_stueck ? 'ok' : 'err', 8000);
-  console.log('Anreichern-Diagnose Pos', posId, d);
+  toast(`Pos ${posId}: EAN-Stk ${have} ${p.barcode_stueck || ''}`,
+        p.barcode_stueck ? 'ok' : 'err', 6000);
   if (bestRecId) caoMatch(bestRecId);
 }
 
