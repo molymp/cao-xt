@@ -2551,6 +2551,31 @@ def api_einkauf_bestellung_detail(rec_id):
     return jsonify(ok=True, eintrag=e)
 
 
+@app.post('/api/einkauf/bestellungen/<int:rec_id>/sync-cao')
+@_login_required
+def api_einkauf_bestellung_sync_cao(rec_id):
+    """Phase 5a: schreibt die Lieferantenpreis-Verknuepfungen einer
+    Bestellung nach CAO. Body: {'dry_run': bool}.
+
+    Sicherheitsmodell:
+    * Stammartikel-Anlage NICHT enthalten (Phase 5b separat).
+    * UPDATE/INSERT auf ARTIKEL_PREIS, kein _LOG (CAO macht hier
+      auch keinen).
+    * UNVERAENDERT-Positionen werden nur statusmaessig markiert.
+    * Bei Fehler pro Position: Status='fehler', ANMERKUNG mit
+      Fehlertext.
+    """
+    body = request.get_json(silent=True) or {}
+    dry_run = bool(body.get('dry_run', False))
+    ma_name = (session.get('vname', '') + ' '
+                + session.get('ma_name', '')).strip() \
+              or session.get('login_name') or 'CAO-XT'
+    res = _einkauf.cao_sync_artikel_preis(rec_id,
+                                            dry_run=dry_run,
+                                            ma_name=ma_name)
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 @app.post('/api/einkauf/positionen/<int:pos_id>/zuordnen')
 @_login_required
 def api_einkauf_position_zuordnen(pos_id):
