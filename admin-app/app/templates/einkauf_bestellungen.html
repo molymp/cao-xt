@@ -508,7 +508,8 @@ async function detailZeigen(recId) {
             <th style="text-align:right;width:120px;">Zeilenbetrag</th>
             <th class="cao-col" style="display:none;width:90px;">CAO</th>
             <th class="cao-col" style="display:none;">CAO-Artikel</th>
-            <th class="cao-col" style="display:none;text-align:right;width:120px;">Δ EK</th>
+            <th class="cao-col" style="display:none;text-align:right;width:60px;" title="Verpackungseinheit Einkauf (Lieferanten-Cache)">VPE</th>
+            <th class="cao-col" style="display:none;width:200px;" title="ARTIKEL_PREIS-Aktion beim CAO-Sync">Lief-Preis</th>
           </tr>
         </thead>
         <tbody>
@@ -528,6 +529,7 @@ async function detailZeigen(recId) {
               <td class="cao-col" style="display:none;"></td>
               <td class="cao-col" style="display:none;"></td>
               <td class="cao-col num" style="display:none;"></td>
+              <td class="cao-col" style="display:none;"></td>
             </tr>
           `).join('')}
         </tbody>
@@ -535,7 +537,7 @@ async function detailZeigen(recId) {
           <tr>
             <td colspan="5" style="text-align:right;">Summe Positionen</td>
             <td class="num">${_eur(summePos)}</td>
-            <td class="cao-col" style="display:none;" colspan="3"></td>
+            <td class="cao-col" style="display:none;" colspan="4"></td>
           </tr>
         </tfoot>
       </table>
@@ -950,16 +952,42 @@ async function caoMatch(recId) {
       if (tooltip) span.title = tooltip;
       bezTd.appendChild(span);
     }
-    // EK-Diff
-    if (m.ek_diff != null) {
-      const cls = m.ek_diff > 0.005 ? 'diff-pos' : (m.ek_diff < -0.005 ? 'diff-neg' : 'diff-null');
-      const sign = m.ek_diff > 0 ? '+' : '';
-      const pct = m.ek_diff_pct != null ? ` (${sign}${m.ek_diff_pct.toFixed(1)} %)` : '';
-      tds[2].className = 'cao-col num ' + cls;
-      tds[2].textContent = `${sign}${m.ek_diff.toFixed(4)} €${pct}`;
+    // VPE (aus Lieferanten-Cache)
+    if (m.vpe_lief != null) {
+      tds[2].className = 'cao-col num';
+      tds[2].textContent = m.vpe_lief;
     } else {
-      tds[2].textContent = '–';
       tds[2].className = 'cao-col num diff-null';
+      tds[2].textContent = '–';
+    }
+    // Lief-Preis-Aktion (UNVERAENDERT / UPDATE / INSERT / NICHT_MOEGLICH)
+    const pa = m.preis_aktion;
+    tds[3].className = 'cao-col';
+    if (!pa) {
+      tds[3].textContent = '–';
+    } else if (pa.art === 'UNVERAENDERT') {
+      tds[3].innerHTML = '<span class="match-pill lieferant" title="'
+        + _esc(pa.grund || '') + '">🟢 unverändert</span>';
+    } else if (pa.art === 'UPDATE') {
+      const altPreis = (pa.alt && pa.alt.PREIS != null) ? Number(pa.alt.PREIS) : null;
+      const neu = m.preis_netto || 0;
+      const diff = altPreis != null ? (neu - altPreis) : null;
+      const diffTxt = diff != null
+        ? ` ${diff > 0 ? '+' : ''}${diff.toFixed(4)}€`
+        : '';
+      tds[3].innerHTML = '<span class="match-pill mehrdeutig" title="'
+        + _esc(pa.grund || '') + '">🔄 Update' + diffTxt + '</span>';
+    } else if (pa.art === 'INSERT') {
+      const kurz = (pa.andere_bestnums && pa.andere_bestnums.length)
+        ? '🆕 neue Zeile (andere BESTNUM)'
+        : '🆕 neue Zeile';
+      tds[3].innerHTML = '<span class="match-pill barcode" title="'
+        + _esc(pa.grund || '') + '">' + kurz + '</span>';
+    } else if (pa.art === 'NICHT_MOEGLICH') {
+      tds[3].innerHTML = '<span class="match-pill kein" title="'
+        + _esc(pa.grund || '') + '">⚠ nicht möglich</span>';
+    } else {
+      tds[3].textContent = pa.art || '?';
     }
 
     // Vorschlags-Zeile fuer NEU-Positionen mit Treffern + Action-Buttons
@@ -970,7 +998,7 @@ async function caoMatch(recId) {
       const vrow = document.createElement('tr');
       vrow.className = 'vorschlag-zeile';
       const td = document.createElement('td');
-      td.colSpan = 9;
+      td.colSpan = 10;
       td.innerHTML =
         '<span class="vor-titel">💡 Möglicherweise schon in CAO:</span>' +
         m.vorschlaege.map(v => {
@@ -1009,7 +1037,7 @@ async function caoMatch(recId) {
       const vrow = document.createElement('tr');
       vrow.className = 'vorschlag-zeile';
       const td = document.createElement('td');
-      td.colSpan = 9;
+      td.colSpan = 10;
       const txt = m.match_quelle === 'manuell'
         ? `✓ manuell verknüpft mit CAO #${m.cao?.rec_id ?? '?'} (${_esc(m.cao?.kas_name || '')})`
         : '🆕 als neuer Artikel markiert';
