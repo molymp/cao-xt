@@ -517,7 +517,9 @@ async function detailZeigen(recId) {
               <td class="num">${p.POS_NR}
                 <button class="vorschlag-aktion" style="margin-left:4px;font-size:10px;padding:1px 6px;"
                         title="Diese Position neu anreichern + Diagnose anzeigen"
-                        onclick="anreichernPos(${p.REC_ID}, ${e.REC_ID})">🔬</button></td>
+                        data-action="anreichern-pos"
+                        data-pos-id="${p.REC_ID}"
+                        data-best-id="${e.REC_ID}">🔬</button></td>
               <td><code>${_esc(p.ARTIKEL_NR_LIEF || '')}</code></td>
               <td>${_esc(p.BESCHREIBUNG_LIEF || '')}</td>
               <td class="num">${Number(p.MENGE).toFixed(p.MENGE % 1 === 0 ? 0 : 3)}</td>
@@ -707,6 +709,20 @@ async function _zuordnen(posId, body) {
   }
   if (!d.ok) toast(d.msg || 'Fehler', 'err');
 }
+
+// Zentraler Listener fuer dynamisch gerenderte Action-Buttons.
+// Ersetzt die fragilen onclick="..."-Inline-Handler, die abhaengig
+// vom JS-Scope teilweise nicht angesprungen sind.
+document.body.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'anreichern-pos') {
+    ev.preventDefault();
+    ev.stopPropagation();
+    anreichernPos(parseInt(btn.dataset.posId),
+                  parseInt(btn.dataset.bestId));
+  }
+});
 
 // ── Einzelne Pos neu anreichern (Force, mit Diagnose) ────────────
 async function anreichernPos(posId, bestRecId) {
