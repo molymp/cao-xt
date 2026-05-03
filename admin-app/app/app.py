@@ -2602,6 +2602,7 @@ def api_einkauf_position_zuordnen(pos_id):
         pos_id,
         cao_artikel_rec_id=rec_id,
         neu_anlegen=bool(body.get('neu_anlegen')),
+        manuell_klaeren=bool(body.get('manuell_klaeren')),
         anmerkung=body.get('anmerkung'),
         ma_id=session.get('ma_id'),
     )

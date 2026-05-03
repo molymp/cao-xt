@@ -138,11 +138,23 @@ def run_migration() -> None:
                   AND COLUMN_NAME  = 'STATUS'
             """)
             row = cur.fetchone()
-            if row and 'neu_anlegen' not in (row.get('COLUMN_TYPE') or ''):
+            ctype = (row or {}).get('COLUMN_TYPE') or ''
+            if row and 'neu_anlegen' not in ctype:
                 cur.execute("""
                     ALTER TABLE XT_EINKAUF_BESTELLPOS
                     MODIFY COLUMN STATUS
                       ENUM('neu','matched','in_cao','fehler','neu_anlegen')
+                      NOT NULL DEFAULT 'neu'
+                """)
+                ctype = "enum('neu','matched','in_cao','fehler','neu_anlegen')"
+            if 'manuell_klaeren' not in ctype:
+                # Positionen ohne Lieferanten-Stammdaten (Cache leer)
+                # bleiben fuer manuelle Nacharbeit liegen.
+                cur.execute("""
+                    ALTER TABLE XT_EINKAUF_BESTELLPOS
+                    MODIFY COLUMN STATUS
+                      ENUM('neu','matched','in_cao','fehler',
+                           'neu_anlegen','manuell_klaeren')
                       NOT NULL DEFAULT 'neu'
                 """)
             cur.execute("""
@@ -1817,7 +1829,8 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
         cao    = m.get('cao') or {}
         pos_status_alt = (m.get('pos_status') or 'neu').lower()
 
-        if pos_status_alt in ('in_cao', 'neu_anlegen', 'fehler'):
+        if pos_status_alt in ('in_cao', 'neu_anlegen', 'fehler',
+                               'manuell_klaeren'):
             n_skip += 1
             aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
                               'grund': f'Status={pos_status_alt}'})
@@ -1923,7 +1936,8 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
                     SELECT COUNT(*) AS n_offen
                     FROM XT_EINKAUF_BESTELLPOS
                     WHERE BEST_REC_ID = %s
-                      AND STATUS NOT IN ('in_cao', 'neu_anlegen', 'fehler')
+                      AND STATUS NOT IN ('in_cao', 'neu_anlegen',
+                                          'fehler', 'manuell_klaeren')
                 """, (bestellung_rec_id,))
                 offen = int((cur.fetchone() or {'n_offen': 0})['n_offen'])
                 if offen == 0:
@@ -1951,23 +1965,30 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
 def position_zuordnen(pos_rec_id: int,
                       cao_artikel_rec_id: Optional[int] = None,
                       neu_anlegen: bool = False,
+                      manuell_klaeren: bool = False,
                       anmerkung: Optional[str] = None,
                       ma_id: Optional[int] = None) -> dict:
     """Manuelle Zuordnung einer Bestellposition.
 
-    Drei Modi:
-        cao_artikel_rec_id != None  → STATUS='matched', ARTIKEL_REC_ID setzen
-        neu_anlegen=True            → STATUS='neu_anlegen', ARTIKEL_REC_ID=NULL
-        sonst                       → Reset auf STATUS='neu', ARTIKEL_REC_ID=NULL
+    Modi:
+        cao_artikel_rec_id != None  → STATUS='matched', ARTIKEL_REC_ID
+        neu_anlegen=True            → STATUS='neu_anlegen' (Phase 5b
+                                       wird Artikel anlegen)
+        manuell_klaeren=True        → STATUS='manuell_klaeren' (kein
+                                       Auto-Sync; Lieferant kontaktieren,
+                                       Stammdaten manuell ergaenzen)
+        sonst                       → Reset auf STATUS='neu'
 
-    Schreibt nur in XT-Tabellen, NICHT in CAO. Die ARTIKEL_PREIS-
-    Verknuepfung in CAO erfolgt erst beim Phase-5-Sync.
+    Schreibt nur in XT-Tabellen, NICHT in CAO.
     """
     if cao_artikel_rec_id is not None:
         new_status = 'matched'
         artrec = int(cao_artikel_rec_id)
     elif neu_anlegen:
         new_status = 'neu_anlegen'
+        artrec = None
+    elif manuell_klaeren:
+        new_status = 'manuell_klaeren'
         artrec = None
     else:
         new_status = 'neu'
@@ -2153,7 +2174,9 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         # Manuelle User-Zuordnung hat hoechste Prioritaet.
         man_status = (p.get('STATUS') or '').lower()
         man_rec    = p.get('ARTIKEL_REC_ID')
-        if man_status == 'neu_anlegen':
+        if man_status == 'manuell_klaeren':
+            match_quelle = 'manuell_klaeren'
+        elif man_status == 'neu_anlegen':
             match_quelle = 'neu_anlegen'
         elif man_rec:
             try:
@@ -2382,6 +2405,15 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             'lief_cache':       lief_block,
             'vpe_lief':         vpe_lief,
             'preis_aktion':     preis_aktion,
+            # Stammdaten-Vollstaendigkeits-Check fuer Phase 5b:
+            # Position kann nur dann sauber als neuer CAO-Artikel
+            # angelegt werden, wenn der Lieferanten-Cache zumindest
+            # Bezeichnung + Stueck-EAN liefert. Sonst „manuell klaeren".
+            'kann_angelegt_werden': bool(
+                lief_cache
+                and (lief_cache.get('BEZEICHNUNG') or '').strip()
+                and (lief_cache.get('BARCODE_STUECK') or '').strip()
+            ),
         })
     return out
 

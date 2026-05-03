@@ -118,6 +118,7 @@
 }
 .match-pill.manuell     { background: var(--brand-ink);       color: #fff; }
 .match-pill.neu_anlegen { background: var(--status-rot);      color: #fff; }
+.match-pill.manuell_klaeren { background: #f6ecd0; color: var(--status-gelb); border: 1px solid var(--status-gelb); }
 .match-pill.barcode     { background: var(--brand-terracotta); color: #fff; }
 .match-pill.lieferant   { background: var(--status-gruen);    color: #fff; }
 .match-pill.global      { background: var(--brand-sage);      color: var(--gruen-dunkel); }
@@ -776,8 +777,16 @@ async function positionNeuAnlegen(posId, bestRecId) {
   await _zuordnen(posId, { neu_anlegen: true });
   if (bestRecId) caoMatch(bestRecId);
 }
+async function positionManuellKlaeren(posId, bestRecId) {
+  await _zuordnen(posId, { manuell_klaeren: true });
+  if (bestRecId) caoMatch(bestRecId);
+}
 async function positionReset(posId, bestRecId) {
-  await _zuordnen(posId, { cao_artikel_rec_id: null, neu_anlegen: false });
+  await _zuordnen(posId, {
+    cao_artikel_rec_id: null,
+    neu_anlegen: false,
+    manuell_klaeren: false,
+  });
   if (bestRecId) caoMatch(bestRecId);
 }
 async function _zuordnen(posId, body) {
@@ -986,6 +995,7 @@ async function caoMatch(recId) {
     const tipps = {
       manuell:    'Manuell zugeordnet via „Vorschlag übernehmen" oder bei Edit gesetzt.',
       neu_anlegen: 'User hat diese Position als „muss neu angelegt werden" markiert.',
+      manuell_klaeren: 'Lieferanten-Stammdaten unvollständig (z.B. Artikel nicht mehr bestellbar). Position bleibt liegen, Sync ignoriert sie.',
       barcode:    'CAO-Artikel mit identischer Stück-EAN gefunden — höchste Sicherheit.',
       lieferant:  'CAO-Artikel mit dieser Lieferanten-Bestellnummer (BESTNUM) bei UTZ als Lieferant gefunden.',
       global:     'CAO-Artikel mit dieser BESTNUM existiert, aber nicht spezifisch bei UTZ verknüpft (anderer Lieferant oder ohne CAO_LIEF_ID). Wenn die Bezeichnung passt, ist es vermutlich derselbe Artikel.',
@@ -996,6 +1006,7 @@ async function caoMatch(recId) {
     pill.title = tipps[m.match_quelle] || '';
     if (m.match_quelle === 'manuell')     pill.textContent = '✓ manuell';
     else if (m.match_quelle === 'neu_anlegen') pill.textContent = '🆕 neu anlegen';
+    else if (m.match_quelle === 'manuell_klaeren') pill.textContent = '⚠ manuell klären';
     else if (m.match_quelle === 'barcode') pill.textContent = '🟢 EAN';
     else if (m.match_quelle === 'lieferant')  pill.textContent = '🟢 Lief';
     else if (m.match_quelle === 'global')     pill.textContent = '🟢 Global';
@@ -1074,57 +1085,81 @@ async function caoMatch(recId) {
       tds[3].textContent = pa.art || '?';
     }
 
-    // Vorschlags-Zeile fuer NEU-Positionen mit Treffern + Action-Buttons
+    // End-Button-HTML: bei fehlenden Stammdaten → "manuell klären"
+    // statt "neu anlegen" (UTZ liefert keine Daten zum Anlegen).
+    const endBtnHtml = (m.kann_angelegt_werden === false)
+      ? `<span class="vorschlag-aktion" style="margin-left:14px;
+              background:#f6ecd0;color:var(--status-gelb);
+              border-color:var(--status-gelb);"
+             title="Lieferanten-Stammdaten unvollständig — Position bleibt für manuelle Nacharbeit liegen, Sync ignoriert sie."
+             onclick="positionManuellKlaeren(${m.pos_rec_id}, ${recId})">
+          ⚠ manuell klären
+         </span>`
+      : `<span class="vorschlag-aktion neu" style="margin-left:14px;"
+             onclick="positionNeuAnlegen(${m.pos_rec_id}, ${recId})">
+          🆕 keiner — neu anlegen
+         </span>`;
+
+    // Vorschlags-Zeile fuer NEU-Positionen + Action-Buttons.
+    // Auch ohne Vorschläge zeigen, damit der User den End-Button hat.
     const istNeuOhneZuordnung =
       m.match_quelle === 'kein' && (m.pos_status || 'neu') === 'neu';
-    if (istNeuOhneZuordnung && Array.isArray(m.vorschlaege)
-        && m.vorschlaege.length > 0) {
+    if (istNeuOhneZuordnung) {
       const vrow = document.createElement('tr');
       vrow.className = 'vorschlag-zeile';
       const td = document.createElement('td');
       td.colSpan = 10;
-      td.innerHTML =
-        '<span class="vor-titel">💡 Möglicherweise schon in CAO:</span>' +
-        m.vorschlaege.map(v => {
-          const ekDiff = (m.preis_netto != null && v.ek_preis)
-            ? (m.preis_netto - v.ek_preis) : null;
-          const ekClass = ekDiff != null && Math.abs(ekDiff) < 0.01
-            ? 'v-ek-ok' : 'v-ek-warn';
-          const ekTxt = ekDiff != null && Math.abs(ekDiff) < 0.01
-            ? '✓ EK gleich' : `EK ${v.ek_preis.toFixed(3)} €`;
-          const eanTxt = v.ean_match
-            ? '<span class="v-ek-ok" style="margin-left:6px;">✓ EAN gleich</span>'
-            : (v.barcodes && v.barcodes.length
-                ? `<span class="muted" style="margin-left:6px;">EAN ${_esc(v.barcodes[0])}</span>`
-                : '');
-          return `<span class="vorschlag-eintrag" title="WG ${v.warengruppe||'?'} · Lager ${v.lager}">
-                    <code>${_esc(v.artnum||'')}</code>
-                    <span class="v-name">${_esc(v.matchcode||'')}</span>
-                    <span class="${ekClass}">${ekTxt}</span>
-                    ${eanTxt}
-                    <span class="vorschlag-aktion"
-                          onclick="positionZuordnen(${m.pos_rec_id}, ${v.rec_id}, ${recId})">
-                      ✓ übernehmen
-                    </span>
-                  </span>`;
-        }).join('') +
-        `<span class="vorschlag-aktion neu" style="margin-left:14px;"
-               onclick="positionNeuAnlegen(${m.pos_rec_id}, ${recId})">
-           🆕 keiner — neu anlegen
-         </span>`;
+      const hatVorschlaege = Array.isArray(m.vorschlaege)
+                             && m.vorschlaege.length > 0;
+      const vorschlaegeHtml = hatVorschlaege
+        ? '<span class="vor-titel">💡 Möglicherweise schon in CAO:</span>' +
+          m.vorschlaege.map(v => {
+            const ekDiff = (m.preis_netto != null && v.ek_preis)
+              ? (m.preis_netto - v.ek_preis) : null;
+            const ekClass = ekDiff != null && Math.abs(ekDiff) < 0.01
+              ? 'v-ek-ok' : 'v-ek-warn';
+            const ekTxt = ekDiff != null && Math.abs(ekDiff) < 0.01
+              ? '✓ EK gleich' : `EK ${v.ek_preis.toFixed(3)} €`;
+            const eanTxt = v.ean_match
+              ? '<span class="v-ek-ok" style="margin-left:6px;">✓ EAN gleich</span>'
+              : (v.barcodes && v.barcodes.length
+                  ? `<span class="muted" style="margin-left:6px;">EAN ${_esc(v.barcodes[0])}</span>`
+                  : '');
+            return `<span class="vorschlag-eintrag" title="WG ${v.warengruppe||'?'} · Lager ${v.lager}">
+                      <code>${_esc(v.artnum||'')}</code>
+                      <span class="v-name">${_esc(v.matchcode||'')}</span>
+                      <span class="${ekClass}">${ekTxt}</span>
+                      ${eanTxt}
+                      <span class="vorschlag-aktion"
+                            onclick="positionZuordnen(${m.pos_rec_id}, ${v.rec_id}, ${recId})">
+                        ✓ übernehmen
+                      </span>
+                    </span>`;
+          }).join('')
+        : (m.kann_angelegt_werden === false
+            ? '<span class="vor-titel">⚠ Keine Lieferanten-Stammdaten vorhanden — keine Vorschläge:</span>'
+            : '<span class="vor-titel">Keine Treffer in CAO:</span>');
+      td.innerHTML = vorschlaegeHtml + endBtnHtml;
       td.firstChild?.remove;
       vrow.appendChild(td);
       row.parentNode.insertBefore(vrow, row.nextSibling);
     }
-    // Bei manueller Zuordnung: kleine Reset-Zeile fuer 'verknüpfung lösen'
-    else if (m.match_quelle === 'manuell' || m.match_quelle === 'neu_anlegen') {
+    // Bei manueller Zuordnung / neu_anlegen / manuell_klaeren: Reset-Zeile
+    else if (m.match_quelle === 'manuell'
+             || m.match_quelle === 'neu_anlegen'
+             || m.match_quelle === 'manuell_klaeren') {
       const vrow = document.createElement('tr');
       vrow.className = 'vorschlag-zeile';
       const td = document.createElement('td');
       td.colSpan = 10;
-      const txt = m.match_quelle === 'manuell'
-        ? `✓ manuell verknüpft mit CAO #${m.cao?.rec_id ?? '?'} (${_esc(m.cao?.kas_name || '')})`
-        : '🆕 als neuer Artikel markiert';
+      let txt;
+      if (m.match_quelle === 'manuell') {
+        txt = `✓ manuell verknüpft mit CAO #${m.cao?.rec_id ?? '?'} (${_esc(m.cao?.kas_name || '')})`;
+      } else if (m.match_quelle === 'neu_anlegen') {
+        txt = '🆕 als neuer Artikel markiert';
+      } else {
+        txt = '⚠ als „manuell klären" markiert (Sync überspringt)';
+      }
       td.innerHTML = `<span class="vor-titel">${txt}</span>
         <span class="vorschlag-aktion neu" onclick="positionReset(${m.pos_rec_id}, ${recId})">
           ↶ Zuordnung lösen
