@@ -1184,7 +1184,7 @@ def _barcode_konflikt(lief_barcode: str, cao_artikel_rec_id: int) -> bool:
     if not cao_barcodes:
         # CAO hat keinen Barcode → kein Konflikt feststellbar
         return False
-    return lief_barcode not in cao_barcodes
+    return lief_barcode.strip() not in cao_barcodes
 
 
 def cao_artikel_vorschlag(bezeichnung_lief: str,
@@ -1231,8 +1231,12 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
 
     sql = f"""
         SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME, a.KURZNAME,
-               a.WARENGRUPPE, a.EK_PREIS, a.VK5B, a.MENGE_AKT,
-               a.DEFAULT_LIEF_ID, a.BARCODE, a.BARCODE2, a.BARCODE3
+               a.WARENGRUPPE, a.STEUER_CODE,
+               a.EK_PREIS, a.VK5B, a.MENGE_AKT,
+               a.DEFAULT_LIEF_ID, a.NO_VK_FLAG, a.USERFELD_02,
+               TRIM(a.BARCODE)  AS BARCODE,
+               TRIM(a.BARCODE2) AS BARCODE2,
+               TRIM(a.BARCODE3) AS BARCODE3
         FROM ARTIKEL a
         WHERE {' AND '.join(where)}
         ORDER BY {order}
@@ -1277,6 +1281,14 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
         'vk5b':             float(r.get('VK5B') or 0),
         'lager':            float(r.get('MENGE_AKT') or 0),
         'default_lief_id':  r.get('DEFAULT_LIEF_ID'),
+        'barcodes':         [b for b in (r.get('BARCODE'),
+                                          r.get('BARCODE2'),
+                                          r.get('BARCODE3')) if b],
+        'ean_match':        bool(ausschluss_barcode
+                                  and ausschluss_barcode in
+                                  [r.get(k) for k in
+                                   ('BARCODE', 'BARCODE2', 'BARCODE3')
+                                   if r.get(k)]),
     } for r in rows]
 
 
@@ -1732,8 +1744,13 @@ def cao_sync_plan(bestellung_rec_id: int) -> dict:
             aktion = 'offen'
             n_offen += 1
             cao_label = 'noch nicht zugeordnet'
-            hinweise.append('Bitte „CAO-Match prüfen" + Vorschlag uebernehmen, '
-                            'oder Position als „neu anlegen" markieren.')
+            if m.get('vorschlaege'):
+                hinweise.append('Bitte „CAO-Match prüfen" + einen Vorschlag '
+                                'uebernehmen oder als „neu anlegen" markieren.')
+            else:
+                hinweise.append('Keine CAO-Treffer und keine Bezeichnungs-'
+                                'Vorschlaege – Position als „neu anlegen" '
+                                'markieren.')
 
         pos_plan.append({
             'pos_rec_id':            m.get('pos_rec_id'),
@@ -1917,19 +1934,22 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 # 0. Hoechste Prioritaet: Barcode-Match (Stueck-EAN gegen
                 #    ARTIKEL.BARCODE/2/3). Eindeutigste Identifikation,
                 #    deshalb vor allen anderen Pfaden.
+                # TRIM beidseitig, weil CAO-Stammdaten oft Whitespace im
+                # Barcode-Feld haben.
                 if cao_treffer is None and barcode_stk:
+                    bc = barcode_stk.strip()
                     cur.execute("""
                         SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
                                a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
                                a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
                                a.USERFELD_02
                         FROM ARTIKEL a
-                        WHERE a.BARCODE  = %s
-                           OR a.BARCODE2 = %s
-                           OR a.BARCODE3 = %s
+                        WHERE TRIM(a.BARCODE)  = %s
+                           OR TRIM(a.BARCODE2) = %s
+                           OR TRIM(a.BARCODE3) = %s
                         ORDER BY (a.NO_VK_FLAG = 'N') DESC, a.REC_ID
                         LIMIT 1
-                    """, (barcode_stk, barcode_stk, barcode_stk))
+                    """, (bc, bc, bc))
                     row = cur.fetchone()
                     if row:
                         cao_treffer = row
@@ -2026,10 +2046,39 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 vorschlaege = cao_artikel_vorschlag(
                     bez_fuer_suche,
                     cao_lief_id=cao_lief, limit=3,
-                    ausschluss_barcode=barcode_stk)
+                    ausschluss_barcode=(barcode_stk or '').strip())
             except Exception as exc:
                 log.warning("Vorschlag fuer Pos %s: %s", artnr, exc)
                 vorschlaege = []
+
+            # Aufwertung: wenn ein Vorschlag den IDENTISCHEN Stueck-EAN
+            # hat, ist er de facto ein Barcode-Match (der direkte
+            # Barcode-Pfad weiter oben hat ihn vermutlich verfehlt –
+            # z.B. weil das Bezeichnungs-Token-Match anders sortiert
+            # oder weil Whitespace im Barcode-Feld inzwischen anders
+            # liegt). Wir nehmen den ersten EAN-Match-Vorschlag und
+            # erheben ihn zu match_quelle='barcode'.
+            if barcode_stk and vorschlaege:
+                ean_match = next(
+                    (v for v in vorschlaege if v.get('ean_match')), None)
+                if ean_match:
+                    try:
+                        with get_db() as cur:
+                            cur.execute("""
+                                SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE,
+                                       a.KAS_NAME, a.KURZNAME, a.WARENGRUPPE,
+                                       a.STEUER_CODE, a.EK_PREIS, a.VK5B,
+                                       a.MENGE_AKT, a.NO_VK_FLAG, a.USERFELD_02
+                                FROM ARTIKEL a WHERE a.REC_ID = %s
+                            """, (int(ean_match['rec_id']),))
+                            row = cur.fetchone()
+                        if row:
+                            cao_treffer = row
+                            match_quelle = 'barcode'
+                            vorschlaege = []
+                    except Exception as exc:
+                        log.warning("EAN-Vorschlag-Aufwertung %s: %s",
+                                    artnr, exc)
 
         # Lieferanten-Stammdaten aus dem Cache (fuer Bild + Barcode-Anzeige)
         lief_block = None

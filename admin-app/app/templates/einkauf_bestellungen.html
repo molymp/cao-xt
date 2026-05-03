@@ -899,10 +899,16 @@ async function caoMatch(recId) {
             ? 'v-ek-ok' : 'v-ek-warn';
           const ekTxt = ekDiff != null && Math.abs(ekDiff) < 0.01
             ? '✓ EK gleich' : `EK ${v.ek_preis.toFixed(3)} €`;
+          const eanTxt = v.ean_match
+            ? '<span class="v-ek-ok" style="margin-left:6px;">✓ EAN gleich</span>'
+            : (v.barcodes && v.barcodes.length
+                ? `<span class="muted" style="margin-left:6px;">EAN ${_esc(v.barcodes[0])}</span>`
+                : '');
           return `<span class="vorschlag-eintrag" title="WG ${v.warengruppe||'?'} · Lager ${v.lager}">
                     <code>${_esc(v.artnum||'')}</code>
                     <span class="v-name">${_esc(v.matchcode||'')}</span>
                     <span class="${ekClass}">${ekTxt}</span>
+                    ${eanTxt}
                     <span class="vorschlag-aktion"
                           onclick="positionZuordnen(${m.pos_rec_id}, ${v.rec_id}, ${recId})">
                       ✓ übernehmen
