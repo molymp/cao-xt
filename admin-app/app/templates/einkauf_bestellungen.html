@@ -127,6 +127,28 @@
 .match-pill.kein        { background: #f6d8ce;                color: var(--status-rot); }
 .match-pill { cursor: help; }
 
+/* EK-Bezug-Pille — Toggle zwischen STK und VPE_EK pro Lief-Artikel */
+.ek-bezug-pille {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 0.04em;
+}
+.ek-bezug-pille.stk    { background: var(--bg-dunkel);
+                          color: var(--text-mitte);
+                          border: 1px solid var(--border); }
+.ek-bezug-pille.vpe_ek { background: #f6ecd0;
+                          color: var(--status-gelb);
+                          border: 1px solid var(--status-gelb); }
+.ek-bezug-pille:hover  { opacity: 0.75; }
+.ek-bezug-pille.override { box-shadow: 0 0 0 2px var(--brand-terracotta) inset; }
+
 .lief-thumb {
   width: 32px; height: 32px;
   object-fit: cover;
@@ -906,6 +928,38 @@ async function positionManuellKlaeren(posId, bestRecId) {
   await _zuordnen(posId, { manuell_klaeren: true });
   if (bestRecId) caoMatch(bestRecId);
 }
+
+// ── EK-Bezug Toggle (Phase 5b-Verbesserung) ──────────────────────
+// Schaltet pro Lief-Artikel zwischen 'STK' und 'VPE_EK' um. Wirkt
+// als Override gegen den Lieferanten-Default; alle kuenftigen
+// Bestellungen dieses Artikels uebernehmen den Wert.
+async function ekBezugToggle(posId, aktuell, bestRecId) {
+  const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
+  const erkl = (neu === 'VPE_EK')
+    ? 'Bei "VPE_EK" wird der Mail-Preis durch VPE_EK geteilt → Stück-EK in CAO. '
+      + 'Beispiel: Mail-Preis 16,84 € pro Karton, VPE_EK=20 → Stück-EK 0,8420 €.'
+    : 'Bei "STK" wird der Mail-Preis direkt als Stück-EK übernommen.';
+  if (!confirm(
+    `EK-Bezug für diesen Lieferanten-Artikel auf "${neu}" setzen?\n\n` +
+    'Wirkt für alle künftigen Bestellungen dieses Artikels.\n\n' +
+    erkl
+  )) return;
+  let d;
+  try {
+    const r = await fetch(`/api/einkauf/positionen/${posId}/ek-bezug`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ek_bezug: neu }),
+    });
+    d = await r.json();
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err');
+    return;
+  }
+  if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+  // Match neu laden — neuer stueck_ek + preis_aktion sind betroffen
+  if (bestRecId) caoMatch(bestRecId);
+}
 async function positionReset(posId, bestRecId) {
   await _zuordnen(posId, {
     cao_artikel_rec_id: null,
@@ -1340,14 +1394,29 @@ async function caoMatch(recId) {
       if (tooltip) span.title = tooltip;
       bezTd.appendChild(span);
     }
-    // VPE (aus Lieferanten-Cache)
-    if (m.vpe_lief != null) {
-      tds[2].className = 'cao-col num';
-      tds[2].textContent = m.vpe_lief;
-    } else {
-      tds[2].className = 'cao-col num diff-null';
-      tds[2].textContent = '–';
-    }
+    // VPE (aus Lieferanten-Cache) + EK-Bezug-Pille (Toggle)
+    const bezug = (m.ek_bezug || 'STK');
+    const bezugQ = m.ek_bezug_quelle || 'default';
+    const bezugTitle = (
+      `EK-Bezug: ${bezug}` +
+      (bezugQ === 'artikel'   ? ' (Artikel-Override)'
+       : bezugQ === 'lieferant' ? ' (Lieferanten-Default)'
+       :                          ' (System-Default)') +
+      (m.stueck_ek != null && m.preis_netto != null
+        && Math.abs(m.stueck_ek - m.preis_netto) > 0.0001
+        ? ` · Stück-EK ${Number(m.stueck_ek).toFixed(4)} €`
+        : '') +
+      ' · Klick zum Umschalten'
+    );
+    const overrideCls = (bezugQ === 'artikel') ? ' override' : '';
+    const vpeTxt = (m.vpe_lief != null) ? m.vpe_lief : '–';
+    tds[2].className = 'cao-col num';
+    tds[2].innerHTML =
+      `${vpeTxt}<br>` +
+      `<span class="ek-bezug-pille ${bezug.toLowerCase()}${overrideCls}"
+             title="${_esc(bezugTitle)}"
+             onclick="ekBezugToggle(${m.pos_rec_id}, '${bezug}', ${recId})">` +
+      `${bezug}</span>`;
     // Lief-Preis-Aktion (UNVERAENDERT / UPDATE / INSERT / NICHT_MOEGLICH)
     const pa = m.preis_aktion;
     tds[3].className = 'cao-col';

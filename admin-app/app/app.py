@@ -2625,6 +2625,43 @@ def api_einkauf_position_warengruppe(pos_id):
     return jsonify(**res), 200 if res.get('ok') else 400
 
 
+@app.post('/api/einkauf/positionen/<int:pos_id>/ek-bezug')
+@_login_required
+def api_einkauf_position_ek_bezug(pos_id):
+    """Setzt den EK-Bezug-Override fuer den Lief-Artikel hinter der
+    Bestellposition (Phase 5b-Verbesserung).
+
+    Body: {'ek_bezug': 'STK' | 'VPE_EK' | null}. ``null`` loescht den
+    Override → Lieferanten-Default greift wieder.
+    """
+    body = request.get_json(silent=True) or {}
+    raw = body.get('ek_bezug')
+    if raw in (None, '', 'null'):
+        bezug = None
+    elif str(raw).upper() in ('STK', 'VPE_EK'):
+        bezug = str(raw).upper()
+    else:
+        return jsonify(ok=False,
+                       msg="ek_bezug muss 'STK', 'VPE_EK' oder null sein"), 400
+    # Lief-Artikel via Bestellposition aufloesen
+    try:
+        with _einkauf.get_db() as cur:
+            cur.execute("""
+                SELECT b.LIEF_REC_ID, p.ARTIKEL_NR_LIEF
+                FROM XT_EINKAUF_BESTELLPOS p
+                JOIN XT_EINKAUF_BESTELLUNG b ON b.REC_ID = p.BEST_REC_ID
+                WHERE p.REC_ID = %s
+            """, (pos_id,))
+            row = cur.fetchone()
+    except Exception as exc:
+        return jsonify(ok=False, msg=str(exc)), 500
+    if not row:
+        return jsonify(ok=False, msg='Position nicht gefunden.'), 404
+    res = _einkauf.lief_artikel_ek_bezug_setzen(
+        row['LIEF_REC_ID'], row['ARTIKEL_NR_LIEF'], bezug)
+    return jsonify(**res), 200 if res.get('ok') else 400
+
+
 @app.post('/api/einkauf/positionen/<int:pos_id>/zuordnen')
 @_login_required
 def api_einkauf_position_zuordnen(pos_id):

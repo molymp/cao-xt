@@ -321,6 +321,24 @@
            overflow:auto;"></pre>
     </fieldset>
 
+    <fieldset style="border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-top:12px;">
+      <legend class="muted" style="padding:0 6px;">EK-Bezug</legend>
+      <div class="form-group">
+        <label>Default — wofür stehen die EK-Preise dieses Lieferanten?</label>
+        <select class="form-control" id="ed-ek-bezug-default">
+          <option value="STK">pro Stück (Standard, z.B. UTZ)</option>
+          <option value="VPE_EK">pro Karton/Kiste (VPE_EK)</option>
+        </select>
+        <p class="muted" style="margin-top:4px;">
+          Beim CAO-Sync wird der EK auf Stück-Basis gerechnet (CAO-Konvention).
+          Wenn der Lieferant Karton-Preise schickt, wird durch <code>VPE_EK</code>
+          geteilt, damit Faktor und Kalkulation stimmen.<br>
+          Pro Lief-Artikel ist ein Override möglich (in der Bestellungs-Match-Tabelle
+          per Klick auf die <code>STK</code>/<code>VPE_EK</code>-Pille).
+        </p>
+      </div>
+    </fieldset>
+
     <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:12px;">
       <input type="checkbox" id="ed-aktiv" style="width:18px;height:18px;" checked>
       <label for="ed-aktiv" style="margin:0;text-transform:none;letter-spacing:0;">
@@ -408,6 +426,8 @@ function lieferantNeu() {
   _e('ed-pw-status').textContent = '';
   _e('ed-web-test-out').textContent = '';
   _e('ed-aktiv').checked = true;
+  const sel = _e('ed-ek-bezug-default');
+  if (sel) sel.value = 'STK';
   _e('btn-loeschen').style.display = 'none';
   _e('modal-bg').classList.add('show');
 }
@@ -440,6 +460,9 @@ function lieferantEdit(recId) {
   _e('ed-pw-status').textContent = e.WEB_PASSWORD_GESETZT ? '· hinterlegt' : '· nicht gesetzt';
   _e('ed-web-test-out').textContent = '';
   _e('ed-aktiv').checked = !!e.AKTIV;
+  // EK-Bezug-Default (Phase 5b-Verbesserung)
+  const sel = _e('ed-ek-bezug-default');
+  if (sel) sel.value = e.EK_BEZUG_DEFAULT || 'STK';
   _e('btn-loeschen').style.display = '';
   _e('modal-bg').classList.add('show');
 }
@@ -462,6 +485,7 @@ async function lieferantSpeichern() {
     WEB_KUNDEN_NR: _e('ed-webkdnr').value.trim(),
     WEB_USERNAME: _e('ed-webuser').value.trim(),
     AKTIV: _e('ed-aktiv').checked,
+    EK_BEZUG_DEFAULT: (_e('ed-ek-bezug-default') || {}).value || 'STK',
   };
   // WEB_PASSWORD nur senden wenn etwas eingegeben wurde
   // (bzw. explizit "leeren" via " " bewusst nicht angeboten – per
@@ -860,6 +884,7 @@ async function lieferantSpeichern_silent() {
     WEB_KUNDEN_NR: _e('ed-webkdnr').value.trim(),
     WEB_USERNAME: _e('ed-webuser').value.trim(),
     AKTIV: _e('ed-aktiv').checked,
+    EK_BEZUG_DEFAULT: (_e('ed-ek-bezug-default') || {}).value || 'STK',
   };
   const pw = _e('ed-webpw').value;
   if (pw) body.WEB_PASSWORD = pw;
