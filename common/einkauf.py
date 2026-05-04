@@ -2788,6 +2788,7 @@ def cao_sync_artikel(bestellung_rec_id: int,
         }
     """
     from common import cao_log_hashsum  # lokaler Import (vermeidet Zyklus)
+    from common import cao_hashsum as _cao_hashsum
 
     head = bestellung_holen(bestellung_rec_id)
     if not head:
@@ -2795,6 +2796,25 @@ def cao_sync_artikel(bestellung_rec_id: int,
     matches = cao_match_positionen(bestellung_rec_id)
     if not matches:
         return {'ok': False, 'msg': 'Bestellung hat keine Positionen.'}
+
+    # Pre-Check: Salt fuer ARTIKEL_LOG MUSS gepflegt sein, sonst
+    # bricht cao_log_hashsum.compute() pro Position mit SaltFehlt ab —
+    # und der ARTIKEL-INSERT, der davor passiert, wuerde halb angelegt
+    # bleiben (ARTIKEL existiert in CAO ohne XT-Hash + ohne Bestell-
+    # positions-Verknuepfung). Lieber EINMAL frueh und klar abbrechen,
+    # bevor irgendwas in CAO geschrieben wird.
+    try:
+        _cao_hashsum.get_salt(_cao_hashsum.KEY_ARTIKEL_LOG)
+    except _cao_hashsum.SaltFehlt as exc:
+        return {
+            'ok': False,
+            'msg': str(exc),
+            'angelegt': 0,
+            'uebersprungen': 0,
+            'fehler': [],
+            'aktionen': [],
+            'artikel_rec_ids': [],
+        }
 
     n_neu = n_skip = 0
     fehler: list[dict] = []
