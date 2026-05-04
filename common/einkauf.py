@@ -1919,19 +1919,24 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
             if art == 'UNVERAENDERT':
                 n_unch += 1
             elif art == 'UPDATE':
+                # WHERE auf den echten PK (ohne BESTNUM-Filter), und
+                # BESTNUM mit-aktualisieren — die Mail-BESTNUM ist die
+                # aktuelle Quelle vom Lieferanten und ueberschreibt
+                # einen evtl. abweichenden Alt-Wert in CAO.
                 with get_db_transaction() as cur:
                     cur.execute("""
                         UPDATE ARTIKEL_PREIS
                            SET PREIS       = %s,
                                VPE         = %s,
+                               BESTNUM     = %s,
                                GEAEND      = NOW(),
                                GEAEND_NAME = %s
                          WHERE ARTIKEL_ID = %s
                            AND ADRESS_ID  = %s
                            AND PREIS_TYP  = 5
-                           AND BESTNUM    = %s
-                    """, (preis, vpe, (ma_name or 'CAO-XT')[:100],
-                          artikel_id, adress_id, artnr))
+                    """, (preis, vpe, artnr,
+                          (ma_name or 'CAO-XT')[:100],
+                          artikel_id, adress_id))
                 n_upd += 1
             elif art == 'INSERT':
                 with get_db_transaction() as cur:
@@ -2064,13 +2069,19 @@ def _lief_preis_aktion(cao_artikel_rec_id: Optional[int],
         art:        'UNVERAENDERT' | 'UPDATE' | 'INSERT' | 'NICHT_MOEGLICH'
         grund:      lokalisierter Klartext fuers UI
         alt:        {BESTNUM, PREIS, VPE} | None
-        andere_bestnums: list[str]   – existierende BESTNUMs am
-                                       gleichen Artikel/Lieferanten,
-                                       die NICHT angefasst werden.
+        andere_bestnums: list[str]   – Legacy-Feld, immer leer (siehe
+                                       Hinweis unten).
 
-    Match-Key fuer ARTIKEL_PREIS: (ARTIKEL_ID, ADRESS_ID, PREIS_TYP=5,
-    BESTNUM). Damit bleiben falsche/veraltete Alt-Eintraege mit
-    abweichender BESTNUM unangetastet (Cleanup-Workflow eigenstaendig).
+    DB-Constraint: ARTIKEL_PREIS hat den Primary Key
+    (ARTIKEL_ID, ADRESS_ID, PREIS_TYP) — die ``BESTNUM`` ist NICHT
+    Teil des PKs. Pro (Artikel, Lieferant, Preis-Typ=5) gibt es also
+    GENAU EINEN Eintrag. Wir matchen daher auf den PK und ueber-
+    schreiben bei abweichender BESTNUM — die Lieferanten-Mail ist
+    immer die frische Quelle und der CAO-Stand wird mit ihr in
+    Einklang gebracht. Frueher hatte diese Funktion auf BESTNUM
+    mit-gefiltert und bei Abweichung INSERT empfohlen — das fuehrte
+    in 27 Positionen zu „Duplicate entry"-Fehlern, weil die DB den
+    zweiten Eintrag unter gleicher PK-Tripel ablehnt.
     """
     if not (cao_artikel_rec_id and cao_lief_id):
         # Ohne Lief-Verknuepfung kann der Sync den Eintrag nicht setzen
@@ -2084,7 +2095,6 @@ def _lief_preis_aktion(cao_artikel_rec_id: Optional[int],
 
     bestnum = (neue_bestnum or '').strip()
     existing = None
-    other_bestnums: list[str] = []
     try:
         with get_db() as cur:
             cur.execute("""
@@ -2093,64 +2103,51 @@ def _lief_preis_aktion(cao_artikel_rec_id: Optional[int],
                 WHERE ARTIKEL_ID = %s
                   AND ADRESS_ID  = %s
                   AND PREIS_TYP  = 5
-                  AND BESTNUM    = %s
-                ORDER BY GUELTIG_VON DESC LIMIT 1
-            """, (int(cao_artikel_rec_id), int(cao_lief_id), bestnum))
+            """, (int(cao_artikel_rec_id), int(cao_lief_id)))
             existing = cur.fetchone()
-            cur.execute("""
-                SELECT BESTNUM FROM ARTIKEL_PREIS
-                WHERE ARTIKEL_ID = %s
-                  AND ADRESS_ID  = %s
-                  AND PREIS_TYP  = 5
-                  AND BESTNUM   <> %s
-                  AND BESTNUM IS NOT NULL
-                  AND BESTNUM   <> ''
-                ORDER BY GUELTIG_VON DESC LIMIT 5
-            """, (int(cao_artikel_rec_id), int(cao_lief_id), bestnum))
-            other_bestnums = [(r.get('BESTNUM') or '').strip()
-                               for r in (cur.fetchall() or [])]
     except Exception as exc:
         log.warning('_lief_preis_aktion %s: %s', cao_artikel_rec_id, exc)
         return {'art': 'NICHT_MOEGLICH', 'grund': f'DB-Fehler: {exc}',
                 'alt': None, 'andere_bestnums': []}
 
     if existing:
-        alt_preis = float(existing.get('PREIS') or 0)
-        alt_vpe   = existing.get('VPE')
-        diff_preis = abs((neuer_preis or 0) - alt_preis)
-        diff_vpe   = (neue_vpe or 0) != (int(alt_vpe) if alt_vpe else 0)
-        if diff_preis < 0.0001 and not diff_vpe:
+        alt_bestnum = (existing.get('BESTNUM') or '').strip()
+        alt_preis   = float(existing.get('PREIS') or 0)
+        alt_vpe     = existing.get('VPE')
+        diff_preis   = abs((neuer_preis or 0) - alt_preis)
+        diff_vpe     = (neue_vpe or 0) != (int(alt_vpe) if alt_vpe else 0)
+        diff_bestnum = bestnum != alt_bestnum
+        if diff_preis < 0.0001 and not diff_vpe and not diff_bestnum:
             return {
                 'art': 'UNVERAENDERT',
                 'grund': f'Eintrag mit BESTNUM {bestnum} und EK '
                          f'{alt_preis:.4f} € ist bereits gepflegt.',
                 'alt': dict(existing),
-                'andere_bestnums': other_bestnums,
+                'andere_bestnums': [],
             }
         teile = []
         if diff_preis >= 0.0001:
             teile.append(f'EK {alt_preis:.4f} → {neuer_preis or 0:.4f} €')
         if diff_vpe:
             teile.append(f'VPE {alt_vpe} → {neue_vpe}')
+        if diff_bestnum:
+            teile.append(f'BESTNUM {alt_bestnum!r} → {bestnum!r}')
         return {
             'art': 'UPDATE',
             'grund': 'Bestehender Eintrag wird aktualisiert: '
                      + ', '.join(teile) + '.',
             'alt': dict(existing),
-            'andere_bestnums': other_bestnums,
+            'andere_bestnums': [],
         }
 
-    # Kein passender Eintrag → INSERT
-    if other_bestnums:
-        grund = ('Bisher kein Lieferantenpreis mit dieser BESTNUM. '
-                  'Bestehende Eintraege haben andere BESTNUM '
-                  f'({", ".join(other_bestnums)}) – diese bleiben '
-                  'unveraendert; neue Zeile wird ergaenzt.')
-    else:
-        grund = ('Bisher kein Lieferantenpreis vom aktuellen '
-                  'Lieferanten hinterlegt. Neue Zeile wird angelegt.')
-    return {'art': 'INSERT', 'grund': grund, 'alt': None,
-            'andere_bestnums': other_bestnums}
+    # Kein Eintrag → INSERT
+    return {
+        'art': 'INSERT',
+        'grund': ('Bisher kein Lieferantenpreis vom aktuellen '
+                  'Lieferanten hinterlegt. Neue Zeile wird angelegt.'),
+        'alt': None,
+        'andere_bestnums': [],
+    }
 
 
 def cao_match_positionen(rec_id: int) -> list[dict]:
