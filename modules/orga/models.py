@@ -500,19 +500,41 @@ def warengruppen_mit_faktor() -> list:
     return result
 
 
-def preispflege_liste(wgr_id: int | None = None) -> list:
+def preispflege_liste(wgr_id: int | None = None,
+                       nur_kontrolle: bool = False) -> list:
     """Alle aktiven Artikel (N/F/S) mit EK, VK5, VPE und Faktor.
 
     Aktive Artikel: ARTIKELTYP IN ('N','F','S'), kein VK-Sperre
     (NO_VK_FLAG != 'J'/'Y') und kein Löschvermerk (USERFELD_02).
     Auch Artikel ohne VK5 werden angezeigt (Faktor = None).
+
+    Args:
+        wgr_id: optional Filter auf eine Warengruppe.
+        nur_kontrolle: wenn True, nur Artikel mit OFFENEM Eintrag in
+            ``XT_ARTIKEL_VK_KONTROLLE`` zurueckgeben (Phase-5b-Trigger:
+            neu angelegt oder EK geaendert).
+
+    Pro Artikel kommt das Feld ``vk_kontrolle`` mit::
+
+        None  oder
+        {
+          'rec_id': int, 'grund': 'neu'|'ek_geaendert',
+          'alt_ek': float|None, 'neu_ek': float|None,
+          'quelle_best': int|None, 'angelegt_at': iso-string,
+          'anmerkung': str|None,
+        }
     """
     wgr_filter = ''
     params: list = []
     if wgr_id is not None:
         wgr_filter = 'AND a.WARENGRUPPE = %s '
         params.append(wgr_id)
+    kontrolle_filter = (
+        'AND vk.REC_ID IS NOT NULL ' if nur_kontrolle else ''
+    )
 
+    # LEFT JOIN auf den juengsten OFFENEN VK-Kontroll-Eintrag pro
+    # Artikel (Subquery liefert max. 1 Zeile).
     sql = f"""
         SELECT
             a.ARTNUM,
@@ -526,13 +548,29 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             COALESCE(a.MENGE_AKT, 0)                     AS BESTAND,
             COALESCE(a.VPE, 1)                           AS VPE_VK,
             COALESCE(a.VPE_EK, 1)                        AS VPE_EK,
-            a.DEFAULT_LIEF_ID
+            a.DEFAULT_LIEF_ID,
+            vk.REC_ID         AS VK_REC_ID,
+            vk.GRUND          AS VK_GRUND,
+            vk.ALT_EK         AS VK_ALT_EK,
+            vk.NEU_EK         AS VK_NEU_EK,
+            vk.QUELLE_BEST    AS VK_QUELLE_BEST,
+            vk.ANGELEGT_AT    AS VK_ANGELEGT_AT,
+            vk.ANMERKUNG      AS VK_ANMERKUNG
         FROM ARTIKEL a
         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
+        LEFT JOIN XT_ARTIKEL_VK_KONTROLLE vk
+               ON vk.ARTIKEL_REC_ID = a.REC_ID
+              AND vk.ERLEDIGT_AT IS NULL
+              AND vk.REC_ID = (
+                  SELECT MAX(vk2.REC_ID) FROM XT_ARTIKEL_VK_KONTROLLE vk2
+                  WHERE vk2.ARTIKEL_REC_ID = a.REC_ID
+                    AND vk2.ERLEDIGT_AT IS NULL
+              )
         WHERE a.ARTIKELTYP IN ('N', 'F', 'S')
           AND (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
           AND (a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')
           {wgr_filter}
+          {kontrolle_filter}
         ORDER BY a.WARENGRUPPE, COALESCE(a.KAS_NAME, a.KURZNAME)
     """
     with get_db() as cur:
@@ -552,6 +590,27 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
         vk5_netto = vk5 / (1.0 + mwst_satz) if mwst_satz > 0 else vk5
         faktor = _faktor_berechnen(vk5_netto, ek, vpe_vk, vpe_ek)
 
+        vk_kontrolle = None
+        if r.get('VK_REC_ID') is not None:
+            angelegt = r.get('VK_ANGELEGT_AT')
+            vk_kontrolle = {
+                'rec_id':       int(r['VK_REC_ID']),
+                'grund':        r['VK_GRUND'],
+                'alt_ek':       (float(r['VK_ALT_EK'])
+                                  if r.get('VK_ALT_EK') is not None
+                                  else None),
+                'neu_ek':       (float(r['VK_NEU_EK'])
+                                  if r.get('VK_NEU_EK') is not None
+                                  else None),
+                'quelle_best':  (int(r['VK_QUELLE_BEST'])
+                                  if r.get('VK_QUELLE_BEST')
+                                  else None),
+                'angelegt_at':  (angelegt.isoformat()
+                                  if hasattr(angelegt, 'isoformat')
+                                  else angelegt),
+                'anmerkung':    r.get('VK_ANMERKUNG'),
+            }
+
         result.append({
             'artnr':           r['ARTNUM'],
             'bezeichnung':     r['BEZEICHNUNG'],
@@ -568,9 +627,52 @@ def preispflege_liste(wgr_id: int | None = None) -> list:
             'vpe_ek':          vpe_ek,
             'faktor':          faktor,
             'default_lief_id': r.get('DEFAULT_LIEF_ID'),
+            'vk_kontrolle':    vk_kontrolle,
         })
 
     return result
+
+
+def vk_kontrolle_count_offen() -> int:
+    """Anzahl OFFENER VK-Kontroll-Eintraege (fuer UI-Filter-Pille)."""
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT COUNT(DISTINCT ARTIKEL_REC_ID) AS N
+                FROM XT_ARTIKEL_VK_KONTROLLE
+                WHERE ERLEDIGT_AT IS NULL
+            """)
+            return int((cur.fetchone() or {'N': 0})['N'])
+    except Exception:
+        # Tabelle existiert evtl. noch nicht (Migration nicht gelaufen)
+        return 0
+
+
+def vk_kontrolle_erledigen(artnum: str,
+                            ma_id: int | None = None,
+                            anmerkung: str | None = None) -> int:
+    """Setzt ERLEDIGT_AT fuer alle offenen VK-Kontroll-Eintraege des
+    Artikels. Liefert die Anzahl der erledigten Eintraege.
+
+    Wird aufgerufen:
+      - manuell aus der Preispflege-UI ("✓ ist OK"-Button)
+      - automatisch nach :func:`artikel_vk5_setzen` (User pflegt VK
+        nach → Eintrag wird sofort als erledigt markiert)
+    """
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("""
+                UPDATE XT_ARTIKEL_VK_KONTROLLE vk
+                  JOIN ARTIKEL a ON a.REC_ID = vk.ARTIKEL_REC_ID
+                   SET vk.ERLEDIGT_AT  = NOW(),
+                       vk.ERLEDIGT_VON = %s,
+                       vk.ANMERKUNG    = COALESCE(NULLIF(%s,''), vk.ANMERKUNG)
+                 WHERE a.ARTNUM = %s
+                   AND vk.ERLEDIGT_AT IS NULL
+            """, (ma_id, anmerkung or '', artnum))
+            return cur.rowcount or 0
+    except Exception:
+        return 0
 
 
 def lieferantenpreise_fuer_artikel(artnr: str) -> list:
@@ -666,6 +768,14 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
         if cur.rowcount == 0:
             raise ValueError(f'Artikel {artnum!r} konnte nicht aktualisiert werden')
 
+    # Auto-Erledigung: wenn der Artikel offene VK-Kontroll-Eintraege
+    # (Phase 5b: 'neu' / Phase 5a: 'ek_geaendert') hat, sind die mit
+    # diesem VK-Set jetzt erledigt — kein zusaetzlicher User-Klick noetig.
+    erledigt = vk_kontrolle_erledigen(
+        artnum,
+        anmerkung=f'Auto-erledigt durch VK5-Pflege (VK5={vk5_brutto:.2f})',
+    )
+
     ek = float(artikel.get('EK_PREIS') or 0)
     mwst_code = int(artikel.get('MWST_CODE') or 0)
     mwst_satz = _MWST_MAP.get(mwst_code, 0.0) / 100.0
@@ -678,6 +788,7 @@ def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
         'vk5_neu': vk5_brutto,
         'vk5_netto': round(vk5_netto, 4),
         'faktor':  faktor,
+        'vk_kontrolle_erledigt': erledigt,
     }
 
 

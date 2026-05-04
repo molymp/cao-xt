@@ -1937,6 +1937,23 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
                     """, (preis, vpe, artnr,
                           (ma_name or 'CAO-XT')[:100],
                           artikel_id, adress_id))
+                # VK-Kontroll-Trigger bei EK-Aenderung: alt-EK aus
+                # `pa.alt` (vom Match-Service ermittelt) gegen den
+                # neuen Preis vergleichen — wenn abweichend (>= 0.01€),
+                # XT_ARTIKEL_VK_KONTROLLE-Eintrag mit GRUND='ek_geaendert'
+                # idempotent setzen.
+                alt = (pa or {}).get('alt') or {}
+                alt_preis = float(alt.get('PREIS') or 0)
+                if abs((preis or 0) - alt_preis) >= 0.01:
+                    _vk_kontrolle_ek_eintrag(
+                        artikel_rec_id=artikel_id,
+                        alt_ek=alt_preis,
+                        neu_ek=preis,
+                        bestellung_rec_id=bestellung_rec_id,
+                        ma_id=None,  # Phase 5a hat keinen ma_id-Kontext
+                        bestell_nr=head.get('BESTELL_NR') or '',
+                        lief_kuerzel=head.get('LIEF_KUERZEL') or '?',
+                    )
                 n_upd += 1
             elif art == 'INSERT':
                 with get_db_transaction() as cur:
@@ -2148,6 +2165,65 @@ def _lief_preis_aktion(cao_artikel_rec_id: Optional[int],
         'alt': None,
         'andere_bestnums': [],
     }
+
+
+def _vk_kontrolle_ek_eintrag(artikel_rec_id: int,
+                              alt_ek: float,
+                              neu_ek: float,
+                              bestellung_rec_id: int,
+                              ma_id: Optional[int],
+                              bestell_nr: str = '',
+                              lief_kuerzel: str = '?') -> None:
+    """Idempotenter VK-Kontroll-Eintrag bei EK-Aenderung.
+
+    Wird aus :func:`cao_sync_artikel_preis` (Phase 5a) bei
+    ``art='UPDATE'`` mit Preisaenderung aufgerufen.
+
+    Logik:
+      - Wenn fuer ``ARTIKEL_REC_ID`` schon ein OFFENER Eintrag mit
+        ``GRUND='ek_geaendert'`` existiert: ``NEU_EK`` aktualisieren
+        (``ALT_EK`` bleibt — das ist der "Vor-Sync"-Wert, den der User
+        weiterhin als Referenz braucht).
+      - Sonst: neuen Eintrag anlegen.
+
+    Fehler werden geloggt aber NICHT propagiert — die VK-Kontrolle ist
+    eine "Nice-to-have"-Audit-Spur, sie soll den Sync nicht abbrechen
+    falls die Tabelle noch nicht existiert (Migration-Race).
+    """
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("""
+                SELECT REC_ID, ALT_EK FROM XT_ARTIKEL_VK_KONTROLLE
+                WHERE ARTIKEL_REC_ID = %s
+                  AND GRUND          = 'ek_geaendert'
+                  AND ERLEDIGT_AT IS NULL
+                ORDER BY REC_ID DESC LIMIT 1
+            """, (int(artikel_rec_id),))
+            row = cur.fetchone()
+            anm = (f'Phase 5a: EK-Aenderung ueber Bestellung '
+                    f'{bestell_nr or bestellung_rec_id} '
+                    f'(Lief={lief_kuerzel}). '
+                    f'EK {float(alt_ek):.4f} → {float(neu_ek):.4f} €.')
+            if row:
+                cur.execute("""
+                    UPDATE XT_ARTIKEL_VK_KONTROLLE
+                       SET NEU_EK = %s,
+                           QUELLE_BEST = %s,
+                           ANMERKUNG = %s
+                     WHERE REC_ID = %s
+                """, (neu_ek, int(bestellung_rec_id), anm, row['REC_ID']))
+            else:
+                cur.execute("""
+                    INSERT INTO XT_ARTIKEL_VK_KONTROLLE
+                      (ARTIKEL_REC_ID, GRUND, ALT_EK, NEU_EK,
+                       QUELLE_BEST, ANGELEGT_VON, ANMERKUNG)
+                    VALUES (%s, 'ek_geaendert', %s, %s, %s, %s, %s)
+                """, (int(artikel_rec_id), alt_ek, neu_ek,
+                       int(bestellung_rec_id), ma_id, anm))
+    except Exception as exc:
+        log.warning('VK-Kontroll-Eintrag (ek_geaendert) fuer '
+                    'ARTIKEL %s fehlgeschlagen: %s',
+                    artikel_rec_id, exc)
 
 
 def cao_match_positionen(rec_id: int) -> list[dict]:

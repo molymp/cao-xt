@@ -162,17 +162,54 @@ def api_warengruppen_mit_faktor():
 @bp.get('/api/preispflege')
 def api_preispflege():
     """
-    GET /orga/api/preispflege?wgr_id=<optional>
+    GET /orga/api/preispflege?wgr_id=<optional>&nur_kontrolle=0|1
 
     Liefert alle aktiven Artikel (ARTIKELTYP N/F/S, nicht gelöscht, keine
-    VK-Sperre) mit EK, VK5, Typ und Faktor. Optional gefiltert nach Warengruppe.
+    VK-Sperre) mit EK, VK5, Typ, Faktor und ggf. offenem
+    VK-Kontroll-Eintrag (`vk_kontrolle`).
+
+    Optional:
+      * `wgr_id` — Filter auf eine Warengruppe.
+      * `nur_kontrolle=1` — nur Artikel mit OFFENEM VK-Kontroll-Eintrag.
     """
     wgr_id = request.args.get('wgr_id')
     try:
         wgr_id_int = int(wgr_id) if wgr_id else None
     except (TypeError, ValueError):
         return jsonify({'error': 'wgr_id muss eine Ganzzahl sein'}), 400
-    return jsonify(m.preispflege_liste(wgr_id=wgr_id_int))
+    nur_kontrolle = request.args.get('nur_kontrolle', '').lower() in (
+        '1', 'true', 'yes', 'y'
+    )
+    return jsonify(m.preispflege_liste(wgr_id=wgr_id_int,
+                                        nur_kontrolle=nur_kontrolle))
+
+
+@bp.get('/api/vk-kontrolle/count')
+def api_vk_kontrolle_count():
+    """GET /orga/api/vk-kontrolle/count → {'n': <offen>}.
+
+    Anzahl Artikel mit offenem VK-Kontroll-Eintrag — fuer die UI-Pille
+    "⚠ VK-Kontrolle (n)".
+    """
+    return jsonify({'n': m.vk_kontrolle_count_offen()})
+
+
+@bp.post('/api/artikel/<artnr>/vk-kontrolle/erledigen')
+def api_vk_kontrolle_erledigen(artnr: str):
+    """POST /orga/api/artikel/<artnr>/vk-kontrolle/erledigen
+    Body (optional): {"anmerkung": "..."}
+
+    Setzt ERLEDIGT_AT fuer alle offenen VK-Kontroll-Eintraege des Artikels.
+    Wird vom UI-Knopf "✓ ist OK" benutzt, wenn der User den VK schon
+    woanders gepflegt hat oder die Erinnerung nicht mehr braucht.
+    """
+    _benutzer()
+    data = request.get_json(silent=True) or {}
+    n = m.vk_kontrolle_erledigen(
+        artnr,
+        anmerkung=(data.get('anmerkung') or None),
+    )
+    return jsonify({'ok': True, 'erledigt': n})
 
 
 @bp.get('/api/artikel/<artnr>/lieferanten')
