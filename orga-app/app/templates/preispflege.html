@@ -138,6 +138,62 @@
 }
 .pp-toolbar .btn:hover { background: var(--gruen-dunkel); }
 .pp-toolbar .btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── VK-Kontrolle: Filter-Pille + Indikator ─────────────────── */
+.vk-pille {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: #f6ecd0;
+  border: 1px solid #d4a800;
+  color: #6b4e00;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  user-select: none;
+  transition: background 0.1s;
+}
+.vk-pille:hover { background: #f0dfa8; }
+.vk-pille.aktiv {
+  background: #d4a800;
+  color: white;
+  border-color: #b08a00;
+}
+.vk-pille.aktiv:hover { background: #b89400; }
+.vk-pille .vk-count {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255,255,255,0.4);
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.vk-pille.aktiv .vk-count { background: rgba(255,255,255,0.25); }
+
+.vk-warn-icon {
+  display: inline-block;
+  margin-left: 6px;
+  color: #d4a800;
+  cursor: help;
+  font-size: 14px;
+  vertical-align: middle;
+}
+.vk-ok-btn {
+  background: transparent;
+  border: 1px solid var(--creme-dunkel);
+  color: var(--text-hell);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+.vk-ok-btn:hover {
+  background: var(--gruen-blass);
+  border-color: var(--gruen-mitte);
+  color: var(--gruen-dunkel);
+}
 .pp-info {
   margin-left: auto;
   font-size: 12px;
@@ -510,6 +566,12 @@
 
     <div class="pp-toolbar">
       <button class="btn" onclick="ladeTabelle()" id="reload-btn">↻ Aktualisieren</button>
+      <span class="vk-pille" id="vk-pille" onclick="toggleVkKontrolle()"
+            title="Artikel mit ausstehender VK-Kontrolle (neu angelegt oder EK geaendert)"
+            style="display:none;">
+        ⚠ VK-Kontrolle
+        <span class="vk-count" id="vk-pille-count">0</span>
+      </span>
       <span class="pp-info" id="artikel-count"></span>
     </div>
 
@@ -580,6 +642,7 @@ let _daten = [];
 let _sortCol = 'faktor';
 let _sortAsc = true;       // Faktor aufsteigend = niedrigster zuerst
 let _aktWgrId = null;      // null = alle Warengruppen
+let _nurKontrolle = false; // Filter "VK-Kontrolle ausstehend" aktiv?
 
 // ── XSS-Schutz ────────────────────────────────────────────────
 function _esc(s) {
@@ -743,8 +806,11 @@ function _wgrWaehlen(wgrId, name, el) {
 
 // ── Tabelle laden ─────────────────────────────────────────────
 async function ladeTabelle() {
+  const params = [];
+  if (_aktWgrId != null) params.push(`wgr_id=${_aktWgrId}`);
+  if (_nurKontrolle)     params.push('nur_kontrolle=1');
   const url = '/orga/api/preispflege'
-    + (_aktWgrId != null ? `?wgr_id=${_aktWgrId}` : '');
+    + (params.length ? '?' + params.join('&') : '');
 
   document.getElementById('pp-ladehinweis').style.display = 'block';
   document.getElementById('pp-table').style.display = 'none';
@@ -762,6 +828,69 @@ async function ladeTabelle() {
   } finally {
     document.getElementById('reload-btn').disabled = false;
   }
+  // VK-Kontroll-Pille parallel aktualisieren (zaehlt nur Artikel mit
+  // OFFENEN Eintraegen — unabhaengig von WG-Filter und Sicht-Filter).
+  ladeVkKontrolleCount();
+}
+
+// ── VK-Kontrolle: Pille-Count + Toggle + Erledigen ────────────
+async function ladeVkKontrolleCount() {
+  try {
+    const r = await fetch('/orga/api/vk-kontrolle/count');
+    if (!r.ok) return;
+    const d = await r.json();
+    const pille = document.getElementById('vk-pille');
+    const cnt   = document.getElementById('vk-pille-count');
+    cnt.textContent = d.n;
+    pille.style.display = (d.n > 0 || _nurKontrolle) ? '' : 'none';
+    pille.classList.toggle('aktiv', _nurKontrolle);
+  } catch (e) { /* still */ }
+}
+
+function toggleVkKontrolle() {
+  _nurKontrolle = !_nurKontrolle;
+  document.getElementById('vk-pille').classList.toggle('aktiv', _nurKontrolle);
+  ladeTabelle();
+}
+
+async function vkKontrolleErledigen(artnr) {
+  if (!confirm(`VK-Kontrolle für Artikel ${artnr} als erledigt markieren?\n\n`
+              + 'Wähle "OK" wenn der VK schon woanders gepflegt ist '
+              + 'und der Erinnerungs-Eintrag entfernt werden soll.')) {
+    return;
+  }
+  try {
+    const r = await fetch(
+      `/orga/api/artikel/${encodeURIComponent(artnr)}/vk-kontrolle/erledigen`,
+      { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}' }
+    );
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    ladeTabelle();   // ruft auch ladeVkKontrolleCount()
+  } catch (e) {
+    alert('Fehler: ' + e.message);
+  }
+}
+
+// VK-Kontroll-Tooltip-Text aus dem vk_kontrolle-Objekt aufbauen.
+function _vkTooltip(vk) {
+  if (!vk) return '';
+  const wann = vk.angelegt_at ? new Date(vk.angelegt_at).toLocaleString('de-DE')
+                              : '?';
+  if (vk.grund === 'neu') {
+    const ek = vk.neu_ek != null ? Number(vk.neu_ek).toFixed(4) : '?';
+    return `Neuer Artikel (Phase 5b) — EK ${ek} € · angelegt ${wann}\n\n`
+         + (vk.anmerkung || '');
+  }
+  if (vk.grund === 'ek_geaendert') {
+    const a = vk.alt_ek != null ? Number(vk.alt_ek).toFixed(4) : '?';
+    const n = vk.neu_ek != null ? Number(vk.neu_ek).toFixed(4) : '?';
+    return `EK geändert: ${a} → ${n} € · ${wann}\n\n`
+         + (vk.anmerkung || '');
+  }
+  return `VK-Kontrolle ausstehend (${vk.grund}) · ${wann}\n\n`
+       + (vk.anmerkung || '');
 }
 
 // ── Tabelle rendern ───────────────────────────────────────────
@@ -791,10 +920,21 @@ function renderTabelle() {
     const vpeVkTxt = art.vpe_vk !== 1 ? _eur(art.vpe_vk, 0) : '1';
 
     const typLabel = {'N':'Normal','F':'Frei','S':'Stückliste'}[art.art_typ] || art.art_typ || '–';
+
+    // VK-Kontrolle: ⚠-Icon bei Bezeichnung + „✓ ist OK"-Button vor Anpassen.
+    const vkIcon = art.vk_kontrolle
+      ? `<span class="vk-warn-icon" title="${_esc(_vkTooltip(art.vk_kontrolle))}">⚠</span>`
+      : '';
+    const vkOkBtn = art.vk_kontrolle
+      ? `<button class="vk-ok-btn"
+                  title="VK-Kontrolle als erledigt markieren"
+                  onclick="vkKontrolleErledigen('${_esc(art.artnr)}')">✓</button>`
+      : '';
+
     tr.innerHTML = `
       <td style="font-family:monospace;font-size:12px;">${_esc(art.artnr)}</td>
       <td style="font-size:11px;text-align:center;color:var(--text-hell);" title="${_esc(typLabel)}">${_esc(art.art_typ || '–')}</td>
-      <td>${_esc(art.bezeichnung || '–')}</td>
+      <td>${_esc(art.bezeichnung || '–')}${vkIcon}</td>
       <td class="td-right" style="font-size:12px;">${_eur(art.bestand, 0)}</td>
       <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeEkTxt)}</td>
       <td class="td-right" style="font-size:12px;color:var(--text-hell);">${_esc(vpeVkTxt)}</td>
@@ -809,7 +949,8 @@ function renderTabelle() {
       <td class="td-right" style="font-size:12px;color:var(--text-hell);">
         ${art.mwst_pct != null ? art.mwst_pct.toFixed(1) + '\u202f%' : '–'}
       </td>
-      <td style="text-align:right;">
+      <td style="text-align:right;white-space:nowrap;">
+        ${vkOkBtn}
         <button class="anp-btn" onclick="anpassenOeffnen(this,'${_esc(art.artnr)}')">Anpassen</button>
       </td>
     `;
