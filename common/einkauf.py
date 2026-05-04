@@ -105,6 +105,15 @@ def run_migration() -> None:
             for col, ddl in [
                 ('WEB_KUNDEN_NR', 'VARCHAR(40)  NULL AFTER WEB_USERNAME'),
                 ('WEB_KEY',       'VARCHAR(40)  NULL AFTER WEB_KUNDEN_NR'),
+                # Phase 5b-Verbesserung: EK_BEZUG_DEFAULT pro Lieferant.
+                # 'STK' = Lieferant fakturiert pro Stueck (UTZ-Default),
+                # 'VPE_EK' = pro Einkaufs-Verpackung (Karton/Kiste).
+                # Sync rechnet beim Schreiben auf Stueck-EK um, damit
+                # ARTIKEL.EK_PREIS und Faktor-Kalkulation konsistent
+                # bleiben.
+                ('EK_BEZUG_DEFAULT',
+                 "ENUM('STK','VPE_EK') NOT NULL DEFAULT 'STK' "
+                 "AFTER PARSER_KEY"),
             ]:
                 cur.execute("""
                     SELECT COUNT(*) AS n FROM information_schema.COLUMNS
@@ -128,6 +137,22 @@ def run_migration() -> None:
                 cur.execute("ALTER TABLE XT_EINKAUF_LIEF_ARTIKEL "
                             "ADD COLUMN BILD_LOKAL VARCHAR(255) NULL "
                             "AFTER BILD_URL")
+
+            # Phase 5b-Verbesserung: EK_BEZUG-Override pro Lief-Artikel.
+            # NULL = nimm Lieferanten-Default (XT_EINKAUF_LIEFERANT.
+            # EK_BEZUG_DEFAULT). Erlaubt Artikel-spezifische Abweichungen,
+            # z.B. wenn UTZ einen einzelnen Bier-Karton-Preis schickt
+            # obwohl Default 'STK' ist.
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = 'XT_EINKAUF_LIEF_ARTIKEL'
+                  AND COLUMN_NAME  = 'EK_BEZUG'
+            """)
+            if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                cur.execute("ALTER TABLE XT_EINKAUF_LIEF_ARTIKEL "
+                            "ADD COLUMN EK_BEZUG ENUM('STK','VPE_EK') "
+                            "NULL AFTER VPE_EK")
 
             # XT_EINKAUF_BESTELLPOS.STATUS: 'neu_anlegen' fuer manuell
             # bestaetigte „echt neu"-Positionen ergaenzen.
@@ -375,7 +400,8 @@ def liste(nur_aktive: bool = False) -> list[dict]:
     """Liefert alle Lieferanten (sortiert nach KUERZEL)."""
     sql = ("SELECT REC_ID, KUERZEL, BEZEICHNUNG, CAO_LIEF_ID, "
            "EMAIL_VON_PATTERN, EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, "
-           "WEB_USERNAME, WEB_KUNDEN_NR, WEB_KEY, PARSER_KEY, AKTIV, "
+           "WEB_USERNAME, WEB_KUNDEN_NR, WEB_KEY, PARSER_KEY, "
+           "EK_BEZUG_DEFAULT, AKTIV, "
            "ERSTELLT_AM, GEAENDERT_AM "
            "FROM XT_EINKAUF_LIEFERANT")
     params: tuple = ()
@@ -399,6 +425,7 @@ def holen(rec_id: int) -> Optional[dict]:
                 "SELECT REC_ID, KUERZEL, BEZEICHNUNG, CAO_LIEF_ID, "
                 "EMAIL_VON_PATTERN, EMAIL_SUBJECT_PATTERN, WEB_LOGIN_URL, "
                 "WEB_USERNAME, WEB_KUNDEN_NR, WEB_KEY, PARSER_KEY, "
+                "EK_BEZUG_DEFAULT, "
                 "AKTIV, ERSTELLT_AM, GEAENDERT_AM "
                 "FROM XT_EINKAUF_LIEFERANT WHERE REC_ID = %s",
                 (rec_id,),
@@ -456,6 +483,7 @@ def aktualisieren(rec_id: int, daten: dict,
         'EMAIL_SUBJECT_PATTERN', 'WEB_LOGIN_URL', 'WEB_USERNAME',
         'WEB_KUNDEN_NR', 'WEB_KEY',
         'PARSER_KEY', 'AKTIV',
+        'EK_BEZUG_DEFAULT',
     }
     for k, v in daten.items():
         if k not in erlaubt:
@@ -466,6 +494,13 @@ def aktualisieren(rec_id: int, daten: dict,
         elif k == 'CAO_LIEF_ID':
             felder.append('CAO_LIEF_ID = %s')
             werte.append(int(v) if v not in (None, '', 0) else None)
+        elif k == 'EK_BEZUG_DEFAULT':
+            v_norm = (str(v).strip().upper()
+                       if v is not None else 'STK')
+            if v_norm not in ('STK', 'VPE_EK'):
+                v_norm = 'STK'
+            felder.append('EK_BEZUG_DEFAULT = %s')
+            werte.append(v_norm)
         else:
             felder.append(f'{k} = %s')
             werte.append((str(v).strip() if v is not None else '') or None)
@@ -1481,6 +1516,47 @@ def lief_artikel_speichern(lief_rec_id: int, artnr: str,
         return int(cur.lastrowid)
 
 
+def lief_artikel_ek_bezug_setzen(lief_rec_id: int, artnr: str,
+                                   ek_bezug: Optional[str]) -> dict:
+    """Setzt den EK-Bezug-Override (Phase 5b-Verbesserung) fuer einen
+    Lief-Artikel. ``ek_bezug='STK'`` oder ``'VPE_EK'`` oder ``None``
+    (=Override entfernen, Lieferanten-Default greift wieder).
+    """
+    if ek_bezug is not None and ek_bezug not in ('STK', 'VPE_EK'):
+        return {'ok': False, 'msg': f'Ungueltiger Bezug: {ek_bezug!r}'}
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("""
+                UPDATE XT_EINKAUF_LIEF_ARTIKEL
+                   SET EK_BEZUG = %s
+                 WHERE LIEF_REC_ID = %s AND ARTIKEL_NR_LIEF = %s
+            """, (ek_bezug, int(lief_rec_id), (artnr or '')[:40]))
+            n = cur.rowcount
+        return {'ok': True, 'updated': n, 'ek_bezug': ek_bezug}
+    except Exception as exc:
+        return {'ok': False, 'msg': str(exc)}
+
+
+def lieferant_ek_bezug_default_setzen(lief_rec_id: int,
+                                       ek_bezug: str) -> dict:
+    """Setzt den EK-Bezug-Default eines Lieferanten ('STK' / 'VPE_EK').
+    Greift fuer alle seine Lief-Artikel ohne expliziten Override.
+    """
+    if ek_bezug not in ('STK', 'VPE_EK'):
+        return {'ok': False, 'msg': f'Ungueltiger Bezug: {ek_bezug!r}'}
+    try:
+        with get_db_transaction() as cur:
+            cur.execute("""
+                UPDATE XT_EINKAUF_LIEFERANT
+                   SET EK_BEZUG_DEFAULT = %s
+                 WHERE REC_ID = %s
+            """, (ek_bezug, int(lief_rec_id)))
+            n = cur.rowcount
+        return {'ok': True, 'updated': n, 'ek_bezug_default': ek_bezug}
+    except Exception as exc:
+        return {'ok': False, 'msg': str(exc)}
+
+
 def lief_artikel_holen(lief_rec_id: int, artnr: str) -> Optional[dict]:
     try:
         with get_db() as cur:
@@ -1901,7 +1977,11 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
                               'grund': 'CAO-Lief- oder Artikel-ID fehlt'})
             continue
 
-        preis = float(m.get('preis_netto') or 0)
+        # ARTIKEL_PREIS.PREIS bekommt den STUECK-EK, nicht den
+        # Mail-Roh-Wert — siehe _stueck_ek + cao_match_positionen.
+        # Damit bleibt der Faktor-Mechanismus konsistent zu CAO
+        # (CAO speichert auch in ARTIKEL_PREIS Stueck-Preise).
+        preis = float(m.get('stueck_ek') or m.get('preis_netto') or 0)
         vpe   = m.get('vpe_lief')
 
         if dry_run:
@@ -1911,6 +1991,7 @@ def cao_sync_artikel_preis(bestellung_rec_id: int,
             aktionen.append({'pos_nr': pos_nr, 'art': art,
                               'artnr': artnr, 'cao_id': artikel_id,
                               'preis': preis, 'vpe': vpe,
+                              'ek_bezug': m.get('ek_bezug'),
                               'grund': pa.get('grund')})
             continue
 
@@ -2226,6 +2307,46 @@ def _vk_kontrolle_ek_eintrag(artikel_rec_id: int,
                     artikel_rec_id, exc)
 
 
+def _effektiver_ek_bezug(lief_cache: Optional[dict],
+                          lieferant_default: Optional[str]) -> str:
+    """Liefert den effektiven EK-Bezug fuer einen Lief-Artikel.
+
+    Reihenfolge:
+        1. Lief-Artikel-Override (XT_EINKAUF_LIEF_ARTIKEL.EK_BEZUG)
+        2. Lieferanten-Default (XT_EINKAUF_LIEFERANT.EK_BEZUG_DEFAULT)
+        3. Fallback 'STK'
+    """
+    if lief_cache:
+        v = (lief_cache.get('EK_BEZUG') or '').strip()
+        if v in ('STK', 'VPE_EK'):
+            return v
+    if lieferant_default in ('STK', 'VPE_EK'):
+        return lieferant_default
+    return 'STK'
+
+
+def _stueck_ek(roh_ek: Optional[float],
+                vpe_ek: Optional[float],
+                bezug: str) -> float:
+    """Rechnet einen Mail-EK auf Stueck-EK um.
+
+    bezug='STK'    → unveraendert (= roh_ek ist schon Stueck-Preis)
+    bezug='VPE_EK' → roh_ek / vpe_ek (Karton/Kisten-Preis auf Stueck)
+
+    Wenn vpe_ek <= 0 oder None: faellt auf 'STK' zurueck (sicher, kein
+    Division-by-zero).
+    """
+    ek = float(roh_ek or 0)
+    if bezug == 'VPE_EK':
+        try:
+            v = float(vpe_ek or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v > 0:
+            return round(ek / v, 4)
+    return round(ek, 4)
+
+
 def cao_match_positionen(rec_id: int) -> list[dict]:
     """Read-only-Vorschau: pro Position der Bestellung pruefen, ob in CAO
     schon ein passender Artikel hinterlegt ist.
@@ -2483,14 +2604,25 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             except (TypeError, ValueError):
                 vpe_lief = None
 
-        # ARTIKEL_PREIS-Aktion-Vorschau bei matchenden Positionen
+        # EK-Bezug ermitteln (Lief-Artikel-Override oder Lieferanten-
+        # Default 'STK' fuer UTZ). Stueck-EK wird daraus berechnet —
+        # konsistent mit ARTIKEL.EK_PREIS-Semantik in CAO (Stueck-EK,
+        # nicht Karton-EK).
+        ek_bezug = _effektiver_ek_bezug(
+            lief_cache, head.get('LIEF_EK_BEZUG_DEFAULT'))
+        roh_ek = float(p.get('PREIS_NETTO') or 0)
+        stueck_ek = _stueck_ek(roh_ek, vpe_lief, ek_bezug)
+
+        # ARTIKEL_PREIS-Aktion-Vorschau bei matchenden Positionen.
+        # WICHTIG: wir vergleichen den Stueck-EK gegen CAO (CAO speichert
+        # Stueck-EK), NICHT den Mail-Roh-Wert.
         preis_aktion = None
         if cao_block and match_quelle in ('barcode', 'lieferant', 'global',
                                             'manuell'):
             preis_aktion = _lief_preis_aktion(
                 cao_block.get('rec_id'), cao_lief,
                 neue_bestnum=artnr,
-                neuer_preis=float(p.get('PREIS_NETTO') or 0),
+                neuer_preis=stueck_ek,
                 neue_vpe=vpe_lief,
             )
 
@@ -2530,6 +2662,23 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             'vorschlaege':      vorschlaege,
             'lief_cache':       lief_block,
             'vpe_lief':         vpe_lief,
+            # EK-Bezug + Stueck-EK (Phase 5b-Verbesserung):
+            # ek_bezug      = 'STK' oder 'VPE_EK' (effektiv)
+            # ek_bezug_quelle = 'artikel' | 'lieferant' | 'default'
+            # stueck_ek     = preis_netto bei 'STK',
+            #                 preis_netto / vpe_lief bei 'VPE_EK'.
+            # → ARTIKEL.EK_PREIS und ARTIKEL_PREIS.PREIS bekommen
+            #   immer stueck_ek geschrieben.
+            'ek_bezug':         ek_bezug,
+            'ek_bezug_quelle':  (
+                'artikel'
+                if (lief_cache or {}).get('EK_BEZUG') in ('STK','VPE_EK')
+                else ('lieferant'
+                      if head.get('LIEF_EK_BEZUG_DEFAULT')
+                          in ('STK','VPE_EK')
+                      else 'default')
+            ),
+            'stueck_ek':        stueck_ek,
             'preis_aktion':     preis_aktion,
             # Stammdaten-Vollstaendigkeits-Check fuer Phase 5b:
             # Position kann nur dann sauber als neuer CAO-Artikel
@@ -2556,7 +2705,8 @@ def bestellung_holen(rec_id: int) -> Optional[dict]:
                 SELECT b.*,
                        l.KUERZEL    AS LIEF_KUERZEL,
                        l.BEZEICHNUNG AS LIEF_BEZ,
-                       l.CAO_LIEF_ID AS CAO_LIEF_ID
+                       l.CAO_LIEF_ID AS CAO_LIEF_ID,
+                       l.EK_BEZUG_DEFAULT AS LIEF_EK_BEZUG_DEFAULT
                 FROM XT_EINKAUF_BESTELLUNG b
                 JOIN XT_EINKAUF_LIEFERANT l ON l.REC_ID = b.LIEF_REC_ID
                 WHERE b.REC_ID = %s
@@ -2954,7 +3104,11 @@ def cao_sync_artikel(bestellung_rec_id: int,
                      m.get('bezeichnung_lief') or '')[:255]
         barcode_s = lief_block.get('barcode_stueck') or ''
         barcode_k = lief_block.get('barcode_kt') or ''
-        ek_preis  = float(m.get('preis_netto') or 0)
+        # ARTIKEL.EK_PREIS bekommt immer den STUECK-EK — siehe
+        # _stueck_ek + cao_match_positionen. Damit ist der Faktor
+        # (vk5_netto / EK_PREIS) konsistent berechnet, egal ob der
+        # Lieferant Stueck- oder Karton-Preise schickt.
+        ek_preis  = float(m.get('stueck_ek') or m.get('preis_netto') or 0)
         vpe_ek    = m.get('vpe_lief')
 
         try:
