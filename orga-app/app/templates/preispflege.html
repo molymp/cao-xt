@@ -899,8 +899,11 @@ async function vkKontrolleErledigen(artnr) {
 // ── EK-Bezug Toggle in der Lief-Preis-Tabelle ────────────────
 // Schaltet pro Lief-Artikel zwischen 'STK' und 'VPE_EK' um —
 // gleiches Feature wie in der Einkauf-Match-Tabelle, hier aber im
-// Kontext der Preispflege fuer Daten-Sichtbarkeit.
+// Kontext der Preispflege fuer Daten-Sichtbarkeit. Aufruf via
+// document-Listener auf data-action="ek-bezug-toggle" (robuster gegen
+// escape-Probleme als onclick-Inline).
 async function ekBezugTogglePflege(liefRecId, liefArtnr, aktuell, parentArtnr) {
+  console.log('ekBezugTogglePflege', {liefRecId, liefArtnr, aktuell, parentArtnr});
   const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
   const erkl = (neu === 'VPE_EK')
     ? 'Bei "VPE_EK" wird der Roh-EK durch VPE geteilt → Stück-EK in CAO. '
@@ -910,31 +913,55 @@ async function ekBezugTogglePflege(liefRecId, liefArtnr, aktuell, parentArtnr) {
     `EK-Bezug für Lief-Artikel ${liefArtnr} auf "${neu}" setzen?\n\n` +
     'Wirkt für die Anzeige hier und für künftige CAO-Sync-Läufe.\n\n' +
     erkl
-  )) return;
+  )) {
+    console.log('ekBezugToggle: User abgebrochen');
+    return;
+  }
+  let r, body;
   try {
-    const r = await fetch(
+    r = await fetch(
       `/orga/api/lief-artikel/${liefRecId}/${encodeURIComponent(liefArtnr)}/ek-bezug`,
       { method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ek_bezug: neu }) }
     );
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    // Lief-Preis-Tabelle neu laden — aufgeklappte Zeile wieder oeffnen.
-    const tr = document.querySelector(`tr[data-artnr="${parentArtnr}"]`);
-    if (!tr) return;
-    const liefBtn = tr.querySelector('.lief-btn');
-    if (liefBtn) {
-      // erst schliessen, dann neu oeffnen (laedt frische Daten)
-      const next = tr.nextElementSibling;
-      if (next && next.classList.contains('lief-expand-row')) {
-        next.remove();
-      }
-      toggleLieferanten(liefBtn, parentArtnr);
-    }
+    body = await r.text();
   } catch (e) {
-    alert('Fehler: ' + e.message);
+    console.error('ekBezugToggle: fetch fehlgeschlagen', e);
+    alert('Netzwerk-Fehler: ' + e.message);
+    return;
+  }
+  if (!r.ok) {
+    console.error('ekBezugToggle: HTTP ' + r.status, body);
+    alert(`Server-Fehler ${r.status}:\n${body}`);
+    return;
+  }
+  console.log('ekBezugToggle: OK', body);
+  // Lief-Preis-Tabelle neu laden — aufgeklappte Zeile wieder oeffnen.
+  const tr = document.querySelector(`tr[data-artnr="${parentArtnr}"]`);
+  if (!tr) { console.warn('parent-tr nicht gefunden:', parentArtnr); return; }
+  const liefBtn = tr.querySelector('.lief-btn');
+  if (liefBtn) {
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains('lief-expand-row')) {
+      next.remove();
+    }
+    toggleLieferanten(liefBtn, parentArtnr);
   }
 }
+
+// Zentraler Click-Listener fuer dynamisch generierte Bezug-Pillen.
+// Robust gegen Escape-Probleme im Vergleich zu onclick=-Inline-Strings.
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest('[data-action="ek-bezug-toggle"]');
+  if (!el) return;
+  ekBezugTogglePflege(
+    parseInt(el.dataset.liefId, 10),
+    el.dataset.artnr,
+    el.dataset.bezug,
+    el.dataset.parentArtnr,
+  );
+});
 
 // VK-Kontroll-Tooltip-Text aus dem vk_kontrolle-Objekt aufbauen.
 function _vkTooltip(vk) {
@@ -1100,9 +1127,13 @@ async function toggleLieferanten(btn, artnr) {
                  : quelle === 'lieferant' ? ' (Lieferanten-Default)'
                  :                          ' (System-Default)') +
                 (togglable ? ' · Klick zum Umschalten' : ' · kein XT-Lief-Cache');
-              const onclick = togglable
-                ? `onclick=\"ekBezugTogglePflege(${liefId}, '${_esc(l.lief_artnr)}', '${bezug}', '${_esc(artnr)}')\"`
-                : 'style="cursor:default;opacity:0.5;"';
+              const dataAttrs = togglable
+                ? ` data-action="ek-bezug-toggle"`
+                  + ` data-lief-id="${liefId}"`
+                  + ` data-artnr="${_esc(l.lief_artnr || '')}"`
+                  + ` data-bezug="${bezug}"`
+                  + ` data-parent-artnr="${_esc(artnr)}"`
+                : ' style="cursor:default;opacity:0.5;"';
               const stueckTxt = (Math.abs((l.stueck_ek || 0) - (l.ek_preis || 0)) > 0.0001)
                 ? `<strong>${_eur(l.stueck_ek)}</strong>`
                 : `<span style="color:var(--text-hell);">${_eur(l.stueck_ek)}</span>`;
@@ -1118,7 +1149,7 @@ async function toggleLieferanten(btn, artnr) {
                 <td style="text-align:center;">
                   <span class="ek-bezug-pille ${bezug.toLowerCase()}${overrideCls}"
                         title="${_esc(ttl)}"
-                        ${onclick}>${bezug}</span>
+                        ${dataAttrs}>${bezug}</span>
                 </td>
                 <td style="text-align:right;">${stueckTxt}</td>
               </tr>`;
