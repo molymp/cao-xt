@@ -703,7 +703,8 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
         return rows_out
 
     # Variante 1: ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5, ADRESS_ID→ADRESSEN
-    # Spalten ARTIKEL_PREIS: ARTIKEL_ID, PREIS_TYP, ADRESS_ID, PREIS, PT2 – MENGE_AB existiert nicht!
+    # + LEFT JOIN auf XT_EINKAUF_LIEFERANT/_LIEF_ARTIKEL fuer EK-Bezug
+    # (Phase 5b-Verbesserung).
     try:
         with get_db() as cur:
             cur.execute(
@@ -714,12 +715,20 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                              IF(ap.ADRESS_ID IS NOT NULL,
                                 CONCAT('Lieferant ', ap.ADRESS_ID),
                                 'Lieferant (unbekannt)'))                           AS lief_name,
-                    COALESCE(ap.PT2, '')                                            AS lief_artnr,
-                    COALESCE(ap.PREIS, 0)                                           AS ek_preis
+                    COALESCE(ap.BESTNUM, ap.PT2, '')                                AS lief_artnr,
+                    COALESCE(ap.PREIS, 0)                                           AS ek_preis,
+                    COALESCE(ap.VPE, 1)                                             AS vpe,
+                    xl.REC_ID                                                       AS xt_lief_rec_id,
+                    xl.EK_BEZUG_DEFAULT                                             AS xt_ek_bezug_default,
+                    xla.EK_BEZUG                                                    AS xt_ek_bezug_override
                 FROM ARTIKEL a
                 JOIN ARTIKEL_PREIS ap ON ap.ARTIKEL_ID = a.REC_ID
                     AND ap.PREIS_TYP = 5
                 LEFT JOIN ADRESSEN adr ON adr.REC_ID = ap.ADRESS_ID
+                LEFT JOIN XT_EINKAUF_LIEFERANT xl ON xl.CAO_LIEF_ID = ap.ADRESS_ID
+                LEFT JOIN XT_EINKAUF_LIEF_ARTIKEL xla
+                       ON xla.LIEF_REC_ID = xl.REC_ID
+                      AND xla.ARTIKEL_NR_LIEF = COALESCE(ap.BESTNUM, ap.PT2)
                 WHERE a.ARTNUM = %s
                 ORDER BY ap.ADRESS_ID
                 """,
@@ -727,16 +736,36 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
             )
             rows = cur.fetchall()
         if rows:
-            return _mark_standard([
-                {
-                    'lief_nr':    r['lief_nr'],
-                    'lief_name':  r['lief_name'],
-                    'lief_artnr': r.get('lief_artnr') or '',
-                    'ek_preis':   float(r['ek_preis'] or 0),
-                    'vpe':        1.0,
-                }
-                for r in rows
-            ])
+            out = []
+            for r in rows:
+                roh_ek = float(r['ek_preis'] or 0)
+                vpe    = float(r['vpe'] or 1) or 1.0
+                # Effektiver Bezug: Override > Lieferanten-Default > 'STK'
+                override = (r.get('xt_ek_bezug_override') or '').strip()
+                liefdef  = (r.get('xt_ek_bezug_default') or '').strip()
+                if override in ('STK', 'VPE_EK'):
+                    bezug, quelle = override, 'artikel'
+                elif liefdef in ('STK', 'VPE_EK'):
+                    bezug, quelle = liefdef, 'lieferant'
+                else:
+                    bezug, quelle = 'STK', 'default'
+                # Stueck-EK: bei 'VPE_EK' durch VPE teilen
+                if bezug == 'VPE_EK' and vpe > 0:
+                    stueck_ek = round(roh_ek / vpe, 4)
+                else:
+                    stueck_ek = round(roh_ek, 4)
+                out.append({
+                    'lief_nr':         r['lief_nr'],
+                    'lief_name':       r['lief_name'],
+                    'lief_artnr':      r.get('lief_artnr') or '',
+                    'ek_preis':        roh_ek,         # Roh-Wert wie in CAO
+                    'stueck_ek':       stueck_ek,      # rechnerisch pro Stueck
+                    'vpe':             vpe,
+                    'ek_bezug':        bezug,
+                    'ek_bezug_quelle': quelle,
+                    'xt_lief_rec_id':  r.get('xt_lief_rec_id'),
+                })
+            return _mark_standard(out)
     except Exception:
         pass
 
