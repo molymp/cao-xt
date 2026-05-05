@@ -1260,29 +1260,35 @@ function anpBerechnen(artnr, geaendertesField, rawVal) {
 
   let vk5netto, faktor, vk5brutto;
 
+  // Faktor-Formel (CAO-Konvention, Phase 5b-Verbesserung):
+  //   ARTIKEL.EK_PREIS ist immer Stueck-EK; Karton-EK wird vom
+  //   Einkauf-Sync vorher durch VPE_EK geteilt (siehe common.einkauf
+  //   _stueck_ek + EK_BEZUG-Modell). Daher hier:
+  //     Faktor = vk5_netto / (ek × vpe_vk)
+  //     VK5_netto = Faktor × ek × vpe_vk
+  //   vpe_ek wird NICHT mehr in die Faktor-Formel einbezogen — das war
+  //   eine Reproduktion des CAO-G-Preis-Bugs.
   if (geaendertesField === 'faktor' || geaendertesField === 'vpeek' || geaendertesField === 'vpevk' || geaendertesField === 'ek') {
-    // Faktor/VPE/EK-Änderung → VK5 Netto und Brutto neu berechnen (VK5 bleibt konstant bei EK-Änderung, Faktor ändert sich)
     const curVk5netto = parseFloat(inpVk5netto.value) || 0;
     if (geaendertesField === 'ek') {
       // EK geändert → Faktor aus aktuellem VK5 neu berechnen
       vk5netto = curVk5netto;
       vk5brutto = vk5netto * (1.0 + mwstSatz);
-      faktor = (val > 0 && vpeVk > 0) ? vk5netto * vpeEk / (val * vpeVk) : null;
+      faktor = (val > 0 && vpeVk > 0) ? vk5netto / (val * vpeVk) : null;
     } else {
       faktor = geaendertesField === 'faktor' ? val : parseFloat(inpFaktor.value);
       if (isNaN(faktor) || faktor <= 0) return;
-      // Faktor = vk5_netto * vpe_ek / (ek * vpe_vk) → vk5_netto = faktor * ek * vpe_vk / vpe_ek
-      vk5netto = faktor * ek * vpeVk / vpeEk;
+      vk5netto = faktor * ek * vpeVk;
       vk5brutto = vk5netto * (1.0 + mwstSatz);
     }
   } else if (geaendertesField === 'vk5netto') {
     vk5netto = val;
     vk5brutto = vk5netto * (1.0 + mwstSatz);
-    faktor = (ek > 0 && vpeVk > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+    faktor = (ek > 0 && vpeVk > 0) ? vk5netto / (ek * vpeVk) : null;
   } else {  // vk5brutto
     vk5brutto = val;
     vk5netto = mwstSatz > 0 ? vk5brutto / (1.0 + mwstSatz) : vk5brutto;
-    faktor = (ek > 0 && vpeVk > 0) ? vk5netto * vpeEk / (ek * vpeVk) : null;
+    faktor = (ek > 0 && vpeVk > 0) ? vk5netto / (ek * vpeVk) : null;
   }
 
   // Nur die NICHT gerade bearbeiteten Felder aktualisieren
