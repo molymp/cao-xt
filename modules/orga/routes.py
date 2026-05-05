@@ -217,11 +217,42 @@ def api_artikel_lieferanten(artnr: str):
     """
     GET /orga/api/artikel/<artnr>/lieferanten
 
-    Lieferantenpreise für einen Artikel.
-    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe}, ...]
-    Leere Liste wenn keine Lieferantendaten vorhanden oder Tabelle fehlt.
+    Lieferantenpreise für einen Artikel inkl. EK-Bezug
+    ('STK' / 'VPE_EK', siehe Phase 5b-Verbesserung).
+    Rückgabe: [{lief_nr, lief_name, lief_artnr, ek_preis, vpe,
+                stueck_ek, ek_bezug, ek_bezug_quelle, xt_lief_rec_id,
+                ist_standard}, ...]
     """
     return jsonify(m.lieferantenpreise_fuer_artikel(artnr))
+
+
+@bp.post('/api/lief-artikel/<int:lief_rec_id>/<artnr>/ek-bezug')
+def api_lief_artikel_ek_bezug(lief_rec_id: int, artnr: str):
+    """POST /orga/api/lief-artikel/<lief>/<artnr>/ek-bezug
+    Body: {"ek_bezug": "STK" | "VPE_EK" | null}
+
+    Setzt den EK-Bezug-Override am XT_EINKAUF_LIEF_ARTIKEL. NULL =
+    Override loeschen (Lieferanten-Default greift wieder). Wirkt
+    sofort fuer Anzeige in der Preispflege und fuer kuenftige
+    CAO-Sync-Laeufe.
+    """
+    _benutzer()
+    data = request.get_json(silent=True) or {}
+    raw = data.get('ek_bezug')
+    if raw in (None, '', 'null'):
+        bezug = None
+    elif str(raw).upper() in ('STK', 'VPE_EK'):
+        bezug = str(raw).upper()
+    else:
+        return jsonify({'error': "ek_bezug muss 'STK','VPE_EK' oder null sein"}), 400
+    # common.einkauf hat den Setter — wir importieren lazy, damit das
+    # Modul auch ohne den Einkauf-Stack laed (Test-Setups, alte Hosts).
+    try:
+        from common import einkauf as _einkauf
+    except Exception as exc:
+        return jsonify({'error': f'Einkauf-Modul nicht verfuegbar: {exc}'}), 500
+    res = _einkauf.lief_artikel_ek_bezug_setzen(lief_rec_id, artnr, bezug)
+    return jsonify(res), 200 if res.get('ok') else 400
 
 
 @bp.patch('/api/artikel/<artnr>/vk5')
