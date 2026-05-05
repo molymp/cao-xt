@@ -394,19 +394,28 @@ def _wg_top_spalte() -> str | None:
 
 def _faktor_berechnen(vk5_netto: float, ek: float,
                       vpe_vk: float = 1.0, vpe_ek: float = 1.0) -> float | None:
-    """Preisfaktor (VK/EK-Verhältnis, VPE-korrigiert).
+    """Preisfaktor (VK/EK-Verhältnis).
 
-    Faktor = (vk5_netto × vpe_ek) / (ek × vpe_vk)
+    Faktor = vk5_netto / (ek × vpe_vk)
 
-    Beispiel: VPE_EK=12 (Karton à 12 Stk), VPE_VK=1 (Einzelstk),
-              EK=12 € (Karton), VK5 Netto=2 € → Faktor = 2×12/(12×1) = 2,0
+    Annahme (CAO-Konvention, empirisch verifiziert):
+      ``ek`` ist immer der Stück-EK (ARTIKEL.EK_PREIS). Karton-Preise
+      werden vom Einkauf-Sync vor dem Schreiben durch VPE_EK geteilt
+      — siehe Phase 5b-Verbesserung in common/einkauf.py
+      (_stueck_ek + EK_BEZUG-Modell).
+
+    ``vpe_vk`` korrigiert wenn die Verkaufseinheit > 1 Stück ist
+    (Multipack: Sechserpack mit VPE_VK=6, VK5 ist Pack-Preis).
+    ``vpe_ek`` wird NICHT mehr beruecksichtigt — fruehere Versionen
+    haben hier durch VPE_EK geteilt, was die CAO-internen
+    G-Preis-Mechanismen reproduziert hat (Faktor zerstoert).
 
     Rückgabe None wenn EK oder VK5 fehlen/null.
     """
     divisor = ek * (vpe_vk or 1.0)
     if divisor <= 0 or vk5_netto <= 0:
         return None
-    return round(vk5_netto * (vpe_ek or 1.0) / divisor, 3)
+    return round(vk5_netto / divisor, 3)
 
 
 def warengruppen_liste() -> list:
