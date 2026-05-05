@@ -901,9 +901,6 @@ async function vkKontrolleErledigen(artnr) {
 // gleiches Feature wie in der Einkauf-Match-Tabelle, hier aber im
 // Kontext der Preispflege fuer Daten-Sichtbarkeit.
 async function ekBezugTogglePflege(liefRecId, liefArtnr, aktuell, parentArtnr) {
-  // Klick stoppen, damit nicht versehentlich der Lief-Toggle die Zeile
-  // schliesst.
-  if (event && event.stopPropagation) event.stopPropagation();
   const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
   const erkl = (neu === 'VPE_EK')
     ? 'Bei "VPE_EK" wird der Roh-EK durch VPE geteilt → Stück-EK in CAO. '
