@@ -300,6 +300,25 @@ def run_migration() -> None:
                     AFTER ARTIKEL_REC_ID
                 """)
 
+            # Phase 5b-Verbesserung: XT_ARTIKEL_PREIS_BEZUG — Override
+            # des EK-Bezugs ('STK' / 'VPE_EK') pro CAO-Lief-Artikel-Kombi.
+            # Lebt unabhaengig vom Einkauf-Cache (XT_EINKAUF_LIEF_ARTIKEL),
+            # damit der User auch fuer CAO-Lieferanten ohne UTZ-Anbindung
+            # (C&C, Inventurberichtigung etc.) den Bezug umschalten kann.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_ARTIKEL_PREIS_BEZUG (
+                  ARTIKEL_ID    INT          NOT NULL,
+                  ADRESS_ID     INT          NOT NULL,
+                  EK_BEZUG      ENUM('STK','VPE_EK') NOT NULL,
+                  GEAENDERT_AT  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                              ON UPDATE CURRENT_TIMESTAMP,
+                  GEAENDERT_VON INT          NULL,
+                  PRIMARY KEY (ARTIKEL_ID, ADRESS_ID),
+                  INDEX idx_adress (ADRESS_ID)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Phase 5b: EK-Bezug-Override pro CAO-Artikel × Lieferant'
+            """)
+
             # Phase 5b: XT_ARTIKEL_VK_KONTROLLE — Audit-Liste der
             # Artikel die nach einem CAO-Sync (Anlage oder EK-Aenderung)
             # eine VK-Pruefung brauchen. UI in Orga/Artikel/Preispflege
