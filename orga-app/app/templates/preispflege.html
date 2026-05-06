@@ -395,6 +395,33 @@
 }
 .anp-field input:focus { border-color: var(--gruen-mitte); }
 .anp-field input.changed { border-color: var(--gold); background: #fffbf0; }
+
+/* Touch-Numpad-Trigger neben jedem Input — Tastatur und Touch
+   parallel verfuegbar (siehe feedback_touch_plus_maus). */
+.anp-input-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.anp-input-wrap input { flex: 1; width: auto; }
+.anp-numpad-btn {
+  flex: 0 0 32px;
+  border: 2px solid var(--creme-dunkel);
+  border-radius: 6px;
+  background: var(--grau-hell);
+  color: var(--grau-mitte);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: background 0.1s;
+}
+.anp-numpad-btn:hover { background: var(--creme-dunkel); color: var(--text-dunkel); }
+.anp-numpad-btn:focus { outline: 2px solid var(--gruen-mitte); outline-offset: -2px; }
 .anp-actions {
   display: flex;
   gap: 8px;
@@ -953,17 +980,26 @@ async function ekBezugTogglePflege(artikelId, adressId, aktuell, quelle, parentA
   }
 }
 
-// Zentraler Click-Listener fuer dynamisch generierte Bezug-Pillen.
+// Zentraler Click-Listener fuer dynamisch generierte Pillen + Buttons.
 document.addEventListener('click', (ev) => {
-  const el = ev.target.closest('[data-action="ek-bezug-toggle"]');
-  if (!el) return;
-  ekBezugTogglePflege(
-    parseInt(el.dataset.artikelId, 10),
-    parseInt(el.dataset.adressId, 10),
-    el.dataset.bezug,
-    el.dataset.quelle,
-    el.dataset.parentArtnr,
-  );
+  const bezugEl = ev.target.closest('[data-action="ek-bezug-toggle"]');
+  if (bezugEl) {
+    ekBezugTogglePflege(
+      parseInt(bezugEl.dataset.artikelId, 10),
+      parseInt(bezugEl.dataset.adressId, 10),
+      bezugEl.dataset.bezug,
+      bezugEl.dataset.quelle,
+      bezugEl.dataset.parentArtnr,
+    );
+    return;
+  }
+  // Touch-Numpad-Trigger neben Anpassen-Eingabefeldern. Native Tastatur-
+  // Eingabe bleibt parallel verfuegbar (kein onclick auf dem Input).
+  const padEl = ev.target.closest('[data-action="open-numpad"]');
+  if (padEl) {
+    const inp = document.getElementById(padEl.dataset.target);
+    if (inp) numpadOeffnen(inp, padEl.dataset.label || '');
+  }
 });
 
 // VK-Kontroll-Tooltip-Text aus dem vk_kontrolle-Objekt aufbauen.
@@ -1188,56 +1224,83 @@ function anpassenOeffnen(btn, artnr) {
 
   const mwstSatz = (art.mwst_pct || 0) / 100.0;
 
+  // Helper: Eingabefeld mit nativer Tastatur-Bedienung + Numpad-
+  // Trigger-Button daneben (touch_plus_maus-Konvention).
+  const _ekId      = `anp-ek-${_esc(artnr)}`;
+  const _vpeekId   = `anp-vpeek-${_esc(artnr)}`;
+  const _vpevkId   = `anp-vpevk-${_esc(artnr)}`;
+  const _fakId     = `anp-faktor-${_esc(artnr)}`;
+  const _vknetId   = `anp-vk5netto-${_esc(artnr)}`;
+  const _vkbruId   = `anp-vk5brutto-${_esc(artnr)}`;
+  const _padBtn = (target, label) =>
+    `<button type="button" class="anp-numpad-btn"
+             data-action="open-numpad"
+             data-target="${target}"
+             data-label="${_esc(label)}"
+             tabindex="-1" title="Touch-Numpad öffnen">🔢</button>`;
+
   anpTr.innerHTML = `
     <td colspan="12">
       <form class="anp-panel" id="anp-form-${_esc(artnr)}" onsubmit="return false;">
         <div class="anp-field">
           <label>EK (€)</label>
-          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-ek-${_esc(artnr)}"
-                 value="${Number(art.ek).toFixed(2)}"
-                 data-field="ek"
-                 onclick="numpadOeffnen(this,'EK (€)')"
-                 oninput="anpBerechnen('${_esc(artnr)}','ek',this.value)">
+          <div class="anp-input-wrap">
+            <input type="number" inputmode="decimal" step="0.01" min="0" id="${_ekId}"
+                   value="${Number(art.ek).toFixed(2)}"
+                   data-field="ek"
+                   oninput="anpBerechnen('${_esc(artnr)}','ek',this.value)">
+            ${_padBtn(_ekId, 'EK (€)')}
+          </div>
         </div>
         <div class="anp-field">
           <label>VPE EK</label>
-          <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpeek-${_esc(artnr)}"
-                 value="${Number(art.vpe_ek || 1).toFixed(0)}"
-                 data-field="vpeek"
-                 onclick="numpadOeffnen(this,'VPE EK')"
-                 oninput="anpBerechnen('${_esc(artnr)}','vpeek',this.value)">
+          <div class="anp-input-wrap">
+            <input type="number" inputmode="decimal" step="1" min="1" id="${_vpeekId}"
+                   value="${Number(art.vpe_ek || 1).toFixed(0)}"
+                   data-field="vpeek"
+                   oninput="anpBerechnen('${_esc(artnr)}','vpeek',this.value)">
+            ${_padBtn(_vpeekId, 'VPE EK')}
+          </div>
         </div>
         <div class="anp-field">
           <label>VPE VK</label>
-          <input type="number" inputmode="decimal" step="1" min="1" id="anp-vpevk-${_esc(artnr)}"
-                 value="${Number(art.vpe_vk || 1).toFixed(0)}"
-                 data-field="vpevk"
-                 onclick="numpadOeffnen(this,'VPE VK')"
-                 oninput="anpBerechnen('${_esc(artnr)}','vpevk',this.value)">
+          <div class="anp-input-wrap">
+            <input type="number" inputmode="decimal" step="1" min="1" id="${_vpevkId}"
+                   value="${Number(art.vpe_vk || 1).toFixed(0)}"
+                   data-field="vpevk"
+                   oninput="anpBerechnen('${_esc(artnr)}','vpevk',this.value)">
+            ${_padBtn(_vpevkId, 'VPE VK')}
+          </div>
         </div>
         <div class="anp-field">
           <label>Faktor</label>
-          <input type="number" inputmode="decimal" step="0.001" min="0" id="anp-faktor-${_esc(artnr)}"
-                 value="${art.faktor != null ? Number(art.faktor).toFixed(3) : ''}"
-                 data-field="faktor"
-                 onclick="numpadOeffnen(this,'Faktor')"
-                 oninput="anpBerechnen('${_esc(artnr)}','faktor',this.value)">
+          <div class="anp-input-wrap">
+            <input type="number" inputmode="decimal" step="0.001" min="0" id="${_fakId}"
+                   value="${art.faktor != null ? Number(art.faktor).toFixed(3) : ''}"
+                   data-field="faktor"
+                   oninput="anpBerechnen('${_esc(artnr)}','faktor',this.value)">
+            ${_padBtn(_fakId, 'Faktor')}
+          </div>
         </div>
         <div class="anp-field">
           <label>VK5 Netto (€)</label>
-          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5netto-${_esc(artnr)}"
-                 value="${Number(art.vk5_netto).toFixed(4)}"
-                 data-field="vk5netto"
-                 onclick="numpadOeffnen(this,'VK5 Netto (€)')"
-                 oninput="anpBerechnen('${_esc(artnr)}','vk5netto',this.value)">
+          <div class="anp-input-wrap">
+            <input type="number" inputmode="decimal" step="0.01" min="0" id="${_vknetId}"
+                   value="${Number(art.vk5_netto).toFixed(4)}"
+                   data-field="vk5netto"
+                   oninput="anpBerechnen('${_esc(artnr)}','vk5netto',this.value)">
+            ${_padBtn(_vknetId, 'VK5 Netto (€)')}
+          </div>
         </div>
         <div class="anp-field">
           <label>VK5 Brutto (€)</label>
-          <input type="number" inputmode="decimal" step="0.01" min="0" id="anp-vk5brutto-${_esc(artnr)}"
-                 value="${Number(art.vk5).toFixed(2)}"
-                 data-field="vk5brutto"
-                 onclick="numpadOeffnen(this,'VK5 Brutto (€)')"
-                 oninput="anpBerechnen('${_esc(artnr)}','vk5brutto',this.value)">
+          <div class="anp-input-wrap">
+            <input type="number" inputmode="decimal" step="0.01" min="0" id="${_vkbruId}"
+                   value="${Number(art.vk5).toFixed(2)}"
+                   data-field="vk5brutto"
+                   oninput="anpBerechnen('${_esc(artnr)}','vk5brutto',this.value)">
+            ${_padBtn(_vkbruId, 'VK5 Brutto (€)')}
+          </div>
         </div>
         <div class="anp-actions">
           <button class="anp-uebernehmen" id="anp-save-${_esc(artnr)}"
