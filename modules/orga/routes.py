@@ -226,15 +226,18 @@ def api_artikel_lieferanten(artnr: str):
     return jsonify(m.lieferantenpreise_fuer_artikel(artnr))
 
 
-@bp.post('/api/lief-artikel/<int:lief_rec_id>/<artnr>/ek-bezug')
-def api_lief_artikel_ek_bezug(lief_rec_id: int, artnr: str):
-    """POST /orga/api/lief-artikel/<lief>/<artnr>/ek-bezug
+@bp.post('/api/cao-lief-preis/<int:artikel_id>/<int:adress_id>/ek-bezug')
+def api_cao_lief_preis_ek_bezug(artikel_id: int, adress_id: int):
+    """POST /orga/api/cao-lief-preis/<artikel>/<adress>/ek-bezug
     Body: {"ek_bezug": "STK" | "VPE_EK" | null}
 
-    Setzt den EK-Bezug-Override am XT_EINKAUF_LIEF_ARTIKEL. NULL =
-    Override loeschen (Lieferanten-Default greift wieder). Wirkt
-    sofort fuer Anzeige in der Preispflege und fuer kuenftige
-    CAO-Sync-Laeufe.
+    Setzt den EK-Bezug-Override pro CAO-Artikel × Lieferant in
+    XT_ARTIKEL_PREIS_BEZUG. NULL = Override loeschen → Lieferanten-
+    Default (XT_EINKAUF_LIEFERANT.EK_BEZUG_DEFAULT, falls vorhanden)
+    bzw. 'STK' greift wieder.
+
+    Funktioniert fuer JEDEN CAO-Lieferanten — auch die ohne XT-
+    Einkaufs-Anbindung (z.B. C&C-Großmarkt, Inventurberichtigung).
     """
     _benutzer()
     data = request.get_json(silent=True) or {}
@@ -245,13 +248,7 @@ def api_lief_artikel_ek_bezug(lief_rec_id: int, artnr: str):
         bezug = str(raw).upper()
     else:
         return jsonify({'error': "ek_bezug muss 'STK','VPE_EK' oder null sein"}), 400
-    # common.einkauf hat den Setter — wir importieren lazy, damit das
-    # Modul auch ohne den Einkauf-Stack laed (Test-Setups, alte Hosts).
-    try:
-        from common import einkauf as _einkauf
-    except Exception as exc:
-        return jsonify({'error': f'Einkauf-Modul nicht verfuegbar: {exc}'}), 500
-    res = _einkauf.lief_artikel_ek_bezug_setzen(lief_rec_id, artnr, bezug)
+    res = m.cao_lief_preis_bezug_setzen(artikel_id, adress_id, bezug)
     return jsonify(res), 200 if res.get('ok') else 400
 
 

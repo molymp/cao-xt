@@ -711,14 +711,20 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
             )
         return rows_out
 
-    # Variante 1: ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5, ADRESS_ID→ADRESSEN
-    # + LEFT JOIN auf XT_EINKAUF_LIEFERANT/_LIEF_ARTIKEL fuer EK-Bezug
-    # (Phase 5b-Verbesserung).
+    # ARTIKEL_PREIS via ARTIKEL.REC_ID=ARTIKEL_ID, PREIS_TYP=5,
+    # ADRESS_ID→ADRESSEN. Plus zwei Override-Quellen fuer den EK-Bezug
+    # (Phase 5b-Verbesserung):
+    #   1. XT_ARTIKEL_PREIS_BEZUG (Pro Artikel × Lieferant — explizit
+    #      vom User in der Preispflege-UI gesetzt).
+    #   2. XT_EINKAUF_LIEFERANT.EK_BEZUG_DEFAULT (Lieferanten-Politik —
+    #      nur fuer XT-bekannte Lieferanten wie UTZ).
+    # Fallback: 'STK'.
     try:
         with get_db() as cur:
             cur.execute(
                 """
                 SELECT
+                    a.REC_ID                                                        AS artikel_id,
                     ap.ADRESS_ID                                                    AS lief_nr,
                     COALESCE(adr.NAME1, adr.MATCHCODE,
                              IF(ap.ADRESS_ID IS NOT NULL,
@@ -727,17 +733,16 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                     COALESCE(ap.BESTNUM, ap.PT2, '')                                AS lief_artnr,
                     COALESCE(ap.PREIS, 0)                                           AS ek_preis,
                     COALESCE(ap.VPE, 1)                                             AS vpe,
-                    xl.REC_ID                                                       AS xt_lief_rec_id,
-                    xl.EK_BEZUG_DEFAULT                                             AS xt_ek_bezug_default,
-                    xla.EK_BEZUG                                                    AS xt_ek_bezug_override
+                    apb.EK_BEZUG                                                    AS bezug_override,
+                    xl.EK_BEZUG_DEFAULT                                             AS bezug_lief_default
                 FROM ARTIKEL a
                 JOIN ARTIKEL_PREIS ap ON ap.ARTIKEL_ID = a.REC_ID
                     AND ap.PREIS_TYP = 5
                 LEFT JOIN ADRESSEN adr ON adr.REC_ID = ap.ADRESS_ID
+                LEFT JOIN XT_ARTIKEL_PREIS_BEZUG apb
+                       ON apb.ARTIKEL_ID = a.REC_ID
+                      AND apb.ADRESS_ID = ap.ADRESS_ID
                 LEFT JOIN XT_EINKAUF_LIEFERANT xl ON xl.CAO_LIEF_ID = ap.ADRESS_ID
-                LEFT JOIN XT_EINKAUF_LIEF_ARTIKEL xla
-                       ON xla.LIEF_REC_ID = xl.REC_ID
-                      AND xla.ARTIKEL_NR_LIEF = COALESCE(ap.BESTNUM, ap.PT2)
                 WHERE a.ARTNUM = %s
                 ORDER BY ap.ADRESS_ID
                 """,
@@ -749,9 +754,9 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
             for r in rows:
                 roh_ek = float(r['ek_preis'] or 0)
                 vpe    = float(r['vpe'] or 1) or 1.0
-                # Effektiver Bezug: Override > Lieferanten-Default > 'STK'
-                override = (r.get('xt_ek_bezug_override') or '').strip()
-                liefdef  = (r.get('xt_ek_bezug_default') or '').strip()
+                # Effektiver Bezug: Artikel-Override > Lief-Default > 'STK'
+                override = (r.get('bezug_override') or '').strip()
+                liefdef  = (r.get('bezug_lief_default') or '').strip()
                 if override in ('STK', 'VPE_EK'):
                     bezug, quelle = override, 'artikel'
                 elif liefdef in ('STK', 'VPE_EK'):
@@ -764,6 +769,7 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                 else:
                     stueck_ek = round(roh_ek, 4)
                 out.append({
+                    'artikel_id':      int(r['artikel_id']),
                     'lief_nr':         r['lief_nr'],
                     'lief_name':       r['lief_name'],
                     'lief_artnr':      r.get('lief_artnr') or '',
@@ -772,13 +778,44 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
                     'vpe':             vpe,
                     'ek_bezug':        bezug,
                     'ek_bezug_quelle': quelle,
-                    'xt_lief_rec_id':  r.get('xt_lief_rec_id'),
                 })
             return _mark_standard(out)
     except Exception:
         pass
 
     return []
+
+
+def cao_lief_preis_bezug_setzen(artikel_id: int, adress_id: int,
+                                  ek_bezug: str | None,
+                                  ma_id: int | None = None) -> dict:
+    """Setzt den EK-Bezug-Override fuer eine Artikel × Lieferant-Kombi
+    in der Preispflege.
+
+    ek_bezug='STK'/'VPE_EK'  → INSERT/UPDATE
+    ek_bezug=None            → DELETE (zurueck zum Default)
+    """
+    if ek_bezug is not None and ek_bezug not in ('STK', 'VPE_EK'):
+        return {'ok': False, 'msg': f'Ungueltig: {ek_bezug!r}'}
+    try:
+        with get_db_transaction() as cur:
+            if ek_bezug is None:
+                cur.execute("""
+                    DELETE FROM XT_ARTIKEL_PREIS_BEZUG
+                    WHERE ARTIKEL_ID = %s AND ADRESS_ID = %s
+                """, (int(artikel_id), int(adress_id)))
+            else:
+                cur.execute("""
+                    INSERT INTO XT_ARTIKEL_PREIS_BEZUG
+                      (ARTIKEL_ID, ADRESS_ID, EK_BEZUG, GEAENDERT_VON)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                      EK_BEZUG     = VALUES(EK_BEZUG),
+                      GEAENDERT_VON = VALUES(GEAENDERT_VON)
+                """, (int(artikel_id), int(adress_id), ek_bezug, ma_id))
+        return {'ok': True, 'ek_bezug': ek_bezug}
+    except Exception as exc:
+        return {'ok': False, 'msg': str(exc)}
 
 
 def artikel_vk5_setzen(artnum: str, vk5_brutto: float) -> dict:
