@@ -300,6 +300,24 @@ def run_migration() -> None:
                     AFTER ARTIKEL_REC_ID
                 """)
 
+            # Phase 5b-Verbesserung: XT_ARTIKEL_EK_BEZUG — Override
+            # des EK-Bezugs am Artikel selbst (ARTIKEL.EK_PREIS).
+            # CAO speichert dort uneinheitlich mal Stueck-, mal Karton-
+            # EK (Marlboro Gold: VPE_EK=12, EK_PREIS=60€ → Karton).
+            # Damit unsere Faktor-Anzeige stimmt, ohne ARTIKEL.EK_PREIS
+            # in CAO anzufassen, merken wir uns hier den Bezug pro
+            # Artikel. Default fuer alle Artikel ohne Eintrag = 'STK'.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS XT_ARTIKEL_EK_BEZUG (
+                  ARTIKEL_ID    INT          NOT NULL PRIMARY KEY,
+                  EK_BEZUG      ENUM('STK','VPE_EK') NOT NULL,
+                  GEAENDERT_AT  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                              ON UPDATE CURRENT_TIMESTAMP,
+                  GEAENDERT_VON INT          NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                  COMMENT='Phase 5b: EK-Bezug fuer ARTIKEL.EK_PREIS (Stueck vs. Karton)'
+            """)
+
             # Phase 5b-Verbesserung: XT_ARTIKEL_PREIS_BEZUG — Override
             # des EK-Bezugs ('STK' / 'VPE_EK') pro CAO-Lief-Artikel-Kombi.
             # Lebt unabhaengig vom Einkauf-Cache (XT_EINKAUF_LIEF_ARTIKEL),
