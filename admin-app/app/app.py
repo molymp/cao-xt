@@ -2597,6 +2597,30 @@ def api_einkauf_bestellung_sync_artikel(rec_id):
     return jsonify(**res), 200 if res.get('ok') else 502
 
 
+@app.post('/api/einkauf/bestellungen/<int:rec_id>/sync-ekbestell')
+@_login_required
+def api_einkauf_bestellung_sync_ekbestell(rec_id):
+    """Phase 6: legt eine Bestellung als CAO-EKBESTELL an + zugehoerige
+    EKBESTELL_POS-Eintraege.
+
+    Voraussetzung: alle Positionen STATUS='in_cao' (Phase 5a/b durch),
+    CAO_EKBESTELL_REC_ID noch NULL. BELEGNUM wird aus REGISTRY-Counter
+    'EK-BEST' vergeben.
+
+    Body: {'dry_run': bool}. Dry-Run liefert Vorschau ohne INSERT.
+    """
+    body = request.get_json(silent=True) or {}
+    dry_run = bool(body.get('dry_run', False))
+    ma_name = (session.get('vname', '') + ' '
+                + session.get('ma_name', '')).strip() \
+              or session.get('login_name') or 'CAO-XT'
+    res = _einkauf.cao_sync_ekbestell(
+        rec_id, dry_run=dry_run,
+        ma_id=session.get('ma_id'), ma_name=ma_name,
+    )
+    return jsonify(**res), 200 if res.get('ok') else 502
+
+
 @app.get('/api/einkauf/warengruppen')
 @_login_required
 def api_einkauf_warengruppen():

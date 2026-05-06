@@ -638,6 +638,17 @@ async function detailZeigen(recId) {
                 title="Schreibt die Lieferantenpreise nach CAO (Phase 5a). Lieferantenpreis-Verknüpfungen für gematchte Positionen.">
           🚀 In CAO einbuchen (ARTIKEL_PREIS)
         </button>
+        <button class="btn btn-primary btn-sm" id="btn-sync-ekbestell-${e.REC_ID}"
+                onclick="syncEkbestell(${e.REC_ID})"
+                title="Phase 6: legt diese Bestellung als CAO-EKBESTELL an. Voraussetzung: alle Positionen sind in CAO eingebucht.">
+          📦 Als CAO-Bestellung anlegen
+        </button>
+        ${e.CAO_BELEGNUM
+          ? `<span class="status-pill in_cao" style="margin-left:8px;"
+                  title="Bestellung ist bereits als EKBESTELL angelegt (REC_ID=${e.CAO_EKBESTELL_REC_ID})">
+              📦 BELEGNUM ${_esc(e.CAO_BELEGNUM)}
+            </span>`
+          : ''}
         <span class="muted" id="cao-match-hint-${e.REC_ID}"
               style="font-size:12px;">Vorschau erst, dann Bestätigung</span>
       </div>
@@ -913,6 +924,78 @@ async function syncCao(recId) {
   // Match-Tabelle neu laden, damit die jetzt 'in_cao'-Positionen korrekt
   // angezeigt werden (wurde in cao_match_positionen schon erkannt).
   caoMatch(recId);
+}
+
+// ── Phase 6: Als CAO-EKBESTELL anlegen ───────────────────────────
+async function syncEkbestell(recId) {
+  const btn  = document.getElementById('btn-sync-ekbestell-' + recId);
+  const hint = document.getElementById('cao-match-hint-' + recId);
+  if (!btn) return;
+
+  // Schritt 1: Dry-Run-Vorschau
+  btn.disabled = true;
+  hint.textContent = 'Vorschau …';
+  let plan;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-ekbestell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: true }),
+    });
+    plan = await r.json();
+  } catch (e) {
+    btn.disabled = false; hint.textContent = 'Fehler: ' + e.message; return;
+  }
+  btn.disabled = false;
+  if (!plan.ok) {
+    hint.textContent = 'Fehler: ' + (plan.msg || '');
+    alert('Kann nicht angelegt werden:\n\n' + (plan.msg || 'Unbekannter Fehler'));
+    return;
+  }
+
+  // Schritt 2: Confirm-Dialog mit Vorschau
+  const fmtEur = n => Number(n || 0).toLocaleString('de-DE',
+    {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const lines = [
+    `Als CAO-EKBESTELL anlegen?\n`,
+    `Lieferant: ${plan.lief_name}`,
+    `Positionen: ${plan.positions}`
+      + (plan.skipped ? ` (${plan.skipped} übersprungen — nicht 'in_cao')` : ''),
+    `Netto:  ${fmtEur(plan.nsumme)} €`,
+    `MwSt:   ${fmtEur(plan.msumme)} €`,
+    `Brutto: ${fmtEur(plan.bsumme)} €\n`,
+    'Wirkung: INSERT INTO EKBESTELL + EKBESTELL_POS, BELEGNUM',
+    'aus REGISTRY (EK-BEST). Schreibt NICHT ins JOURNAL.',
+  ];
+  if (!confirm(lines.join('\n'))) {
+    hint.textContent = 'abgebrochen';
+    return;
+  }
+
+  // Schritt 3: Live
+  btn.disabled = true;
+  hint.textContent = 'Lege EKBESTELL an …';
+  let res;
+  try {
+    const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-ekbestell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: false }),
+    });
+    res = await r.json();
+  } catch (e) {
+    btn.disabled = false; hint.textContent = 'Fehler: ' + e.message; return;
+  }
+  btn.disabled = false;
+  if (!res.ok) {
+    hint.textContent = 'Fehler: ' + (res.msg || '');
+    alert('Anlegen fehlgeschlagen:\n\n' + (res.msg || ''));
+    return;
+  }
+  hint.textContent = `✓ EKBESTELL ${res.belegnum} angelegt (${res.positions} Positionen)`;
+  toast(`📦 CAO-Bestellung ${res.belegnum} angelegt`, 'ok');
+  // Detail neu laden — der Status-Pill „BELEGNUM …" erscheint dann.
+  detailZeigen(recId);
 }
 
 // ── Manuelle Position-Zuordnung ───────────────────────────────────

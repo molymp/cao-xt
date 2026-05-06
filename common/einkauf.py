@@ -300,6 +300,27 @@ def run_migration() -> None:
                     AFTER ARTIKEL_REC_ID
                 """)
 
+            # Phase 6: Verknuepfung XT-Bestellung ↔ CAO-EKBESTELL.
+            # Wird gefuellt sobald die Bestellung als CAO-EKBESTELL
+            # gebucht wurde. Vor Phase 6 ist die Spalte NULL.
+            for col, ddl in [
+                ('CAO_EKBESTELL_REC_ID',
+                 'INT NULL AFTER GESAMTSUMME_NETTO'),
+                ('CAO_BELEGNUM',
+                 'VARCHAR(20) NULL AFTER CAO_EKBESTELL_REC_ID'),
+            ]:
+                cur.execute("""
+                    SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME   = 'XT_EINKAUF_BESTELLUNG'
+                      AND COLUMN_NAME  = %s
+                """, (col,))
+                if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                    cur.execute(
+                        f"ALTER TABLE XT_EINKAUF_BESTELLUNG "
+                        f"ADD COLUMN {col} {ddl}"
+                    )
+
             # Phase 5b-Verbesserung: XT_ARTIKEL_EK_BEZUG — Override
             # des EK-Bezugs am Artikel selbst (ARTIKEL.EK_PREIS).
             # CAO speichert dort uneinheitlich mal Stueck-, mal Karton-
@@ -2975,40 +2996,45 @@ def position_warengruppe_setzen(pos_rec_id: int,
 
 # ── ARTNUM-Vergabe via REGISTRY ──────────────────────────────────────
 
-def _next_artnum(cur) -> str:
-    """Holt die naechste ARTNUM aus dem REGISTRY-Counter und erhoeht ihn.
+def _next_registry_nummer(cur, name: str) -> str:
+    """Holt die naechste Nummer aus REGISTRY MAIN\\NUMBERS / <name>
+    und erhoeht den Counter atomar (FOR UPDATE).
 
-    REGISTRY-Eintrag fuer ARTIKELNUMMER:
-      MAINKEY='MAIN\\NUMBERS', NAME='ARTIKELNUMMER',
-      VAL_INT=98 (QUELLE-Code), VAL_INT2=<letzte vergebene Nummer>,
-      VAL_CHAR='000000' (Padding-Format, hier 6-stellig, fuehrende Nullen).
+    Beispiele:
+      ``ARTIKELNUMMER`` (VAL_CHAR='000000', 6-stellig) — fuer ARTNUM
+      ``EK-BEST`` (VAL_CHAR='000000', 6-stellig) — fuer EKBESTELL.BELEGNUM
+      ``VK-KASSE`` etc.
 
-    Aufruf MUSS innerhalb einer Transaktion erfolgen, damit zwei
-    parallele Insert-Threads nicht dieselbe Nummer bekommen.
+    VAL_CHAR enthaelt das Padding-Pattern (Anzahl '0'-Zeichen = Stellen).
+    Aufruf muss innerhalb einer Transaktion erfolgen.
     """
     cur.execute("""
         SELECT VAL_INT2, VAL_CHAR
         FROM REGISTRY
-        WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = 'ARTIKELNUMMER'
+        WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = %s
         FOR UPDATE
-    """)
+    """, (name,))
     row = cur.fetchone()
     if not row:
         raise RuntimeError(
-            "REGISTRY-Eintrag MAIN\\NUMBERS / ARTIKELNUMMER fehlt — "
+            f"REGISTRY-Eintrag MAIN\\NUMBERS / {name} fehlt — "
             "CAO Faktura sollte ihn beim ersten Start anlegen."
         )
     naechste = int(row['VAL_INT2'] or 0) + 1
     pad = (row['VAL_CHAR'] or '000000')
-    # Padding-Format: Anzahl '0'-Zeichen ergibt die Stellenanzahl
     n_stellen = pad.count('0') if pad.count('0') > 0 else 6
-    artnum = f"{naechste:0{n_stellen}d}"
+    nummer = f"{naechste:0{n_stellen}d}"
     cur.execute("""
         UPDATE REGISTRY
         SET VAL_INT2 = %s
-        WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = 'ARTIKELNUMMER'
-    """, (naechste,))
-    return artnum
+        WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = %s
+    """, (naechste, name))
+    return nummer
+
+
+def _next_artnum(cur) -> str:
+    """Naechste ARTNUM aus REGISTRY (Wrapper auf _next_registry_nummer)."""
+    return _next_registry_nummer(cur, 'ARTIKELNUMMER')
 
 
 # ── ARTIKEL_LOG-CONCAT_WS (aus cao_faktura.exe) ──────────────────────
@@ -3357,3 +3383,302 @@ def cao_sync_artikel(bestellung_rec_id: int,
         'aktionen':        aktionen,
         'artikel_rec_ids': neue_ids,
     }
+
+
+# ── Phase 6: EKBESTELL + EKBESTELL_POS in CAO anlegen ───────────────
+
+# Mapping ARTIKEL.STEUER_CODE → MWST-Klasse-Index in EKBESTELL
+# (CAO speichert NSUMME_0..NSUMME_3 + MWST_0..MWST_3 fuer 4 Steuer-
+# Klassen). Steuer-Code 0 = "ohne MwSt" → Klasse 0.
+_STEUER_CODE_TO_MWST_KLASSE = {0: 0, 1: 1, 2: 2, 3: 3}
+
+
+def cao_sync_ekbestell(bestellung_rec_id: int,
+                        dry_run: bool = False,
+                        ma_id: Optional[int] = None,
+                        ma_name: Optional[str] = None) -> dict:
+    """Phase 6: legt eine CAO-Einkaufsbestellung (EKBESTELL +
+    EKBESTELL_POS) aus einer Lieferanten-Bestellbestaetigung an.
+
+    Voraussetzungen:
+      * Bestellung existiert in XT_EINKAUF_BESTELLUNG
+      * CAO-Lieferant ist verknuepft (head.CAO_LIEF_ID)
+      * Alle relevanten Positionen sind STATUS='in_cao' (= Phase 5a/5b
+        durchgelaufen, jede Position hat eine ARTIKEL_REC_ID)
+      * Bestellung ist noch nicht in CAO gebucht
+        (CAO_EKBESTELL_REC_ID IS NULL)
+
+    Schreibt:
+      * INSERT INTO EKBESTELL — Header mit BELEGNUM aus REGISTRY,
+        ADDR_ID = Lieferant, KUN_*-Felder aus ADRESSEN-Snapshot,
+        STADIUM=2 (offen/bestellt), HASHSUM='$$' (CAO-Default).
+      * INSERT INTO EKBESTELL_POS pro Position — MENGE und EPREIS
+        in Stueck (per ek_bezug umgerechnet), GPREIS = MENGE*EPREIS.
+      * Updates XT_EINKAUF_BESTELLUNG.CAO_EKBESTELL_REC_ID +
+        CAO_BELEGNUM.
+
+    Schreibt NICHT ins JOURNAL — bei Habacher-Praxis (verifiziert in
+    cao_XT_DEV: 333 EKBESTELL-Eintraege, 0 JOURNAL.QUELLE=06) ist die
+    Einkaufsbestellung nur in EKBESTELL. Wareneingang (Phase 7) und
+    EK-Rechnung (Phase 8) erzeugen spaeter JOURNAL-Eintraege mit
+    QUELLE=15/05 und JOURNALPOS.QUELLE_SRC=EKBESTELL_POS.REC_ID.
+
+    Returns::
+        {'ok': bool,
+         'dry_run': bool,
+         'belegnum': str,           # vergebene Bestellnummer
+         'ekbestell_rec_id': int,   # neue REC_ID in EKBESTELL
+         'positions': int,          # Anzahl angelegte Positionen
+         'nsumme': float,           # Netto-Gesamt
+         'bsumme': float,           # Brutto-Gesamt
+         'fehler': [...]}
+    """
+    head = bestellung_holen(bestellung_rec_id)
+    if not head:
+        return {'ok': False, 'msg': 'Bestellung nicht gefunden.'}
+    if head.get('CAO_EKBESTELL_REC_ID'):
+        return {'ok': False,
+                'msg': f'Bestellung ist schon in CAO als BELEGNUM '
+                       f'{head.get("CAO_BELEGNUM")} angelegt '
+                       f'(EKBESTELL.REC_ID={head.get("CAO_EKBESTELL_REC_ID")}).'}
+    cao_lief = head.get('CAO_LIEF_ID')
+    if not cao_lief:
+        return {'ok': False,
+                'msg': 'Lieferant ohne CAO-Adress-Zuordnung — '
+                       'erst unter "Einkauf → Lieferanten" verknuepfen.'}
+
+    # Match-Positionen holen — wir nehmen nur 'in_cao'-Positionen
+    # (= Phase 5a hat ARTIKEL_PREIS verknuepft, ARTIKEL_REC_ID gesetzt).
+    matches = cao_match_positionen(bestellung_rec_id)
+    if not matches:
+        return {'ok': False, 'msg': 'Bestellung hat keine Positionen.'}
+
+    relevante = [m for m in matches
+                  if (m.get('pos_status') or '') == 'in_cao'
+                     and (m.get('cao') or {}).get('rec_id')]
+    skipped = len(matches) - len(relevante)
+    if not relevante:
+        return {'ok': False,
+                'msg': 'Keine Position auf STATUS=in_cao mit '
+                       'ARTIKEL_REC_ID — erst "🚀 In CAO einbuchen" '
+                       'ausfuehren.'}
+
+    # Lieferanten-Adresse fuer KUN_*-Snapshot
+    lief_adr = None
+    try:
+        with get_db() as cur:
+            cur.execute("""
+                SELECT REC_ID, MATCHCODE, ANREDE, NAME1, NAME2, NAME3,
+                       STRASSE, HAUSNR, ADRESSZUSATZ, PLZ, ORT, LAND,
+                       UST_NUM
+                FROM ADRESSEN WHERE REC_ID = %s
+            """, (int(cao_lief),))
+            lief_adr = cur.fetchone() or {}
+    except Exception as exc:
+        return {'ok': False, 'msg': f'Adresse {cao_lief} laden: {exc}'}
+
+    # Steuer-Saetze aus REGISTRY (MAIN\\MWST/NAME='1','2',...) fuer
+    # MWST-Berechnung. Code 0 = ohne MwSt → 0.0.
+    mwst_satz_per_code: dict[int, float] = {0: 0.0}
+    try:
+        with get_db() as cur:
+            cur.execute("""SELECT NAME, VAL_DOUBLE FROM REGISTRY
+                           WHERE MAINKEY = 'MAIN\\\\MWST'
+                             AND VAL_DOUBLE IS NOT NULL""")
+            for r in cur.fetchall() or []:
+                try:
+                    mwst_satz_per_code[int(r['NAME'])] = float(r['VAL_DOUBLE'])
+                except (TypeError, ValueError):
+                    pass
+    except Exception as exc:
+        log.warning('mwst-saetze laden: %s', exc)
+
+    # Erst die Positions-Daten in eine Liste sammeln (fuer Summen-
+    # Berechnung im Header und INSERT in derselben Transaktion).
+    pos_daten: list[dict] = []
+    n_summen = [0.0, 0.0, 0.0, 0.0]
+    m_summen = [0.0, 0.0, 0.0, 0.0]
+    fehler: list[dict] = []
+
+    for m in relevante:
+        cao = m.get('cao') or {}
+        st_code = int(cao.get('steuer_code') or 0)
+        klasse  = _STEUER_CODE_TO_MWST_KLASSE.get(st_code, 0)
+        menge   = float(m.get('menge') or 0)
+        # ARTIKEL.EPREIS ist Stueck-EK — wir liefern stueck_ek aus
+        # cao_match_positionen (bereits per ek_bezug korrigiert).
+        stueck_ek = float(m.get('stueck_ek') or m.get('preis_netto') or 0)
+        gpreis = round(menge * stueck_ek, 2)
+        n_summen[klasse] += gpreis
+        mwst_satz = mwst_satz_per_code.get(st_code, 0.0) / 100.0
+        m_summen[klasse] += round(gpreis * mwst_satz, 2)
+
+        pos_daten.append({
+            'pos_nr':      int(m.get('pos_nr') or 0),
+            'artikel_id':  int(cao.get('rec_id')),
+            'artnum':      cao.get('artnum') or '',
+            'matchcode':   cao.get('matchcode') or cao.get('kas_name') or '',
+            'kurzname':    cao.get('kas_name') or cao.get('matchcode') or '',
+            'bezeichnung': m.get('bezeichnung_lief') or '',
+            'menge':       menge,
+            'epreis':      stueck_ek,
+            'gpreis':      gpreis,
+            'liefartnum':  m.get('artikel_nr_lief') or '',
+            'st_code':     st_code,
+            'mwst_klasse': klasse,
+            'vpe_lief':    m.get('vpe_lief'),
+            'pos_rec_id':  m.get('pos_rec_id'),
+        })
+
+    nsumme = round(sum(n_summen), 2)
+    msumme = round(sum(m_summen), 2)
+    bsumme = round(nsumme + msumme, 2)
+
+    if dry_run:
+        return {
+            'ok':              True,
+            'dry_run':         True,
+            'belegnum':        '(naechste aus REGISTRY)',
+            'ekbestell_rec_id': None,
+            'positions':       len(pos_daten),
+            'skipped':         skipped,
+            'nsumme':          nsumme,
+            'msumme':          msumme,
+            'bsumme':          bsumme,
+            'lief_name':       lief_adr.get('NAME1') or '?',
+            'pos_preview':     [{
+                'pos_nr':    p['pos_nr'],
+                'artnum':    p['artnum'],
+                'mc':        p['matchcode'][:60],
+                'menge':     p['menge'],
+                'epreis':    p['epreis'],
+                'gpreis':    p['gpreis'],
+            } for p in pos_daten[:8]],
+        }
+
+    # Live-Sync — alles in einer Transaktion
+    from datetime import datetime as _dt, date as _date
+    try:
+        with get_db_transaction() as cur:
+            belegnum = _next_registry_nummer(cur, 'EK-BEST')
+            heute = head.get('EMAIL_DATUM') or _dt.now()
+            try:
+                heute = heute.date() if hasattr(heute, 'date') else heute
+            except Exception:
+                heute = _date.today()
+
+            cur.execute("""
+                INSERT INTO EKBESTELL (
+                  TERM_ID, MA_ID, ADDR_ID, BELEGNUM, BELEGDATUM,
+                  STADIUM,
+                  NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
+                  MSUMME_0, MSUMME_1, MSUMME_2, MSUMME_3, MSUMME,
+                  BSUMME,
+                  ERSTELLT, ERST_NAME,
+                  KUN_NUM, KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NAME3,
+                  KUN_STRASSE, KUN_HAUSNR, KUN_ADRESSZUSATZ,
+                  KUN_LAND, KUN_PLZ, KUN_ORT, KUN_UST_NUM,
+                  KUN_ADDR_ID,
+                  HASHSUM
+                ) VALUES (
+                  1, %s, %s, %s, %s,
+                  2,
+                  %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s,
+                  %s,
+                  %s, %s,
+                  %s, %s, %s, %s, %s,
+                  %s, %s, %s,
+                  %s, %s, %s, %s,
+                  %s,
+                  '$$'
+                )
+            """, (
+                ma_id if ma_id is not None else -1,
+                int(cao_lief), belegnum, heute,
+                # Summen pro MwSt-Klasse + Gesamt
+                round(n_summen[0], 2), round(n_summen[1], 2),
+                round(n_summen[2], 2), round(n_summen[3], 2),
+                nsumme,
+                round(m_summen[0], 2), round(m_summen[1], 2),
+                round(m_summen[2], 2), round(m_summen[3], 2),
+                msumme,
+                bsumme,
+                heute, (ma_name or 'CAO-XT')[:100],
+                # KUN_*-Snapshot der Lieferanten-Adresse
+                lief_adr.get('KUNNUM2') or lief_adr.get('KUNNUM1') or '',
+                lief_adr.get('ANREDE') or '',
+                lief_adr.get('NAME1')  or '',
+                lief_adr.get('NAME2'),
+                lief_adr.get('NAME3'),
+                lief_adr.get('STRASSE') or '',
+                lief_adr.get('HAUSNR'),
+                lief_adr.get('ADRESSZUSATZ'),
+                lief_adr.get('LAND') or 'DE',
+                lief_adr.get('PLZ')  or '',
+                lief_adr.get('ORT')  or '',
+                lief_adr.get('UST_NUM'),
+                int(cao_lief),
+            ))
+            ekbestell_rec_id = cur.lastrowid
+
+            # EKBESTELL_POS pro Position. WICHTIG: BELEGNUM, ADDR_ID
+            # werden in jede Position dupliziert (CAO-Konvention zur
+            # schnellen Abfrage ohne JOIN).
+            for p in pos_daten:
+                cur.execute("""
+                    INSERT INTO EKBESTELL_POS (
+                      EKBESTELL_ID, BELEGNUM, ADDR_ID,
+                      POSITION,
+                      ARTIKELTYP, ARTIKEL_ID, ARTNUM, MATCHCODE,
+                      KURZBEZEICHNUNG, BEZEICHNUNG,
+                      MENGE, VPE, EPREIS, GPREIS, STEUER_CODE,
+                      LIEFARTNUM, ERSTELLT, ERST_NAME,
+                      STADIUM
+                    ) VALUES (
+                      %s, %s, %s,
+                      %s,
+                      'N', %s, %s, %s,
+                      %s, %s,
+                      %s, %s, %s, %s, %s,
+                      %s, NOW(), %s,
+                      0
+                    )
+                """, (
+                    ekbestell_rec_id, belegnum, int(cao_lief),
+                    p['pos_nr'],
+                    p['artikel_id'], p['artnum'][:100],
+                    (p['matchcode'] or '')[:255],
+                    (p['kurzname'] or '')[:150],
+                    p['bezeichnung'],
+                    p['menge'],
+                    int(p['vpe_lief']) if p['vpe_lief'] else 1,
+                    p['epreis'], p['gpreis'], p['st_code'],
+                    p['liefartnum'][:100],
+                    (ma_name or 'CAO-XT')[:100],
+                ))
+
+            # XT-Bestellung mit CAO-IDs verknuepfen
+            cur.execute("""
+                UPDATE XT_EINKAUF_BESTELLUNG
+                   SET CAO_EKBESTELL_REC_ID = %s,
+                       CAO_BELEGNUM         = %s
+                 WHERE REC_ID = %s
+            """, (ekbestell_rec_id, belegnum, int(bestellung_rec_id)))
+        return {
+            'ok':              True,
+            'dry_run':         False,
+            'belegnum':        belegnum,
+            'ekbestell_rec_id': ekbestell_rec_id,
+            'positions':       len(pos_daten),
+            'skipped':         skipped,
+            'nsumme':          nsumme,
+            'msumme':          msumme,
+            'bsumme':          bsumme,
+            'lief_name':       lief_adr.get('NAME1') or '?',
+            'fehler':          fehler,
+        }
+    except Exception as exc:
+        log.exception('cao_sync_ekbestell rec=%s', bestellung_rec_id)
+        return {'ok': False, 'msg': f'CAO-Sync: {str(exc)[:300]}',
+                'fehler': [{'msg': str(exc)}]}
