@@ -2327,21 +2327,51 @@ def _vk_kontrolle_ek_eintrag(artikel_rec_id: int,
 
 
 def _effektiver_ek_bezug(lief_cache: Optional[dict],
-                          lieferant_default: Optional[str]) -> str:
-    """Liefert den effektiven EK-Bezug fuer einen Lief-Artikel.
+                          lieferant_default: Optional[str],
+                          artikel_rec_id: Optional[int] = None,
+                          adress_id: Optional[int] = None) -> tuple[str, str]:
+    """Liefert ``(bezug, quelle)`` fuer einen Lief-Artikel.
 
-    Reihenfolge:
-        1. Lief-Artikel-Override (XT_EINKAUF_LIEF_ARTIKEL.EK_BEZUG)
-        2. Lieferanten-Default (XT_EINKAUF_LIEFERANT.EK_BEZUG_DEFAULT)
-        3. Fallback 'STK'
+    Reihenfolge (erstes Treffer gewinnt):
+        1. CAO-Override (XT_ARTIKEL_PREIS_BEZUG) — falls
+           ARTIKEL_REC_ID und ADRESS_ID gesetzt sind. Diese Tabelle
+           wird vom Preispflege-UI gefuellt und ist die "moderne"
+           Override-Quelle pro CAO-Artikel × Lieferant.
+        2. Lief-Cache-Override (XT_EINKAUF_LIEF_ARTIKEL.EK_BEZUG) —
+           Legacy-Pfad, gefuellt vom alten Einkauf-Match-UI.
+        3. Lieferanten-Default (XT_EINKAUF_LIEFERANT.EK_BEZUG_DEFAULT)
+        4. Fallback 'STK'
+
+    Returns: ``(bezug, quelle)`` mit ``quelle`` in
+    ``'cao' | 'cache' | 'lieferant' | 'default'``.
     """
+    # 1. CAO-Override (neueste Override-Quelle)
+    if artikel_rec_id and adress_id:
+        try:
+            with get_db() as cur:
+                cur.execute("""
+                    SELECT EK_BEZUG FROM XT_ARTIKEL_PREIS_BEZUG
+                    WHERE ARTIKEL_ID = %s AND ADRESS_ID = %s
+                """, (int(artikel_rec_id), int(adress_id)))
+                row = cur.fetchone()
+            v = (row or {}).get('EK_BEZUG') or ''
+            if v in ('STK', 'VPE_EK'):
+                return v, 'cao'
+        except Exception as exc:
+            log.warning('_effektiver_ek_bezug CAO-Override-Lookup: %s', exc)
+
+    # 2. Legacy: Lief-Cache-Override
     if lief_cache:
         v = (lief_cache.get('EK_BEZUG') or '').strip()
         if v in ('STK', 'VPE_EK'):
-            return v
+            return v, 'cache'
+
+    # 3. Lieferanten-Default
     if lieferant_default in ('STK', 'VPE_EK'):
-        return lieferant_default
-    return 'STK'
+        return lieferant_default, 'lieferant'
+
+    # 4. System-Default
+    return 'STK', 'default'
 
 
 def _stueck_ek(roh_ek: Optional[float],
@@ -2623,12 +2653,16 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             except (TypeError, ValueError):
                 vpe_lief = None
 
-        # EK-Bezug ermitteln (Lief-Artikel-Override oder Lieferanten-
-        # Default 'STK' fuer UTZ). Stueck-EK wird daraus berechnet —
-        # konsistent mit ARTIKEL.EK_PREIS-Semantik in CAO (Stueck-EK,
-        # nicht Karton-EK).
-        ek_bezug = _effektiver_ek_bezug(
-            lief_cache, head.get('LIEF_EK_BEZUG_DEFAULT'))
+        # EK-Bezug ermitteln (CAO-Override > Lief-Cache > Lief-Default
+        # > 'STK'). Wenn schon ein CAO-Match steht, kann die
+        # Preispflege-UI einen Override fuer das spezifische Tupel
+        # (ARTIKEL_REC_ID, ADRESS_ID=cao_lief) gesetzt haben — dieser
+        # Override hat oberste Prioritaet.
+        ek_bezug, ek_bezug_quelle_neu = _effektiver_ek_bezug(
+            lief_cache, head.get('LIEF_EK_BEZUG_DEFAULT'),
+            artikel_rec_id=(cao_block or {}).get('rec_id'),
+            adress_id=cao_lief,
+        )
         roh_ek = float(p.get('PREIS_NETTO') or 0)
         stueck_ek = _stueck_ek(roh_ek, vpe_lief, ek_bezug)
 
@@ -2682,21 +2716,15 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             'lief_cache':       lief_block,
             'vpe_lief':         vpe_lief,
             # EK-Bezug + Stueck-EK (Phase 5b-Verbesserung):
-            # ek_bezug      = 'STK' oder 'VPE_EK' (effektiv)
-            # ek_bezug_quelle = 'artikel' | 'lieferant' | 'default'
-            # stueck_ek     = preis_netto bei 'STK',
-            #                 preis_netto / vpe_lief bei 'VPE_EK'.
+            # ek_bezug         = 'STK' oder 'VPE_EK' (effektiv)
+            # ek_bezug_quelle  = 'cao' | 'cache' | 'lieferant' | 'default'
+            #                    (Reihenfolge in _effektiver_ek_bezug)
+            # stueck_ek        = preis_netto bei 'STK',
+            #                    preis_netto / vpe_lief bei 'VPE_EK'.
             # → ARTIKEL.EK_PREIS und ARTIKEL_PREIS.PREIS bekommen
             #   immer stueck_ek geschrieben.
             'ek_bezug':         ek_bezug,
-            'ek_bezug_quelle':  (
-                'artikel'
-                if (lief_cache or {}).get('EK_BEZUG') in ('STK','VPE_EK')
-                else ('lieferant'
-                      if head.get('LIEF_EK_BEZUG_DEFAULT')
-                          in ('STK','VPE_EK')
-                      else 'default')
-            ),
+            'ek_bezug_quelle':  ek_bezug_quelle_neu,
             'stueck_ek':        stueck_ek,
             'preis_aktion':     preis_aktion,
             # Stammdaten-Vollstaendigkeits-Check fuer Phase 5b:
