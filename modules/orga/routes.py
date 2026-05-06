@@ -226,6 +226,29 @@ def api_artikel_lieferanten(artnr: str):
     return jsonify(m.lieferantenpreise_fuer_artikel(artnr))
 
 
+@bp.post('/api/artikel/<artnr>/ek-bezug')
+def api_artikel_ek_bezug(artnr: str):
+    """POST /orga/api/artikel/<artnr>/ek-bezug
+    Body: {"ek_bezug": "STK" | "VPE_EK" | null}
+
+    Setzt den EK-Bezug fuer ARTIKEL.EK_PREIS (Stueck-EK vs. Karton-EK).
+    Wird in der Preispflege-Anpassen-Zeile gesetzt, wenn der User merkt
+    dass CAO fuer diesen Artikel den Karton-Preis statt Stueck-EK
+    eingetragen hat (z.B. Marlboro Gold mit EK=60 €, VPE_EK=12).
+    """
+    _benutzer()
+    data = request.get_json(silent=True) or {}
+    raw = data.get('ek_bezug')
+    if raw in (None, '', 'null'):
+        bezug = None
+    elif str(raw).upper() in ('STK', 'VPE_EK'):
+        bezug = str(raw).upper()
+    else:
+        return jsonify({'error': "ek_bezug muss 'STK','VPE_EK' oder null sein"}), 400
+    res = m.artikel_ek_bezug_setzen(artnr, bezug)
+    return jsonify(res), 200 if res.get('ok') else 400
+
+
 @bp.post('/api/cao-lief-preis/<int:artikel_id>/<int:adress_id>/ek-bezug')
 def api_cao_lief_preis_ek_bezug(artikel_id: int, adress_id: int):
     """POST /orga/api/cao-lief-preis/<artikel>/<adress>/ek-bezug

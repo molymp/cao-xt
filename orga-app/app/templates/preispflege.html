@@ -372,7 +372,7 @@
   letter-spacing: 0.08em;
 }
 .anp-field input {
-  width: 100px;
+  width: 76px;                /* 9999,9999 (10 Zeichen) passt sicher */
   padding: 8px 10px;          /* größeres Touch-Target */
   border: 2px solid var(--creme-dunkel);
   border-radius: 6px;
@@ -993,6 +993,16 @@ document.addEventListener('click', (ev) => {
     );
     return;
   }
+  // Artikel-EK-Bezug (Anpassen-Panel) — schaltet zwischen STK und
+  // VPE_EK fuer ARTIKEL.EK_PREIS-Interpretation.
+  const artBezugEl = ev.target.closest('[data-action="artikel-ek-bezug-toggle"]');
+  if (artBezugEl) {
+    artikelEkBezugTogglePflege(
+      artBezugEl.dataset.artnr,
+      artBezugEl.dataset.bezug,
+    );
+    return;
+  }
   // Touch-Numpad-Trigger neben Anpassen-Eingabefeldern. Native Tastatur-
   // Eingabe bleibt parallel verfuegbar (kein onclick auf dem Input).
   const padEl = ev.target.closest('[data-action="open-numpad"]');
@@ -1001,6 +1011,67 @@ document.addEventListener('click', (ev) => {
     if (inp) numpadOeffnen(inp, padEl.dataset.label || '');
   }
 });
+
+// ── EK-Bezug-Toggle am Artikel selbst (Anpassen-Panel) ──────────
+async function artikelEkBezugTogglePflege(artnr, aktuell) {
+  const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
+  const erkl = (neu === 'VPE_EK')
+    ? 'Bei "VPE_EK" interpretiert die Preispflege ARTIKEL.EK_PREIS als '
+      + 'Karton-Preis und teilt für Faktor-Anzeige durch VPE_EK. CAO selbst '
+      + 'bleibt unverändert.'
+    : 'Bei "STK" wird ARTIKEL.EK_PREIS direkt als Stück-EK interpretiert (Standard).';
+  if (!confirm(
+    `EK-Bezug für Artikel ${artnr} auf "${neu}" setzen?\n\n` + erkl
+  )) return;
+  let r, body;
+  try {
+    r = await fetch(
+      `/orga/api/artikel/${encodeURIComponent(artnr)}/ek-bezug`,
+      { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ek_bezug: neu }) }
+    );
+    body = await r.text();
+  } catch (e) {
+    alert('Netzwerk-Fehler: ' + e.message);
+    return;
+  }
+  if (!r.ok) {
+    alert(`Server-Fehler ${r.status}:\n${body}`);
+    return;
+  }
+  // Pille im DOM updaten + In-Memory-Daten aktualisieren, dann
+  // Anpassen-Panel neu rendern (frische Faktor-Werte).
+  const pille = document.getElementById(`anp-ekbezug-${artnr}`);
+  if (pille) {
+    pille.dataset.bezug = neu;
+    pille.textContent = neu;
+    pille.className = `ek-bezug-pille ${neu.toLowerCase()}`;
+    pille.style.minHeight = '44px';
+    pille.style.display = 'inlineFlex';
+  }
+  const idx = _daten.findIndex(a => a.artnr === artnr);
+  if (idx >= 0) {
+    _daten[idx].ek_bezug = neu;
+  }
+  // Cross-Berechnung re-triggern (EK lassen, Faktor aus aktuellem VK5
+  // neu berechnen) — anpBerechnen mit field='ek' und aktuellem Wert.
+  const inpEk = document.getElementById(`anp-ek-${artnr}`);
+  if (inpEk) anpBerechnen(artnr, 'ek', inpEk.value);
+  // Tabelle ohne Re-Fetch refreshen — _daten[idx] hat schon den
+  // neuen Bezug; Stueck-EK + Faktor in der Zeile aktualisieren.
+  const tr = document.querySelector(`tr[data-artnr="${artnr}"]`);
+  if (tr) {
+    // Faktor-Spalte (10) + Sortierung evtl. veraltet — pragmatisch:
+    // ganze Tabelle neu rendern. Schnellerer Pfad: nur diese eine
+    // Zeile patchen, das ist aber Detail. renderTabelle() reicht.
+    renderTabelle();
+    // Anpassen-Panel war offen → erneut oeffnen
+    const btn = document.querySelector(
+      `tr[data-artnr="${artnr}"] .anp-btn`);
+    if (btn) anpassenOeffnen(btn, artnr);
+  }
+}
 
 // VK-Kontroll-Tooltip-Text aus dem vk_kontrolle-Objekt aufbauen.
 function _vkTooltip(vk) {
@@ -1253,6 +1324,22 @@ function anpassenOeffnen(btn, artnr) {
           </div>
         </div>
         <div class="anp-field">
+          <label>EK-Bezug</label>
+          <span class="ek-bezug-pille ${(art.ek_bezug || 'STK').toLowerCase()}"
+                id="anp-ekbezug-${_esc(artnr)}"
+                data-action="artikel-ek-bezug-toggle"
+                data-artnr="${_esc(artnr)}"
+                data-bezug="${art.ek_bezug || 'STK'}"
+                title="Klick zum Umschalten — bei VPE_EK wird EK_PREIS / VPE_EK als Stück-EK genommen"
+                style="min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;font-size:14px;">
+            ${art.ek_bezug || 'STK'}
+          </span>
+          <span class="anp-stueckek" id="anp-stueckek-${_esc(artnr)}"
+                style="display:block;font-size:11px;color:var(--grau-mitte);margin-top:4px;text-align:right;font-family:'JetBrains Mono',monospace;">
+            Stück-EK: <span id="anp-stueckek-val-${_esc(artnr)}">${Number(art.stueck_ek || art.ek).toFixed(4)}</span> €
+          </span>
+        </div>
+        <div class="anp-field">
           <label>VPE EK</label>
           <div class="anp-input-wrap">
             <input type="number" inputmode="decimal" step="1" min="1" id="${_vpeekId}"
@@ -1354,35 +1441,52 @@ function anpBerechnen(artnr, geaendertesField, rawVal) {
 
   let vk5netto, faktor, vk5brutto;
 
-  // Faktor-Formel (CAO-Konvention, Phase 5b-Verbesserung):
-  //   ARTIKEL.EK_PREIS ist immer Stueck-EK; Karton-EK wird vom
-  //   Einkauf-Sync vorher durch VPE_EK geteilt (siehe common.einkauf
-  //   _stueck_ek + EK_BEZUG-Modell). Daher hier:
-  //     Faktor = vk5_netto / (ek × vpe_vk)
-  //     VK5_netto = Faktor × ek × vpe_vk
-  //   vpe_ek wird NICHT mehr in die Faktor-Formel einbezogen — das war
-  //   eine Reproduktion des CAO-G-Preis-Bugs.
+  // Faktor-Formel mit EK-Bezug-Korrektur (Phase 5b-Verbesserung):
+  //   Wenn EK_BEZUG='VPE_EK' (CAO hat Karton-Preis in EK_PREIS):
+  //     Stueck-EK = ek / vpe_ek
+  //   Wenn EK_BEZUG='STK' (Default, EK ist schon Stueck):
+  //     Stueck-EK = ek
+  //   Faktor = vk5_netto / (Stueck-EK × vpe_vk)
+  //   VK5_netto = Faktor × Stueck-EK × vpe_vk
+  // Damit ist der Faktor immer realistisch, egal welche Konvention CAO
+  // fuer diesen Artikel pflegt.
+  const ekBezugPille = document.getElementById(`anp-ekbezug-${artnr}`);
+  const ekBezug = (ekBezugPille?.dataset.bezug || 'STK');
+  const _stueckEkAus = (rohEk) =>
+    (ekBezug === 'VPE_EK' && vpeEk > 0) ? rohEk / vpeEk : rohEk;
+  const _rohEkAus = (stueckEk) =>
+    (ekBezug === 'VPE_EK' && vpeEk > 0) ? stueckEk * vpeEk : stueckEk;
+  const stueckEk = _stueckEkAus(ek);
+
   if (geaendertesField === 'faktor' || geaendertesField === 'vpeek' || geaendertesField === 'vpevk' || geaendertesField === 'ek') {
     const curVk5netto = parseFloat(inpVk5netto.value) || 0;
     if (geaendertesField === 'ek') {
-      // EK geändert → Faktor aus aktuellem VK5 neu berechnen
+      // EK geändert → Faktor aus aktuellem VK5 neu berechnen.
       vk5netto = curVk5netto;
       vk5brutto = vk5netto * (1.0 + mwstSatz);
-      faktor = (val > 0 && vpeVk > 0) ? vk5netto / (val * vpeVk) : null;
+      const stueck = _stueckEkAus(val);
+      faktor = (stueck > 0 && vpeVk > 0) ? vk5netto / (stueck * vpeVk) : null;
     } else {
       faktor = geaendertesField === 'faktor' ? val : parseFloat(inpFaktor.value);
       if (isNaN(faktor) || faktor <= 0) return;
-      vk5netto = faktor * ek * vpeVk;
+      vk5netto = faktor * stueckEk * vpeVk;
       vk5brutto = vk5netto * (1.0 + mwstSatz);
     }
   } else if (geaendertesField === 'vk5netto') {
     vk5netto = val;
     vk5brutto = vk5netto * (1.0 + mwstSatz);
-    faktor = (ek > 0 && vpeVk > 0) ? vk5netto / (ek * vpeVk) : null;
+    faktor = (stueckEk > 0 && vpeVk > 0) ? vk5netto / (stueckEk * vpeVk) : null;
   } else {  // vk5brutto
     vk5brutto = val;
     vk5netto = mwstSatz > 0 ? vk5brutto / (1.0 + mwstSatz) : vk5brutto;
-    faktor = (ek > 0 && vpeVk > 0) ? vk5netto / (ek * vpeVk) : null;
+    faktor = (stueckEk > 0 && vpeVk > 0) ? vk5netto / (stueckEk * vpeVk) : null;
+  }
+
+  // Stueck-EK-Anzeige im Panel aktualisieren (read-only-Info).
+  const stueckSpan = document.getElementById(`anp-stueckek-val-${artnr}`);
+  if (stueckSpan) {
+    const ekFuerAnzeige = geaendertesField === 'ek' ? val : ek;
+    stueckSpan.textContent = _stueckEkAus(ekFuerAnzeige).toFixed(4);
   }
 
   // Nur die NICHT gerade bearbeiteten Felder aktualisieren

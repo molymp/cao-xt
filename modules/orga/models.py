@@ -546,6 +546,7 @@ def preispflege_liste(wgr_id: int | None = None,
     # Artikel (Subquery liefert max. 1 Zeile).
     sql = f"""
         SELECT
+            a.REC_ID                                       AS artikel_id,
             a.ARTNUM,
             COALESCE(a.KAS_NAME, a.KURZNAME, a.MATCHCODE) AS BEZEICHNUNG,
             a.WARENGRUPPE                                  AS wgr_id,
@@ -558,6 +559,7 @@ def preispflege_liste(wgr_id: int | None = None,
             COALESCE(a.VPE, 1)                           AS VPE_VK,
             COALESCE(a.VPE_EK, 1)                        AS VPE_EK,
             a.DEFAULT_LIEF_ID,
+            aek.EK_BEZUG       AS EK_BEZUG,
             vk.REC_ID         AS VK_REC_ID,
             vk.GRUND          AS VK_GRUND,
             vk.ALT_EK         AS VK_ALT_EK,
@@ -567,6 +569,7 @@ def preispflege_liste(wgr_id: int | None = None,
             vk.ANMERKUNG      AS VK_ANMERKUNG
         FROM ARTIKEL a
         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
+        LEFT JOIN XT_ARTIKEL_EK_BEZUG aek ON aek.ARTIKEL_ID = a.REC_ID
         LEFT JOIN XT_ARTIKEL_VK_KONTROLLE vk
                ON vk.ARTIKEL_REC_ID = a.REC_ID
               AND vk.ERLEDIGT_AT IS NULL
@@ -596,8 +599,20 @@ def preispflege_liste(wgr_id: int | None = None,
         vpe_vk = float(r['VPE_VK'] or 1) or 1.0
         vpe_ek = float(r['VPE_EK'] or 1) or 1.0
 
+        # EK-Bezug am Artikel: 'STK' (default) oder 'VPE_EK' (CAO hat
+        # Karton-Preis in EK_PREIS hinterlegt). Bei 'VPE_EK' rechnen
+        # wir den Stueck-EK = EK_PREIS / VPE_EK fuer die Faktor-Anzeige.
+        ek_bezug = (r.get('EK_BEZUG') or 'STK')
+        if ek_bezug not in ('STK', 'VPE_EK'):
+            ek_bezug = 'STK'
+        if ek_bezug == 'VPE_EK' and vpe_ek > 0:
+            stueck_ek = round(ek / vpe_ek, 4)
+        else:
+            stueck_ek = round(ek, 4)
+
         vk5_netto = vk5 / (1.0 + mwst_satz) if mwst_satz > 0 else vk5
-        faktor = _faktor_berechnen(vk5_netto, ek, vpe_vk, vpe_ek)
+        # Faktor relativ zum Stueck-EK — das ist der "wahre" Aufschlag.
+        faktor = _faktor_berechnen(vk5_netto, stueck_ek, vpe_vk, vpe_ek)
 
         vk_kontrolle = None
         if r.get('VK_REC_ID') is not None:
@@ -621,6 +636,7 @@ def preispflege_liste(wgr_id: int | None = None,
             }
 
         result.append({
+            'artikel_id':      int(r['artikel_id']),
             'artnr':           r['ARTNUM'],
             'bezeichnung':     r['BEZEICHNUNG'],
             'wgr_id':          r['wgr_id'],
@@ -628,7 +644,9 @@ def preispflege_liste(wgr_id: int | None = None,
             'art_typ':         r['ART_TYP'],
             'vk5':             round(vk5, 2),
             'vk5_netto':       round(vk5_netto, 4),
-            'ek':              round(ek, 2),
+            'ek':              round(ek, 2),       # Roh-EK aus CAO
+            'stueck_ek':       stueck_ek,           # berechnet via Bezug
+            'ek_bezug':        ek_bezug,
             'mwst_code':       mwst_code,
             'mwst_pct':        mwst_pct,
             'bestand':         float(r['BESTAND'] or 0),
@@ -784,6 +802,56 @@ def lieferantenpreise_fuer_artikel(artnr: str) -> list:
         pass
 
     return []
+
+
+def artikel_ek_bezug_setzen(artnum: str,
+                              ek_bezug: str | None,
+                              ma_id: int | None = None) -> dict:
+    """Setzt den EK-Bezug fuer ARTIKEL.EK_PREIS (Stueck-EK vs. Karton-EK).
+
+    Bei 'VPE_EK' interpretiert die Preispflege-UI ARTIKEL.EK_PREIS als
+    Karton-Preis und teilt fuer Faktor-Anzeige durch VPE_EK.
+    ARTIKEL.EK_PREIS in CAO bleibt unveraendert (CAO-Faktur weiter
+    konsistent), nur unsere Anzeige korrigiert.
+
+    ek_bezug='STK' / 'VPE_EK' → INSERT/UPDATE
+    ek_bezug=None             → DELETE (zurueck zum Default 'STK')
+    """
+    if ek_bezug is not None and ek_bezug not in ('STK', 'VPE_EK'):
+        return {'ok': False, 'msg': f'Ungueltig: {ek_bezug!r}'}
+    artikel = artikel_by_artnum(artnum)
+    if not artikel:
+        return {'ok': False, 'msg': f'Artikel {artnum!r} nicht gefunden'}
+    # ARTIKEL.REC_ID ist nicht in artikel_by_artnum-Output → separater
+    # SELECT.
+    try:
+        with get_db() as cur:
+            cur.execute('SELECT REC_ID FROM ARTIKEL WHERE ARTNUM = %s',
+                         (artnum,))
+            row = cur.fetchone()
+            artikel_id = int((row or {}).get('REC_ID') or 0)
+    except Exception as exc:
+        return {'ok': False, 'msg': str(exc)}
+    if not artikel_id:
+        return {'ok': False, 'msg': 'ARTIKEL.REC_ID nicht aufloesbar'}
+    try:
+        with get_db_transaction() as cur:
+            if ek_bezug is None:
+                cur.execute("""
+                    DELETE FROM XT_ARTIKEL_EK_BEZUG WHERE ARTIKEL_ID = %s
+                """, (artikel_id,))
+            else:
+                cur.execute("""
+                    INSERT INTO XT_ARTIKEL_EK_BEZUG
+                      (ARTIKEL_ID, EK_BEZUG, GEAENDERT_VON)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                      EK_BEZUG      = VALUES(EK_BEZUG),
+                      GEAENDERT_VON = VALUES(GEAENDERT_VON)
+                """, (artikel_id, ek_bezug, ma_id))
+        return {'ok': True, 'ek_bezug': ek_bezug}
+    except Exception as exc:
+        return {'ok': False, 'msg': str(exc)}
 
 
 def cao_lief_preis_bezug_setzen(artikel_id: int, adress_id: int,
