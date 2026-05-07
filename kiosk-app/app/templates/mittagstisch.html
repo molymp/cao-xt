@@ -330,8 +330,7 @@
                                    class="gericht-input tastatur-feld"
                                    value="{{ tag.gericht }}"
                                    placeholder="Tagesangebot eintragen …"
-                                   autocomplete="off"
-                                   readonly>
+                                   autocomplete="off">
                             <button type="button"
                                     class="tastatur-edit-btn"
                                     data-action="open-tastatur"
@@ -352,8 +351,7 @@
                     <textarea id="taeglich-{{ wi }}"
                               class="tastatur-feld"
                               rows="2"
-                              placeholder="z.B. Frische Salatbowls, Sandwiches, belegte Semmeln …"
-                              readonly>{{ w.daten.taeglich }}</textarea>
+                              placeholder="z.B. Frische Salatbowls, Sandwiches, belegte Semmeln …">{{ w.daten.taeglich }}</textarea>
                     <button type="button"
                             class="tastatur-edit-btn"
                             data-action="open-tastatur"
@@ -367,8 +365,7 @@
                     <textarea id="jetzt-neu-{{ wi }}"
                               class="tastatur-feld"
                               rows="2"
-                              placeholder="Neues Angebot eintragen …"
-                              readonly>{{ w.daten.jetzt_neu }}</textarea>
+                              placeholder="Neues Angebot eintragen …">{{ w.daten.jetzt_neu }}</textarea>
                     <button type="button"
                             class="tastatur-edit-btn"
                             data-action="open-tastatur"
@@ -561,13 +558,7 @@ function naechstesFeld() {
 
 // ── Tastatur ein-/ausblenden ───────────────────────
 function zeigeTastatur(el) {
-    // Falls vorher ein anderes Feld aktiv war, dort wieder readonly setzen,
-    // damit es bei einem direkten Tap nicht die OS-Tastatur öffnet.
-    if (aktivesElement && aktivesElement !== el) {
-        aktivesElement.setAttribute('readonly', '');
-    }
     aktivesElement = el;
-    el.removeAttribute('readonly');
 
     // Feldname für Info-Zeile
     const label = el.closest('tr')?.querySelector('.td-tag')?.textContent?.trim()
@@ -619,7 +610,6 @@ function verbergeTastatur() {
     document.getElementById('tastatur').classList.remove('sichtbar');
     document.getElementById('seiten-inhalt').style.paddingBottom = '';
     if (aktivesElement) {
-        aktivesElement.setAttribute('readonly', '');
         aktivesElement.blur();
         aktivesElement = null;
     }
