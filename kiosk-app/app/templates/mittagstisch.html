@@ -86,10 +86,10 @@
 .plan-tabelle input[type="text"] {
     width: 100%;
     font-family: 'Nunito', sans-serif;
-    font-size: 0.9rem;
+    font-size: 1rem;
     border: 1px solid var(--creme-dunkel);
     border-radius: var(--radius-klein);
-    padding: 8px 12px;
+    padding: 12px 16px;
     background: var(--creme);
     color: var(--text-dunkel);
     transition: border-color 0.15s, background 0.15s;
@@ -101,6 +101,38 @@
     border-color: var(--gruen-hell);
     background: white;
 }
+
+/* ── Touch-Editor-Wrapper (Edit-Icon rechts vom Feld) ── */
+.tastatur-input-wrap {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+}
+.tastatur-input-wrap > .tastatur-feld {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.tastatur-edit-btn {
+    flex: 0 0 48px;
+    border: 1px solid var(--creme-dunkel);
+    border-radius: var(--radius-klein);
+    background: var(--creme);
+    color: var(--gruen-dunkel);
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 0;
+    transition: background 0.15s, border-color 0.15s, transform 0.07s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+}
+.tastatur-edit-btn:hover {
+    background: var(--creme-warm);
+    border-color: var(--gruen-hell);
+}
+.tastatur-edit-btn:active { transform: scale(0.94); }
 
 /* ── Zusatzfelder ── */
 .zusatz-felder {
@@ -157,6 +189,11 @@
     transition: opacity 0.3s;
 }
 .speichern-status.sichtbar { opacity: 1; }
+.speichern-hint {
+    font-size: 0.82rem;
+    color: var(--text-hell);
+    font-style: italic;
+}
 
 /* ── Ladeoverlay ── */
 .lade-overlay {
@@ -303,12 +340,19 @@
                     <td class="td-datum">{{ tag.datum }}</td>
                     <td class="td-tag">{{ tag.tag }}</td>
                     <td>
-                        <input type="text"
-                               class="gericht-input tastatur-feld"
-                               value="{{ tag.gericht }}"
-                               placeholder="Tagesangebot eintragen …"
-                               autocomplete="off"
-                               readonly>
+                        <div class="tastatur-input-wrap">
+                            <input type="text"
+                                   class="gericht-input tastatur-feld"
+                                   value="{{ tag.gericht }}"
+                                   placeholder="Tagesangebot eintragen …"
+                                   autocomplete="off"
+                                   readonly>
+                            <button type="button"
+                                    class="tastatur-edit-btn"
+                                    data-action="open-tastatur"
+                                    aria-label="Tastatur öffnen"
+                                    onpointerdown="event.preventDefault()">⌨</button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -319,19 +363,33 @@
         <div class="zusatz-felder">
             <div>
                 <div class="zusatz-label">Außerdem täglich</div>
-                <textarea id="taeglich-{{ wi }}"
-                          class="tastatur-feld"
-                          rows="2"
-                          placeholder="z.B. Frische Salatbowls, Sandwiches, belegte Semmeln …"
-                          readonly>{{ w.daten.taeglich }}</textarea>
+                <div class="tastatur-input-wrap">
+                    <textarea id="taeglich-{{ wi }}"
+                              class="tastatur-feld"
+                              rows="2"
+                              placeholder="z.B. Frische Salatbowls, Sandwiches, belegte Semmeln …"
+                              readonly>{{ w.daten.taeglich }}</textarea>
+                    <button type="button"
+                            class="tastatur-edit-btn"
+                            data-action="open-tastatur"
+                            aria-label="Tastatur öffnen"
+                            onpointerdown="event.preventDefault()">⌨</button>
+                </div>
             </div>
             <div>
                 <div class="zusatz-label">Jetzt neu</div>
-                <textarea id="jetzt-neu-{{ wi }}"
-                          class="tastatur-feld"
-                          rows="2"
-                          placeholder="Neues Angebot eintragen …"
-                          readonly>{{ w.daten.jetzt_neu }}</textarea>
+                <div class="tastatur-input-wrap">
+                    <textarea id="jetzt-neu-{{ wi }}"
+                              class="tastatur-feld"
+                              rows="2"
+                              placeholder="Neues Angebot eintragen …"
+                              readonly>{{ w.daten.jetzt_neu }}</textarea>
+                    <button type="button"
+                            class="tastatur-edit-btn"
+                            data-action="open-tastatur"
+                            aria-label="Tastatur öffnen"
+                            onpointerdown="event.preventDefault()">⌨</button>
+                </div>
             </div>
         </div>
 
@@ -347,6 +405,7 @@
                 📋 In nächste Woche kopieren
             </button>
             {% endif %}
+            <span class="speichern-hint">Speichert nur diese Woche</span>
             <span class="speichern-status" id="status-{{ wi }}">✓ Gespeichert</span>
         </div>
 
@@ -509,7 +568,7 @@ function naechstesFeld() {
     const felder = Array.from(document.querySelectorAll('.tastatur-feld:not([disabled])'));
     const idx = felder.indexOf(aktivesElement);
     if (idx >= 0 && idx < felder.length - 1) {
-        felder[idx + 1].focus();
+        zeigeTastatur(felder[idx + 1]);
     } else {
         verbergeTastatur();
     }
@@ -517,7 +576,13 @@ function naechstesFeld() {
 
 // ── Tastatur ein-/ausblenden ───────────────────────
 function zeigeTastatur(el) {
+    // Falls vorher ein anderes Feld aktiv war, dort wieder readonly setzen,
+    // damit es bei einem direkten Tap nicht die OS-Tastatur öffnet.
+    if (aktivesElement && aktivesElement !== el) {
+        aktivesElement.setAttribute('readonly', '');
+    }
     aktivesElement = el;
+    el.removeAttribute('readonly');
 
     // Feldname für Info-Zeile
     const label = el.closest('tr')?.querySelector('.td-tag')?.textContent?.trim()
@@ -539,26 +604,35 @@ function verbergeTastatur() {
     document.getElementById('tastatur').classList.remove('sichtbar');
     document.getElementById('seiten-inhalt').classList.remove('tastatur-offen');
     if (aktivesElement) {
+        aktivesElement.setAttribute('readonly', '');
         aktivesElement.blur();
         aktivesElement = null;
     }
 }
 
 // ── Felder mit Tastatur verbinden ──────────────────
+//
+// UI-Konvention (Touch + Maus): Klick auf das Feld selbst öffnet
+// die Bildschirmtastatur NICHT — der Anwender muss explizit den
+// Edit-Knopf rechts neben dem Feld antippen. So ist die Tastatur
+// nicht im Weg, wenn man das Feld z. B. nur lesen oder mit einer
+// echten Tastatur bearbeiten möchte.
 document.addEventListener('DOMContentLoaded', () => {
     tastaturAufbauen();
 
-    document.querySelectorAll('.tastatur-feld').forEach(el => {
-        // readonly verhindert Software-Tastatur des Browsers
-        // Wir entfernen readonly beim Fokus und setzen es danach wieder
-        el.addEventListener('focus', () => {
-            el.removeAttribute('readonly');
-            zeigeTastatur(el);
-        });
-        el.addEventListener('click', () => {
-            el.removeAttribute('readonly');
-            if (aktivesElement !== el) zeigeTastatur(el);
-        });
+    // Defensiv: Lade-Overlay beim Page-Load explizit ausblenden,
+    // damit es nie hängenbleibt (z. B. nach Reload während eines
+    // Speicher-Vorgangs).
+    document.getElementById('lade-overlay').classList.remove('sichtbar');
+
+    // Zentraler Listener: Edit-Knopf öffnet die Bildschirmtastatur
+    // für das Feld im selben Wrapper.
+    document.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-action="open-tastatur"]');
+        if (!btn) return;
+        const wrap = btn.closest('.tastatur-input-wrap');
+        const feld = wrap?.querySelector('.tastatur-feld');
+        if (feld) zeigeTastatur(feld);
     });
 });
 
