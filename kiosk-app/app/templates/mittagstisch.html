@@ -201,27 +201,6 @@
     font-style: italic;
 }
 
-/* ── Ladeoverlay ── */
-.lade-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(26,64,16,0.5);
-    z-index: 8000;
-    align-items: center;
-    justify-content: center;
-}
-.lade-overlay.sichtbar { display: flex; }
-.lade-box {
-    background: var(--gruen-dunkel);
-    color: var(--creme);
-    padding: 28px 44px;
-    border-radius: var(--radius);
-    font-size: 1.1rem;
-    font-weight: 700;
-    box-shadow: 0 8px 48px rgba(0,0,0,0.3);
-}
-
 /* ── Bildschirmtastatur ── */
 #tastatur {
     position: fixed;
@@ -441,10 +420,10 @@
     <div class="tastatur-zeile" id="tz-sonder"></div>
 </div>
 
-<!-- Lade-Overlay -->
-<div class="lade-overlay" id="lade-overlay">
-    <div class="lade-box">⏳ Wird gespeichert …</div>
-</div>
+{# Lade-Overlay kommt aus base.html (#lade-overlay + #lade-text). Ein
+   eigenes Overlay mit derselben ID wuerde sonst beim Klick auf den
+   Mittagstisch-Link die irrefuehrende Meldung "Wird gespeichert"
+   auf den Bildschirm bringen. #}
 {% endblock %}
 
 {% block extra_js %}
@@ -702,7 +681,11 @@ function wocheDaten(panelIdx) {
 
 async function speichern(panelIdx, montag) {
     verbergeTastatur();
+    // Globales Lade-Overlay aus base.html nutzen — kein eigenes mehr,
+    // sonst kollidiert die ID mit der Navbar-Lade-Anzeige.
     const overlay = document.getElementById('lade-overlay');
+    const ladeText = document.getElementById('lade-text');
+    if (ladeText) ladeText.textContent = 'Wird gespeichert …';
     overlay.classList.add('sichtbar');
 
     const res = await apiFetch('/mittagstisch/speichern', {
@@ -711,6 +694,7 @@ async function speichern(panelIdx, montag) {
     });
 
     overlay.classList.remove('sichtbar');
+    if (ladeText) ladeText.textContent = 'Bitte kurz warten …';
 
     if (res) {
         const status = document.getElementById('status-' + panelIdx);
