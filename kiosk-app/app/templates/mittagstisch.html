@@ -4,16 +4,20 @@
 {% block extra_css %}
 <style>
 /* ── Seitenlayout ── */
-/* Mittagstisch-Eingabefelder dürfen die volle Bildschirmbreite nutzen
-   — auf dem Kiosk-Display sind 72rem viel zu schmal. */
+/* .seiten-inhalt ist ein Flex-Kind von .kiosk-content-wrapper. Damit es
+   bei geöffneter Bildschirmtastatur unabhängig von der Navbar scrollbar
+   ist (Menü bleibt sichtbar, untere Felder erreichbar), bekommt es
+   overflow-y:auto und seine eigene scroll-höhe.
+   Das padding-bottom für die Tastatur wird dynamisch in JS gesetzt
+   (basierend auf der tatsächlichen Tastaturhöhe). */
 .seiten-inhalt {
-    padding: 2rem 3rem;
-    max-width: none;
+    padding: 2rem;
+    max-width: 96rem;
+    width: 100%;
     margin: 0 auto;
-    transition: padding-bottom 0.3s;
-}
-.seiten-inhalt.tastatur-offen {
-    padding-bottom: 360px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: padding-bottom 0.25s;
 }
 .seiten-kopf {
     display: flex;
@@ -593,18 +597,48 @@ function zeigeTastatur(el) {
     document.getElementById('tastatur-info').textContent = label;
 
     tastaturAufbauen();
-    document.getElementById('tastatur').classList.add('sichtbar');
-    document.getElementById('seiten-inhalt').classList.add('tastatur-offen');
+    const tastatur = document.getElementById('tastatur');
+    const inhalt = document.getElementById('seiten-inhalt');
+    tastatur.classList.add('sichtbar');
 
-    // Aktives Element ins Sichtfeld scrollen (nach kurzer Verzögerung für Layout)
-    setTimeout(() => {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 80);
+    // Padding-bottom dynamisch so groß machen, dass auch das letzte Feld
+    // über die Tastatur hochgescrollt werden kann (tatsächliche Höhe der
+    // Tastatur + 24px Atemluft).
+    requestAnimationFrame(() => {
+        const tastaturHoehe = tastatur.offsetHeight;
+        inhalt.style.paddingBottom = (tastaturHoehe + 24) + 'px';
+        scrolleInsSichtfeld(el, tastaturHoehe);
+    });
+}
+
+function scrolleInsSichtfeld(el, tastaturHoehe) {
+    // Aktives Feld so im sichtbaren Bereich oberhalb der Tastatur
+    // positionieren, dass die Menüleiste oben unverändert sichtbar bleibt.
+    const inhalt = document.getElementById('seiten-inhalt');
+    const containerRect = inhalt.getBoundingClientRect();
+    const elRect        = el.getBoundingClientRect();
+
+    // Untergrenze des sichtbaren Container-Bereichs (Tastatur überlagert
+    // den unteren Teil des Viewports, nicht den Container direkt — der
+    // Container reicht bis ans untere Ende des Viewports, die Tastatur
+    // liegt darüber.)
+    const sichtbarUntergrenze = window.innerHeight - tastaturHoehe;
+
+    if (elRect.bottom > sichtbarUntergrenze - 24) {
+        // Feld zu weit unten: nur soviel scrollen, dass Feldunterkante
+        // 24px über der Tastatur liegt. So bleibt der Kopfbereich oben.
+        const delta = elRect.bottom - (sichtbarUntergrenze - 24);
+        inhalt.scrollBy({ top: delta, behavior: 'smooth' });
+    } else if (elRect.top < containerRect.top + 24) {
+        // Feld liegt über dem sichtbaren Bereich: nach unten scrollen.
+        const delta = elRect.top - (containerRect.top + 24);
+        inhalt.scrollBy({ top: delta, behavior: 'smooth' });
+    }
 }
 
 function verbergeTastatur() {
     document.getElementById('tastatur').classList.remove('sichtbar');
-    document.getElementById('seiten-inhalt').classList.remove('tastatur-offen');
+    document.getElementById('seiten-inhalt').style.paddingBottom = '';
     if (aktivesElement) {
         aktivesElement.setAttribute('readonly', '');
         aktivesElement.blur();
