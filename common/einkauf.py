@@ -3463,23 +3463,58 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
                        'ARTIKEL_REC_ID — erst "🚀 In CAO einbuchen" '
                        'ausfuehren.'}
 
-    # Lieferanten-Adresse fuer KUN_*-Snapshot
+    # Lieferanten-Adresse + LIEF-spezifische Felder
+    # (LIEF_LIEFART/ZAHLART, KRD_NUM, NET_SKONTO, Bank-Daten).
     lief_adr = None
     try:
         with get_db() as cur:
             cur.execute("""
                 SELECT REC_ID, MATCHCODE, ANREDE, NAME1, NAME2, NAME3,
                        STRASSE, HAUSNR, ADRESSZUSATZ, PLZ, ORT, LAND,
-                       UST_NUM
+                       UST_NUM,
+                       KRD_NUM,           -- → GEGENKONTO
+                       LIEF_LIEFART,      -- → LIEFART
+                       LIEF_ZAHLART,      -- → ZAHLART
+                       NET_SKONTO,
+                       KUNNUM2            -- unsere Kunden-Nr. beim Lief
                 FROM ADRESSEN WHERE REC_ID = %s
             """, (int(cao_lief),))
             lief_adr = cur.fetchone() or {}
     except Exception as exc:
         return {'ok': False, 'msg': f'Adresse {cao_lief} laden: {exc}'}
 
-    # Steuer-Saetze aus REGISTRY (MAIN\\MWST/NAME='1','2',...) fuer
-    # MWST-Berechnung. Code 0 = ohne MwSt → 0.0.
-    mwst_satz_per_code: dict[int, float] = {0: 0.0}
+    # Zahlungsart-Daten aus ZAHLUNGSARTEN (fuer ZAHLART_NAME/KURZ/LANG
+    # + SOLL_NTAGE/STAGE/SKONTO).
+    zahlart_id = lief_adr.get('LIEF_ZAHLART')
+    zahlart_data = {}
+    if zahlart_id and int(zahlart_id) > 0:
+        try:
+            with get_db() as cur:
+                cur.execute("""SELECT NAME, TEXT_KURZ, TEXT_LANG,
+                                       NETTO_TAGE, SKONTO_TAGE, SKONTO_PROZ
+                                FROM ZAHLUNGSARTEN WHERE REC_ID = %s""",
+                            (int(zahlart_id),))
+                zahlart_data = cur.fetchone() or {}
+        except Exception:
+            pass
+
+    # Lieferart-Daten aus LIEFERARTEN (fuer LIEFART_NAME/LANG)
+    liefart_id = lief_adr.get('LIEF_LIEFART')
+    liefart_data = {}
+    if liefart_id and int(liefart_id) > 0:
+        try:
+            with get_db() as cur:
+                cur.execute("""SELECT NAME, TEXT_KURZ, TEXT_LANG
+                                FROM LIEFERARTEN WHERE REC_ID = %s""",
+                            (int(liefart_id),))
+                liefart_data = cur.fetchone() or {}
+        except Exception:
+            pass
+
+    # MwSt-Saetze aus REGISTRY MAIN\\MWST. Codes:
+    #   0 = ohne MwSt    1 = voll (19%)    2 = ermaessigt (7%)
+    #   3 = Reserve (7.8%)   4 = AT-MwSt (10%)
+    mwst_per_code: dict[int, float] = {0: 0.0}
     try:
         with get_db() as cur:
             cur.execute("""SELECT NAME, VAL_DOUBLE FROM REGISTRY
@@ -3487,21 +3522,51 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
                              AND VAL_DOUBLE IS NOT NULL""")
             for r in cur.fetchall() or []:
                 try:
-                    mwst_satz_per_code[int(r['NAME'])] = float(r['VAL_DOUBLE'])
+                    mwst_per_code[int(r['NAME'])] = float(r['VAL_DOUBLE'])
                 except (TypeError, ValueError):
                     pass
     except Exception as exc:
         log.warning('mwst-saetze laden: %s', exc)
+    # Aliasing fuer den alten Variablennamen weiter unten
+    mwst_satz_per_code = mwst_per_code
 
-    # Erst die Positions-Daten in eine Liste sammeln (fuer Summen-
-    # Berechnung im Header und INSERT in derselben Transaktion).
+    # Erst Sammel-Lookup der Artikel-Stammdaten fuer alle Positionen
+    # (BARCODE, GEWICHT, ME_ID, AUFW_KTO, WARENGRUPPE) plus WG-Name +
+    # Mengeneinheit-Bezeichnung/Code. Spart einen Roundtrip pro Pos.
+    art_ids = [int((m.get('cao') or {}).get('rec_id') or 0)
+               for m in relevante]
+    art_ids = [a for a in art_ids if a > 0]
+    art_data: dict[int, dict] = {}
+    if art_ids:
+        try:
+            with get_db() as cur:
+                placeholders = ','.join(['%s'] * len(art_ids))
+                cur.execute(f"""
+                    SELECT a.REC_ID, a.ARTNUM, a.BARCODE, a.WARENGRUPPE,
+                           a.GEWICHT, a.AUFW_KTO, a.ME_ID,
+                           wg.NAME       AS WGR_NAME,
+                           me.BEZEICHNUNG AS ME_BEZ,
+                           me.ME_CODE    AS ME_CODE
+                    FROM ARTIKEL a
+                    LEFT JOIN WARENGRUPPEN wg  ON wg.ID = a.WARENGRUPPE
+                    LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
+                    WHERE a.REC_ID IN ({placeholders})
+                """, art_ids)
+                for r in cur.fetchall() or []:
+                    art_data[int(r['REC_ID'])] = r
+        except Exception as exc:
+            log.warning('Artikel-Stamm-Lookup: %s', exc)
+
     pos_daten: list[dict] = []
     n_summen = [0.0, 0.0, 0.0, 0.0]
     m_summen = [0.0, 0.0, 0.0, 0.0]
+    gewicht_total = 0.0
     fehler: list[dict] = []
 
     for m in relevante:
         cao = m.get('cao') or {}
+        artikel_id = int(cao.get('rec_id') or 0)
+        a = art_data.get(artikel_id, {})
         st_code = int(cao.get('steuer_code') or 0)
         klasse  = _STEUER_CODE_TO_MWST_KLASSE.get(st_code, 0)
         menge   = float(m.get('menge') or 0)
@@ -3512,22 +3577,33 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
         n_summen[klasse] += gpreis
         mwst_satz = mwst_satz_per_code.get(st_code, 0.0) / 100.0
         m_summen[klasse] += round(gpreis * mwst_satz, 2)
+        # Header-Gesamtgewicht: Stueck-Gewicht × Menge
+        stueck_gewicht = float(a.get('GEWICHT') or 0)
+        gewicht_total += stueck_gewicht * menge
 
         pos_daten.append({
-            'pos_nr':      int(m.get('pos_nr') or 0),
-            'artikel_id':  int(cao.get('rec_id')),
-            'artnum':      cao.get('artnum') or '',
-            'matchcode':   cao.get('matchcode') or cao.get('kas_name') or '',
-            'kurzname':    cao.get('kas_name') or cao.get('matchcode') or '',
-            'bezeichnung': m.get('bezeichnung_lief') or '',
-            'menge':       menge,
-            'epreis':      stueck_ek,
-            'gpreis':      gpreis,
-            'liefartnum':  m.get('artikel_nr_lief') or '',
-            'st_code':     st_code,
-            'mwst_klasse': klasse,
-            'vpe_lief':    m.get('vpe_lief'),
-            'pos_rec_id':  m.get('pos_rec_id'),
+            'pos_nr':       int(m.get('pos_nr') or 0),
+            'artikel_id':   artikel_id,
+            'artnum':       a.get('ARTNUM') or cao.get('artnum') or '',
+            'matchcode':    cao.get('matchcode') or cao.get('kas_name') or '',
+            'kurzname':     cao.get('kas_name') or cao.get('matchcode') or '',
+            'bezeichnung':  m.get('bezeichnung_lief') or '',
+            'menge':        menge,
+            'epreis':       stueck_ek,
+            'gpreis':       gpreis,
+            'liefartnum':   m.get('artikel_nr_lief') or '',
+            'st_code':      st_code,
+            'mwst_klasse':  klasse,
+            'vpe_lief':     m.get('vpe_lief'),
+            'pos_rec_id':   m.get('pos_rec_id'),
+            # Aus ARTIKEL-Stamm
+            'barcode':      (a.get('BARCODE') or '').strip(),
+            'wgr':          int(a.get('WARENGRUPPE') or -1),
+            'wgr_name':     a.get('WGR_NAME') or '',
+            'gewicht':      stueck_gewicht,
+            'aufw_kto':     int(a.get('AUFW_KTO') or -1),
+            'me_einheit':   a.get('ME_BEZ') or '',
+            'me_code':      a.get('ME_CODE') or '',
         })
 
     nsumme = round(sum(n_summen), 2)
@@ -3567,95 +3643,207 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
             except Exception:
                 heute = _date.today()
 
+            # Helper: leere Strings statt NULL fuer text-Felder
+            # (CAO-Konvention; CAO-Faktura selbst schreibt durchgaengig
+            # '' statt NULL in optionalen varchar-Feldern).
+            def _s(v): return (str(v) if v is not None else '').strip()
+
+            # MWST-Saetze + Pro-Klasse-Bsumme. CAO speichert immer alle
+            # 4 MWST_x-Saetze (auch wenn nicht alle benutzt werden).
+            mwst_0 = mwst_per_code.get(0, 0.0)
+            mwst_1 = mwst_per_code.get(1, 19.0)
+            mwst_2 = mwst_per_code.get(2, 7.0)
+            mwst_3 = mwst_per_code.get(3, 0.0)
+            at_mwst = mwst_per_code.get(4, 10.0)
+            b_summen = [round(n + m, 2)
+                        for n, m in zip(n_summen, m_summen)]
+
+            # Zahlungsziel + LIEFART-Defaults
+            soll_ntage  = int(zahlart_data.get('NETTO_TAGE') or 0)
+            soll_stage  = int(zahlart_data.get('SKONTO_TAGE') or 0)
+            soll_skonto = float(zahlart_data.get('SKONTO_PROZ') or 0)
+
+            # GEGENKONTO = Kreditoren-Konto des Lieferanten
+            gegenkonto = int(lief_adr.get('KRD_NUM') or -1)
+
+            # FIRMA_ID = Habacher-Default 8 (perspektivisch aus Terminal-
+            # bzw. Session-Konfig ableiten; aktuell hardcoded).
+            firma_id = 8
+
             cur.execute("""
                 INSERT INTO EKBESTELL (
                   TERM_ID, MA_ID, ADDR_ID, BELEGNUM, BELEGDATUM,
-                  STADIUM,
+                  LIEFART, ZAHLART, GEGENKONTO,
+                  WAEHRUNG, KURS,
+                  SOLL_STAGE, SOLL_SKONTO, SOLL_NTAGE,
+                  STADIUM, GEWICHT,
+                  MWST_0, MWST_1, MWST_2, MWST_3, AT_MWST,
                   NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
                   MSUMME_0, MSUMME_1, MSUMME_2, MSUMME_3, MSUMME,
-                  BSUMME,
+                  BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
                   ERSTELLT, ERST_NAME,
-                  KUN_NUM, KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NAME3,
+                  KUN_NUM, KUN_ANREDE,
+                  KUN_NAME1, KUN_NAME2, KUN_NAME3, KUN_ABTEILUNG,
                   KUN_STRASSE, KUN_HAUSNR, KUN_ADRESSZUSATZ,
                   KUN_LAND, KUN_PLZ, KUN_ORT, KUN_UST_NUM,
+                  USR1, USR2, KOPFTEXT, FUSSTEXT, PROJEKT, ORGNUM,
+                  LIEF_AB, BEST_NAME, INFO,
                   KUN_ADDR_ID,
+                  LIEF_ANREDE, LIEF_NAME1, LIEF_NAME2, LIEF_NAME3,
+                  LIEF_ABTEILUNG, LIEF_STRASSE, LIEF_HAUSNR,
+                  LIEF_ADRESSZUSATZ, LIEF_LAND, LIEF_PLZ, LIEF_ORT,
+                  FIRMA_ID,
+                  ZAHLART_NAME, ZAHLART_KURZ, ZAHLART_LANG,
+                  LIEFART_NAME, LIEFART_LANG,
+                  LIEF_AGB, JSONDATEN,
                   HASHSUM
                 ) VALUES (
                   1, %s, %s, %s, %s,
-                  2,
+                  %s, %s, %s,
+                  '€', 1.0,
+                  %s, %s, %s,
+                  2, %s,
                   %s, %s, %s, %s, %s,
                   %s, %s, %s, %s, %s,
-                  %s,
+                  %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s,
                   %s, %s,
-                  %s, %s, %s, %s, %s,
+                  %s, %s,
+                  %s, %s, %s, %s,
                   %s, %s, %s,
                   %s, %s, %s, %s,
+                  '', '', '', '', '', '',
+                  '', '', '',
+                  -1,
+                  '', '', '', '',
+                  '', '', '',
+                  '', '', '', '',
                   %s,
+                  %s, %s, %s,
+                  %s, %s,
+                  '', '',
                   '$$'
                 )
             """, (
                 ma_id if ma_id is not None else -1,
                 int(cao_lief), belegnum, heute,
-                # Summen pro MwSt-Klasse + Gesamt
+                int(lief_adr.get('LIEF_LIEFART') or -1),
+                int(lief_adr.get('LIEF_ZAHLART') or -1),
+                gegenkonto,
+                # SOLL-Felder
+                soll_stage, soll_skonto, soll_ntage,
+                # GEWICHT (Header-Summe)
+                round(gewicht_total, 4),
+                # MWST_x + AT_MWST
+                mwst_0, mwst_1, mwst_2, mwst_3, at_mwst,
+                # NSUMME_0..3 + Gesamt
                 round(n_summen[0], 2), round(n_summen[1], 2),
                 round(n_summen[2], 2), round(n_summen[3], 2),
                 nsumme,
+                # MSUMME_0..3 + Gesamt
                 round(m_summen[0], 2), round(m_summen[1], 2),
                 round(m_summen[2], 2), round(m_summen[3], 2),
                 msumme,
+                # BSUMME_0..3 + Gesamt
+                b_summen[0], b_summen[1], b_summen[2], b_summen[3],
                 bsumme,
                 heute, (ma_name or 'CAO-XT')[:100],
                 # KUN_*-Snapshot der Lieferanten-Adresse
-                lief_adr.get('KUNNUM2') or lief_adr.get('KUNNUM1') or '',
-                lief_adr.get('ANREDE') or '',
-                lief_adr.get('NAME1')  or '',
-                lief_adr.get('NAME2'),
-                lief_adr.get('NAME3'),
-                lief_adr.get('STRASSE') or '',
-                lief_adr.get('HAUSNR'),
-                lief_adr.get('ADRESSZUSATZ'),
-                lief_adr.get('LAND') or 'DE',
-                lief_adr.get('PLZ')  or '',
-                lief_adr.get('ORT')  or '',
-                lief_adr.get('UST_NUM'),
-                int(cao_lief),
+                _s(lief_adr.get('KUNNUM2') or ''),
+                _s(lief_adr.get('ANREDE')),
+                _s(lief_adr.get('NAME1')),
+                _s(lief_adr.get('NAME2')),
+                _s(lief_adr.get('NAME3')),
+                # KUN_ABTEILUNG haben wir nicht in ADRESSEN → ''
+                _s(lief_adr.get('STRASSE')),
+                _s(lief_adr.get('HAUSNR')),
+                _s(lief_adr.get('ADRESSZUSATZ')),
+                _s(lief_adr.get('LAND') or 'DE'),
+                _s(lief_adr.get('PLZ')),
+                _s(lief_adr.get('ORT')),
+                _s(lief_adr.get('UST_NUM')),
+                # FIRMA_ID
+                firma_id,
+                # ZAHLART/LIEFART Texte
+                _s(zahlart_data.get('NAME')),
+                _s(zahlart_data.get('TEXT_KURZ')),
+                _s(zahlart_data.get('TEXT_LANG')),
+                _s(liefart_data.get('NAME')),
+                _s(liefart_data.get('TEXT_LANG')),
             ))
             ekbestell_rec_id = cur.lastrowid
 
             # EKBESTELL_POS pro Position. WICHTIG: BELEGNUM, ADDR_ID
             # werden in jede Position dupliziert (CAO-Konvention zur
-            # schnellen Abfrage ohne JOIN).
+            # schnellen Abfrage ohne JOIN). Alle text-Felder mit ''
+            # default — CAO selbst schreibt nie NULL in optionale
+            # varchar-Spalten.
             for p in pos_daten:
                 cur.execute("""
                     INSERT INTO EKBESTELL_POS (
                       EKBESTELL_ID, BELEGNUM, ADDR_ID,
-                      POSITION,
-                      ARTIKELTYP, ARTIKEL_ID, ARTNUM, MATCHCODE,
-                      KURZBEZEICHNUNG, BEZEICHNUNG,
-                      MENGE, VPE, EPREIS, GPREIS, STEUER_CODE,
-                      LIEFARTNUM, ERSTELLT, ERST_NAME,
+                      POSITION, VIEW_POS,
+                      WARENGRUPPE, ARTIKELTYP,
+                      ARTIKEL_ID, ARTNUM, BARCODE, MATCHCODE,
+                      LAENGE, BREITE, HOEHE, GROESSE, DIMENSION,
+                      GEWICHT, ME_EINHEIT,
+                      PR_EINHEIT, VPE, MENGE,
+                      EPREIS, GPREIS,
+                      STEUER_CODE, ALTTEIL_PROZ, ALTTEIL_FLAG,
+                      GEGENKTO, BRUTTO_FLAG, EKEINGANG,
+                      BEZEICHNUNG, BEZEICHNUNG_LAND,
+                      KURZBEZEICHNUNG, KURZBEZEICHNUNG_LAND,
+                      WARENGRUPPENNAME,
+                      LIEFARTNUM, LIEFPREIS, GLIEFPREIS,
+                      PROJEKTPREIS,
+                      ERSTELLT, ERST_NAME, ME_CODE,
+                      LAGER_ID, FREITEXT, FREITEXT_LAND,
+                      FARBE, MATERIAL,
                       STADIUM
                     ) VALUES (
                       %s, %s, %s,
-                      %s,
-                      'N', %s, %s, %s,
                       %s, %s,
-                      %s, %s, %s, %s, %s,
-                      %s, NOW(), %s,
+                      %s, 'N',
+                      %s, %s, %s, %s,
+                      '', '', '', '', '',
+                      %s, %s,
+                      1.000, %s, %s,
+                      %s, %s,
+                      %s, 0.00, 'N',
+                      %s, 'N', 'N',
+                      %s, '',
+                      %s, '',
+                      %s,
+                      %s, %s, %s,
+                      'N',
+                      NOW(), %s, %s,
+                      -2, '', '',
+                      '', '',
                       0
                     )
                 """, (
                     ekbestell_rec_id, belegnum, int(cao_lief),
-                    p['pos_nr'],
-                    p['artikel_id'], p['artnum'][:100],
+                    p['pos_nr'], str(p['pos_nr']),
+                    p['wgr'],
+                    p['artikel_id'],
+                    (p['artnum'] or '')[:100],
+                    (p['barcode'] or '')[:20],
                     (p['matchcode'] or '')[:255],
-                    (p['kurzname'] or '')[:150],
-                    p['bezeichnung'],
-                    p['menge'],
+                    p['gewicht'],
+                    (p['me_einheit'] or '')[:50],
                     int(p['vpe_lief']) if p['vpe_lief'] else 1,
-                    p['epreis'], p['gpreis'], p['st_code'],
-                    p['liefartnum'][:100],
+                    p['menge'],
+                    p['epreis'], p['gpreis'],
+                    p['st_code'],
+                    p['aufw_kto'],
+                    (p['bezeichnung'] or ''),
+                    (p['kurzname'] or '')[:150],
+                    (p['wgr_name'] or '')[:250],
+                    (p['liefartnum'] or '')[:100],
+                    p['epreis'],   # LIEFPREIS = Stueck-EK lt. Lieferant
+                    p['gpreis'],   # GLIEFPREIS = Gesamt lt. Lieferant
                     (ma_name or 'CAO-XT')[:100],
+                    (p['me_code'] or '')[:5],
                 ))
 
             # XT-Bestellung mit CAO-IDs verknuepfen
