@@ -4,9 +4,11 @@
 {% block extra_css %}
 <style>
 /* ── Seitenlayout ── */
+/* Mittagstisch-Eingabefelder dürfen die volle Bildschirmbreite nutzen
+   — auf dem Kiosk-Display sind 72rem viel zu schmal. */
 .seiten-inhalt {
-    padding: 2rem;
-    max-width: 72rem;
+    padding: 2rem 3rem;
+    max-width: none;
     margin: 0 auto;
     transition: padding-bottom 0.3s;
 }
