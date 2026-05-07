@@ -3754,7 +3754,7 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
                 _s(lief_adr.get('NAME1')),
                 _s(lief_adr.get('NAME2')),
                 _s(lief_adr.get('NAME3')),
-                # KUN_ABTEILUNG haben wir nicht in ADRESSEN → ''
+                '',  # KUN_ABTEILUNG (haben wir nicht in ADRESSEN)
                 _s(lief_adr.get('STRASSE')),
                 _s(lief_adr.get('HAUSNR')),
                 _s(lief_adr.get('ADRESSZUSATZ')),
