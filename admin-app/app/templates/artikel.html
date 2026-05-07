@@ -105,6 +105,22 @@
 .admin-tabelle select:focus { outline: none; border-color: var(--akzent); background: var(--bg-hell); }
 .admin-tabelle select.gespeichert { border-color: var(--gruen); background: rgba(46,122,46,0.1); }
 
+.vorlauf-input {
+    width: 56px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-klein);
+    background: #fff;
+    color: var(--text-hell);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+}
+.vorlauf-input:focus { outline: none; border-color: var(--akzent); background: var(--bg-hell); }
+.vorlauf-input.gespeichert { border-color: var(--gruen); background: rgba(46,122,46,0.1); }
+
 .wochentage-gruppe { display: flex; gap: 4px; flex-wrap: nowrap; }
 .wochentage-gruppe label {
     display: flex; flex-direction: column; align-items: center;
@@ -222,9 +238,10 @@
                 <th class="sortierbar" data-col="5" onclick="sortiere(5)">Kategorie <span class="sort-pfeil">&#x21D5;</span></th>
                 <th>Einheit</th>
                 <th>Wochentage</th>
+                <th class="sortierbar" data-col="8" onclick="sortiere(8)" title="Tage Vorbestell-Vorlauf (z.B. 2 = Bestellung muss 2 Tage vor Abholung erfolgen)">Vorlauf <span class="sort-pfeil">&#x21D5;</span></th>
                 <th>Zutaten</th>
-                <th class="sortierbar" data-col="9" onclick="sortiere(9)">Status <span class="sort-pfeil">&#x21D5;</span></th>
-                <th class="sortierbar" data-col="10" onclick="sortiere(10)">Eintrag <span class="sort-pfeil">&#x21D5;</span></th>
+                <th class="sortierbar" data-col="10" onclick="sortiere(10)">Status <span class="sort-pfeil">&#x21D5;</span></th>
+                <th class="sortierbar" data-col="11" onclick="sortiere(11)">Eintrag <span class="sort-pfeil">&#x21D5;</span></th>
             </tr>
         </thead>
         <tbody id="artikel-tbody">
@@ -277,6 +294,15 @@
                         </label>
                         {% endfor %}
                     </div>
+                </td>
+                <td data-sort="{{ a.vorlaufzeit_tage or 0 }}">
+                    <input type="number"
+                           id="vorlauf-{{ a.id }}"
+                           class="vorlauf-input"
+                           min="0" max="14" step="1"
+                           value="{{ a.vorlaufzeit_tage or 0 }}"
+                           onchange="autoSpeichern({{ a.id }}, this)"
+                           title="Tage Vorbestell-Vorlauf (0 = keine, 2 = z.B. Laugenbaguette)">
                 </td>
                 <td>
                     <div class="zutaten-zelle">
@@ -379,7 +405,10 @@ async function autoSpeichern(artikelId, el) {
     const data = sammelDaten(artikelId);
     const res = await api('POST', `/artikel/${artikelId}`, data);
     if (res && res.ok) {
-        if (el.tagName === 'SELECT') { el.classList.add('gespeichert'); setTimeout(() => el.classList.remove('gespeichert'), 1200); }
+        if (el.tagName === 'SELECT' || el.tagName === 'INPUT') {
+            el.classList.add('gespeichert');
+            setTimeout(() => el.classList.remove('gespeichert'), 1200);
+        }
         aktualisiereEintragBadge(artikelId);
     }
 }
@@ -456,13 +485,18 @@ function sammelWochentage(artikelId) {
 
 function sammelDaten(artikelId) {
     const katWert = parseInt(document.getElementById(`kat-${artikelId}`).value);
+    const vorlaufEl = document.getElementById(`vorlauf-${artikelId}`);
+    let vorlauf = parseInt(vorlaufEl ? vorlaufEl.value : '0', 10);
+    if (isNaN(vorlauf) || vorlauf < 0) vorlauf = 0;
+    if (vorlauf > 14) vorlauf = 14;
     return {
-        kategorie_id: katWert === 0 ? null : katWert,
-        einheit:      document.getElementById(`einheit-${artikelId}`).value,
-        wochentage:   sammelWochentage(artikelId),
-        zutaten:      zutatenCache[artikelId] || null,
-        aktiv:        aktivWerte[artikelId] ?? 1,
-        hinweis:      null
+        kategorie_id:    katWert === 0 ? null : katWert,
+        einheit:         document.getElementById(`einheit-${artikelId}`).value,
+        wochentage:      sammelWochentage(artikelId),
+        zutaten:         zutatenCache[artikelId] || null,
+        aktiv:           aktivWerte[artikelId] ?? 1,
+        hinweis:         null,
+        vorlaufzeit_tage: vorlauf
     };
 }
 

@@ -44,6 +44,17 @@
     color: var(--creme);
 }
 .tab-btn:hover:not(.aktiv) { background: var(--creme-warm); }
+.tab-badge {
+    display: inline-block;
+    margin-left: 6px;
+    background: var(--gold, #c8780a);
+    color: white;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.4;
+}
 
 .tab-panel { display: none; }
 .tab-panel.aktiv { display: block; }
@@ -194,32 +205,36 @@
 
     <!-- Tabs -->
     <div class="tabs">
-        <button class="tab-btn aktiv" onclick="zeigeTab('heute')">Heute</button>
+        <button class="tab-btn aktiv" onclick="zeigeTab('heute')">Heute
+            {% if heute %}<span class="tab-badge">{{ heute|length }}</span>{% endif %}</button>
+        <button class="tab-btn" onclick="zeigeTab('morgen')">Morgen
+            {% if morgen_bestellungen %}<span class="tab-badge">{{ morgen_bestellungen|length }}</span>{% endif %}</button>
         <button class="tab-btn" onclick="zeigeTab('alle')">Alle Bestellungen</button>
     </div>
+
+    {% set TAGE = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'] %}
 
     <!-- ── Tab: Heute ── -->
     <div class="tab-panel aktiv" id="tab-heute">
 
         <div class="datum-header">
-            {% set TAGE = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'] %}
             {{ TAGE[heute_datum.weekday()] }}, {{ heute_datum.strftime('%d.%m.%Y') }}
         </div>
 
         {% if heute %}
         <div class="aktionsleiste">
-            <button class="btn btn-gruen" id="btn-druck-markierte" onclick="druckeMarkierte()" disabled>
+            <button class="btn btn-gruen" id="btn-druck-markierte-heute" onclick="druckeMarkierte('heute')" disabled>
                 🖨 Markierte drucken
             </button>
-            <button class="btn btn-sekundaer" onclick="druckeAlleOffene()">
+            <button class="btn btn-sekundaer" onclick="druckeAlleOffene('heute')">
                 🖨 Alle offenen drucken
             </button>
         </div>
 
-        <table class="bestell-tabelle" id="tabelle-heute">
+        <table class="bestell-tabelle" id="tabelle-heute" data-fuer-datum="{{ heute_datum.strftime('%Y-%m-%d') }}">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="cb-alle" onchange="alleToggle(this)"></th>
+                    <th><input type="checkbox" id="cb-alle-heute" onchange="alleToggle(this, 'heute')"></th>
                     <th>Nr.</th>
                     <th>Name</th>
                     <th>Telefon</th>
@@ -238,9 +253,9 @@
                 class="{% if heute_gedruckt %}zeile-gedruckt{% endif %}">
                 <td>
                     {% if b.status != 'storniert' %}
-                    <input type="checkbox" class="cb-zeile" value="{{ b.id }}"
+                    <input type="checkbox" class="cb-zeile cb-zeile-heute" value="{{ b.id }}"
                            data-status="{{ b.status }}"
-                           onchange="aktualisiereMarkiertBtn()">
+                           onchange="aktualisiereMarkiertBtn('heute')">
                     {% endif %}
                 </td>
                 <td style="font-weight:700;">{{ b.bestell_nr or '#' ~ b.id }}</td>
@@ -281,7 +296,7 @@
                                 onclick="nachdruckEinzel({{ b.id }})">↺ Nachdruck</button>
                         {% else %}
                         <button class="btn-klein btn-druck"
-                                onclick="druckeEinzel({{ b.id }})">🖨</button>
+                                onclick="druckeEinzel({{ b.id }}, 'heute')">🖨</button>
                         {% endif %}
                         <button class="btn-klein btn-storno"
                                 onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕ Storno</button>
@@ -294,6 +309,108 @@
         </table>
         {% else %}
         <div class="leer-hinweis">Keine Bestellungen für heute.</div>
+        {% endif %}
+
+    </div>
+
+    <!-- ── Tab: Morgen ── -->
+    <div class="tab-panel" id="tab-morgen">
+
+        <div class="datum-header">
+            {{ TAGE[morgen_datum.weekday()] }}, {{ morgen_datum.strftime('%d.%m.%Y') }}
+            <small style="display:block; font-weight:600; opacity:0.75; margin-top:4px;">
+                💡 Tüten-Aufkleber heute drucken — morgens nur noch befüllen.
+            </small>
+        </div>
+
+        {% if morgen_bestellungen %}
+        <div class="aktionsleiste">
+            <button class="btn btn-gruen" id="btn-druck-markierte-morgen" onclick="druckeMarkierte('morgen')" disabled>
+                🖨 Markierte drucken
+            </button>
+            <button class="btn btn-sekundaer" onclick="druckeAlleOffene('morgen')">
+                🖨 Alle offenen drucken
+            </button>
+        </div>
+
+        <table class="bestell-tabelle" id="tabelle-morgen" data-fuer-datum="{{ morgen_datum.strftime('%Y-%m-%d') }}">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="cb-alle-morgen" onchange="alleToggle(this, 'morgen')"></th>
+                    <th>Nr.</th>
+                    <th>Name</th>
+                    <th>Telefon</th>
+                    <th>Artikel</th>
+                    <th>Uhrzeit</th>
+                    <th>Typ</th>
+                    <th>Zahlung</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for b in morgen_bestellungen %}
+            {% set morgen_gedruckt = (b.gedruckt_datum is not none and b.gedruckt_datum == morgen_datum) %}
+            <tr id="zeile-morgen-{{ b.id }}"
+                class="{% if morgen_gedruckt %}zeile-gedruckt{% endif %}">
+                <td>
+                    {% if b.status != 'storniert' %}
+                    <input type="checkbox" class="cb-zeile cb-zeile-morgen" value="{{ b.id }}"
+                           data-status="{{ b.status }}"
+                           onchange="aktualisiereMarkiertBtn('morgen')">
+                    {% endif %}
+                </td>
+                <td style="font-weight:700;">{{ b.bestell_nr or '#' ~ b.id }}</td>
+                <td style="font-weight:700;">{{ b.name }}</td>
+                <td>{{ b.telefon or '–' }}</td>
+                <td><div class="artikel-kurz" title="{{ b.artikel_kurz or '' }}">{{ b.artikel_kurz or '–' }}</div></td>
+                <td>
+                    {% if b.abhol_uhrzeit is not none %}
+                        {{ (b.abhol_uhrzeit | string)[:5] }} Uhr
+                    {% else %}–{% endif %}
+                </td>
+                <td>
+                    <span class="badge badge-{{ b.typ }}">
+                        {% if b.typ == 'einmalig' %}Einmalig{% else %}Wdh.{% endif %}
+                    </span>
+                    {% if b.pausiert %}<span class="badge" style="background:#fef9c3;color:#854d0e;">⏸</span>{% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if b.zahlungsart == 'sofort' %}💳 Gezahlt{% else %}🏠 bei Abholung{% endif %}
+                </td>
+                <td>
+                    {% if morgen_gedruckt %}
+                        <span class="badge badge-gedruckt">gedruckt</span>
+                    {% elif b.status == 'offen' %}
+                        <span class="badge badge-offen">offen</span>
+                    {% elif b.status == 'storniert' %}
+                        <span class="badge badge-storniert">storniert</span>
+                    {% else %}
+                        <span class="badge badge-gedruckt">{{ b.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="td-aktionen">
+                        <a href="/bestellungen/{{ b.id }}" class="btn-klein btn-edit">✏️ Edit</a>
+                        {% if b.status != 'storniert' %}
+                        {% if morgen_gedruckt %}
+                        <button class="btn-klein btn-druck"
+                                onclick="nachdruckEinzel({{ b.id }})">↺ Nachdruck</button>
+                        {% else %}
+                        <button class="btn-klein btn-druck"
+                                onclick="druckeEinzel({{ b.id }}, 'morgen')">🖨</button>
+                        {% endif %}
+                        <button class="btn-klein btn-storno"
+                                onclick="storniereBestellung({{ b.id }}, '{{ b.bestell_nr or b.id }}')">✕ Storno</button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="leer-hinweis">Keine Bestellungen für morgen.</div>
         {% endif %}
 
     </div>
@@ -402,14 +519,15 @@ function zeigeTab(name) {
 }
 
 // ── Checkboxen ────────────────────────────────────────────────
-function alleToggle(cb) {
-    document.querySelectorAll('.cb-zeile').forEach(c => { c.checked = cb.checked; });
-    aktualisiereMarkiertBtn();
+// tab = 'heute' | 'morgen'
+function alleToggle(cb, tab) {
+    document.querySelectorAll('.cb-zeile-' + tab).forEach(c => { c.checked = cb.checked; });
+    aktualisiereMarkiertBtn(tab);
 }
 
-function aktualisiereMarkiertBtn() {
-    const markiert = document.querySelectorAll('.cb-zeile:checked').length;
-    const btn = document.getElementById('btn-druck-markierte');
+function aktualisiereMarkiertBtn(tab) {
+    const markiert = document.querySelectorAll('.cb-zeile-' + tab + ':checked').length;
+    const btn = document.getElementById('btn-druck-markierte-' + tab);
     if (btn) {
         btn.disabled = markiert === 0;
         btn.textContent = markiert > 0 ? `🖨 Markierte drucken (${markiert})` : '🖨 Markierte drucken';
@@ -417,12 +535,23 @@ function aktualisiereMarkiertBtn() {
 }
 
 // ── Drucken ───────────────────────────────────────────────────
-async function druckeMarkierte() {
-    const ids = Array.from(document.querySelectorAll('.cb-zeile:checked')).map(c => parseInt(c.value));
+function _fuerDatumVon(tab) {
+    // Heute-Druck nutzt Server-CURDATE() (kein fuer_datum), Morgen-Druck setzt
+    // explizit das Morgen-Datum, damit gedruckt_datum korrekt zugeordnet wird.
+    if (tab !== 'morgen') return undefined;
+    const tab_el = document.getElementById('tabelle-morgen');
+    return tab_el ? tab_el.dataset.fuerDatum : undefined;
+}
+
+async function druckeMarkierte(tab) {
+    const ids = Array.from(document.querySelectorAll('.cb-zeile-' + tab + ':checked')).map(c => parseInt(c.value));
     if (!ids.length) return;
+    const body = { ids };
+    const fd = _fuerDatumVon(tab);
+    if (fd) body.fuer_datum = fd;
     const res = await apiFetch('/api/bestellungen/drucken', {
         method: 'POST',
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify(body),
     });
     if (res) {
         zeigToast(`✓ ${res.gedruckt} Bestellung(en) gedruckt`);
@@ -430,14 +559,17 @@ async function druckeMarkierte() {
     }
 }
 
-async function druckeAlleOffene() {
-    const ids = Array.from(document.querySelectorAll('.cb-zeile'))
+async function druckeAlleOffene(tab) {
+    const ids = Array.from(document.querySelectorAll('.cb-zeile-' + tab))
         .filter(c => c.dataset.status === 'offen')
         .map(c => parseInt(c.value));
     if (!ids.length) { zeigToast('Keine offenen Bestellungen', 2000); return; }
+    const body = { ids };
+    const fd = _fuerDatumVon(tab);
+    if (fd) body.fuer_datum = fd;
     const res = await apiFetch('/api/bestellungen/drucken', {
         method: 'POST',
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify(body),
     });
     if (res) {
         zeigToast(`✓ ${res.gedruckt} Bestellung(en) gedruckt`);
@@ -445,10 +577,13 @@ async function druckeAlleOffene() {
     }
 }
 
-async function druckeEinzel(id) {
+async function druckeEinzel(id, tab) {
+    const body = { ids: [id] };
+    const fd = _fuerDatumVon(tab || 'heute');
+    if (fd) body.fuer_datum = fd;
     const res = await apiFetch('/api/bestellungen/drucken', {
         method: 'POST',
-        body: JSON.stringify({ ids: [id] }),
+        body: JSON.stringify(body),
     });
     if (res) {
         zeigToast('✓ Bestellung gedruckt');

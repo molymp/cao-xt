@@ -48,15 +48,20 @@ INSERT IGNORE INTO XT_KIOSK_KATEGORIEN (id, name, sort_order) VALUES
 
 -- T2: XT_KIOSK_PRODUKTE
 -- id = REC_ID aus ARTIKEL (int, immer vorhanden)
+-- vorlaufzeit_tage: Tage Vorlauf, die für eine Vorbestellung benötigt werden.
+--   0 = kann von heute auf morgen bestellt werden (Standard)
+--   1 = mind. 1 Tag im Voraus (z.B. Bestellung heute → frühestens morgen)
+--   2 = mind. 2 Tage im Voraus (z.B. Laugenbaguette, Körnerbaguette)
 CREATE TABLE IF NOT EXISTS XT_KIOSK_PRODUKTE (
-    id           INT          NOT NULL,
-    kategorie_id INT          NULL,
-    bild_pfad    VARCHAR(500),
-    einheit      ENUM('Stck.', 'kg', '100g', 'Paar') NOT NULL DEFAULT 'Stck.',
-    wochentage   VARCHAR(20)  NOT NULL DEFAULT '',
-    zutaten      TEXT,
-    aktiv        TINYINT      NOT NULL DEFAULT 1,
-    hinweis      VARCHAR(200),
+    id               INT          NOT NULL,
+    kategorie_id     INT          NULL,
+    bild_pfad        VARCHAR(500),
+    einheit          ENUM('Stck.', 'kg', '100g', 'Paar') NOT NULL DEFAULT 'Stck.',
+    wochentage       VARCHAR(20)  NOT NULL DEFAULT '',
+    zutaten          TEXT,
+    aktiv            TINYINT      NOT NULL DEFAULT 1,
+    hinweis          VARCHAR(200),
+    vorlaufzeit_tage TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     CONSTRAINT fk_kiosk_produkte_kategorie
         FOREIGN KEY (kategorie_id) REFERENCES XT_KIOSK_KATEGORIEN (id)
@@ -208,6 +213,7 @@ CREATE OR REPLACE VIEW XT_KIOSK_V_ARTIKEL_VERWALTUNG AS
         COALESCE(p.aktiv, 1)                        AS aktiv,
         p.hinweis,
         p.bild_pfad,
+        COALESCE(p.vorlaufzeit_tage, 0)             AS vorlaufzeit_tage,
         CASE WHEN p.id IS NULL THEN 'fehlt' ELSE 'vorhanden' END AS kiosk_eintrag
     FROM ARTIKEL a
     LEFT JOIN XT_KIOSK_PRODUKTE p   ON p.id = a.REC_ID
@@ -230,7 +236,8 @@ CREATE OR REPLACE VIEW XT_KIOSK_V_PRODUKTE AS
         p.zutaten,
         p.aktiv,
         p.hinweis,
-        p.bild_pfad
+        p.bild_pfad,
+        COALESCE(p.vorlaufzeit_tage, 0)             AS vorlaufzeit_tage
     FROM ARTIKEL a
     JOIN XT_KIOSK_PRODUKTE p     ON p.id = a.REC_ID
     LEFT JOIN XT_KIOSK_KATEGORIEN k ON k.id = p.kategorie_id
@@ -280,6 +287,19 @@ SET @col_exists = (
 );
 SET @sql = IF(@col_exists = 0,
     'ALTER TABLE XT_KIOSK_KONTAKTE ADD COLUMN adr_id INT DEFAULT NULL AFTER telefon, ADD INDEX idx_kiosk_kontakt_adr (adr_id)',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- M2: vorlaufzeit_tage zu XT_KIOSK_PRODUKTE (Backwaren mit Vorbestell-Vorlauf)
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'XT_KIOSK_PRODUKTE'
+      AND COLUMN_NAME  = 'vorlaufzeit_tage'
+);
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE XT_KIOSK_PRODUKTE ADD COLUMN vorlaufzeit_tage TINYINT NOT NULL DEFAULT 0 AFTER hinweis',
     'SELECT 1'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
