@@ -1207,6 +1207,53 @@ def _heute_wochentag() -> str:
 def _datum_zu_wochentag(d) -> str:
     return WOCHENTAG_KUERZEL[d.weekday()]
 
+
+def _pruefe_vorlaufzeit(cursor, positionen: list, abhol_datum: date) -> str | None:
+    """Prueft, ob die Vorlaufzeit aller Positionen fuer das Abholdatum eingehalten wird.
+
+    Returns:
+        None wenn alles ok, sonst eine deutschsprachige Fehlermeldung.
+    """
+    if not abhol_datum or not positionen:
+        return None
+    if isinstance(abhol_datum, str):
+        try:
+            abhol_datum = datetime.strptime(abhol_datum, '%Y-%m-%d').date()
+        except ValueError:
+            return None  # Format-Fehler wird woanders abgefangen
+    diff_tage = (abhol_datum - date.today()).days
+    if diff_tage < 0:
+        return None  # Datum in der Vergangenheit – wird ggf. anderswo geprueft
+
+    produkt_ids = [int(p["produkt_id"]) for p in positionen if p.get("produkt_id")]
+    if not produkt_ids:
+        return None
+
+    fmt = ",".join(["%s"] * len(produkt_ids))
+    cursor.execute(
+        f"""SELECT a.REC_ID AS id, a.KURZNAME AS name,
+                   COALESCE(p.vorlaufzeit_tage, 0) AS vorlaufzeit_tage
+            FROM ARTIKEL a
+            LEFT JOIN XT_KIOSK_PRODUKTE p ON p.id = a.REC_ID
+            WHERE a.REC_ID IN ({fmt})""",
+        produkt_ids,
+    )
+    artikel_lookup = {row["id"]: row for row in cursor.fetchall()}
+
+    fehlende = []
+    for pos in positionen:
+        pid = int(pos["produkt_id"])
+        art = artikel_lookup.get(pid)
+        if not art:
+            continue
+        vorlauf = int(art["vorlaufzeit_tage"] or 0)
+        if vorlauf > diff_tage:
+            fehlende.append(f"{art['name']} ({vorlauf} Tage Vorlauf)")
+    if fehlende:
+        return ("Vorlaufzeit nicht eingehalten – diese Artikel benoetigen mehr Vorlauf "
+                "als das gewaehlte Abholdatum erlaubt: " + ", ".join(fehlende))
+    return None
+
 # Für die Heute-Ansicht: alle nicht-stornierten heutigen Bestellungen (auch bereits gedruckte)
 _HEUTE_SQL = """(
     (b.typ='einmalig' AND b.status != 'storniert' AND b.abhol_datum = CURDATE())
@@ -1216,6 +1263,19 @@ _HEUTE_SQL = """(
      AND b.wochentag = %(wt)s
      AND (b.start_datum IS NULL OR b.start_datum <= CURDATE())
      AND (b.end_datum   IS NULL OR b.end_datum   >= CURDATE()))
+)"""
+
+# Für die Morgen-Ansicht: Pre-Picking heute fuer morgige Abholung
+# (Tueten-Aufkleber heute drucken, damit sie morgens befuellt werden koennen)
+_MORGEN_SQL = """(
+    (b.typ='einmalig' AND b.status != 'storniert'
+     AND b.abhol_datum = DATE_ADD(CURDATE(), INTERVAL 1 DAY))
+    OR
+    (b.typ='wiederkehrend' AND b.status != 'storniert'
+     AND NOT (b.pausiert = 1 AND (b.pause_bis IS NULL OR b.pause_bis >= DATE_ADD(CURDATE(), INTERVAL 1 DAY)))
+     AND b.wochentag = %(wt_morgen)s
+     AND (b.start_datum IS NULL OR b.start_datum <= DATE_ADD(CURDATE(), INTERVAL 1 DAY))
+     AND (b.end_datum   IS NULL OR b.end_datum   >= DATE_ADD(CURDATE(), INTERVAL 1 DAY)))
 )"""
 
 # Für den Badge: nur noch unbearbeitete heutige Bestellungen
@@ -1233,7 +1293,9 @@ _BADGE_SQL = """(
 @_login_required
 @app.route("/bestellungen")
 def bestellungen_view():
-    wt = _heute_wochentag()
+    wt        = _heute_wochentag()
+    morgen    = date.today() + timedelta(days=1)
+    wt_morgen = _datum_zu_wochentag(morgen)
     with get_db() as cursor:
         cursor.execute(
             """SELECT b.*,
@@ -1252,6 +1314,20 @@ def bestellungen_view():
         cursor.execute(
             """SELECT b.*,
                       GROUP_CONCAT(CONCAT(bp.menge,'x ',bp.name_snapshot)
+                                   ORDER BY bp.id SEPARATOR ', ') AS artikel_kurz,
+                      COUNT(bp.id) AS pos_anzahl
+               FROM XT_KIOSK_BESTELLUNGEN b
+               LEFT JOIN XT_KIOSK_BESTELL_POS bp ON bp.bestell_id = b.id
+               WHERE """ + _MORGEN_SQL + """
+               GROUP BY b.id
+               ORDER BY b.abhol_uhrzeit IS NULL, b.abhol_uhrzeit, b.id""",
+            {"wt_morgen": wt_morgen}
+        )
+        morgen_bestellungen = cursor.fetchall()
+
+        cursor.execute(
+            """SELECT b.*,
+                      GROUP_CONCAT(CONCAT(bp.menge,'x ',bp.name_snapshot)
                                    ORDER BY bp.id SEPARATOR ', ') AS artikel_kurz
                FROM XT_KIOSK_BESTELLUNGEN b
                LEFT JOIN XT_KIOSK_BESTELL_POS bp ON bp.bestell_id = b.id
@@ -1263,9 +1339,12 @@ def bestellungen_view():
 
     return render_template(
         "bestellungen.html",
-        heute=heute, alle=alle,
+        heute=heute,
+        morgen_bestellungen=morgen_bestellungen,
+        alle=alle,
         heute_wt=wt,
         heute_datum=date.today(),
+        morgen_datum=morgen,
         terminal_nr=get_terminal_nr(),
     )
 
@@ -1327,7 +1406,8 @@ def api_bestellungen_produkte():
         if wt:
             cursor.execute(
                 """SELECT id, name, preis_cent, einheit, wochentage,
-                          kategorie_name, COALESCE(kategorie_sort, 999) AS kategorie_sort
+                          kategorie_name, COALESCE(kategorie_sort, 999) AS kategorie_sort,
+                          COALESCE(vorlaufzeit_tage, 0) AS vorlaufzeit_tage
                    FROM XT_KIOSK_V_PRODUKTE
                    WHERE aktiv > 0
                      AND (wochentage = '' OR FIND_IN_SET(%s, wochentage) > 0)
@@ -1337,7 +1417,8 @@ def api_bestellungen_produkte():
         else:
             cursor.execute(
                 """SELECT id, name, preis_cent, einheit, wochentage,
-                          kategorie_name, COALESCE(kategorie_sort, 999) AS kategorie_sort
+                          kategorie_name, COALESCE(kategorie_sort, 999) AS kategorie_sort,
+                          COALESCE(vorlaufzeit_tage, 0) AS vorlaufzeit_tage
                    FROM XT_KIOSK_V_PRODUKTE
                    WHERE aktiv > 0
                    ORDER BY kategorie_sort, name"""
@@ -1417,6 +1498,13 @@ def api_bestellung_neu():
 
     try:
         with get_db_transaction() as cursor:
+            # Vorlaufzeit pruefen (nur einmalige Bestellungen mit konkretem
+            # Abholdatum – wiederkehrende laufen ja immer langfristig).
+            if typ == "einmalig":
+                fehler = _pruefe_vorlaufzeit(cursor, positionen, data.get("abhol_datum"))
+                if fehler:
+                    return jsonify({"ok": False, "fehler": fehler})
+
             cursor.execute(
                 """INSERT INTO XT_KIOSK_BESTELLUNGEN
                        (bestell_nr, name, telefon, typ, abhol_datum, wochentag,
@@ -1542,6 +1630,12 @@ def api_bestellung_speichern(bestell_id):
             )
             alt_pos = cursor.fetchall()
             alt_gesamt_cent = sum(p["menge"] * p["preis_cent"] for p in alt_pos)
+
+            # Vorlaufzeit pruefen (nur einmalige Bestellungen).
+            if data.get("typ", "einmalig") == "einmalig":
+                fehler_vl = _pruefe_vorlaufzeit(cursor, positionen, data.get("abhol_datum"))
+                if fehler_vl:
+                    return jsonify({"ok": False, "fehler": fehler_vl})
 
             # Neues EAN für abholung-Bestellungen aktualisieren
             zahlungsart = alt_bestellung.get("zahlungsart", "abholung")
@@ -1766,11 +1860,25 @@ def api_bestellung_pausieren(bestell_id):
 @_login_required
 @app.route("/api/bestellungen/drucken", methods=["POST"])
 def api_bestellungen_drucken():
-    """Druckt Picklisten für 'abholung'-Bestellungen (mit Preisen + EAN)."""
+    """Druckt Picklisten für 'abholung'-Bestellungen (mit Preisen + EAN).
+
+    Wenn `fuer_datum` (YYYY-MM-DD) im Body steht, wird `gedruckt_datum`
+    auf dieses Datum gesetzt (statt CURDATE()) — Anwendungsfall: Morgen-
+    Tab druckt heute die Tütenaufkleber für die morgige Abholung; in der
+    Morgen-Ansicht erscheint die Bestellung dann als „gedruckt".
+    """
     data = request.get_json(force=True)
     ids = [int(i) for i in (data.get("ids") or [])]
     if not ids:
         return jsonify({"ok": False, "fehler": "Keine IDs angegeben"})
+
+    fuer_datum_str = (data.get("fuer_datum") or "").strip()
+    fuer_datum = None
+    if fuer_datum_str:
+        try:
+            fuer_datum = datetime.strptime(fuer_datum_str, "%Y-%m-%d").date()
+        except ValueError:
+            fuer_datum = None
 
     terminal_nr = get_terminal_nr()
     gedruckt = 0
@@ -1795,16 +1903,28 @@ def api_bestellungen_drucken():
                     ean_barcode=None if ist_bezahlt else b_row.get("ean_barcode"),
                     bereits_bezahlt=ist_bezahlt,
                 )
-                if b_row["typ"] == "einmalig" and b_row["status"] == "offen":
-                    cursor.execute(
-                        "UPDATE XT_KIOSK_BESTELLUNGEN SET status='gedruckt', gedruckt_datum=CURDATE() WHERE id=%s",
-                        (bid,)
-                    )
+                if fuer_datum is not None:
+                    if b_row["typ"] == "einmalig" and b_row["status"] == "offen":
+                        cursor.execute(
+                            "UPDATE XT_KIOSK_BESTELLUNGEN SET status='gedruckt', gedruckt_datum=%s WHERE id=%s",
+                            (fuer_datum, bid)
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE XT_KIOSK_BESTELLUNGEN SET gedruckt_datum=%s WHERE id=%s",
+                            (fuer_datum, bid)
+                        )
                 else:
-                    cursor.execute(
-                        "UPDATE XT_KIOSK_BESTELLUNGEN SET gedruckt_datum=CURDATE() WHERE id=%s",
-                        (bid,)
-                    )
+                    if b_row["typ"] == "einmalig" and b_row["status"] == "offen":
+                        cursor.execute(
+                            "UPDATE XT_KIOSK_BESTELLUNGEN SET status='gedruckt', gedruckt_datum=CURDATE() WHERE id=%s",
+                            (bid,)
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE XT_KIOSK_BESTELLUNGEN SET gedruckt_datum=CURDATE() WHERE id=%s",
+                            (bid,)
+                        )
                 gedruckt += 1
             except Exception as e:
                 fehler_liste.append(f"#{bid}: {e}")

@@ -235,6 +235,26 @@ textarea.feld-input {
 .produkt-zeile:last-child { border-bottom: none; }
 .produkt-zeile:hover { background: var(--grau-hell); }
 
+/* Vorlaufzeit-Badge: kleine Pille hinter dem Produktnamen */
+.vorlauf-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: rgba(200,120,10,0.15);
+    color: #a06000;
+    white-space: nowrap;
+}
+.vorlauf-badge.vorlauf-zu-spaet {
+    background: rgba(184,48,48,0.18);
+    color: #b83030;
+}
+/* Produkte, deren Vorlauf das gewählte Datum überschreitet, werden ausgegraut */
+.produkt-zeile.produkt-zeile-blockiert { opacity: 0.55; }
+.produkt-zeile.produkt-zeile-blockiert .mengen-plus { opacity: 0.4; cursor: not-allowed; }
+
 .mengen-steuer {
     display: flex;
     align-items: center;
@@ -610,8 +630,14 @@ function datumOderWtGeaendert(isoStr) {
     if (d) {
         const wts = ['So','Mo','Di','Mi','Do','Fr','Sa'];
         const wt = wts[new Date(d).getDay()];
+        const wtAlt = letzterWT;
         gewaehlterWT = wt;
         ladeProdukteWennNoetig(wt);
+        // Wenn der Wochentag gleich blieb (Cache-Hit), rendern wir trotzdem
+        // neu, damit die Vorlaufzeit-Badges das geänderte Datum widerspiegeln.
+        if (wt === wtAlt && alleProdukte.length) {
+            rendereProduktliste();
+        }
     } else {
         gewaehlterWT = '';
         ladeProdukteWennNoetig('');
@@ -676,6 +702,8 @@ function rendereProduktliste() {
         gruppen[kat].push(p);
     });
 
+    const heuteDiff = berechneAbholDiffTage();
+
     let html = '';
     for (const [kat, produkte] of Object.entries(gruppen)) {
         html += `<div class="kat-gruppe">
@@ -683,17 +711,33 @@ function rendereProduktliste() {
         produkte.forEach(p => {
             const menge = warenkorb[p.id]?.menge || 0;
             const preis = (p.preis_cent / 100).toFixed(2).replace('.', ',') + ' €';
-            html += `<div class="produkt-zeile" id="pz-${p.id}">
+            const vorlauf = parseInt(p.vorlaufzeit_tage || 0, 10);
+            // Vorlaufzeit-Markierung
+            let vorlaufBadge = '';
+            let zeileExtraClass = '';
+            if (vorlauf > 0) {
+                const reicht = (heuteDiff === null) ? null : (vorlauf <= heuteDiff);
+                if (reicht === false) {
+                    vorlaufBadge = `<span class="vorlauf-badge vorlauf-zu-spaet"
+                        title="Bestellung benötigt ${vorlauf} Tage Vorlauf">⏱ ${vorlauf} Tg. zu spät</span>`;
+                    zeileExtraClass = 'produkt-zeile-blockiert';
+                } else {
+                    vorlaufBadge = `<span class="vorlauf-badge"
+                        title="Bestellung benötigt ${vorlauf} Tage Vorlauf">⏱ ${vorlauf} Tg.</span>`;
+                }
+            }
+            const minusDisabled = (menge === 0) ? 'disabled' : '';
+            const plusDisabled  = (zeileExtraClass === 'produkt-zeile-blockiert' && menge === 0) ? 'disabled' : '';
+            html += `<div class="produkt-zeile ${zeileExtraClass}" id="pz-${p.id}" data-vorlauf="${vorlauf}">
                 <div class="mengen-steuer">
-                    <button class="mengen-btn mengen-minus"
-                            ${menge === 0 ? 'disabled' : ''}
+                    <button class="mengen-btn mengen-minus" ${minusDisabled}
                             onclick="aendernMenge(${p.id}, -1)">−</button>
                     <span class="mengen-zahl ${menge > 0 ? 'aktiv' : ''}" id="mz-${p.id}">${menge}</span>
-                    <button class="mengen-btn mengen-plus"
+                    <button class="mengen-btn mengen-plus" ${plusDisabled}
                             onclick="aendernMenge(${p.id}, 1)">+</button>
                 </div>
                 <div class="produkt-info">
-                    <div class="produkt-name">${escHtml(p.name)}</div>
+                    <div class="produkt-name">${escHtml(p.name)} ${vorlaufBadge}</div>
                     <div class="produkt-preis">${preis} / ${escHtml(p.einheit || 'Stck.')}</div>
                 </div>
             </div>`;
@@ -701,6 +745,18 @@ function rendereProduktliste() {
         html += `</div>`;
     }
     liste.innerHTML = html;
+}
+
+// Differenz heute → Abholdatum in Tagen (oder null wenn unbestimmbar / wiederkehrend).
+function berechneAbholDiffTage() {
+    if (gewaehlterTyp !== 'einmalig') return null;
+    const wert = getDatumWert('inp-datum');
+    if (!wert) return null;
+    const ziel = new Date(wert + 'T00:00:00');
+    const heute = new Date();
+    heute.setHours(0, 0, 0, 0);
+    const diff = Math.floor((ziel - heute) / (1000 * 60 * 60 * 24));
+    return isNaN(diff) ? null : diff;
 }
 
 function escHtml(s) {
@@ -718,6 +774,16 @@ function aendernMenge(produktId, delta) {
     if (!p) return;
 
     const alt = warenkorb[produktId]?.menge || 0;
+    // Vorlaufzeit-Block: Erhöhen verhindern wenn das gewählte Abholdatum
+    // den Vorlauf des Artikels nicht erfüllt.
+    if (delta > 0) {
+        const vorlauf = parseInt(p.vorlaufzeit_tage || 0, 10);
+        const diff = berechneAbholDiffTage();
+        if (vorlauf > 0 && diff !== null && vorlauf > diff) {
+            zeigToast(`⏱ ${p.name} braucht ${vorlauf} Tage Vorlauf — wähle ein späteres Datum`, 3500);
+            return;
+        }
+    }
     const neu = Math.max(0, alt + delta);
 
     if (neu === 0) {

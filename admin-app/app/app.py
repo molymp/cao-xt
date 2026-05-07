@@ -158,6 +158,72 @@ def _migrationen_ausfuehren():
                     VALUES (7, 'Leitende Angestellte / GF', 0, 1, 0, 70)
                 """)
                 log.info("Migration: XT_PERSONAL_LOHNART.IN_ZEITERFASSUNG geprüft.")
+            # Spalte vorlaufzeit_tage in XT_KIOSK_PRODUKTE (Backwaren-Vorlauf,
+            # Spiegel zu kiosk-app/schema.sql M2). Nur ausfuehren, wenn die
+            # Backwaren-Tabelle bereits existiert.
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES "
+                " WHERE TABLE_SCHEMA = DATABASE() "
+                "   AND TABLE_NAME = 'XT_KIOSK_PRODUKTE'"
+            )
+            if cur.fetchone()['n']:
+                cur.execute("""
+                    ALTER TABLE XT_KIOSK_PRODUKTE
+                      ADD COLUMN IF NOT EXISTS vorlaufzeit_tage TINYINT
+                         NOT NULL DEFAULT 0
+                         COMMENT 'Tage Vorlauf fuer Vorbestellungen (0 = keine, 2 = z.B. Laugenbaguette)'
+                         AFTER hinweis
+                """)
+                # Views aktualisieren, damit der neue Wert auch gelesen werden
+                # kann. CREATE OR REPLACE ist idempotent.
+                cur.execute("""
+                    CREATE OR REPLACE VIEW XT_KIOSK_V_ARTIKEL_VERWALTUNG AS
+                    SELECT
+                        a.REC_ID                                    AS id,
+                        a.ARTNUM                                    AS artnum,
+                        a.KURZNAME                                  AS name,
+                        ROUND(a.VK5B * 100)                         AS preis_cent,
+                        COALESCE(p.kategorie_id, 0)                 AS kategorie_id,
+                        COALESCE(k.name, '– nicht zugeordnet –')    AS kategorie_name,
+                        COALESCE(p.einheit,    'Stck.')              AS einheit,
+                        COALESCE(p.wochentage, '')                  AS wochentage,
+                        p.zutaten,
+                        COALESCE(p.aktiv, 1)                        AS aktiv,
+                        p.hinweis,
+                        p.bild_pfad,
+                        COALESCE(p.vorlaufzeit_tage, 0)             AS vorlaufzeit_tage,
+                        CASE WHEN p.id IS NULL THEN 'fehlt' ELSE 'vorhanden' END AS kiosk_eintrag
+                    FROM ARTIKEL a
+                    LEFT JOIN XT_KIOSK_PRODUKTE p   ON p.id = a.REC_ID
+                    LEFT JOIN XT_KIOSK_KATEGORIEN k ON k.id = p.kategorie_id
+                    WHERE a.WARENGRUPPE = '101'
+                    ORDER BY COALESCE(k.sort_order, 999), a.KURZNAME
+                """)
+                cur.execute("""
+                    CREATE OR REPLACE VIEW XT_KIOSK_V_PRODUKTE AS
+                    SELECT
+                        a.REC_ID                                    AS id,
+                        a.ARTNUM                                    AS artnum,
+                        a.KURZNAME                                  AS name,
+                        ROUND(a.VK5B * 100)                         AS preis_cent,
+                        p.kategorie_id,
+                        COALESCE(k.name, '– Sonstige –')            AS kategorie_name,
+                        COALESCE(k.sort_order, 999)                 AS kategorie_sort,
+                        p.einheit,
+                        COALESCE(p.wochentage, '')                  AS wochentage,
+                        p.zutaten,
+                        p.aktiv,
+                        p.hinweis,
+                        p.bild_pfad,
+                        COALESCE(p.vorlaufzeit_tage, 0)             AS vorlaufzeit_tage
+                    FROM ARTIKEL a
+                    JOIN XT_KIOSK_PRODUKTE p     ON p.id = a.REC_ID
+                    LEFT JOIN XT_KIOSK_KATEGORIEN k ON k.id = p.kategorie_id
+                    WHERE a.WARENGRUPPE = '101'
+                      AND p.aktiv > 0
+                    ORDER BY COALESCE(k.sort_order, 999), a.KURZNAME
+                """)
+                log.info("Migration: XT_KIOSK_PRODUKTE.vorlaufzeit_tage + Views aktualisiert.")
     except Exception as e:
         log.warning("Migration fehlgeschlagen (DB evtl. nicht erreichbar): %s", e)
 
@@ -769,25 +835,36 @@ def artikel_speichern(artikel_id):
         return jsonify(ok=False, msg='Keine Daten empfangen'), 400
     try:
         with get_db() as cur:
+            # vorlaufzeit_tage: 0..14, sonst auf 0 normalisieren
+            try:
+                vorlauf = int(data.get("vorlaufzeit_tage", 0) or 0)
+            except (TypeError, ValueError):
+                vorlauf = 0
+            if vorlauf < 0 or vorlauf > 14:
+                vorlauf = 0
             cur.execute("SELECT id FROM XT_KIOSK_PRODUKTE WHERE id=%s", (artikel_id,))
             exists = cur.fetchone()
             if exists:
                 cur.execute(
                     """UPDATE XT_KIOSK_PRODUKTE
                        SET kategorie_id=%s, einheit=%s, wochentage=%s,
-                           zutaten=%s, aktiv=%s, hinweis=%s
+                           zutaten=%s, aktiv=%s, hinweis=%s,
+                           vorlaufzeit_tage=%s
                        WHERE id=%s""",
                     (data.get("kategorie_id"), data.get("einheit", "Stck."),
                      data.get("wochentage", ""), data.get("zutaten"),
-                     data.get("aktiv", 1), data.get("hinweis"), artikel_id))
+                     data.get("aktiv", 1), data.get("hinweis"),
+                     vorlauf, artikel_id))
             else:
                 cur.execute(
                     """INSERT INTO XT_KIOSK_PRODUKTE
-                       (id, kategorie_id, einheit, wochentage, zutaten, aktiv, hinweis)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                       (id, kategorie_id, einheit, wochentage, zutaten, aktiv, hinweis,
+                        vorlaufzeit_tage)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                     (artikel_id, data.get("kategorie_id"), data.get("einheit", "Stck."),
                      data.get("wochentage", ""), data.get("zutaten"),
-                     data.get("aktiv", 1), data.get("hinweis")))
+                     data.get("aktiv", 1), data.get("hinweis"),
+                     vorlauf))
     except Exception as e:
         log.error("artikel_speichern ID=%s: %s", artikel_id, e)
         return jsonify(ok=False, msg=str(e)), 500
