@@ -106,6 +106,29 @@
   color: var(--text-dim, #5a7a3a);
   font-style: italic;
 }
+
+/* Memo-Felder (INFO, KOPFTEXT, FUSSTEXT — RTF, geparst) */
+.bd-memo + .bd-memo { margin-top: 14px; }
+.bd-memo label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim, #5a7a3a);
+  margin-bottom: 4px;
+}
+.bd-memo-text {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  background: rgba(26,64,16,0.04);
+  border-left: 3px solid var(--creme-dunkel);
+  padding: 10px 14px;
+  border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
+  white-space: pre-wrap;
+  margin: 0;
+}
 </style>
 {% endblock %}
 
@@ -160,12 +183,35 @@
             <label>Liefer-AB-Nr.</label>
             <span class="wert">{{ kopf.LIEF_AB or '–' }}</span>
         </div>
-        <div>
-            <label>Info</label>
-            <span class="wert">{{ kopf.INFO or '–' }}</span>
-        </div>
     </div>
 </div>
+
+{% set info_txt   = (kopf.INFO     | rtf) if kopf.INFO     else '' %}
+{% set kopf_txt   = (kopf.KOPFTEXT | rtf) if kopf.KOPFTEXT else '' %}
+{% set fuss_txt   = (kopf.FUSSTEXT | rtf) if kopf.FUSSTEXT else '' %}
+{% if info_txt or kopf_txt or fuss_txt %}
+<div class="bd-card">
+    <h2>Notizen</h2>
+    {% if info_txt %}
+    <div class="bd-memo">
+        <label>Info</label>
+        <pre class="bd-memo-text">{{ info_txt }}</pre>
+    </div>
+    {% endif %}
+    {% if kopf_txt %}
+    <div class="bd-memo">
+        <label>Kopftext</label>
+        <pre class="bd-memo-text">{{ kopf_txt }}</pre>
+    </div>
+    {% endif %}
+    {% if fuss_txt %}
+    <div class="bd-memo">
+        <label>Fußtext</label>
+        <pre class="bd-memo-text">{{ fuss_txt }}</pre>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="bd-card">
     <h2>Summen</h2>
