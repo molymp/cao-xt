@@ -110,162 +110,169 @@ def wareneingang_anlegen(bestell_rec_id: int,
         # 3) EKEINGANG-Header anlegen — übernimmt alle relevanten Felder aus
         # der Bestellung (Lieferant, Adressen, Steuersätze, Texte). Mengen-
         # Summen lassen wir vorerst auf 0 — werden beim Buchen neu berechnet.
+        # Defensiv: nur die Felder schreiben, die EKEINGANG sicher hat.
+        # Wir holen die Spalten-Liste live aus INFORMATION_SCHEMA und
+        # bauen das INSERT-Statement dynamisch — so überlebt der Code
+        # CAO-Versionen mit leicht abweichendem Schema.
         cur.execute(
-            """
-            INSERT INTO EKEINGANG (
-              MA_ID, ADDR_ID, ASP_ID, LIEF_ADDR_ID, BELEGNUM, BELEGDATUM,
-              LIEFART, ZAHLART, GEGENKONTO,
-              WAEHRUNG, KURS, STADIUM, GEWICHT,
-              MWST_0, MWST_1, MWST_2, MWST_3, AT_MWST,
-              NSUMME_0, NSUMME_1, NSUMME_2, NSUMME_3, NSUMME,
-              MSUMME_0, MSUMME_1, MSUMME_2, MSUMME_3, MSUMME,
-              BSUMME_0, BSUMME_1, BSUMME_2, BSUMME_3, BSUMME,
-              ERSTELLT, ERST_NAME,
-              KUN_NUM, KUN_ANREDE, KUN_NAME1, KUN_NAME2, KUN_NAME3,
-              KUN_ABTEILUNG, KUN_STRASSE, KUN_HAUSNR, KUN_ADRESSZUSATZ,
-              KUN_LAND, KUN_PLZ, KUN_ORT, KUN_UST_NUM,
-              KUN_ADDR_ID,
-              LIEF_ANREDE, LIEF_NAME1, LIEF_NAME2, LIEF_NAME3,
-              LIEF_ABTEILUNG, LIEF_STRASSE, LIEF_HAUSNR,
-              LIEF_ADRESSZUSATZ, LIEF_LAND, LIEF_PLZ, LIEF_ORT,
-              FIRMA_ID, INFO, KOPFTEXT, FUSSTEXT, PROJEKT,
-              ZAHLART_NAME, ZAHLART_KURZ, ZAHLART_LANG,
-              LIEFART_NAME, LIEFART_LANG,
-              BEREINIGT
-            ) VALUES (
-              %s, %s, %s, %s, %s, %s,
-              %s, %s, %s,
-              '€', 1.0, 0, 0,
-              %s, %s, %s, %s, %s,
-              0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0,
-              %s, %s,
-              %s, %s, %s, %s, %s,
-              %s, %s, %s, %s,
-              %s, %s, %s, %s,
-              -1,
-              %s, %s, %s, %s,
-              %s, %s, %s,
-              %s, %s, %s, %s,
-              %s, '', '', '', '',
-              %s, %s, %s,
-              %s, %s,
-              'N'
-            )
-            """,
-            (
-                ma_id_int, kopf.get('ADDR_ID', -1),
-                kopf.get('ASP_ID', -1) or -1,
-                kopf.get('LIEF_ADDR_ID', -1) or -1,
-                belegnum, heute,
-                kopf.get('LIEFART', -1) or -1,
-                kopf.get('ZAHLART', -1) or -1,
-                kopf.get('GEGENKONTO', -1) or -1,
-                kopf.get('MWST_0', 0) or 0,
-                kopf.get('MWST_1', 0) or 0,
-                kopf.get('MWST_2', 0) or 0,
-                kopf.get('MWST_3', 0) or 0,
-                kopf.get('AT_MWST', 0) or 0,
-                heute, ma_name_safe,
-                kopf.get('KUN_NUM', '') or '', kopf.get('KUN_ANREDE', '') or '',
-                kopf.get('KUN_NAME1', '') or '', kopf.get('KUN_NAME2', '') or '',
-                kopf.get('KUN_NAME3', '') or '',
-                kopf.get('KUN_ABTEILUNG', '') or '',
-                kopf.get('KUN_STRASSE', '') or '',
-                kopf.get('KUN_HAUSNR', '') or '',
-                kopf.get('KUN_ADRESSZUSATZ', '') or '',
-                kopf.get('KUN_LAND', 'DE') or 'DE',
-                kopf.get('KUN_PLZ', '') or '',
-                kopf.get('KUN_ORT', '') or '',
-                kopf.get('KUN_UST_NUM', '') or '',
-                kopf.get('LIEF_ANREDE', '') or '',
-                kopf.get('LIEF_NAME1', '') or '',
-                kopf.get('LIEF_NAME2', '') or '',
-                kopf.get('LIEF_NAME3', '') or '',
-                kopf.get('LIEF_ABTEILUNG', '') or '',
-                kopf.get('LIEF_STRASSE', '') or '',
-                kopf.get('LIEF_HAUSNR', '') or '',
-                kopf.get('LIEF_ADRESSZUSATZ', '') or '',
-                kopf.get('LIEF_LAND', '') or '',
-                kopf.get('LIEF_PLZ', '') or '',
-                kopf.get('LIEF_ORT', '') or '',
-                kopf.get('FIRMA_ID', 8) or 8,
-                kopf.get('ZAHLART_NAME', '') or '',
-                kopf.get('ZAHLART_KURZ', '') or '',
-                kopf.get('ZAHLART_LANG', '') or '',
-                kopf.get('LIEFART_NAME', '') or '',
-                kopf.get('LIEFART_LANG', '') or '',
-            ),
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EKEINGANG'"
+        )
+        ekeingang_cols = {r['COLUMN_NAME'] for r in cur.fetchall()}
+
+        # Wunsch-Werte (nur die in ekeingang_cols vorhandenen werden geschrieben)
+        wunsch: dict[str, Any] = {
+            'MA_ID':            ma_id_int,
+            'ADDR_ID':          kopf.get('ADDR_ID', -1) or -1,
+            'BELEGNUM':         belegnum,
+            'BELEGDATUM':       heute,
+            'LIEFART':          kopf.get('LIEFART', -1) or -1,
+            'ZAHLART':          kopf.get('ZAHLART', -1) or -1,
+            'GEGENKONTO':       kopf.get('GEGENKONTO', -1) or -1,
+            'WAEHRUNG':         '€',
+            'KURS':             1.0,
+            'STADIUM':          0,
+            'GEWICHT':          0,
+            'MWST_0':           kopf.get('MWST_0', 0) or 0,
+            'MWST_1':           kopf.get('MWST_1', 0) or 0,
+            'MWST_2':           kopf.get('MWST_2', 0) or 0,
+            'MWST_3':           kopf.get('MWST_3', 0) or 0,
+            'AT_MWST':          kopf.get('AT_MWST', 0) or 0,
+            'NSUMME':           0, 'NSUMME_0': 0, 'NSUMME_1': 0,
+            'NSUMME_2':         0, 'NSUMME_3': 0,
+            'MSUMME':           0, 'MSUMME_0': 0, 'MSUMME_1': 0,
+            'MSUMME_2':         0, 'MSUMME_3': 0,
+            'BSUMME':           0, 'BSUMME_0': 0, 'BSUMME_1': 0,
+            'BSUMME_2':         0, 'BSUMME_3': 0,
+            'ERSTELLT':         heute,
+            'ERST_NAME':        ma_name_safe,
+            'KUN_NUM':          kopf.get('KUN_NUM', '') or '',
+            'KUN_ANREDE':       kopf.get('KUN_ANREDE', '') or '',
+            'KUN_NAME1':        kopf.get('KUN_NAME1', '') or '',
+            'KUN_NAME2':        kopf.get('KUN_NAME2', '') or '',
+            'KUN_NAME3':        kopf.get('KUN_NAME3', '') or '',
+            'KUN_ABTEILUNG':    kopf.get('KUN_ABTEILUNG', '') or '',
+            'KUN_STRASSE':      kopf.get('KUN_STRASSE', '') or '',
+            'KUN_HAUSNR':       kopf.get('KUN_HAUSNR', '') or '',
+            'KUN_ADRESSZUSATZ': kopf.get('KUN_ADRESSZUSATZ', '') or '',
+            'KUN_LAND':         kopf.get('KUN_LAND', 'DE') or 'DE',
+            'KUN_PLZ':          kopf.get('KUN_PLZ', '') or '',
+            'KUN_ORT':          kopf.get('KUN_ORT', '') or '',
+            'KUN_UST_NUM':      kopf.get('KUN_UST_NUM', '') or '',
+            'LIEF_ANREDE':      kopf.get('LIEF_ANREDE', '') or '',
+            'LIEF_NAME1':       kopf.get('LIEF_NAME1', '') or '',
+            'LIEF_NAME2':       kopf.get('LIEF_NAME2', '') or '',
+            'LIEF_NAME3':       kopf.get('LIEF_NAME3', '') or '',
+            'LIEF_ABTEILUNG':   kopf.get('LIEF_ABTEILUNG', '') or '',
+            'LIEF_STRASSE':     kopf.get('LIEF_STRASSE', '') or '',
+            'LIEF_HAUSNR':      kopf.get('LIEF_HAUSNR', '') or '',
+            'LIEF_ADRESSZUSATZ': kopf.get('LIEF_ADRESSZUSATZ', '') or '',
+            'LIEF_LAND':        kopf.get('LIEF_LAND', '') or '',
+            'LIEF_PLZ':         kopf.get('LIEF_PLZ', '') or '',
+            'LIEF_ORT':         kopf.get('LIEF_ORT', '') or '',
+            'FIRMA_ID':         kopf.get('FIRMA_ID', 8) or 8,
+            'INFO':             '',
+            'KOPFTEXT':         '',
+            'FUSSTEXT':         '',
+            'PROJEKT':          '',
+            'ZAHLART_NAME':     kopf.get('ZAHLART_NAME', '') or '',
+            'ZAHLART_KURZ':     kopf.get('ZAHLART_KURZ', '') or '',
+            'ZAHLART_LANG':     kopf.get('ZAHLART_LANG', '') or '',
+            'LIEFART_NAME':     kopf.get('LIEFART_NAME', '') or '',
+            'LIEFART_LANG':     kopf.get('LIEFART_LANG', '') or '',
+            'BEREINIGT':        'N',
+        }
+        # Filter auf existierende Spalten — Reihenfolge ist deterministisch
+        cols = [c for c in wunsch if c in ekeingang_cols]
+        vals = [wunsch[c] for c in cols]
+        platzhalter = ', '.join(['%s'] * len(cols))
+        cur.execute(
+            f"INSERT INTO EKEINGANG ({', '.join(cols)}) VALUES ({platzhalter})",
+            vals,
         )
         ekeingang_id = cur.lastrowid
 
-        # 4) EKEINGANG_POS pro Bestellpos kopieren — Felder so weit wie
+        # EKEINGANG_POS-Spalten ebenfalls dynamisch via INFORMATION_SCHEMA
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EKEINGANG_POS'"
+        )
+        ekepos_cols = {r['COLUMN_NAME'] for r in cur.fetchall()}
+
+        # 4) EKEINGANG_POS pro Bestellpos kopieren — Felder soweit wie
         # möglich aus EKBESTELL_POS übernehmen, MENGE auf 0, MENGE_SOLL
         # = Bestellmenge.
         for idx, p in enumerate(pos_liste, start=1):
+            wunsch_pos: dict[str, Any] = {
+                'EKEINGANG_ID':       ekeingang_id,
+                'EKBESTELL_POS_ID':   p['REC_ID'],
+                'ADDR_ID':            int(kopf.get('ADDR_ID') or -1),
+                'POSITION':           p.get('POSITION', idx) or idx,
+                'VIEW_POS':           str(p.get('POSITION', idx) or idx),
+                'ARTIKELTYP':         p.get('ARTIKELTYP', 'N') or 'N',
+                'ARTIKEL_ID':         p.get('ARTIKEL_ID'),
+                'ARTNUM':             (p.get('ARTNUM') or '')[:100],
+                'BARCODE':            (p.get('BARCODE') or '')[:20],
+                'MATCHCODE':          (p.get('MATCHCODE') or '')[:255],
+                'WARENGRUPPE':        p.get('WARENGRUPPE'),
+                'WARENGRUPPENNAME':   (p.get('WARENGRUPPENNAME') or '')[:250],
+                'BEZEICHNUNG':        (p.get('BEZEICHNUNG') or ''),
+                'BEZEICHNUNG_LAND':   '',
+                'KURZBEZEICHNUNG':    (p.get('KURZBEZEICHNUNG') or '')[:150],
+                'KURZBEZEICHNUNG_LAND': '',
+                'ME_EINHEIT':         (p.get('ME_EINHEIT') or '')[:50],
+                'ME_CODE':            (p.get('ME_CODE') or '')[:5],
+                'PR_EINHEIT':         p.get('PR_EINHEIT', 1) or 1,
+                'VPE':                p.get('VPE', 1) or 1,
+                'GEWICHT':            p.get('GEWICHT', 0) or 0,
+                'LAENGE':             p.get('LAENGE', '') or '',
+                'BREITE':             p.get('BREITE', '') or '',
+                'HOEHE':              p.get('HOEHE', '') or '',
+                'GROESSE':            p.get('GROESSE', '') or '',
+                'DIMENSION':          p.get('DIMENSION', '') or '',
+                'STEUER_CODE':        p.get('STEUER_CODE', 0) or 0,
+                'GEGENKTO':           p.get('GEGENKTO', '') or '',
+                'BRUTTO_FLAG':        p.get('BRUTTO_FLAG', 'N') or 'N',
+                'MENGE_SOLL':         p.get('MENGE', 0) or 0,
+                'MENGE':              0,
+                'EPREIS':             p.get('EPREIS', 0) or 0,
+                'GPREIS':             0,
+                'ALTTEIL_PROZ':       0,
+                'ALTTEIL_FLAG':       'N',
+                'GEBUCHT_FLAG':       'N',
+                'BERECHNET':          'N',
+                'SN_FLAG':            'N',
+                'SET_ID':             p.get('SET_ID', 0) or 0,
+                'TOP_POS_ID':         p.get('TOP_POS_ID', -1) or -1,
+                'LAGER_ID':           -2,
+                'FREITEXT':           '',
+                'FREITEXT_LAND':      '',
+                'FARBE':              '',
+                'MATERIAL':           '',
+                'ERST_NAME':          ma_name_safe,
+                'STADIUM':            2,
+            }
+            cols = [c for c in wunsch_pos if c in ekepos_cols]
+            vals = [wunsch_pos[c] for c in cols]
+            # ERSTELLT mit NOW() — wir hängen das ans SQL als literal an
+            erstellt_sql = ''
+            if 'ERSTELLT' in ekepos_cols:
+                cols.append('ERSTELLT')
+                vals.append(None)  # Platzhalter, wir bauen das anders
+            # Bequemer: ERSTELLT separat behandeln über NOW()
+            if 'ERSTELLT' in cols:
+                cols.remove('ERSTELLT')
+                vals.pop()
+            platzhalter = ', '.join(['%s'] * len(cols))
+            extra_cols = ''
+            extra_vals = ''
+            if 'ERSTELLT' in ekepos_cols:
+                extra_cols = ', ERSTELLT'
+                extra_vals = ', NOW()'
             cur.execute(
-                """
-                INSERT INTO EKEINGANG_POS (
-                  EKEINGANG_ID, EKBESTELL_POS_ID, ADDR_ID,
-                  POSITION, VIEW_POS,
-                  ARTIKELTYP, ARTIKEL_ID, ARTNUM, BARCODE, MATCHCODE,
-                  WARENGRUPPE, WARENGRUPPENNAME,
-                  BEZEICHNUNG, BEZEICHNUNG_LAND,
-                  KURZBEZEICHNUNG, KURZBEZEICHNUNG_LAND,
-                  ME_EINHEIT, ME_CODE, PR_EINHEIT, VPE,
-                  GEWICHT, LAENGE, BREITE, HOEHE, GROESSE, DIMENSION,
-                  STEUER_CODE, GEGENKTO, BRUTTO_FLAG,
-                  MENGE_SOLL, MENGE, EPREIS, GPREIS,
-                  ALTTEIL_PROZ, ALTTEIL_FLAG,
-                  GEBUCHT_FLAG, BERECHNET, SN_FLAG,
-                  SET_ID, TOP_POS_ID, LAGER_ID,
-                  FREITEXT, FREITEXT_LAND, FARBE, MATERIAL,
-                  ERSTELLT, ERST_NAME, STADIUM
-                ) VALUES (
-                  %s, %s, %s,
-                  %s, %s,
-                  %s, %s, %s, %s, %s,
-                  %s, %s,
-                  %s, '',
-                  %s, '',
-                  %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, %s,
-                  %s, %s, %s,
-                  %s, 0, %s, 0,
-                  0.00, 'N',
-                  'N', 'N', 'N',
-                  %s, %s, -2,
-                  '', '', '', '',
-                  NOW(), %s, 2
-                )
-                """,
-                (
-                    ekeingang_id, p['REC_ID'], int(kopf.get('ADDR_ID') or -1),
-                    p.get('POSITION', idx) or idx, str(p.get('POSITION', idx) or idx),
-                    p.get('ARTIKELTYP', 'N') or 'N',
-                    p.get('ARTIKEL_ID'), (p.get('ARTNUM') or '')[:100],
-                    (p.get('BARCODE') or '')[:20], (p.get('MATCHCODE') or '')[:255],
-                    p.get('WARENGRUPPE'),
-                    (p.get('WARENGRUPPENNAME') or '')[:250],
-                    (p.get('BEZEICHNUNG') or ''),
-                    (p.get('KURZBEZEICHNUNG') or '')[:150],
-                    (p.get('ME_EINHEIT') or '')[:50],
-                    (p.get('ME_CODE') or '')[:5],
-                    p.get('PR_EINHEIT', 1) or 1, p.get('VPE', 1) or 1,
-                    p.get('GEWICHT', 0) or 0,
-                    p.get('LAENGE', '') or '', p.get('BREITE', '') or '',
-                    p.get('HOEHE', '') or '', p.get('GROESSE', '') or '',
-                    p.get('DIMENSION', '') or '',
-                    p.get('STEUER_CODE', 0) or 0,
-                    p.get('GEGENKTO', '') or '',
-                    p.get('BRUTTO_FLAG', 'N') or 'N',
-                    p.get('MENGE', 0) or 0,        # MENGE_SOLL = Bestellmenge
-                    p.get('EPREIS', 0) or 0,        # EPREIS = Liefer-EK pro Stueck
-                    p.get('SET_ID', 0) or 0,
-                    p.get('TOP_POS_ID', -1) or -1,
-                    ma_name_safe,
-                ),
+                f"INSERT INTO EKEINGANG_POS ({', '.join(cols)}{extra_cols}) "
+                f"VALUES ({platzhalter}{extra_vals})",
+                vals,
             )
 
     return {
