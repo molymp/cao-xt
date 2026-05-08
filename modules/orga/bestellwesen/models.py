@@ -13,15 +13,19 @@ from common.db import get_db
 
 
 # CAO-Mimik: STADIUM-Codes aus EKBESTELL/EKBESTELL_POS.
-# 1 = storniert, 2 = offen, 3 = teilgeliefert, 4 = vollstaendig geliefert.
-# Reverse-engineered aus Beobachtung — wenn neue Codes auftauchen,
-# einfach in dieses Mapping ergaenzen.
+# Reverse-engineered aus Beobachtung der Live-Daten in cao_XT_DEV.
+#   0   = unbekannt (von uns vor 2026-05-08 falsch geschrieben)
+#   2   = offen
+#   3   = teilgeliefert
+#   9   = (Vermutung "geliefert" — vom User noch zu verifizieren)
+#   127 = storniert (vom User bestaetigt 2026-05-08 — TINYINT max,
+#         CAO nutzt 127 statt z.B. 1)
 STADIUM_LABEL = {
-    0: 'unbekannt',
-    1: 'storniert',
-    2: 'offen',
-    3: 'teilgeliefert',
-    4: 'geliefert',
+    0:   'unbekannt',
+    2:   'offen',
+    3:   'teilgeliefert',
+    9:   'geliefert',
+    127: 'storniert',
 }
 
 
