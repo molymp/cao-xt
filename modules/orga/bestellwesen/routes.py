@@ -169,5 +169,60 @@ def api_bestellung_storno(rec_id: int) -> Any:
     return jsonify({'ok': True, **ergebnis})
 
 
+@bp.post('/<int:rec_id>/api/metadata')
+def api_kopf_metadata(rec_id: int) -> Any:
+    """Setzt Header-Metadaten (LIEF_AB, TERMIN). INFO bewusst ausgeklammert
+    weil es als RTF gespeichert wird — Plain-Text aus dem Frontend würde
+    den RTF-Header zerstören.
+    """
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    lief_ab = body.get('lief_ab', None)
+    if lief_ab is not None:
+        lief_ab = str(lief_ab).strip()
+    termin_raw = body.get('termin', None)
+    termin = _form_to_date(termin_raw) if termin_raw else None
+    if termin_raw == '':
+        termin = None  # leer = TERMIN auf NULL setzen
+    try:
+        m.kopf_metadata_setzen(rec_id, lief_ab=lief_ab, termin=termin)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True})
+
+
+@bp.post('/<int:rec_id>/api/positionen/<int:pos_id>/lieferpreis')
+def api_pos_lieferpreis(rec_id: int, pos_id: int) -> Any:
+    """Setzt LIEFPREIS einer Position (+ GLIEFPREIS = LIEFPREIS × MENGE)."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    raw = body.get('lieferpreis')
+    if raw is None or str(raw).strip() == '':
+        return jsonify({'ok': False, 'fehler': 'lieferpreis fehlt'}), 400
+    try:
+        lpreis = float(str(raw).replace(',', '.'))
+    except ValueError:
+        return jsonify({'ok': False, 'fehler': 'lieferpreis nicht numerisch'}), 400
+    if lpreis < 0:
+        return jsonify({'ok': False, 'fehler': 'lieferpreis muss >= 0 sein'}), 400
+    try:
+        result = m.position_lieferpreis_setzen(pos_id, lpreis)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/<int:rec_id>/api/rest-nicht-lieferbar')
+def api_rest_nicht_lieferbar(rec_id: int) -> Any:
+    """Setzt alle Positionen mit STADIUM in (2,3) auf 8 — schließt damit
+    die Bestellung mit „Rest nicht lieferbar" ab."""
+    _login_check()
+    try:
+        ergebnis = m.bestellung_rest_nicht_lieferbar(rec_id)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **ergebnis})
+
+
 def create_blueprint():
     return bp
