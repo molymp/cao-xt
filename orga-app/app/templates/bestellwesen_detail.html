@@ -1,6 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Bestellung {{ kopf.BELEGNUM }}{% endblock %}
 
+{% set kopf_gesperrt = (kopf.STADIUM in (9, 127)) %}
+{# Pos bearbeitbar: nicht in 8/9/127 UND Bestellung nicht gesperrt #}
+{% set POS_LOCKED_STADIUM = (8, 9, 127) %}
+{% set EDITIERBARE_POS_CODES = [
+    (2, 'offen'),
+    (3, 'Teillieferung'),
+    (4, 'Ersetzt'),
+    (8, 'rest nicht lieferbar'),
+    (9, 'voll berechnet'),
+    (93, 'Teillieferung WE'),
+    (95, 'voll geliefert WE'),
+    (127, 'storniert'),
+] %}
+
 {% block extra_style %}
 <style>
 .bd-kopf {
@@ -114,6 +128,73 @@
   letter-spacing: 0.05em;
 }
 
+/* Edit-Inputs (Liefertermin, Status) */
+.bd-input, .bd-select {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.88rem;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  padding: 5px 8px;
+  background: white;
+  transition: border-color 0.15s, background 0.15s;
+}
+.bd-input:focus, .bd-select:focus {
+  outline: none;
+  border-color: var(--gruen-hell, #4a9428);
+  background: var(--bg-hell, #ece3cc);
+}
+.bd-input-klein { width: 130px; }
+.bd-input-ok    { border-color: var(--gruen, #2e7a2e); background: rgba(46,122,46,0.10); }
+.bd-input-err   { border-color: var(--rot, #b83030); background: rgba(184,48,48,0.10); }
+
+.bd-select.bd-stadium { font-weight: 700; }
+
+.bd-rdo {
+  font-size: 0.88rem;
+  color: var(--text-dim, #5a7a3a);
+}
+
+/* Aktions-Zeile (Liefertermin-für-alle) im Bestelldaten-Card */
+.bd-aktion-zeile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--creme-dunkel);
+  flex-wrap: wrap;
+}
+.bd-aktion-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-mitte, #2e4a1a);
+}
+.bd-feedback {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-left: 8px;
+}
+.bd-feedback-ok  { color: var(--gruen, #2e7a2e); }
+.bd-feedback-err { color: var(--rot, #b83030); }
+
+/* Storno-Card */
+.bd-storno-card { border-left: 4px solid var(--rot, #b83030); }
+.bd-storno-card h2 { color: var(--rot, #b83030); }
+.btn-danger {
+  background: var(--rot, #b83030);
+  color: white;
+  border: none;
+  padding: 12px 22px;
+  border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-danger:hover { background: #8a2020; }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .stadium-pille {
   display: inline-block;
   padding: 1px 9px;
@@ -216,6 +297,15 @@
             <span class="wert">{{ kopf.LIEF_AB or '–' }}</span>
         </div>
     </div>
+    {% if not kopf_gesperrt %}
+    <div class="bd-aktion-zeile">
+        <label class="bd-aktion-label">Liefertermin für alle bearbeitbaren Positionen setzen:</label>
+        <input type="date" id="bd-kopf-liefertermin" class="bd-input">
+        <button type="button" class="btn btn-primary" id="bd-kopf-liefertermin-btn"
+                onclick="bdKopfLiefertermin()">Übernehmen</button>
+        <span class="bd-feedback" id="bd-kopf-feedback"></span>
+    </div>
+    {% endif %}
 </div>
 
 {% set info_txt   = (kopf.INFO     | rtf) if kopf.INFO     else '' %}
@@ -247,7 +337,9 @@
 
 <div class="bd-card">
     <h2>Positionen ({{ positionen|length }})</h2>
-    <p class="bd-hinweis-rdo">Read-only — Bearbeiten kommt in Phase 2.</p>
+    {% if kopf_gesperrt %}
+    <p class="bd-hinweis-rdo">Bestellung ist {{ kopf.stadium_label }} — Bearbeiten gesperrt.</p>
+    {% endif %}
     {% if positionen %}
     <div style="overflow-x:auto;">
     {# Steuersatz-Lookup: STEUER_CODE 0..3 → kopf.MWST_0..MWST_3 (Prozent) #}
@@ -275,6 +367,7 @@
                 <th class="zahl-rechts">EK €</th>
                 <th class="zahl-rechts">MwSt %</th>
                 <th class="zahl-rechts">Gesamt €</th>
+                <th>Liefertermin</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -282,7 +375,8 @@
         {% for p in positionen %}
         {% set pos_gewicht = ((p.GEWICHT or 0) * (p.MENGE or 0)) %}
         {% set pos_mwst    = mwst_map.get(p.STEUER_CODE or 0) %}
-        <tr>
+        {% set pos_locked  = kopf_gesperrt or (p.STADIUM in POS_LOCKED_STADIUM) %}
+        <tr id="pos-zeile-{{ p.REC_ID }}">
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
             <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
@@ -292,7 +386,29 @@
             <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
             <td class="zahl-rechts">{{ pos_mwst | eur(1) if pos_mwst is not none else '–' }}</td>
             <td class="zahl-rechts">{{ (p.GPREIS or 0) | eur }}</td>
-            <td><span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span></td>
+            <td>
+                {% if pos_locked %}
+                    <span class="bd-rdo">{{ p.liefertermin.strftime('%d.%m.%Y') if p.liefertermin else '–' }}</span>
+                {% else %}
+                    <input type="date" class="bd-input bd-input-klein"
+                           value="{{ p.liefertermin.isoformat() if p.liefertermin else '' }}"
+                           data-pos-id="{{ p.REC_ID }}"
+                           onchange="bdPosLiefertermin(this)">
+                {% endif %}
+            </td>
+            <td>
+                {% if pos_locked %}
+                    <span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span>
+                {% else %}
+                    <select class="bd-select bd-stadium stadium-{{ p.STADIUM or 0 }}"
+                            data-pos-id="{{ p.REC_ID }}"
+                            onchange="bdPosStatus(this)">
+                        {% for code, label in EDITIERBARE_POS_CODES %}
+                        <option value="{{ code }}" {% if p.STADIUM == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
         </tbody>
@@ -303,6 +419,7 @@
                 <td></td>
                 <td></td>
                 <td class="zahl-rechts">{{ (kopf.NSUMME or 0) | eur }}</td>
+                <td></td>
                 <td></td>
             </tr>
             {# Pro tatsächlich benutztem MwSt-Satz eine eigene Zeile #}
@@ -315,12 +432,14 @@
                     <td class="zahl-rechts">{{ msatz | eur(1) }}</td>
                     <td class="zahl-rechts">{{ msum | eur }}</td>
                     <td></td>
+                    <td></td>
                 </tr>
                 {% endif %}
             {% endfor %}
             <tr class="bd-summe-zeile bd-summe-brutto">
                 <td colspan="8" class="zahl-rechts">Brutto</td>
                 <td class="zahl-rechts">{{ (kopf.BSUMME or 0) | eur }}</td>
+                <td></td>
                 <td></td>
             </tr>
         </tfoot>
@@ -330,4 +449,103 @@
     <p class="bd-hinweis-rdo">Keine Positionen vorhanden.</p>
     {% endif %}
 </div>
+
+{% if not kopf_gesperrt %}
+<div class="bd-card bd-storno-card">
+    <h2>Bestellung stornieren</h2>
+    <p class="bd-hinweis-rdo">
+        Setzt EKBESTELL.STADIUM und alle Positionen auf 127 (= storniert).
+        Diese Aktion kann nur über CAO selbst rückgängig gemacht werden.
+    </p>
+    <button type="button" class="btn btn-danger" id="bd-storno-btn"
+            onclick="bdStorno()">⛔ Komplette Bestellung stornieren</button>
+</div>
+{% endif %}
+
+<script>
+const BD_REC_ID = {{ kopf.REC_ID }};
+const BD_DETAIL_URL = '{{ url_for("orga_bestellwesen.detail", rec_id=kopf.REC_ID) }}';
+
+async function _post(url, body) {
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {}),
+        });
+        return await res.json();
+    } catch (e) {
+        return { ok: false, fehler: 'Verbindungsfehler' };
+    }
+}
+
+function _flash(el, ok, msg) {
+    el.textContent = msg;
+    el.className = 'bd-feedback ' + (ok ? 'bd-feedback-ok' : 'bd-feedback-err');
+    setTimeout(() => { el.textContent = ''; el.className = 'bd-feedback'; }, 4000);
+}
+
+async function bdKopfLiefertermin() {
+    const inp = document.getElementById('bd-kopf-liefertermin');
+    const fb  = document.getElementById('bd-kopf-feedback');
+    const datum = inp.value;
+    if (!datum) { _flash(fb, false, 'Bitte ein Datum wählen.'); return; }
+    const res = await _post(`${BD_DETAIL_URL}/api/liefertermin`, { datum });
+    if (!res.ok) { _flash(fb, false, '⚠ ' + (res.fehler || 'Fehler')); return; }
+    _flash(fb, true, `✓ ${res.positionen_geaendert} Position(en) aktualisiert. Seite wird neu geladen …`);
+    setTimeout(() => location.reload(), 800);
+}
+
+async function bdPosLiefertermin(input) {
+    const posId = input.dataset.posId;
+    const datum = input.value;
+    const res = await _post(
+        `${BD_DETAIL_URL}/api/positionen/${posId}/liefertermin`,
+        { datum }
+    );
+    input.classList.toggle('bd-input-ok', res.ok);
+    input.classList.toggle('bd-input-err', !res.ok);
+    setTimeout(() => {
+        input.classList.remove('bd-input-ok', 'bd-input-err');
+    }, 1500);
+    if (!res.ok) alert('Fehler: ' + (res.fehler || 'unbekannt'));
+}
+
+async function bdPosStatus(select) {
+    const posId = select.dataset.posId;
+    const stadium = select.value;
+    const res = await _post(
+        `${BD_DETAIL_URL}/api/positionen/${posId}/status`,
+        { stadium }
+    );
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    // Wenn der neue Status die Position sperrt (8/9/127), reload damit
+    // Inputs zu read-only-Spans werden.
+    if ([8, 9, 127].includes(parseInt(stadium))) {
+        location.reload();
+    } else {
+        // Style-Klasse anpassen (Farbe der Pille folgt der Klasse)
+        select.className = 'bd-select bd-stadium stadium-' + stadium;
+    }
+}
+
+async function bdStorno() {
+    if (!confirm('Bestellung wirklich komplett stornieren? Diese Aktion ist über CAO-XT nicht reversibel.')) {
+        return;
+    }
+    const btn = document.getElementById('bd-storno-btn');
+    btn.disabled = true;
+    const res = await _post(`${BD_DETAIL_URL}/api/storno`, {});
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        btn.disabled = false;
+        return;
+    }
+    alert(`✓ Bestellung storniert (${res.positionen_geaendert} Position(en)).`);
+    location.reload();
+}
+</script>
 {% endblock %}

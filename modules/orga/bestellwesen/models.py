@@ -1,8 +1,13 @@
 """
 Datenzugriff für Orga/Bestellwesen.
 
-Quelle: CAO-Tabellen ``EKBESTELL`` + ``EKBESTELL_POS``, JOIN ``ADRESSEN``
-für die Lieferanten-Anzeige. Read-only in Phase 1.
+Quelle: CAO-Tabellen ``EKBESTELL`` + ``EKBESTELL_POS`` + ``EKBESTELL_INFO``,
+JOIN ``ADRESSEN`` für die Lieferanten-Anzeige.
+
+Phase 1: read-only (Übersicht + Detail).
+Phase 2: editierbar — Liefertermin (kopf + pro Position), Pos-Status,
+Bestellung stornieren. Schreibvorgänge folgen dem in der CAO-Binary
+beobachteten SQL-Muster, kein _LOG-Snapshot (CAO loggt EKBESTELL nicht).
 """
 from __future__ import annotations
 
@@ -131,6 +136,9 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
     """Detail einer Bestellung: Header + Positionen.
 
     Liefert ``None``, falls die ``REC_ID`` nicht existiert.
+
+    Pro Position kommt zusätzlich der Liefertermin aus ``EKBESTELL_INFO``
+    mit (CAO speichert den Pos-Liefertermin dort, nicht in EKBESTELL_POS).
     """
     with get_db() as cur:
         cur.execute(
@@ -155,8 +163,12 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
 
         cur.execute(
             """
-            SELECT p.*
+            SELECT p.*,
+                   ei.LIEFERTERMIN AS liefertermin
             FROM EKBESTELL_POS p
+            LEFT JOIN EKBESTELL_INFO ei
+                   ON ei.EKBESTPOS_ID = p.REC_ID
+                  AND ei.ARTIKEL_ID   = p.ARTIKEL_ID
             WHERE p.EKBESTELL_ID = %s
             ORDER BY p.POSITION, p.REC_ID
             """,
@@ -166,6 +178,186 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
         for p in positionen:
             p['stadium_label'] = _stadium_label_pos(p.get('STADIUM'))
     return {'kopf': kopf, 'positionen': positionen}
+
+
+# ── Stufe 2: Schreibvorgänge ────────────────────────────────────────────────
+#
+# CAO loggt EKBESTELL-Änderungen nicht (kein EKBESTELL_LOG in der Binary
+# auffindbar), daher schreiben wir direkt — kein HASHSUM-Snapshot nötig.
+# Wir folgen den exakten SQL-Mustern aus cao_faktura.exe.
+
+# CAO ignoriert beim Bulk-Liefertermin-Update Positionen die schon
+# „erledigt" sind (rest nicht lieferbar / voll berechnet / storniert).
+# Aus der Binary @0x0255b6e0:
+#   AND EP.STADIUM NOT IN(8,9,127) AND EB.STADIUM NOT IN(9,127)
+_POS_BEARBEITBAR_STADIUM_NOT_IN = (8, 9, 127)
+_KOPF_BEARBEITBAR_STADIUM_NOT_IN = (9, 127)
+
+# Status-Codes, die per UI gesetzt werden duerfen.
+ERLAUBTE_POS_STADIUM_CODES = (2, 3, 4, 8, 9, 93, 95, 127)
+
+
+def kopf_liefertermin_setzen(rec_id: int, datum: date | None) -> int:
+    """Setzt den Liefertermin auf alle bearbeitbaren Positionen einer Bestellung.
+
+    Schreibt in ``EKBESTELL_INFO``. Falls für eine Position noch kein
+    EKBESTELL_INFO-Eintrag existiert, wird einer angelegt.
+
+    Args:
+        rec_id: REC_ID der Bestellung (EKBESTELL).
+        datum: Neuer Liefertermin oder ``None`` zum Löschen.
+
+    Returns:
+        Anzahl der aktualisierten Positionen.
+    """
+    rec_id = int(rec_id)
+    pos_skip = ','.join(str(c) for c in _POS_BEARBEITBAR_STADIUM_NOT_IN)
+    kopf_skip = ','.join(str(c) for c in _KOPF_BEARBEITBAR_STADIUM_NOT_IN)
+    n = 0
+    with get_db() as cur:
+        # 1) Kopfstatus prüfen — abgeschlossene/stornierte Bestellungen
+        # nicht anfassen.
+        cur.execute(
+            "SELECT STADIUM FROM EKBESTELL WHERE REC_ID = %s",
+            (rec_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LookupError(f'Bestellung {rec_id} nicht gefunden')
+        if int(row['STADIUM']) in _KOPF_BEARBEITBAR_STADIUM_NOT_IN:
+            raise PermissionError(
+                f'Bestellung {rec_id} hat STADIUM={row["STADIUM"]} '
+                f'und ist gesperrt (abgeschlossen oder storniert).'
+            )
+        # 2) Existierende EKBESTELL_INFO-Eintraege updaten.
+        cur.execute(
+            f"""
+            UPDATE EKBESTELL_INFO ei
+            INNER JOIN EKBESTELL_POS p ON p.REC_ID = ei.EKBESTPOS_ID
+               SET ei.LIEFERTERMIN = %s
+             WHERE p.EKBESTELL_ID = %s
+               AND p.STADIUM NOT IN ({pos_skip})
+            """,
+            (datum, rec_id),
+        )
+        n += cur.rowcount
+        # 3) Fehlende EKBESTELL_INFO-Eintraege anlegen — fuer Positionen
+        # ohne bestehenden Eintrag.
+        cur.execute(
+            f"""
+            SELECT p.REC_ID AS pos_id, p.ARTIKEL_ID AS art_id
+              FROM EKBESTELL_POS p
+              LEFT JOIN EKBESTELL_INFO ei
+                     ON ei.EKBESTPOS_ID = p.REC_ID
+                    AND ei.ARTIKEL_ID   = p.ARTIKEL_ID
+             WHERE p.EKBESTELL_ID = %s
+               AND p.STADIUM NOT IN ({pos_skip})
+               AND ei.LIEFERTERMIN IS NULL
+            """,
+            (rec_id,),
+        )
+        fehlend = cur.fetchall()
+        for r in fehlend:
+            cur.execute(
+                "INSERT INTO EKBESTELL_INFO (ARTIKEL_ID, EKBESTPOS_ID, LIEFERTERMIN) "
+                "VALUES (%s, %s, %s)",
+                (r['art_id'], r['pos_id'], datum),
+            )
+            n += cur.rowcount
+    return n
+
+
+def position_liefertermin_setzen(pos_id: int, datum: date | None) -> None:
+    """Setzt den Liefertermin einer einzelnen Position (EKBESTELL_INFO).
+
+    Legt den Eintrag an, falls er noch nicht existiert.
+    """
+    pos_id = int(pos_id)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, ARTIKEL_ID, STADIUM, EKBESTELL_ID "
+            "FROM EKBESTELL_POS WHERE REC_ID = %s",
+            (pos_id,),
+        )
+        pos = cur.fetchone()
+        if not pos:
+            raise LookupError(f'Position {pos_id} nicht gefunden')
+        if int(pos['STADIUM']) in _POS_BEARBEITBAR_STADIUM_NOT_IN:
+            raise PermissionError(
+                f'Position {pos_id} (STADIUM={pos["STADIUM"]}) ist gesperrt'
+            )
+        cur.execute(
+            "SELECT LIEFERTERMIN FROM EKBESTELL_INFO "
+            "WHERE EKBESTPOS_ID = %s AND ARTIKEL_ID = %s",
+            (pos_id, pos['ARTIKEL_ID']),
+        )
+        if cur.fetchone():
+            cur.execute(
+                "UPDATE EKBESTELL_INFO SET LIEFERTERMIN = %s "
+                "WHERE EKBESTPOS_ID = %s AND ARTIKEL_ID = %s",
+                (datum, pos_id, pos['ARTIKEL_ID']),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO EKBESTELL_INFO (ARTIKEL_ID, EKBESTPOS_ID, LIEFERTERMIN) "
+                "VALUES (%s, %s, %s)",
+                (pos['ARTIKEL_ID'], pos_id, datum),
+            )
+
+
+def position_status_setzen(pos_id: int, stadium: int) -> None:
+    """Setzt das STADIUM einer einzelnen Position (EKBESTELL_POS)."""
+    pos_id = int(pos_id)
+    stadium = int(stadium)
+    if stadium not in ERLAUBTE_POS_STADIUM_CODES:
+        raise ValueError(f'STADIUM={stadium} ist nicht erlaubt')
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, STADIUM FROM EKBESTELL_POS WHERE REC_ID = %s",
+            (pos_id,),
+        )
+        pos = cur.fetchone()
+        if not pos:
+            raise LookupError(f'Position {pos_id} nicht gefunden')
+        if int(pos['STADIUM']) == 127 and stadium != 127:
+            raise PermissionError('Stornierte Position kann nicht reaktiviert werden')
+        cur.execute(
+            "UPDATE EKBESTELL_POS SET STADIUM = %s WHERE REC_ID = %s",
+            (stadium, pos_id),
+        )
+
+
+def bestellung_stornieren(rec_id: int) -> dict[str, int]:
+    """Storniert eine komplette Bestellung.
+
+    Setzt EKBESTELL.STADIUM=127 sowie alle EKBESTELL_POS.STADIUM=127.
+    Folgt der CAO-Mimik aus der Binary @0x0256dd30 / @0x0256ddb0.
+
+    Returns:
+        Dict mit `kopf_geaendert`, `positionen_geaendert`.
+    """
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, STADIUM, BELEGNUM FROM EKBESTELL WHERE REC_ID = %s",
+            (rec_id,),
+        )
+        b = cur.fetchone()
+        if not b:
+            raise LookupError(f'Bestellung {rec_id} nicht gefunden')
+        if int(b['STADIUM']) == 127:
+            return {'kopf_geaendert': 0, 'positionen_geaendert': 0}
+        cur.execute(
+            "UPDATE EKBESTELL_POS SET STADIUM = 127 WHERE EKBESTELL_ID = %s",
+            (rec_id,),
+        )
+        pos_n = cur.rowcount
+        cur.execute(
+            "UPDATE EKBESTELL SET STADIUM = 127 WHERE REC_ID = %s",
+            (rec_id,),
+        )
+        kopf_n = cur.rowcount
+    return {'kopf_geaendert': kopf_n, 'positionen_geaendert': pos_n}
 
 
 def stadium_codes_in_use() -> list[dict[str, Any]]:
