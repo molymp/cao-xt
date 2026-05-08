@@ -125,6 +125,29 @@
 }
 .wd-flag-y { background: rgba(46,122,46,0.18); color: #1a4010; }
 
+/* Offene Bestellungen — Drag-Source */
+.wd-offen-tabelle { font-size: 0.86rem; }
+.wd-offen-row { cursor: grab; }
+.wd-offen-row:active { cursor: grabbing; }
+.wd-offen-row.dragging { opacity: 0.4; }
+.wd-offen-row:hover td { background: rgba(46,122,46,0.06); }
+
+/* Drop-Highlight auf der Pos-Tabelle */
+.wd-pos-tabelle.drop-aktiv { outline: 2px dashed var(--gruen-hell, #4a9428); outline-offset: 4px; }
+
+.wd-plus-btn {
+  width: 32px; height: 32px;
+  background: var(--gruen-hell, #4a9428); color: white;
+  border: none; border-radius: 50%;
+  font-size: 1.1rem; font-weight: 700;
+  cursor: pointer; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.1s, transform 0.07s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wd-plus-btn:hover { background: var(--gruen, #2e7a2e); }
+.wd-plus-btn:active { transform: scale(0.92); }
+
 /* Info-Feld am Header (RTF -> Plain Text) */
 .wd-memo {
   margin-top: 14px; padding-top: 14px;
@@ -307,6 +330,70 @@
     {% endif %}
 </div>
 
+{% if not we_gesperrt and offene_best %}
+<div class="wd-card">
+    <h2>Offene Bestellungen ({{ offene_best|length }})</h2>
+    <p class="wd-rdo">
+        Position auf den Wareneingang ziehen oder per <strong>+</strong>-Button
+        anhängen. Mengen können danach in der Liste oben editiert werden.
+    </p>
+    <div style="overflow-x:auto;">
+    <table class="wd-pos-tabelle wd-offen-tabelle" id="wd-offen-tabelle">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Bestell-Nr.</th>
+                <th>Datum</th>
+                <th>Lief-AB-Nr.</th>
+                <th>Art-Nr.</th>
+                <th>Bezeichnung</th>
+                <th class="zahl-rechts">Bestellmenge</th>
+                <th class="zahl-rechts">berechnet in EK</th>
+                <th class="zahl-rechts">OP-Menge EK</th>
+                <th class="zahl-rechts">in WE gebucht</th>
+                <th class="zahl-rechts">OP-Menge WE</th>
+                <th class="zahl-rechts">Menge offen</th>
+                <th class="zahl-rechts">PE</th>
+                <th class="zahl-rechts">ArtikelID</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in offene_best %}
+        <tr id="wd-offen-{{ r.pos_id }}"
+            class="wd-offen-row"
+            draggable="true"
+            data-pos-id="{{ r.pos_id }}"
+            data-menge-offen="{{ '{:g}'.format(r.menge_offen) }}">
+            <td>
+                <button type="button" class="wd-plus-btn"
+                        title="In Wareneingang übernehmen"
+                        onclick="wdAnhaengen({{ r.pos_id }}, {{ '{:g}'.format(r.menge_offen) }})">＋</button>
+            </td>
+            <td>
+                <a href="{{ url_for('orga_bestellwesen.detail', rec_id=r.bestell_id) }}">
+                    {{ r.bestell_nr }}
+                </a>
+            </td>
+            <td>{{ r.datum.strftime('%d.%m.%Y') if r.datum else '–' }}</td>
+            <td>{{ r.lief_ab or '–' }}</td>
+            <td><code>{{ r.artnum or '–' }}</code></td>
+            <td>{{ r.bezeichnung or r.kurzbezeichnung or '–' }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(r.bestellmenge) }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(r.berechnet_ek or 0) }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(r.op_menge_ek) }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(r.we_gebucht or 0) }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(r.op_menge_we) }}</td>
+            <td class="zahl-rechts" style="font-weight:700;">{{ '{:g}'.format(r.menge_offen) }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(r.pe or 1) }}</td>
+            <td class="zahl-rechts"><code>{{ r.artikel_id }}</code></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+
 {% if not we_gesperrt %}
 <div class="wd-card">
     <h2>Aktionen</h2>
@@ -429,10 +516,66 @@ async function wdStorno() {
     location.reload();
 }
 
-// Scan-Feld bei Seitenladung fokussieren — Workflow ist „scan-zentriert"
+// ── Bestellpos in Wareneingang anhaengen (Drag-and-Drop / Plus) ──
+async function wdAnhaengen(bestellPosId, menge) {
+    const res = await _post(`${WD_DETAIL_URL}/api/positionen/anhaengen`, {
+        bestell_pos_id: bestellPosId,
+        menge: menge
+    });
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    location.reload();  // damit Pos-Tabelle + offene Liste aktualisiert sind
+}
+
+// Drag-and-Drop von "Offene Bestellungen" → Pos-Tabelle
 document.addEventListener('DOMContentLoaded', () => {
+    // Scan-Feld fokussieren
     const scan = document.getElementById('wd-scan');
     if (scan) scan.focus();
+
+    const offenTab = document.getElementById('wd-offen-tabelle');
+    const posTab   = document.querySelector('.wd-card .wd-pos-tabelle:not(.wd-offen-tabelle)');
+    if (!offenTab || !posTab) return;
+
+    // Source: jede Zeile mit draggable=true
+    offenTab.querySelectorAll('tr.wd-offen-row').forEach(tr => {
+        tr.addEventListener('dragstart', ev => {
+            tr.classList.add('dragging');
+            ev.dataTransfer.effectAllowed = 'copy';
+            ev.dataTransfer.setData('text/plain', JSON.stringify({
+                pos_id: tr.dataset.posId,
+                menge:  tr.dataset.mengeOffen
+            }));
+        });
+        tr.addEventListener('dragend', () => {
+            tr.classList.remove('dragging');
+        });
+    });
+
+    // Target: Pos-Tabelle
+    posTab.addEventListener('dragover', ev => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'copy';
+        posTab.classList.add('drop-aktiv');
+    });
+    posTab.addEventListener('dragleave', () => {
+        posTab.classList.remove('drop-aktiv');
+    });
+    posTab.addEventListener('drop', async ev => {
+        ev.preventDefault();
+        posTab.classList.remove('drop-aktiv');
+        try {
+            const data = JSON.parse(ev.dataTransfer.getData('text/plain'));
+            if (data && data.pos_id) {
+                await wdAnhaengen(parseInt(data.pos_id),
+                                  parseFloat(data.menge) || 0);
+            }
+        } catch (e) {
+            console.warn('Drop-Daten ungültig', e);
+        }
+    });
 });
 </script>
 {% endblock %}

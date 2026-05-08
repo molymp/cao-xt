@@ -265,10 +265,19 @@ def wareneingang_detail(rec_id: int):
     daten = we.wareneingang_detail(rec_id)
     if not daten:
         abort(404)
+    # Bei offenem Wareneingang: offene Bestellpositionen des Lieferanten
+    # anbieten (Drag-and-Drop / Plus-Button → in WE übernehmen).
+    offene_best: list = []
+    if daten['kopf'].get('STADIUM') == 0:
+        try:
+            offene_best = we.offene_bestell_positionen(rec_id)
+        except Exception:
+            offene_best = []
     return render_template(
         'wareneingang_detail.html',
         kopf=daten['kopf'],
         positionen=daten['positionen'],
+        offene_best=offene_best,
         stadium_label=we.STADIUM_LABEL_KOPF,
     )
 
@@ -318,6 +327,41 @@ def api_we_scan(rec_id: int) -> Any:
     try:
         result = we.scan_ean(rec_id, ean)
     except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.get('/wareneingang/<int:rec_id>/api/offene-bestellungen')
+def api_we_offene_bestellungen(rec_id: int) -> Any:
+    """Listet offene Bestellpositionen für den Lieferanten dieses Wareneingangs."""
+    _login_check()
+    try:
+        zeilen = we.offene_bestell_positionen(rec_id)
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
+    return jsonify({'ok': True, 'zeilen': zeilen})
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/anhaengen')
+def api_we_pos_anhaengen(rec_id: int) -> Any:
+    """Hängt eine Bestellposition als neue EKEINGANG_POS-Zeile an."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        bestell_pos_id = int(body.get('bestell_pos_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'bestell_pos_id fehlt/ungültig'}), 400
+    raw_menge = body.get('menge')
+    menge: float | None = None
+    if raw_menge is not None and str(raw_menge).strip() != '':
+        try:
+            menge = float(str(raw_menge).replace(',', '.'))
+        except ValueError:
+            return jsonify({'ok': False, 'fehler': 'menge ungültig'}), 400
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = we.pos_aus_bestellpos_anhaengen(rec_id, bestell_pos_id, menge, ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
 
