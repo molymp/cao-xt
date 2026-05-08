@@ -103,5 +103,71 @@ def api_heile_positions_stadium() -> Any:
     return jsonify(m.heile_alte_positions_stadium())
 
 
+# ── Stufe 2: Schreib-Endpunkte ──────────────────────────────────────────────
+
+
+def _request_datum() -> Any:
+    """Liest 'datum' aus dem JSON-Body, erlaubt leer/None zum Löschen."""
+    body = request.get_json(silent=True) or {}
+    raw = (body.get('datum') or '').strip()
+    if not raw:
+        return None
+    return _form_to_date(raw)
+
+
+@bp.post('/<int:rec_id>/api/liefertermin')
+def api_kopf_liefertermin(rec_id: int) -> Any:
+    """Setzt den Liefertermin auf alle bearbeitbaren Positionen einer Bestellung."""
+    _login_check()
+    datum = _request_datum()
+    try:
+        n = m.kopf_liefertermin_setzen(rec_id, datum)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, 'positionen_geaendert': n,
+                    'datum': datum.isoformat() if datum else None})
+
+
+@bp.post('/<int:rec_id>/api/positionen/<int:pos_id>/liefertermin')
+def api_pos_liefertermin(rec_id: int, pos_id: int) -> Any:
+    """Setzt den Liefertermin einer einzelnen Position (EKBESTELL_INFO)."""
+    _login_check()
+    datum = _request_datum()
+    try:
+        m.position_liefertermin_setzen(pos_id, datum)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True,
+                    'datum': datum.isoformat() if datum else None})
+
+
+@bp.post('/<int:rec_id>/api/positionen/<int:pos_id>/status')
+def api_pos_status(rec_id: int, pos_id: int) -> Any:
+    """Setzt den STADIUM-Code einer Position."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        stadium = int(body.get('stadium'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'stadium fehlt oder ungueltig'}), 400
+    try:
+        m.position_status_setzen(pos_id, stadium)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, 'stadium': stadium,
+                    'label': m._stadium_label_pos(stadium)})
+
+
+@bp.post('/<int:rec_id>/api/storno')
+def api_bestellung_storno(rec_id: int) -> Any:
+    """Storniert die komplette Bestellung (EKBESTELL + alle EKBESTELL_POS auf 127)."""
+    _login_check()
+    try:
+        ergebnis = m.bestellung_stornieren(rec_id)
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
+    return jsonify({'ok': True, **ergebnis})
+
+
 def create_blueprint():
     return bp
