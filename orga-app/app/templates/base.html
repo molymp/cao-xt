@@ -467,7 +467,8 @@ a { text-decoration: none; color: inherit; }
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
-            <a href="/coming-soon?modul=Bestellungen" class="sidebar-sub-item">
+            <a href="/orga/bestellwesen/"
+               class="sidebar-sub-item {% if request.path.startswith('/orga/bestellwesen') %}aktiv{% endif %}">
               <span class="sub-icon">📋</span> Bestellungen
             </a>
             <a href="/coming-soon?modul=Bestellvorschläge" class="sidebar-sub-item">
