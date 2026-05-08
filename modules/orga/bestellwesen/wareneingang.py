@@ -210,7 +210,6 @@ def wareneingang_anlegen(bestell_rec_id: int,
                   GEWICHT, LAENGE, BREITE, HOEHE, GROESSE, DIMENSION,
                   STEUER_CODE, GEGENKTO, BRUTTO_FLAG,
                   MENGE_SOLL, MENGE, EPREIS, GPREIS,
-                  LIEFPREIS, GLIEFPREIS,
                   ALTTEIL_PROZ, ALTTEIL_FLAG,
                   GEBUCHT_FLAG, BERECHNET, SN_FLAG,
                   SET_ID, TOP_POS_ID, LAGER_ID,
@@ -227,7 +226,6 @@ def wareneingang_anlegen(bestell_rec_id: int,
                   %s, %s, %s, %s, %s, %s,
                   %s, %s, %s,
                   %s, 0, %s, 0,
-                  %s, 0,
                   0.00, 'N',
                   'N', 'N', 'N',
                   %s, %s, -2,
@@ -255,9 +253,8 @@ def wareneingang_anlegen(bestell_rec_id: int,
                     p.get('STEUER_CODE', 0) or 0,
                     p.get('GEGENKTO', '') or '',
                     p.get('BRUTTO_FLAG', 'N') or 'N',
-                    p.get('MENGE', 0) or 0,        # MENGE_SOLL
-                    p.get('EPREIS', 0) or 0,
-                    p.get('LIEFPREIS', p.get('EPREIS', 0)) or 0,  # LIEFPREIS-Default = Bestell-EPREIS
+                    p.get('MENGE', 0) or 0,        # MENGE_SOLL = Bestellmenge
+                    p.get('EPREIS', 0) or 0,        # EPREIS = Liefer-EK pro Stueck
                     p.get('SET_ID', 0) or 0,
                     p.get('TOP_POS_ID', -1) or -1,
                     ma_name_safe,
@@ -391,8 +388,7 @@ def _ist_bearbeitbar(cur, rec_id: int) -> dict[str, Any]:
 
 
 def pos_menge_setzen(eingang_id: int, pos_id: int, menge: float) -> dict[str, Any]:
-    """Setzt EKEINGANG_POS.MENGE (Liefermenge). GLIEFPREIS wird gleich
-    aktualisiert."""
+    """Setzt EKEINGANG_POS.MENGE und aktualisiert GPREIS = EPREIS × MENGE."""
     eingang_id = int(eingang_id)
     pos_id = int(pos_id)
     if menge < 0:
@@ -400,7 +396,7 @@ def pos_menge_setzen(eingang_id: int, pos_id: int, menge: float) -> dict[str, An
     with get_db() as cur:
         _ist_bearbeitbar(cur, eingang_id)
         cur.execute(
-            "SELECT EPREIS, LIEFPREIS FROM EKEINGANG_POS "
+            "SELECT EPREIS FROM EKEINGANG_POS "
             "WHERE REC_ID = %s AND EKEINGANG_ID = %s",
             (pos_id, eingang_id),
         )
@@ -408,22 +404,20 @@ def pos_menge_setzen(eingang_id: int, pos_id: int, menge: float) -> dict[str, An
         if not p:
             raise LookupError(f'Position {pos_id} nicht gefunden')
         gpreis = round(float(p['EPREIS'] or 0) * float(menge), 2)
-        gliefpreis = round(float(p['LIEFPREIS'] or 0) * float(menge), 2)
         cur.execute(
-            "UPDATE EKEINGANG_POS SET MENGE = %s, GPREIS = %s, GLIEFPREIS = %s "
-            "WHERE REC_ID = %s",
-            (menge, gpreis, gliefpreis, pos_id),
+            "UPDATE EKEINGANG_POS SET MENGE = %s, GPREIS = %s WHERE REC_ID = %s",
+            (menge, gpreis, pos_id),
         )
-    return {'menge': float(menge), 'gpreis': gpreis, 'gliefpreis': gliefpreis}
+    return {'menge': float(menge), 'gpreis': gpreis}
 
 
-def pos_lieferpreis_setzen(eingang_id: int, pos_id: int,
-                           lieferpreis: float) -> dict[str, Any]:
-    """Setzt EKEINGANG_POS.LIEFPREIS und aktualisiert GLIEFPREIS."""
+def pos_epreis_setzen(eingang_id: int, pos_id: int,
+                      epreis: float) -> dict[str, Any]:
+    """Setzt EKEINGANG_POS.EPREIS (Liefer-EK pro Stueck) und GPREIS."""
     eingang_id = int(eingang_id)
     pos_id = int(pos_id)
-    if lieferpreis < 0:
-        raise ValueError('Lieferpreis muss >= 0 sein')
+    if epreis < 0:
+        raise ValueError('EK muss >= 0 sein')
     with get_db() as cur:
         _ist_bearbeitbar(cur, eingang_id)
         cur.execute(
@@ -434,13 +428,12 @@ def pos_lieferpreis_setzen(eingang_id: int, pos_id: int,
         p = cur.fetchone()
         if not p:
             raise LookupError(f'Position {pos_id} nicht gefunden')
-        gliefpreis = round(float(lieferpreis) * float(p['MENGE'] or 0), 2)
+        gpreis = round(float(epreis) * float(p['MENGE'] or 0), 2)
         cur.execute(
-            "UPDATE EKEINGANG_POS SET LIEFPREIS = %s, GLIEFPREIS = %s "
-            "WHERE REC_ID = %s",
-            (lieferpreis, gliefpreis, pos_id),
+            "UPDATE EKEINGANG_POS SET EPREIS = %s, GPREIS = %s WHERE REC_ID = %s",
+            (epreis, gpreis, pos_id),
         )
-    return {'lieferpreis': float(lieferpreis), 'gliefpreis': gliefpreis}
+    return {'epreis': float(epreis), 'gpreis': gpreis}
 
 
 # ── Barcode-Scan ──────────────────────────────────────────────────────
