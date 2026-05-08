@@ -82,12 +82,25 @@ def detail(rec_id: int):
 
 @bp.get('/api/stadium-codes')
 def api_stadium_codes() -> Any:
-    """Diagnose-Endpunkt: welche STADIUM-Codes kommen in EKBESTELL vor?
+    """Diagnose-Endpunkt: welche STADIUM-Codes kommen in EKBESTELL +
+    EKBESTELL_POS vor?
 
     Hilft, das Mapping in models.STADIUM_LABEL ggf. zu ergänzen.
     """
     _login_check()
     return jsonify(m.stadium_codes_in_use())
+
+
+@bp.post('/api/heile-positions-stadium')
+def api_heile_positions_stadium() -> Any:
+    """Einmal-Migration: alte EKBESTELL_POS.STADIUM=0 auf 2 setzen für
+    offene Bestellungen.
+
+    Ursache: vor dem 2026-05-08 wurden Positionen mit STADIUM=0 (->"??-[0]")
+    angelegt. Hiermit nachträglich auf 2 (offen) angehoben.
+    """
+    _login_check()
+    return jsonify(m.heile_alte_positions_stadium())
 
 
 def create_blueprint():

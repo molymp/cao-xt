@@ -134,16 +134,45 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
 
 
 def stadium_codes_in_use() -> list[dict[str, Any]]:
-    """Welche STADIUM-Codes kommen tatsächlich in EKBESTELL vor?
+    """Welche STADIUM-Codes kommen tatsächlich in EKBESTELL und EKBESTELL_POS vor?
 
     Hilft, das STADIUM_LABEL-Mapping ggf. zu ergänzen, ohne raten zu müssen.
     """
     with get_db() as cur:
         cur.execute(
-            "SELECT STADIUM AS code, COUNT(*) AS anzahl "
-            "FROM EKBESTELL GROUP BY STADIUM ORDER BY STADIUM"
+            "SELECT 'EKBESTELL' AS tabelle, STADIUM AS code, COUNT(*) AS anzahl "
+            "FROM EKBESTELL GROUP BY STADIUM "
+            "UNION ALL "
+            "SELECT 'EKBESTELL_POS', STADIUM, COUNT(*) "
+            "FROM EKBESTELL_POS GROUP BY STADIUM "
+            "ORDER BY tabelle, code"
         )
         rows = cur.fetchall()
     for r in rows:
         r['label'] = _stadium_label(r['code'])
     return rows
+
+
+def heile_alte_positions_stadium() -> dict[str, int]:
+    """Einmal-Migration: Alle ``EKBESTELL_POS.STADIUM=0`` auf 2 setzen,
+    sofern die zugehörige Bestellung den Status 2 (offen) hat.
+
+    Ursache: Vor dem 2026-05-08-Commit hat unser CAO-Sync STADIUM=0 in
+    die Positionen geschrieben, was CAO als "?? - [0]" anzeigt. Native
+    CAO-Bestellungen haben STADIUM=2.
+
+    Returns:
+        Dict mit `geheilt` (Anzahl aktualisierter Positionen).
+    """
+    with get_db() as cur:
+        cur.execute(
+            """
+            UPDATE EKBESTELL_POS p
+            JOIN EKBESTELL b ON b.REC_ID = p.EKBESTELL_ID
+               SET p.STADIUM = 2
+             WHERE p.STADIUM = 0
+               AND b.STADIUM = 2
+            """
+        )
+        n = cur.rowcount
+    return {'geheilt': int(n)}
