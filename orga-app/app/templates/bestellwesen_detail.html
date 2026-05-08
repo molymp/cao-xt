@@ -103,7 +103,7 @@
 </style>
 {% endblock %}
 
-{% block inhalt %}
+{% block content %}
 <div class="bd-kopf">
     <h1>📋 Bestellung {{ kopf.BELEGNUM or ('#' ~ kopf.REC_ID) }}</h1>
     <a href="{{ url_for('orga_bestellwesen.uebersicht') }}" class="zurueck">← zurück zur Übersicht</a>
