@@ -117,6 +117,35 @@
 }
 
 .wd-rdo { color: var(--text-dim, #5a7a3a); font-size: 0.88rem; }
+.wd-barcode { font-size: 0.78rem; color: var(--text-mitte, #2e4a1a); }
+.wd-flag {
+  display: inline-block;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 700;
+}
+.wd-flag-y { background: rgba(46,122,46,0.18); color: #1a4010; }
+
+/* Info-Feld am Header (RTF -> Plain Text) */
+.wd-memo {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--creme-dunkel);
+}
+.wd-memo label {
+  display: block;
+  font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim, #5a7a3a);
+  margin-bottom: 4px;
+}
+.wd-memo-text {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.92rem; line-height: 1.5;
+  background: rgba(26,64,16,0.04);
+  border-left: 3px solid var(--creme-dunkel);
+  padding: 10px 14px;
+  border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
+  white-space: pre-wrap; margin: 0;
+}
 
 .btn-warn {
   background: var(--gold, #c8780a); color: white; border: none;
@@ -174,6 +203,13 @@
             </span>
         </div>
     </div>
+    {% set info_txt = (kopf.INFO | rtf) if kopf.INFO else '' %}
+    {% if info_txt %}
+    <div class="wd-memo">
+        <label>Info</label>
+        <pre class="wd-memo-text">{{ info_txt }}</pre>
+    </div>
+    {% endif %}
 </div>
 
 {% if not we_gesperrt %}
@@ -201,12 +237,15 @@
             <tr>
                 <th>Pos.</th>
                 <th>Art.-Nr.</th>
+                <th>Lief-Art.-Nr.</th>
+                <th>Barcode</th>
                 <th>Bezeichnung</th>
                 <th class="zahl-rechts">Bestellt</th>
                 <th class="zahl-rechts">Geliefert</th>
                 <th>ME</th>
-                <th class="zahl-rechts">EK €</th>
-                <th class="zahl-rechts">Gesamt €</th>
+                <th>aus Bestellung</th>
+                <th>gebucht in EK</th>
+                <th>EK-Rechnung</th>
             </tr>
         </thead>
         <tbody>
@@ -214,8 +253,12 @@
         <tr id="we-pos-{{ p.REC_ID }}">
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
+            <td><code>{{ p.lief_artnum or '–' }}</code></td>
+            <td><code class="wd-barcode">{{ p.BARCODE or '–' }}</code></td>
             <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
-            <td class="zahl-rechts wd-menge-soll">{{ '{:g}'.format(p.MENGE_SOLL) if p.MENGE_SOLL is not none else '–' }}</td>
+            <td class="zahl-rechts wd-menge-soll">
+                {{ '{:g}'.format(p.bestellt_anzeige) if p.bestellt_anzeige else '–' }}
+            </td>
             <td class="zahl-rechts">
                 {% if we_gesperrt %}
                     {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
@@ -229,20 +272,30 @@
                 {% endif %}
             </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
-            <td class="zahl-rechts">
-                {% if we_gesperrt %}
-                    {{ (p.EPREIS or 0) | eur(4) }}
+            <td>
+                {% if p.bestell_rec_id %}
+                    <a href="{{ url_for('orga_bestellwesen.detail', rec_id=p.bestell_rec_id) }}">
+                        {{ p.bestell_belegnum or ('#' ~ p.bestell_rec_id) }}
+                    </a>
                 {% else %}
-                    <input type="number" class="wd-preis-input"
-                           id="wd-epreis-{{ p.REC_ID }}"
-                           step="0.0001" min="0"
-                           value="{{ '{:.4f}'.format(p.EPREIS or 0) }}"
-                           data-pos-id="{{ p.REC_ID }}"
-                           onchange="wdPosEpreis(this)">
+                    <span class="wd-rdo">–</span>
                 {% endif %}
             </td>
-            <td class="zahl-rechts" id="wd-gpreis-{{ p.REC_ID }}">
-                {{ (p.GPREIS or 0) | eur }}
+            <td>
+                {% if p.GEBUCHT_FLAG == 'Y' %}
+                    <span class="wd-flag wd-flag-y">✓ gebucht</span>
+                {% else %}
+                    <span class="wd-rdo">–</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if p.rech_belegnum %}
+                    <span class="wd-flag wd-flag-y">{{ p.rech_belegnum }}</span>
+                {% elif p.BERECHNET == 'Y' %}
+                    <span class="wd-flag wd-flag-y">✓ berechnet</span>
+                {% else %}
+                    <span class="wd-rdo">–</span>
+                {% endif %}
             </td>
         </tr>
         {% endfor %}

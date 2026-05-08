@@ -371,12 +371,41 @@ def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:
             return None
         kopf['stadium_label'] = _label(kopf.get('STADIUM'))
 
+        # Pos-Detail: bringt zusätzlich
+        #   * lief_artnum     – Lieferanten-Artikelnummer aus EKBESTELL_POS.LIEFARTNUM
+        #   * bestell_rec_id / bestell_belegnum – Verknüpfung zur Bestellung (falls weitergeführt)
+        #   * rech_belegnum   – BELEGNUM der EK-Rechnung (JOURNAL.QUELLE=5),
+        #                       falls die Pos schon berechnet wurde
         cur.execute(
-            "SELECT * FROM EKEINGANG_POS "
-            "WHERE EKEINGANG_ID = %s ORDER BY POSITION, REC_ID",
+            """
+            SELECT p.*,
+                   bp.LIEFARTNUM         AS lief_artnum,
+                   bp.MENGE              AS bestell_menge,
+                   bp.EKBESTELL_ID       AS bestell_rec_id,
+                   b.BELEGNUM            AS bestell_belegnum,
+                   (SELECT j.BELEGNUM
+                      FROM JOURNALPOS jp
+                      JOIN JOURNAL    j  ON j.REC_ID = jp.JOURNAL_ID
+                     WHERE jp.QUELLE = 5
+                       AND jp.QUELLE_WE = p.REC_ID
+                       AND j.STADIUM <> 127
+                     LIMIT 1)            AS rech_belegnum
+              FROM EKEINGANG_POS p
+              LEFT JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
+              LEFT JOIN EKBESTELL     b  ON b.REC_ID  = bp.EKBESTELL_ID
+             WHERE p.EKEINGANG_ID = %s
+             ORDER BY p.POSITION, p.REC_ID
+            """,
             (rec_id,),
         )
         pos = cur.fetchall()
+        # Fallback fuer 'Bestellt': wenn MENGE_SOLL leer/0, nutze die
+        # zugeordnete EKBESTELL_POS.MENGE.
+        for r in pos:
+            soll = r.get('MENGE_SOLL') or 0
+            if not soll:
+                soll = r.get('bestell_menge') or 0
+            r['bestellt_anzeige'] = soll
     return {'kopf': kopf, 'positionen': pos}
 
 
