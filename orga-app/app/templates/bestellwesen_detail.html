@@ -141,6 +141,16 @@
 }
 .bd-input-klein { width: 130px; }
 .bd-input-preis { width: 90px; text-align: right; }
+/* Datums-Felder sind klickbar (öffnen den Touch-Picker) — visuell als
+   solche kennzeichnen, nicht als gewoehnliches readonly-Feld. */
+.bd-input-datum {
+    cursor: pointer;
+    background: var(--bg-hell, #ece3cc);
+}
+.bd-input-datum:hover {
+    border-color: var(--gruen-dunkel);
+    background: var(--creme-warm, #d8c8a4);
+}
 .bd-input-ok    { border-color: var(--gruen, #2e7a2e); background: rgba(46,122,46,0.10); }
 .bd-input-err   { border-color: var(--rot, #b83030); background: rgba(184,48,48,0.10); }
 
@@ -558,9 +568,12 @@
             <span class="wert">{{ kopf.TERMIN.strftime('%d.%m.%Y') if kopf.TERMIN else '–' }}</span>
             {% else %}
             <div class="bd-edit-wrap">
-                <input type="date" class="bd-input" id="bd-termin"
-                       value="{{ kopf.TERMIN.isoformat() if kopf.TERMIN else '' }}"
-                       onchange="bdKopfMetadata()">
+                <input type="text" class="bd-input bd-input-datum" id="bd-termin"
+                       data-wert="{{ kopf.TERMIN.isoformat() if kopf.TERMIN else '' }}"
+                       value="{{ kopf.TERMIN.strftime('%d.%m.%Y') if kopf.TERMIN else '' }}"
+                       placeholder="TT.MM.JJJJ"
+                       readonly
+                       onclick="bdDatePickerFor('bd-termin', 'Liefertermin (Bestellung)', bdKopfMetadata)">
                 <button type="button" class="bd-edit-btn"
                         onclick="bdDatePickerFor('bd-termin', 'Liefertermin (Bestellung)', bdKopfMetadata)"
                         title="Touch-Datepicker öffnen">📅</button>
@@ -681,13 +694,16 @@
                     <span class="bd-rdo">{{ p.liefertermin.strftime('%d.%m.%Y') if p.liefertermin else '–' }}</span>
                 {% else %}
                     <div class="bd-edit-wrap">
-                        <input type="date" class="bd-input bd-input-klein"
+                        <input type="text" class="bd-input bd-input-klein bd-input-datum"
                                id="ltermin-{{ p.REC_ID }}"
-                               value="{{ p.liefertermin.isoformat() if p.liefertermin else '' }}"
+                               data-wert="{{ p.liefertermin.isoformat() if p.liefertermin else '' }}"
+                               value="{{ p.liefertermin.strftime('%d.%m.%Y') if p.liefertermin else '' }}"
+                               placeholder="TT.MM.JJJJ"
                                data-pos-id="{{ p.REC_ID }}"
-                               onchange="bdPosLiefertermin(this)">
+                               readonly
+                               onclick="bdDatePickerFor('ltermin-{{ p.REC_ID }}', 'Liefertermin Pos. {{ p.POSITION }}', () => bdPosLiefertermin(document.getElementById('ltermin-{{ p.REC_ID }}')))">
                         <button type="button" class="bd-edit-btn"
-                                onclick="bdDatePickerFor('ltermin-{{ p.REC_ID }}', 'Liefertermin Pos. {{ p.POSITION }}', () => document.getElementById('ltermin-{{ p.REC_ID }}').dispatchEvent(new Event('change')))"
+                                onclick="bdDatePickerFor('ltermin-{{ p.REC_ID }}', 'Liefertermin Pos. {{ p.POSITION }}', () => bdPosLiefertermin(document.getElementById('ltermin-{{ p.REC_ID }}')))"
                                 title="Touch-Datepicker öffnen">📅</button>
                     </div>
                 {% endif %}
@@ -940,11 +956,20 @@ function _flashInput(el, ok) {
     setTimeout(() => el.classList.remove('bd-input-ok', 'bd-input-err'), 1500);
 }
 
+// Liefert das ISO-Datum (YYYY-MM-DD) aus einem Datums-Input. Datums-
+// Inputs sind type=text + data-wert (vom Touch-Picker gesetzt). Native
+// type=date-Felder hätten value als ISO — werden hier aber nicht mehr
+// genutzt.
+function _bdIso(input) {
+    if (!input) return '';
+    return input.dataset.wert || input.value || '';
+}
+
 // Header-Metadaten (LIEF_AB + TERMIN). Wird beim Verlassen eines der
 // Inputs aufgerufen — schreibt nur die geänderten Werte.
 async function bdKopfMetadata() {
     const lief_ab = document.getElementById('bd-lief-ab').value;
-    const termin  = document.getElementById('bd-termin').value;
+    const termin  = _bdIso(document.getElementById('bd-termin'));
     const res = await _post(`${BD_DETAIL_URL}/api/metadata`, {
         lief_ab, termin
     });
@@ -958,7 +983,7 @@ async function bdKopfMetadata() {
 
 // Header-TERMIN auf alle bearbeitbaren Positionen übertragen.
 async function bdKopfLieferterminAufPos() {
-    const datum = document.getElementById('bd-termin').value;
+    const datum = _bdIso(document.getElementById('bd-termin'));
     const fb = document.getElementById('bd-kopf-feedback');
     if (!datum) { _flash(fb, false, 'Bitte zuerst Liefertermin oben setzen.'); return; }
     const res = await _post(`${BD_DETAIL_URL}/api/liefertermin`, { datum });
@@ -969,7 +994,7 @@ async function bdKopfLieferterminAufPos() {
 
 async function bdPosLiefertermin(input) {
     const posId = input.dataset.posId;
-    const datum = input.value;
+    const datum = _bdIso(input);
     const res = await _post(
         `${BD_DETAIL_URL}/api/positionen/${posId}/liefertermin`,
         { datum }
