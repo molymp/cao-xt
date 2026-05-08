@@ -640,9 +640,7 @@ def offene_bestell_positionen(eingang_id: int) -> list[dict[str, Any]]:
         if addr_id <= 0:
             return []
 
-        # EKBESTELL_POS-STADIUM-Filter: nur "wirklich offene"
-        # 2=offen, 3=Teillieferung, 4=Ersetzt
-        # NICHT: 8=rest nicht lieferbar, 9=voll berechnet, 127=storno
+        # 1) Hauptquery: Bestellpositionen ohne Aggregate (schnell)
         cur.execute(
             """
             SELECT bp.REC_ID                AS pos_id,
@@ -659,31 +657,7 @@ def offene_bestell_positionen(eingang_id: int) -> list[dict[str, Any]]:
                    bp.ME_EINHEIT            AS me_einheit,
                    bp.PR_EINHEIT            AS pe,
                    bp.LIEFARTNUM            AS lief_artnum,
-                   bp.STADIUM               AS pos_stadium,
-                   COALESCE((
-                     SELECT SUM(jp.MENGE)
-                       FROM JOURNALPOS jp
-                       JOIN JOURNAL    j  ON j.REC_ID = jp.JOURNAL_ID
-                      WHERE jp.QUELLE_SRC = bp.REC_ID
-                        AND jp.QUELLE     = 5
-                        AND j.STADIUM    <> 127
-                   ), 0) AS berechnet_ek,
-                   COALESCE((
-                     SELECT SUM(ekp.MENGE)
-                       FROM EKEINGANG_POS ekp
-                       JOIN EKEINGANG     e  ON e.REC_ID = ekp.EKEINGANG_ID
-                      WHERE ekp.EKBESTELL_POS_ID = bp.REC_ID
-                        AND ekp.GEBUCHT_FLAG = 'Y'
-                        AND e.STADIUM <> 127
-                   ), 0) AS we_gebucht,
-                   COALESCE((
-                     SELECT SUM(ekp.MENGE)
-                       FROM EKEINGANG_POS ekp
-                       JOIN EKEINGANG     e  ON e.REC_ID = ekp.EKEINGANG_ID
-                      WHERE ekp.EKBESTELL_POS_ID = bp.REC_ID
-                        AND ekp.GEBUCHT_FLAG = 'N'
-                        AND e.STADIUM = 0
-                   ), 0) AS we_offen_erfasst
+                   bp.STADIUM               AS pos_stadium
               FROM EKBESTELL_POS bp
               JOIN EKBESTELL     b  ON b.REC_ID = bp.EKBESTELL_ID
              WHERE b.ADDR_ID  = %s
@@ -695,25 +669,64 @@ def offene_bestell_positionen(eingang_id: int) -> list[dict[str, Any]]:
             (addr_id,),
         )
         rows = cur.fetchall()
+        if not rows:
+            return []
 
-    # Berechnete Spalten
+        pos_ids = [int(r['pos_id']) for r in rows]
+        # 2) EK-Rechnungs-Mengen pro Pos (eine Query, GROUP BY)
+        fmt = ','.join(['%s'] * len(pos_ids))
+        cur.execute(
+            f"""
+            SELECT jp.QUELLE_SRC AS pos_id, SUM(jp.MENGE) AS s
+              FROM JOURNALPOS jp
+              JOIN JOURNAL    j ON j.REC_ID = jp.JOURNAL_ID
+             WHERE jp.QUELLE_SRC IN ({fmt})
+               AND jp.QUELLE = 5
+               AND j.STADIUM <> 127
+             GROUP BY jp.QUELLE_SRC
+            """,
+            pos_ids,
+        )
+        berechnet_ek_map = {int(r['pos_id']): float(r['s'] or 0)
+                            for r in cur.fetchall()}
+
+        # 3) WE-Mengen (gebucht + offen erfasst) pro Pos — eine Query
+        cur.execute(
+            f"""
+            SELECT ekp.EKBESTELL_POS_ID AS pos_id,
+                   SUM(CASE WHEN ekp.GEBUCHT_FLAG = 'Y' AND e.STADIUM <> 127
+                            THEN ekp.MENGE ELSE 0 END) AS gebucht,
+                   SUM(CASE WHEN ekp.GEBUCHT_FLAG = 'N' AND e.STADIUM = 0
+                            THEN ekp.MENGE ELSE 0 END) AS offen_erfasst
+              FROM EKEINGANG_POS ekp
+              JOIN EKEINGANG     e ON e.REC_ID = ekp.EKEINGANG_ID
+             WHERE ekp.EKBESTELL_POS_ID IN ({fmt})
+             GROUP BY ekp.EKBESTELL_POS_ID
+            """,
+            pos_ids,
+        )
+        we_map = {int(r['pos_id']): (float(r['gebucht'] or 0),
+                                     float(r['offen_erfasst'] or 0))
+                  for r in cur.fetchall()}
+
+    # Mengen ableiten + filtern
     out: list[dict[str, Any]] = []
     for r in rows:
+        pid = int(r['pos_id'])
         bestellmenge   = float(r['bestellmenge'] or 0)
-        berechnet_ek   = float(r['berechnet_ek'] or 0)
-        we_gebucht     = float(r['we_gebucht'] or 0)
-        op_menge_ek    = bestellmenge - berechnet_ek
-        op_menge_we    = bestellmenge - we_gebucht
-        # Menge offen = noch nicht in offenem oder gebuchtem WE — also
-        # nicht in irgendeinem WE-Pos drin
-        we_offen_erfasst = float(r['we_offen_erfasst'] or 0)
-        menge_offen    = op_menge_we - we_offen_erfasst
-        # Nur Pos mit echter Restmenge anzeigen
+        berechnet_ek   = berechnet_ek_map.get(pid, 0)
+        we_gebucht, we_offen_erfasst = we_map.get(pid, (0, 0))
+        op_menge_ek = bestellmenge - berechnet_ek
+        op_menge_we = bestellmenge - we_gebucht
+        menge_offen = op_menge_we - we_offen_erfasst
         if menge_offen <= 0:
             continue
-        r['op_menge_ek'] = op_menge_ek
-        r['op_menge_we'] = op_menge_we
-        r['menge_offen'] = menge_offen
+        r['berechnet_ek']      = berechnet_ek
+        r['we_gebucht']        = we_gebucht
+        r['we_offen_erfasst']  = we_offen_erfasst
+        r['op_menge_ek']       = op_menge_ek
+        r['op_menge_we']       = op_menge_we
+        r['menge_offen']       = menge_offen
         out.append(r)
     return out
 
