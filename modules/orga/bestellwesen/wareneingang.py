@@ -28,15 +28,22 @@ from common.db import get_db, get_db_transaction
 from common.einkauf import _next_registry_nummer  # type: ignore
 
 
-# STADIUM-Codes EKEINGANG (analog EKBESTELL):
-#   2  = offen (in Bearbeitung)
-#   9  = abgeschlossen / gebucht
+# STADIUM-Codes EKEINGANG.
+# Quelle: cao_faktura.exe @0x00563df8 (UTF-16-Strings, bestaetigt durch
+# Live-Test).
+#   0   = offen (in Bearbeitung, noch nicht gebucht)
+#   2   = unberechnet (gebucht, aber EK-Rechnung steht aus)
+#   3   = teilw. berechnet (manche Pos haben EK-Rechnung)
+#   4   = unberechnet abgeschlossen
+#   9   = voll berechnet (gebucht + alle Pos berechnet)
 #   127 = storniert
 STADIUM_LABEL_KOPF = {
-    0:   'in Bearbeitung',
-    2:   'offen',
-    9:   'abgeschlossen',
-    127: '*** STORNO ***',
+    0:   'offen',
+    2:   'unberechnet',
+    3:   'teilw. berechnet',
+    4:   'unberechnet abgeschlossen',
+    9:   'voll berechnet',
+    127: 'storniert',
 }
 
 
@@ -128,7 +135,7 @@ def wareneingang_anlegen(bestell_rec_id: int,
             ) VALUES (
               %s, %s, %s, %s, %s, %s,
               %s, %s, %s,
-              '€', 1.0, 2, 0,
+              '€', 1.0, 0, 0,
               %s, %s, %s, %s, %s,
               0, 0, 0, 0, 0,
               0, 0, 0, 0, 0,
@@ -377,13 +384,19 @@ def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:
 
 
 def _ist_bearbeitbar(cur, rec_id: int) -> dict[str, Any]:
-    """Prüft, ob der Wareneingang noch editierbar ist (STADIUM 2)."""
+    """Prüft, ob der Wareneingang noch editierbar ist.
+
+    Nur STADIUM=0 (offen, in Bearbeitung) erlaubt Mengen-/Preis-Edits.
+    Sobald gebucht oder storniert (2,3,4,9,127) ist die Pos read-only.
+    """
     cur.execute("SELECT REC_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s", (rec_id,))
     row = cur.fetchone()
     if not row:
         raise LookupError(f'Wareneingang {rec_id} nicht gefunden')
-    if int(row['STADIUM']) in (9, 127):
-        raise PermissionError(f'Wareneingang STADIUM={row["STADIUM"]} — gesperrt')
+    if int(row['STADIUM']) != 0:
+        raise PermissionError(
+            f'Wareneingang STADIUM={row["STADIUM"]} — nur "offen" (0) ist editierbar'
+        )
     return row
 
 
@@ -568,18 +581,26 @@ def scan_ean(eingang_id: int, ean: str) -> dict[str, Any]:
 
 
 def storno(rec_id: int) -> dict[str, int]:
-    """Storniert einen ungebuchten Wareneingang (CAO-Mimik @0x01f8e6a4):
-    EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix."""
+    """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
+    EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.
+
+    Nur STADIUM=0 (offen) ist stornierbar. Bereits gebuchte/berechnete
+    (2/3/4/9) muessen via CAO storniert werden.
+    """
     rec_id = int(rec_id)
     with get_db() as cur:
         cur.execute("SELECT STADIUM FROM EKEINGANG WHERE REC_ID = %s", (rec_id,))
         row = cur.fetchone()
         if not row:
             raise LookupError(f'Wareneingang {rec_id} nicht gefunden')
-        if int(row['STADIUM']) == 127:
+        st = int(row['STADIUM'])
+        if st == 127:
             return {'ok': 0}
-        if int(row['STADIUM']) == 9:
-            raise PermissionError('Bereits gebuchter Wareneingang nicht stornierbar')
+        if st != 0:
+            raise PermissionError(
+                f'Wareneingang STADIUM={st} (nicht 0/offen) — '
+                f'Storno bitte in CAO Faktura'
+            )
         cur.execute(
             "UPDATE EKEINGANG "
             "   SET STADIUM = 127, "

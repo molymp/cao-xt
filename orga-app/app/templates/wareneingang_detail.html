@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Wareneingang {{ kopf.BELEGNUM }}{% endblock %}
 
-{% set we_gesperrt = (kopf.STADIUM in (9, 127)) %}
+{# Nur STADIUM=0 ('offen') ist editierbar. Sobald gebucht oder storniert
+   ist der Wareneingang read-only (Aenderung dann via CAO Faktura). #}
+{% set we_gesperrt = (kopf.STADIUM != 0) %}
 
 {% block extra_style %}
 <style>
