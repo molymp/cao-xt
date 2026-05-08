@@ -108,6 +108,61 @@
 .wd-input-ok    { border-color: var(--gruen, #2e7a2e); background: rgba(46,122,46,0.10); }
 .wd-input-err   { border-color: var(--rot, #b83030); background: rgba(184,48,48,0.10); }
 
+/* Edit-Wrap mit Touch-Numpad-Knopf rechts vom Input */
+.wd-edit-wrap {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.wd-edit-wrap > input { flex: 1 1 auto; min-width: 0; }
+.wd-edit-btn {
+  flex: 0 0 36px;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  background: var(--bg-hell, #ece3cc);
+  color: var(--gruen-dunkel);
+  font-size: 1rem; cursor: pointer; padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wd-edit-btn:hover { background: var(--creme-warm, #d8c8a4); border-color: var(--gruen-dunkel); }
+.wd-edit-btn:active { transform: scale(0.95); }
+
+/* On-Screen Numpad */
+.wd-numpad-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.wd-numpad {
+  background: white; border-radius: 18px 18px 0 0;
+  padding: 16px 16px 24px; width: 100%; max-width: 400px;
+  box-shadow: 0 -6px 32px rgba(0,0,0,0.25); user-select: none;
+}
+.wd-numpad-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.wd-numpad-feldname { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim, #5a7a3a); }
+.wd-numpad-close { min-width: 40px; min-height: 40px; background: var(--creme-dunkel); border: none; border-radius: 50%; font-size: 18px; cursor: pointer; color: var(--text-hell); }
+.wd-numpad-display {
+  background: var(--creme); border-radius: 10px;
+  padding: 12px 16px; font-size: 28px; font-weight: 700;
+  text-align: right; margin-bottom: 14px; min-height: 54px;
+  color: var(--gruen-dunkel); font-variant-numeric: tabular-nums;
+  overflow: hidden; white-space: nowrap;
+}
+.wd-numpad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.wd-numpad-btn {
+  min-height: 56px; font-size: 22px; font-weight: 700;
+  border: none; border-radius: 12px;
+  background: var(--creme-dunkel); color: var(--text-hell);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-family: 'Nunito', sans-serif; transition: background 0.08s, transform 0.06s;
+}
+.wd-numpad-btn:active { transform: scale(0.95); background: var(--creme-warm); }
+.wd-numpad-btn.np-clear   { background: #fde8e8; color: #c0392b; }
+.wd-numpad-btn.np-back    { background: var(--creme-warm); font-size: 20px; }
+.wd-numpad-btn.np-confirm { background: var(--gruen, #2e7a2e); color: white; font-size: 18px; grid-column: span 2; }
+
 .wd-preis-input {
   width: 90px; padding: 5px 8px; text-align: right;
   border: 1px solid var(--creme-dunkel);
@@ -286,12 +341,17 @@
                 {% if we_gesperrt %}
                     {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
                 {% else %}
-                    <input type="number" class="wd-menge-input"
-                           id="wd-menge-{{ p.REC_ID }}"
-                           step="0.001" min="0"
-                           value="{{ '{:g}'.format(p.MENGE or 0) }}"
-                           data-pos-id="{{ p.REC_ID }}"
-                           onchange="wdPosMenge(this)">
+                    <div class="wd-edit-wrap">
+                        <input type="number" class="wd-menge-input"
+                               id="wd-menge-{{ p.REC_ID }}"
+                               step="0.001" min="0"
+                               value="{{ '{:g}'.format(p.MENGE or 0) }}"
+                               data-pos-id="{{ p.REC_ID }}"
+                               onchange="wdPosMenge(this)">
+                        <button type="button" class="wd-edit-btn"
+                                onclick="wdNumpadFor('wd-menge-{{ p.REC_ID }}', 'Menge Pos. {{ p.POSITION }}')"
+                                title="Touch-Numpad öffnen">🔢</button>
+                    </div>
                 {% endif %}
             </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
@@ -406,9 +466,77 @@
 </div>
 {% endif %}
 
+{# Touch-Numpad fuer Mengen-Eingabe — analog Bestellwesen #}
+<div class="wd-numpad-overlay" id="wd-numpad-overlay" style="display:none;"
+     onclick="if(event.target===this)wdNumpadSchliessen()">
+  <div class="wd-numpad">
+    <div class="wd-numpad-header">
+      <span class="wd-numpad-feldname" id="wd-numpad-label"></span>
+      <button class="wd-numpad-close" onclick="wdNumpadSchliessen()">✕</button>
+    </div>
+    <div class="wd-numpad-display" id="wd-numpad-display">0</div>
+    <div class="wd-numpad-grid">
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('7')">7</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('8')">8</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('9')">9</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('4')">4</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('5')">5</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('6')">6</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('1')">1</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('2')">2</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('3')">3</button>
+      <button class="wd-numpad-btn np-clear" onclick="wdNumpadClear()">C</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd('0')">0</button>
+      <button class="wd-numpad-btn" onclick="wdNumpadAdd(',')">,</button>
+      <button class="wd-numpad-btn np-back" onclick="wdNumpadBack()">⌫</button>
+      <button class="wd-numpad-btn np-confirm" onclick="wdNumpadOk()">✓ Übernehmen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const WD_REC_ID = {{ kopf.REC_ID }};
 const WD_DETAIL_URL = '{{ url_for("orga_bestellwesen.wareneingang_detail", rec_id=kopf.REC_ID) }}';
+
+// ── Touch-Numpad ──────────────────────────────────────────────────
+let _wdNumpadInput = null;
+function wdNumpadFor(inputId, label) {
+    const inp = document.getElementById(inputId);
+    if (!inp) return;
+    _wdNumpadInput = inp;
+    document.getElementById('wd-numpad-label').textContent = label || '';
+    document.getElementById('wd-numpad-display').textContent =
+        (inp.value || '0').replace('.', ',');
+    document.getElementById('wd-numpad-overlay').style.display = 'flex';
+    inp.blur();
+}
+function wdNumpadAdd(ch) {
+    const d = document.getElementById('wd-numpad-display');
+    let cur = (d.textContent === '0' && ch !== ',') ? '' : d.textContent;
+    if (ch === ',' && cur.includes(',')) return;
+    if (ch === ',' && !cur) cur = '0';
+    d.textContent = cur + ch;
+}
+function wdNumpadBack() {
+    const d = document.getElementById('wd-numpad-display');
+    d.textContent = d.textContent.length > 1 ? d.textContent.slice(0, -1) : '0';
+}
+function wdNumpadClear() {
+    document.getElementById('wd-numpad-display').textContent = '0';
+}
+function wdNumpadOk() {
+    if (_wdNumpadInput) {
+        const wert = document.getElementById('wd-numpad-display')
+                      .textContent.replace(',', '.');
+        _wdNumpadInput.value = wert;
+        _wdNumpadInput.dispatchEvent(new Event('change'));
+    }
+    wdNumpadSchliessen();
+}
+function wdNumpadSchliessen() {
+    document.getElementById('wd-numpad-overlay').style.display = 'none';
+    _wdNumpadInput = null;
+}
 
 async function _post(url, body) {
     try {
