@@ -117,6 +117,13 @@ def rtf_to_text(rtf: str | None) -> str:
                     if code < 0:
                         code += 0x10000  # Negative → 16-bit unsigned.
                     i += 1 + len(m.group())
+                    # Optionaler Delimiter-Space — gehoert per RTF-Spec
+                    # zum Control-Word, NICHT zum Skip-Count. Ohne dieses
+                    # Konsumieren wuerde nach \u228 das Trenner-Space als
+                    # einziges Skip-Zeichen verbraucht und das eigentliche
+                    # Fallback-Zeichen (z.B. 'ä') doppelt im Output landen.
+                    if i < n and rtf[i] == ' ':
+                        i += 1
                     if drop_until_depth < 0:
                         try:
                             out.append(chr(code))
@@ -126,12 +133,19 @@ def rtf_to_text(rtf: str | None) -> str:
                     skip = uc_stack[-1] if uc_stack else 1
                     while skip > 0 and i < n:
                         if rtf[i] == '\\':
-                            # Ein Control-Word zaehlt als 1.
                             i += 1
-                            m2 = re.match(r"[A-Za-z]+(?:-?\d+)?\s?", rtf[i:])
-                            if m2:
-                                i += len(m2.group())
+                            if i >= n:
+                                break
+                            if rtf[i] == "'":
+                                # \'XX = 1 Hex-Byte (3 Zeichen total)
+                                i += 3
+                            elif rtf[i].isalpha():
+                                # Control-Word \name[Zahl][\s?]
+                                m2 = re.match(r'[A-Za-z]+(?:-?\d+)?\s?', rtf[i:])
+                                if m2:
+                                    i += len(m2.group())
                             else:
+                                # Control-Symbol \\, \{, \}
                                 i += 1
                         elif rtf[i] in ('{', '}'):
                             break

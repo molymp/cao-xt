@@ -179,8 +179,8 @@
         <td>{{ b.belegdatum.strftime('%d.%m.%Y') if b.belegdatum else '–' }}</td>
         <td>{{ b.lief_name }}</td>
         <td class="zahl-rechts">{{ b.pos_anzahl }}</td>
-        <td class="zahl-rechts">{{ '{:,.2f}'.format(b.nsumme or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
-        <td class="zahl-rechts">{{ '{:,.2f}'.format(b.bsumme or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+        <td class="zahl-rechts">{{ (b.nsumme or 0) | eur }}</td>
+        <td class="zahl-rechts">{{ (b.bsumme or 0) | eur }}</td>
         <td><span class="stadium-pille stadium-{{ b.stadium or 0 }}">{{ b.stadium_label }}</span></td>
     </tr>
     {% endfor %}
