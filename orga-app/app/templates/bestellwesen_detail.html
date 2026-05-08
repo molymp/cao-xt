@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Bestellung {{ kopf.BELEGNUM }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.bd-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.bd-kopf h1 { font-size: 1.6rem; }
+.bd-kopf a.zurueck {
+  font-size: 0.9rem;
+  color: var(--gruen-dunkel);
+  text-decoration: none;
+  font-weight: 700;
+}
+.bd-kopf a.zurueck:hover { text-decoration: underline; }
+
+.bd-card {
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: var(--schatten);
+  padding: 18px 22px;
+  margin-bottom: 18px;
+}
+.bd-card h2 {
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gruen-dunkel);
+  margin-bottom: 12px;
+}
+.bd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 18px;
+}
+.bd-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bd-grid label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim, #5a7a3a);
+}
+.bd-grid .wert {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-hell, #142808);
+}
+
+.bd-pos-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+}
+.bd-pos-tabelle th {
+  background: var(--creme-dunkel);
+  color: var(--gruen-dunkel);
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.bd-pos-tabelle td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  font-size: 0.9rem;
+  vertical-align: middle;
+}
+.bd-pos-tabelle tr:last-child td { border-bottom: none; }
+.zahl-rechts { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.stadium-pille {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+.stadium-2 { background: rgba(200,120,10,0.18); color: #a06000; }
+.stadium-3 { background: rgba(60,120,200,0.18); color: #2a4a8a; }
+.stadium-4 { background: rgba(46,122,46,0.18); color: #1a4010; }
+.stadium-1 { background: rgba(184,48,48,0.15); color: #8a2020; }
+.stadium-0 { background: #eee; color: #666; }
+
+.bd-hinweis-rdo {
+  font-size: 0.85rem;
+  color: var(--text-dim, #5a7a3a);
+  font-style: italic;
+}
+</style>
+{% endblock %}
+
+{% block inhalt %}
+<div class="bd-kopf">
+    <h1>📋 Bestellung {{ kopf.BELEGNUM or ('#' ~ kopf.REC_ID) }}</h1>
+    <a href="{{ url_for('orga_bestellwesen.uebersicht') }}" class="zurueck">← zurück zur Übersicht</a>
+</div>
+
+<div class="bd-card">
+    <h2>Lieferant</h2>
+    <div class="bd-grid">
+        <div>
+            <label>Name</label>
+            <span class="wert">{{ kopf.lief_name }}</span>
+        </div>
+        <div>
+            <label>Adresse</label>
+            <span class="wert">{{ kopf.lief_strasse }} {{ kopf.lief_hausnr }}</span>
+        </div>
+        <div>
+            <label>Ort</label>
+            <span class="wert">{{ kopf.lief_land }} {{ kopf.lief_plz }} {{ kopf.lief_ort }}</span>
+        </div>
+        <div>
+            <label>Lieferant-ID</label>
+            <span class="wert">{{ kopf.ADDR_ID }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="bd-card">
+    <h2>Bestelldaten</h2>
+    <div class="bd-grid">
+        <div>
+            <label>Belegnummer</label>
+            <span class="wert">{{ kopf.BELEGNUM or '–' }}</span>
+        </div>
+        <div>
+            <label>Belegdatum</label>
+            <span class="wert">{{ kopf.BELEGDATUM.strftime('%d.%m.%Y') if kopf.BELEGDATUM else '–' }}</span>
+        </div>
+        <div>
+            <label>Status</label>
+            <span class="wert"><span class="stadium-pille stadium-{{ kopf.STADIUM or 0 }}">{{ kopf.stadium_label }}</span></span>
+        </div>
+        <div>
+            <label>Erstellt von</label>
+            <span class="wert">{{ kopf.ERST_NAME or '–' }}</span>
+        </div>
+        <div>
+            <label>Liefer-AB-Nr.</label>
+            <span class="wert">{{ kopf.LIEF_AB or '–' }}</span>
+        </div>
+        <div>
+            <label>Info</label>
+            <span class="wert">{{ kopf.INFO or '–' }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="bd-card">
+    <h2>Summen</h2>
+    <div class="bd-grid">
+        <div>
+            <label>Netto</label>
+            <span class="wert">{{ '{:,.2f} €'.format(kopf.NSUMME or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</span>
+        </div>
+        <div>
+            <label>MwSt</label>
+            <span class="wert">{{ '{:,.2f} €'.format(kopf.MSUMME or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</span>
+        </div>
+        <div>
+            <label>Brutto</label>
+            <span class="wert">{{ '{:,.2f} €'.format(kopf.BSUMME or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</span>
+        </div>
+        <div>
+            <label>Gewicht (kg)</label>
+            <span class="wert">{{ kopf.GEWICHT if kopf.GEWICHT is not none else '–' }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="bd-card">
+    <h2>Positionen ({{ positionen|length }})</h2>
+    <p class="bd-hinweis-rdo">Read-only — Bearbeiten kommt in Phase 2.</p>
+    {% if positionen %}
+    <div style="overflow-x:auto;">
+    <table class="bd-pos-tabelle">
+        <thead>
+            <tr>
+                <th>Pos.</th>
+                <th>Art.-Nr.</th>
+                <th>Bezeichnung</th>
+                <th class="zahl-rechts">Bestellmenge</th>
+                <th>ME</th>
+                <th class="zahl-rechts">EK €</th>
+                <th class="zahl-rechts">Gesamt €</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for p in positionen %}
+        <tr>
+            <td>{{ p.POSITION }}</td>
+            <td><code>{{ p.ARTNUM or '–' }}</code></td>
+            <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}</td>
+            <td>{{ p.ME_EINHEIT or '–' }}</td>
+            <td class="zahl-rechts">{{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+            <td class="zahl-rechts">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+            <td><span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="bd-hinweis-rdo">Keine Positionen vorhanden.</p>
+    {% endif %}
+</div>
+{% endblock %}

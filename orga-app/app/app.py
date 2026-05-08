@@ -163,6 +163,13 @@ except Exception as e:
     log.warning("Orga-Personal-Blueprint konnte nicht geladen werden: %s", e)
 
 try:
+    from modules.orga.bestellwesen import create_blueprint as _bw_bp
+    app.register_blueprint(_bw_bp(), url_prefix='/orga/bestellwesen')
+    log.info("Orga-Bestellwesen-Blueprint registriert.")
+except Exception as e:
+    log.warning("Orga-Bestellwesen-Blueprint konnte nicht geladen werden: %s", e)
+
+try:
     from modules.haccp import create_blueprint as _haccp_bp
     app.register_blueprint(_haccp_bp(), url_prefix='/orga/haccp')
     log.info("HACCP-Blueprint registriert.")
