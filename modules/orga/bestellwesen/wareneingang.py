@@ -616,6 +616,230 @@ def scan_ean(eingang_id: int, ean: str) -> dict[str, Any]:
     }
 
 
+def offene_bestell_positionen(eingang_id: int) -> list[dict[str, Any]]:
+    """Liste aller offenen Bestellpositionen für den Lieferanten dieses
+    Wareneingangs.
+
+    Zeigt nur Pos, die noch nicht voll im WE oder voll berechnet sind.
+    Mengen-Berechnung folgt CAO-Mimik @0x0249ed44 (EKBESTELL_OP-Pattern):
+    - berechnet_ek = SUM(JOURNALPOS.MENGE WHERE QUELLE=5)  (EK-Rechnung)
+    - we_gebucht  = SUM(EKEINGANG_POS.MENGE WHERE GEBUCHT_FLAG='Y')
+    - op_menge_we = bestellmenge - we_gebucht
+    - menge_offen = op_menge_we - sum(EKEINGANG_POS.MENGE in offenen WE)
+    """
+    eingang_id = int(eingang_id)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT ADDR_ID FROM EKEINGANG WHERE REC_ID = %s",
+            (eingang_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LookupError(f'Wareneingang {eingang_id} nicht gefunden')
+        addr_id = int(row['ADDR_ID'] or -1)
+        if addr_id <= 0:
+            return []
+
+        # EKBESTELL_POS-STADIUM-Filter: nur "wirklich offene"
+        # 2=offen, 3=Teillieferung, 4=Ersetzt
+        # NICHT: 8=rest nicht lieferbar, 9=voll berechnet, 127=storno
+        cur.execute(
+            """
+            SELECT bp.REC_ID                AS pos_id,
+                   b.REC_ID                 AS bestell_id,
+                   b.BELEGNUM               AS bestell_nr,
+                   b.BELEGDATUM             AS datum,
+                   b.LIEF_AB                AS lief_ab,
+                   bp.POSITION              AS position,
+                   bp.ARTIKEL_ID            AS artikel_id,
+                   bp.ARTNUM                AS artnum,
+                   bp.BEZEICHNUNG           AS bezeichnung,
+                   bp.KURZBEZEICHNUNG       AS kurzbezeichnung,
+                   bp.MENGE                 AS bestellmenge,
+                   bp.ME_EINHEIT            AS me_einheit,
+                   bp.PR_EINHEIT            AS pe,
+                   bp.LIEFARTNUM            AS lief_artnum,
+                   bp.STADIUM               AS pos_stadium,
+                   COALESCE((
+                     SELECT SUM(jp.MENGE)
+                       FROM JOURNALPOS jp
+                       JOIN JOURNAL    j  ON j.REC_ID = jp.JOURNAL_ID
+                      WHERE jp.QUELLE_SRC = bp.REC_ID
+                        AND jp.QUELLE     = 5
+                        AND j.STADIUM    <> 127
+                   ), 0) AS berechnet_ek,
+                   COALESCE((
+                     SELECT SUM(ekp.MENGE)
+                       FROM EKEINGANG_POS ekp
+                       JOIN EKEINGANG     e  ON e.REC_ID = ekp.EKEINGANG_ID
+                      WHERE ekp.EKBESTELL_POS_ID = bp.REC_ID
+                        AND ekp.GEBUCHT_FLAG = 'Y'
+                        AND e.STADIUM <> 127
+                   ), 0) AS we_gebucht,
+                   COALESCE((
+                     SELECT SUM(ekp.MENGE)
+                       FROM EKEINGANG_POS ekp
+                       JOIN EKEINGANG     e  ON e.REC_ID = ekp.EKEINGANG_ID
+                      WHERE ekp.EKBESTELL_POS_ID = bp.REC_ID
+                        AND ekp.GEBUCHT_FLAG = 'N'
+                        AND e.STADIUM = 0
+                   ), 0) AS we_offen_erfasst
+              FROM EKBESTELL_POS bp
+              JOIN EKBESTELL     b  ON b.REC_ID = bp.EKBESTELL_ID
+             WHERE b.ADDR_ID  = %s
+               AND b.STADIUM  IN (2, 3, 4, 8)
+               AND bp.STADIUM IN (2, 3, 4, 8)
+               AND COALESCE(bp.MENGE, 0) > 0
+             ORDER BY b.BELEGDATUM, b.BELEGNUM, bp.POSITION
+            """,
+            (addr_id,),
+        )
+        rows = cur.fetchall()
+
+    # Berechnete Spalten
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        bestellmenge   = float(r['bestellmenge'] or 0)
+        berechnet_ek   = float(r['berechnet_ek'] or 0)
+        we_gebucht     = float(r['we_gebucht'] or 0)
+        op_menge_ek    = bestellmenge - berechnet_ek
+        op_menge_we    = bestellmenge - we_gebucht
+        # Menge offen = noch nicht in offenem oder gebuchtem WE — also
+        # nicht in irgendeinem WE-Pos drin
+        we_offen_erfasst = float(r['we_offen_erfasst'] or 0)
+        menge_offen    = op_menge_we - we_offen_erfasst
+        # Nur Pos mit echter Restmenge anzeigen
+        if menge_offen <= 0:
+            continue
+        r['op_menge_ek'] = op_menge_ek
+        r['op_menge_we'] = op_menge_we
+        r['menge_offen'] = menge_offen
+        out.append(r)
+    return out
+
+
+def pos_aus_bestellpos_anhaengen(eingang_id: int,
+                                 bestell_pos_id: int,
+                                 menge: float | None = None,
+                                 ma_name: str | None = None) -> dict[str, Any]:
+    """Hängt eine Bestellposition als neue Pos an einen offenen Wareneingang an.
+
+    Args:
+        eingang_id: REC_ID des EKEINGANG.
+        bestell_pos_id: REC_ID der EKBESTELL_POS.
+        menge: vorgewählte Liefermenge. ``None`` = 0 (User trägt manuell ein).
+    """
+    eingang_id = int(eingang_id)
+    bestell_pos_id = int(bestell_pos_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+
+    with get_db_transaction() as cur:
+        # Wareneingang muss editierbar sein
+        cur.execute(
+            "SELECT ADDR_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s",
+            (eingang_id,),
+        )
+        we = cur.fetchone()
+        if not we:
+            raise LookupError(f'Wareneingang {eingang_id} nicht gefunden')
+        if int(we['STADIUM']) != 0:
+            raise PermissionError('Wareneingang ist nicht mehr offen')
+
+        # Bestellpos lesen
+        cur.execute(
+            """
+            SELECT bp.*, b.ADDR_ID AS bestell_addr_id, b.STADIUM AS bestell_stadium
+              FROM EKBESTELL_POS bp
+              JOIN EKBESTELL     b ON b.REC_ID = bp.EKBESTELL_ID
+             WHERE bp.REC_ID = %s
+            """,
+            (bestell_pos_id,),
+        )
+        bp = cur.fetchone()
+        if not bp:
+            raise LookupError(f'Bestellpos {bestell_pos_id} nicht gefunden')
+        if int(bp['bestell_addr_id']) != int(we['ADDR_ID']):
+            raise PermissionError('Lieferant der Bestellung passt nicht zum Wareneingang')
+        if bp['STADIUM'] not in (2, 3, 4, 8):
+            raise PermissionError('Bestellposition ist nicht mehr offen')
+
+        # Naechste POSITION finden
+        cur.execute(
+            "SELECT COALESCE(MAX(POSITION), 0) + 1 AS np "
+            "FROM EKEINGANG_POS WHERE EKEINGANG_ID = %s",
+            (eingang_id,),
+        )
+        pos_nr = int(cur.fetchone()['np'])
+
+        # Schema von EKEINGANG_POS holen
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EKEINGANG_POS'"
+        )
+        ekepos_cols = {r['COLUMN_NAME'] for r in cur.fetchall()}
+
+        wunsch_pos: dict[str, Any] = {
+            'EKEINGANG_ID':       eingang_id,
+            'EKBESTELL_POS_ID':   bestell_pos_id,
+            'ADDR_ID':            int(we['ADDR_ID']),
+            'POSITION':           pos_nr,
+            'VIEW_POS':           str(pos_nr),
+            'ARTIKELTYP':         bp.get('ARTIKELTYP', 'N') or 'N',
+            'ARTIKEL_ID':         bp.get('ARTIKEL_ID'),
+            'ARTNUM':             (bp.get('ARTNUM') or '')[:100],
+            'BARCODE':            (bp.get('BARCODE') or '')[:20],
+            'MATCHCODE':          (bp.get('MATCHCODE') or '')[:255],
+            'WARENGRUPPE':        bp.get('WARENGRUPPE'),
+            'WARENGRUPPENNAME':   (bp.get('WARENGRUPPENNAME') or '')[:250],
+            'BEZEICHNUNG':        (bp.get('BEZEICHNUNG') or ''),
+            'BEZEICHNUNG_LAND':   '',
+            'KURZBEZEICHNUNG':    (bp.get('KURZBEZEICHNUNG') or '')[:150],
+            'KURZBEZEICHNUNG_LAND': '',
+            'ME_EINHEIT':         (bp.get('ME_EINHEIT') or '')[:50],
+            'ME_CODE':            (bp.get('ME_CODE') or '')[:5],
+            'PR_EINHEIT':         bp.get('PR_EINHEIT', 1) or 1,
+            'VPE':                bp.get('VPE', 1) or 1,
+            'GEWICHT':            bp.get('GEWICHT', 0) or 0,
+            'STEUER_CODE':        bp.get('STEUER_CODE', 0) or 0,
+            'GEGENKTO':           bp.get('GEGENKTO', '') or '',
+            'BRUTTO_FLAG':        bp.get('BRUTTO_FLAG', 'N') or 'N',
+            'MENGE_SOLL':         bp.get('MENGE', 0) or 0,
+            'MENGE':              float(menge) if menge is not None else 0,
+            'EPREIS':             bp.get('EPREIS', 0) or 0,
+            'GPREIS':             0,
+            'ALTTEIL_PROZ':       0,
+            'ALTTEIL_FLAG':       'N',
+            'GEBUCHT_FLAG':       'N',
+            'BERECHNET':          'N',
+            'SN_FLAG':            'N',
+            'SET_ID':             bp.get('SET_ID', 0) or 0,
+            'TOP_POS_ID':         bp.get('TOP_POS_ID', -1) or -1,
+            'LAGER_ID':           -2,
+            'FREITEXT':           '',
+            'FREITEXT_LAND':      '',
+            'FARBE':              '',
+            'MATERIAL':           '',
+            'ERST_NAME':          ma_name_safe,
+            'STADIUM':            2,
+        }
+        cols = [c for c in wunsch_pos if c in ekepos_cols]
+        vals = [wunsch_pos[c] for c in cols]
+        platzhalter = ', '.join(['%s'] * len(cols))
+        extra_cols = ''
+        extra_vals = ''
+        if 'ERSTELLT' in ekepos_cols:
+            extra_cols = ', ERSTELLT'
+            extra_vals = ', NOW()'
+        cur.execute(
+            f"INSERT INTO EKEINGANG_POS ({', '.join(cols)}{extra_cols}) "
+            f"VALUES ({platzhalter}{extra_vals})",
+            vals,
+        )
+        new_id = cur.lastrowid
+
+    return {'pos_id': int(new_id), 'position': pos_nr}
+
+
 def storno(rec_id: int) -> dict[str, int]:
     """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
     EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.
