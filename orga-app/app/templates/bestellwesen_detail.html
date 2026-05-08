@@ -285,20 +285,19 @@
                 <td colspan="5" class="zahl-rechts">Summen</td>
                 <td class="zahl-rechts">{{ kopf.GEWICHT | eur(3) if kopf.GEWICHT else '–' }}</td>
                 <td></td>
-                <td class="zahl-rechts">{{ (kopf.NSUMME or 0) | eur }} €
-                    <small class="bd-summe-label">netto</small></td>
+                <td class="zahl-rechts">{{ (kopf.NSUMME or 0) | eur }}</td>
                 <td></td>
             </tr>
             {% if kopf.MSUMME %}
             <tr class="bd-summe-zeile bd-summe-mwst">
                 <td colspan="7" class="zahl-rechts">+ MwSt</td>
-                <td class="zahl-rechts">{{ (kopf.MSUMME or 0) | eur }} €</td>
+                <td class="zahl-rechts">{{ (kopf.MSUMME or 0) | eur }}</td>
                 <td></td>
             </tr>
             {% endif %}
             <tr class="bd-summe-zeile bd-summe-brutto">
                 <td colspan="7" class="zahl-rechts">Brutto</td>
-                <td class="zahl-rechts">{{ (kopf.BSUMME or 0) | eur }} €</td>
+                <td class="zahl-rechts">{{ (kopf.BSUMME or 0) | eur }}</td>
                 <td></td>
             </tr>
         </tfoot>
