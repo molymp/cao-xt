@@ -853,6 +853,36 @@ def pos_aus_bestellpos_anhaengen(eingang_id: int,
     return {'pos_id': int(new_id), 'position': pos_nr}
 
 
+def pos_entfernen(eingang_id: int, pos_id: int) -> dict[str, Any]:
+    """Entfernt eine Wareneingangs-Position aus einem offenen Wareneingang.
+
+    Nur erlaubt wenn:
+    - Wareneingang STADIUM=0 (offen)
+    - Pos GEBUCHT_FLAG='N' (noch nicht gebucht)
+
+    Wenn die Pos aus einer offenen Bestellung uebernommen wurde
+    (EKBESTELL_POS_ID gesetzt), taucht sie nach dem Loeschen automatisch
+    wieder in der 'offenen Bestellungen'-Liste auf, da menge_offen dort
+    dynamisch berechnet wird.
+    """
+    eingang_id = int(eingang_id)
+    pos_id = int(pos_id)
+    with get_db() as cur:
+        _ist_bearbeitbar(cur, eingang_id)
+        cur.execute(
+            "SELECT REC_ID, GEBUCHT_FLAG FROM EKEINGANG_POS "
+            "WHERE REC_ID = %s AND EKEINGANG_ID = %s",
+            (pos_id, eingang_id),
+        )
+        p = cur.fetchone()
+        if not p:
+            raise LookupError(f'Position {pos_id} nicht gefunden')
+        if (p.get('GEBUCHT_FLAG') or 'N') == 'Y':
+            raise PermissionError('Bereits gebuchte Position kann nicht entfernt werden')
+        cur.execute("DELETE FROM EKEINGANG_POS WHERE REC_ID = %s", (pos_id,))
+    return {'ok': 1}
+
+
 def storno(rec_id: int) -> dict[str, int]:
     """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
     EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.
