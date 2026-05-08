@@ -2,8 +2,14 @@
 {% block title %}Bestellung {{ kopf.BELEGNUM }}{% endblock %}
 
 {% set kopf_gesperrt = (kopf.STADIUM in (9, 127)) %}
-{# Pos bearbeitbar: nicht in 8/9/127 UND Bestellung nicht gesperrt #}
-{% set POS_LOCKED_STADIUM = (8, 9, 127) %}
+{#
+  Sperrlogik:
+  - POS_HARD_LOCKED (9, 127):  Position vollständig read-only (auch Toggle)
+  - POS_INPUTS_LOCKED (8):     Liefertermin/Lieferpreis read-only,
+                               aber Toggle bleibt aktiv (Rückwechsel auf 2)
+#}
+{% set POS_HARD_LOCKED   = (9, 127) %}
+{% set POS_INPUTS_LOCKED = (8, 9, 127) %}
 
 {% block extra_style %}
 <style>
@@ -160,6 +166,169 @@
   border-color: rgba(184,48,48,0.4);
 }
 
+/* Edit-Wrap (Input + Touch-Edit-Knopf) */
+.bd-edit-wrap {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+}
+.bd-edit-wrap > input { flex: 1 1 auto; min-width: 0; }
+.bd-edit-btn {
+  flex: 0 0 36px;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  background: var(--bg-hell, #ece3cc);
+  color: var(--gruen-dunkel);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.bd-edit-btn:hover {
+  background: var(--creme-warm, #d8c8a4);
+  border-color: var(--gruen-dunkel);
+}
+.bd-edit-btn:active { transform: scale(0.95); }
+
+/* On-Screen Numpad (Bottom Sheet) */
+.bd-numpad-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.bd-numpad {
+  background: white;
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px 24px;
+  width: 100%; max-width: 400px;
+  box-shadow: 0 -6px 32px rgba(0,0,0,0.25);
+  user-select: none;
+}
+.bd-numpad-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.bd-numpad-feldname {
+  font-size: 13px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-dim, #5a7a3a);
+}
+.bd-numpad-close {
+  min-width: 40px; min-height: 40px;
+  background: var(--creme-dunkel);
+  border: none; border-radius: 50%;
+  font-size: 18px; cursor: pointer;
+  color: var(--text-hell);
+}
+.bd-numpad-display {
+  background: var(--creme);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 28px; font-weight: 700;
+  text-align: right;
+  margin-bottom: 14px;
+  min-height: 54px;
+  color: var(--gruen-dunkel);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; white-space: nowrap;
+}
+.bd-numpad-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+}
+.bd-numpad-btn {
+  min-height: 56px; font-size: 22px; font-weight: 700;
+  border: none; border-radius: 12px;
+  background: var(--creme-dunkel); color: var(--text-hell);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Nunito', sans-serif;
+  transition: background 0.08s, transform 0.06s;
+}
+.bd-numpad-btn:active { transform: scale(0.95); background: var(--creme-warm); }
+.bd-numpad-btn.np-clear   { background: #fde8e8; color: #c0392b; }
+.bd-numpad-btn.np-back    { background: var(--creme-warm); font-size: 20px; }
+.bd-numpad-btn.np-confirm {
+  background: var(--gruen, #2e7a2e); color: white; font-size: 18px;
+  grid-column: span 2;
+}
+
+/* On-Screen Tastatur (Bottom Sheet) */
+.bd-tastatur-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.bd-tastatur {
+  background: white;
+  border-radius: 18px 18px 0 0;
+  padding: 14px 14px 22px;
+  width: 100%; max-width: 720px;
+  box-shadow: 0 -6px 32px rgba(0,0,0,0.25);
+  user-select: none;
+}
+.bd-tastatur-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.bd-tastatur-feldname {
+  font-size: 13px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-dim, #5a7a3a);
+}
+.bd-tastatur-close {
+  min-width: 40px; min-height: 40px;
+  background: var(--creme-dunkel);
+  border: none; border-radius: 50%;
+  font-size: 18px; cursor: pointer;
+  color: var(--text-hell);
+}
+.bd-tastatur-display {
+  width: 100%;
+  background: var(--creme);
+  border: 1px solid var(--creme-dunkel);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 1.1rem; font-weight: 600;
+  margin-bottom: 10px;
+  font-family: 'Nunito', sans-serif;
+}
+.bd-tastatur-rows { display: flex; flex-direction: column; gap: 6px; }
+.bd-tastatur-row { display: flex; gap: 6px; justify-content: center; }
+.bd-tastatur-key {
+  flex: 1 1 auto;
+  min-width: 38px; min-height: 48px;
+  border: none; border-radius: 8px;
+  background: var(--creme-dunkel); color: var(--text-hell);
+  font-family: 'Nunito', sans-serif;
+  font-size: 1.05rem; font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.08s, transform 0.06s;
+}
+.bd-tastatur-key:active { background: var(--creme-warm); transform: scale(0.95); }
+.bd-tastatur-key.bd-tastatur-shift { flex: 0 0 60px; background: var(--creme-warm); }
+.bd-tastatur-key.bd-tastatur-shift.aktiv { background: var(--gold, #c8780a); color: white; }
+.bd-tastatur-key.bd-tastatur-back  { flex: 0 0 60px; background: var(--creme-warm); font-size: 1.2rem; }
+.bd-tastatur-key.bd-tastatur-space { flex: 0 0 280px; max-width: 50%; background: var(--creme-warm); }
+.bd-tastatur-actions {
+  margin-top: 10px;
+  display: flex; justify-content: flex-end;
+}
+.bd-tastatur-confirm {
+  background: var(--gruen, #2e7a2e); color: white;
+  border: none; border-radius: 8px;
+  padding: 10px 22px;
+  font-size: 1rem; font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+  cursor: pointer;
+}
+.bd-tastatur-confirm:active { background: var(--gruen-dunkel, #1a4010); }
+
 /* Warn-Button (Rest nicht lieferbar abschließen) */
 .btn-warn {
   background: var(--gold, #c8780a);
@@ -273,6 +442,53 @@
 {% endblock %}
 
 {% block content %}
+{# Touch-Datepicker (gemeinsam mit anderen Orga-Modulen) #}
+{% include '_touch_picker.html' %}
+
+{# Touch-Numpad fuer Lieferpreis #}
+<div class="bd-numpad-overlay" id="bd-numpad-overlay" style="display:none;"
+     onclick="if(event.target===this)bdNumpadSchliessen()">
+  <div class="bd-numpad">
+    <div class="bd-numpad-header">
+      <span class="bd-numpad-feldname" id="bd-numpad-label"></span>
+      <button class="bd-numpad-close" onclick="bdNumpadSchliessen()">✕</button>
+    </div>
+    <div class="bd-numpad-display" id="bd-numpad-display">0</div>
+    <div class="bd-numpad-grid">
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('7')">7</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('8')">8</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('9')">9</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('4')">4</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('5')">5</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('6')">6</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('1')">1</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('2')">2</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('3')">3</button>
+      <button class="bd-numpad-btn np-clear" onclick="bdNumpadClear()">C</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd('0')">0</button>
+      <button class="bd-numpad-btn" onclick="bdNumpadAdd(',')">,</button>
+      <button class="bd-numpad-btn np-back" onclick="bdNumpadBack()">⌫</button>
+      <button class="bd-numpad-btn np-confirm" onclick="bdNumpadOk()">✓ Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+{# Touch-Tastatur fuer Text-Felder (AB Nr.) #}
+<div class="bd-tastatur-overlay" id="bd-tastatur-overlay" style="display:none;"
+     onclick="if(event.target===this)bdTastaturSchliessen()">
+  <div class="bd-tastatur">
+    <div class="bd-tastatur-header">
+      <span class="bd-tastatur-feldname" id="bd-tastatur-label"></span>
+      <button class="bd-tastatur-close" onclick="bdTastaturSchliessen()">✕</button>
+    </div>
+    <input type="text" class="bd-tastatur-display" id="bd-tastatur-display">
+    <div class="bd-tastatur-rows" id="bd-tastatur-rows"></div>
+    <div class="bd-tastatur-actions">
+      <button class="bd-tastatur-confirm" onclick="bdTastaturOk()">✓ Übernehmen</button>
+    </div>
+  </div>
+</div>
+
 <div class="bd-kopf">
     <h1>📋 Bestellung {{ kopf.BELEGNUM or ('#' ~ kopf.REC_ID) }}</h1>
     <a href="{{ url_for('orga_bestellwesen.uebersicht') }}" class="zurueck">← zurück zur Übersicht</a>
@@ -324,11 +540,16 @@
             {% if kopf_gesperrt %}
             <span class="wert">{{ kopf.LIEF_AB or '–' }}</span>
             {% else %}
-            <input type="text" class="bd-input" id="bd-lief-ab"
-                   value="{{ kopf.LIEF_AB or '' }}"
-                   maxlength="50"
-                   placeholder="Auftragsbestätigungs-Nr."
-                   onchange="bdKopfMetadata()">
+            <div class="bd-edit-wrap">
+                <input type="text" class="bd-input" id="bd-lief-ab"
+                       value="{{ kopf.LIEF_AB or '' }}"
+                       maxlength="50"
+                       placeholder="Auftragsbestätigungs-Nr."
+                       onchange="bdKopfMetadata()">
+                <button type="button" class="bd-edit-btn"
+                        onclick="bdTastaturFor('bd-lief-ab', 'AB Nr.')"
+                        title="Touch-Tastatur öffnen">⌨</button>
+            </div>
             {% endif %}
         </div>
         <div>
@@ -336,9 +557,14 @@
             {% if kopf_gesperrt %}
             <span class="wert">{{ kopf.TERMIN.strftime('%d.%m.%Y') if kopf.TERMIN else '–' }}</span>
             {% else %}
-            <input type="date" class="bd-input" id="bd-termin"
-                   value="{{ kopf.TERMIN.isoformat() if kopf.TERMIN else '' }}"
-                   onchange="bdKopfMetadata()">
+            <div class="bd-edit-wrap">
+                <input type="date" class="bd-input" id="bd-termin"
+                       value="{{ kopf.TERMIN.isoformat() if kopf.TERMIN else '' }}"
+                       onchange="bdKopfMetadata()">
+                <button type="button" class="bd-edit-btn"
+                        onclick="bdDatePickerFor('bd-termin', 'Liefertermin (Bestellung)', bdKopfMetadata)"
+                        title="Touch-Datepicker öffnen">📅</button>
+            </div>
             {% endif %}
         </div>
     </div>
@@ -420,7 +646,8 @@
         {% for p in positionen %}
         {% set pos_gewicht = ((p.GEWICHT or 0) * (p.MENGE or 0)) %}
         {% set pos_mwst    = mwst_map.get(p.STEUER_CODE or 0) %}
-        {% set pos_locked  = kopf_gesperrt or (p.STADIUM in POS_LOCKED_STADIUM) %}
+        {% set pos_hard_locked   = kopf_gesperrt or (p.STADIUM in POS_HARD_LOCKED) %}
+        {% set pos_inputs_locked = kopf_gesperrt or (p.STADIUM in POS_INPUTS_LOCKED) %}
         {% set ist_nicht_lieferbar = (p.STADIUM == 8) %}
         <tr id="pos-zeile-{{ p.REC_ID }}">
             <td>{{ p.POSITION }}</td>
@@ -431,30 +658,42 @@
             <td class="zahl-rechts">{{ pos_gewicht | eur(3) if pos_gewicht else '–' }}</td>
             <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
             <td class="zahl-rechts">
-                {% if pos_locked %}
+                {% if pos_inputs_locked %}
                     {{ (p.LIEFPREIS or 0) | eur(4) }}
                 {% else %}
-                    <input type="number" class="bd-input bd-input-preis zahl-rechts"
-                           step="0.0001" min="0"
-                           value="{{ '{:.4f}'.format(p.LIEFPREIS or 0) }}"
-                           data-pos-id="{{ p.REC_ID }}"
-                           onchange="bdPosLieferpreis(this)">
+                    <div class="bd-edit-wrap">
+                        <input type="number" class="bd-input bd-input-preis zahl-rechts"
+                               id="lpreis-{{ p.REC_ID }}"
+                               step="0.0001" min="0"
+                               value="{{ '{:.4f}'.format(p.LIEFPREIS or 0) }}"
+                               data-pos-id="{{ p.REC_ID }}"
+                               onchange="bdPosLieferpreis(this)">
+                        <button type="button" class="bd-edit-btn"
+                                onclick="bdNumpadFor('lpreis-{{ p.REC_ID }}', 'Lieferpreis')"
+                                title="Touch-Numpad öffnen">🔢</button>
+                    </div>
                 {% endif %}
             </td>
             <td class="zahl-rechts">{{ pos_mwst | eur(1) if pos_mwst is not none else '–' }}</td>
             <td class="zahl-rechts">{{ (p.GPREIS or 0) | eur }}</td>
             <td>
-                {% if pos_locked %}
+                {% if pos_inputs_locked %}
                     <span class="bd-rdo">{{ p.liefertermin.strftime('%d.%m.%Y') if p.liefertermin else '–' }}</span>
                 {% else %}
-                    <input type="date" class="bd-input bd-input-klein"
-                           value="{{ p.liefertermin.isoformat() if p.liefertermin else '' }}"
-                           data-pos-id="{{ p.REC_ID }}"
-                           onchange="bdPosLiefertermin(this)">
+                    <div class="bd-edit-wrap">
+                        <input type="date" class="bd-input bd-input-klein"
+                               id="ltermin-{{ p.REC_ID }}"
+                               value="{{ p.liefertermin.isoformat() if p.liefertermin else '' }}"
+                               data-pos-id="{{ p.REC_ID }}"
+                               onchange="bdPosLiefertermin(this)">
+                        <button type="button" class="bd-edit-btn"
+                                onclick="bdDatePickerFor('ltermin-{{ p.REC_ID }}', 'Liefertermin Pos. {{ p.POSITION }}', () => document.getElementById('ltermin-{{ p.REC_ID }}').dispatchEvent(new Event('change')))"
+                                title="Touch-Datepicker öffnen">📅</button>
+                    </div>
                 {% endif %}
             </td>
             <td>
-                {% if pos_locked %}
+                {% if pos_hard_locked %}
                     <span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span>
                 {% else %}
                     <button type="button"
@@ -462,7 +701,7 @@
                             data-pos-id="{{ p.REC_ID }}"
                             data-aktiv="{{ '1' if ist_nicht_lieferbar else '0' }}"
                             onclick="bdPosNichtLieferbar(this)"
-                            title="Klicken um zwischen 'offen' und 'rest nicht lieferbar' zu wechseln">
+                            title="Klick = wechseln zwischen 'offen' und 'rest nicht lieferbar'">
                         {% if ist_nicht_lieferbar %}🚫 nicht lieferbar{% else %}offen{% endif %}
                     </button>
                 {% endif %}
@@ -541,6 +780,140 @@
 <script>
 const BD_REC_ID = {{ kopf.REC_ID }};
 const BD_DETAIL_URL = '{{ url_for("orga_bestellwesen.detail", rec_id=kopf.REC_ID) }}';
+
+// ── Touch-Editor-Bindings ──────────────────────────────────────────
+//
+// Ueber `_touch_picker.html` haben wir bereits oeffneDatumPicker(); fuer
+// Numpad und Volltastatur sind eigene Modale unten in diesem Template.
+
+function bdDatePickerFor(inputId, titel, callback) {
+    if (typeof oeffneDatumPicker === 'function') {
+        oeffneDatumPicker(inputId, callback || null, titel);
+    } else {
+        document.getElementById(inputId).showPicker?.();
+    }
+}
+
+// Numpad (komma-Eingabe, fuer Lieferpreise)
+let _bdNumpadInput = null;
+let _bdNumpadOnOk  = null;
+function bdNumpadFor(inputId, label) {
+    const inp = document.getElementById(inputId);
+    if (!inp) return;
+    _bdNumpadInput = inp;
+    _bdNumpadOnOk = () => inp.dispatchEvent(new Event('change'));
+    document.getElementById('bd-numpad-label').textContent = label || '';
+    document.getElementById('bd-numpad-display').textContent =
+        (inp.value || '0').replace('.', ',');
+    document.getElementById('bd-numpad-overlay').style.display = 'flex';
+    inp.blur();
+}
+function bdNumpadAdd(ch) {
+    const d = document.getElementById('bd-numpad-display');
+    let cur = d.textContent === '0' && ch !== ',' ? '' : d.textContent;
+    if (ch === ',' && cur.includes(',')) return;
+    if (ch === ',' && !cur) cur = '0';
+    d.textContent = cur + ch;
+}
+function bdNumpadBack() {
+    const d = document.getElementById('bd-numpad-display');
+    d.textContent = d.textContent.length > 1 ? d.textContent.slice(0, -1) : '0';
+}
+function bdNumpadClear() {
+    document.getElementById('bd-numpad-display').textContent = '0';
+}
+function bdNumpadOk() {
+    if (_bdNumpadInput) {
+        const wert = document.getElementById('bd-numpad-display').textContent
+                      .replace(',', '.');
+        _bdNumpadInput.value = wert;
+        if (_bdNumpadOnOk) _bdNumpadOnOk();
+    }
+    bdNumpadSchliessen();
+}
+function bdNumpadSchliessen() {
+    document.getElementById('bd-numpad-overlay').style.display = 'none';
+    _bdNumpadInput = null;
+    _bdNumpadOnOk = null;
+}
+
+// Volltastatur (alphanumerisch, fuer AB-Nr.)
+const _BD_TASTATUR_LAYOUT_NORMAL = [
+    '1234567890-',
+    'qwertzuiopü',
+    'asdfghjklöä',
+    'yxcvbnm,.',
+];
+const _BD_TASTATUR_LAYOUT_SHIFT = [
+    '1234567890_',
+    'QWERTZUIOPÜ',
+    'ASDFGHJKLÖÄ',
+    'YXCVBNM;:',
+];
+let _bdTastaturInput = null;
+let _bdTastaturOnOk  = null;
+let _bdTastaturShift = false;
+function bdTastaturFor(inputId, label) {
+    const inp = document.getElementById(inputId);
+    if (!inp) return;
+    _bdTastaturInput = inp;
+    _bdTastaturOnOk = () => inp.dispatchEvent(new Event('change'));
+    _bdTastaturShift = false;
+    document.getElementById('bd-tastatur-label').textContent = label || '';
+    document.getElementById('bd-tastatur-display').value = inp.value || '';
+    bdTastaturRender();
+    document.getElementById('bd-tastatur-overlay').style.display = 'flex';
+    inp.blur();
+    setTimeout(() => document.getElementById('bd-tastatur-display').focus(), 50);
+}
+function bdTastaturRender() {
+    const root = document.getElementById('bd-tastatur-rows');
+    const lay = _bdTastaturShift ? _BD_TASTATUR_LAYOUT_SHIFT : _BD_TASTATUR_LAYOUT_NORMAL;
+    let html = '';
+    lay.forEach((row, i) => {
+        html += '<div class="bd-tastatur-row">';
+        if (i === 3) {
+            html += `<button class="bd-tastatur-key bd-tastatur-shift${_bdTastaturShift ? ' aktiv' : ''}" onclick="bdTastaturShift()">⇧</button>`;
+        }
+        for (const ch of row) {
+            html += `<button class="bd-tastatur-key" onclick="bdTastaturAdd('${ch}')">${ch}</button>`;
+        }
+        if (i === 3) {
+            html += `<button class="bd-tastatur-key bd-tastatur-back" onclick="bdTastaturBack()">⌫</button>`;
+        }
+        html += '</div>';
+    });
+    html += '<div class="bd-tastatur-row">';
+    html += '<button class="bd-tastatur-key bd-tastatur-space" onclick="bdTastaturAdd(\' \')">Leer</button>';
+    html += '</div>';
+    root.innerHTML = html;
+}
+function bdTastaturAdd(ch) {
+    const d = document.getElementById('bd-tastatur-display');
+    d.value = d.value + ch;
+    if (_bdTastaturShift) { _bdTastaturShift = false; bdTastaturRender(); }
+}
+function bdTastaturBack() {
+    const d = document.getElementById('bd-tastatur-display');
+    d.value = d.value.slice(0, -1);
+}
+function bdTastaturShift() {
+    _bdTastaturShift = !_bdTastaturShift;
+    bdTastaturRender();
+}
+function bdTastaturOk() {
+    if (_bdTastaturInput) {
+        _bdTastaturInput.value = document.getElementById('bd-tastatur-display').value;
+        if (_bdTastaturOnOk) _bdTastaturOnOk();
+    }
+    bdTastaturSchliessen();
+}
+function bdTastaturSchliessen() {
+    document.getElementById('bd-tastatur-overlay').style.display = 'none';
+    _bdTastaturInput = null;
+    _bdTastaturOnOk = null;
+    _bdTastaturShift = false;
+}
 
 async function _post(url, body) {
     try {
