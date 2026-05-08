@@ -94,8 +94,8 @@ def wareneingang_anlegen(bestell_rec_id: int,
         if not pos_liste:
             raise ValueError('Keine offenen Positionen — Wareneingang nicht nötig')
 
-        # 2) BELEGNUM aus REGISTRY
-        belegnum = _next_registry_nummer(cur, 'EK-EING')
+        # 2) BELEGNUM aus REGISTRY (Counter heisst in CAO 'WARENEINGANG')
+        belegnum = _next_registry_nummer(cur, 'WARENEINGANG')
 
         heute = date.today()
         ma_id_int = int(ma_id) if ma_id is not None else -1
@@ -446,12 +446,83 @@ def pos_lieferpreis_setzen(eingang_id: int, pos_id: int,
 # ── Barcode-Scan ──────────────────────────────────────────────────────
 
 
+def _ean_lookup(cur, eingang_id: int, ean: str) -> tuple[int | None, int, str]:
+    """Sucht in den drei moeglichen Quellen nach dem EAN und liefert
+    (artikel_id, faktor, ean_typ) oder (None, 1, '') wenn nicht gefunden.
+
+    Reihenfolge:
+    1. CAO ARTIKEL.BARCODE / BARCODE2 / BARCODE3 → Faktor 1, Typ 'stueck'
+    2. XT_EINKAUF_LIEF_ARTIKEL.BARCODE_STUECK → ueber Lief-Mapping zur
+       CAO-Artikel-ID, Faktor 1, Typ 'lief_stueck'
+    3. XT_EINKAUF_LIEF_ARTIKEL.BARCODE_KT → wie 2, aber Faktor = VPE_EK,
+       Typ 'gebinde'
+
+    Bei den XT-Lookups wird bevorzugt der Lieferant des Wareneingangs
+    bzw. der zugeordnete CAO-ADDR_ID gematcht (sonst Vieldeutigkeit).
+    """
+    # 1) CAO ARTIKEL.BARCODE / BARCODE2 / BARCODE3
+    cur.execute(
+        "SELECT REC_ID FROM ARTIKEL "
+        "WHERE BARCODE = %s OR BARCODE2 = %s OR BARCODE3 = %s "
+        "LIMIT 1",
+        (ean, ean, ean),
+    )
+    row = cur.fetchone()
+    if row:
+        return int(row['REC_ID']), 1, 'stueck'
+
+    # Lieferant des Wareneingangs (CAO-ADDR_ID) zur Disambiguierung
+    cur.execute("SELECT ADDR_ID FROM EKEINGANG WHERE REC_ID = %s", (eingang_id,))
+    we_row = cur.fetchone()
+    cao_lief_addr = int(we_row['ADDR_ID']) if we_row and we_row.get('ADDR_ID') else None
+
+    # 2 + 3) XT-Tabelle defensiv abfragen — die Tabelle existiert ggf.
+    # nicht in jeder Installation. Try/except + Fallback.
+    try:
+        cur.execute(
+            """
+            SELECT xla.ARTIKEL_NR_LIEF, xla.VPE_EK,
+                   CASE WHEN xla.BARCODE_STUECK = %s THEN 'stueck'
+                        WHEN xla.BARCODE_KT     = %s THEN 'gebinde' END AS treffer,
+                   xl.CAO_LIEF_ID
+              FROM XT_EINKAUF_LIEF_ARTIKEL xla
+              JOIN XT_EINKAUF_LIEFERANT     xl ON xl.REC_ID = xla.LIEF_REC_ID
+             WHERE xla.BARCODE_STUECK = %s OR xla.BARCODE_KT = %s
+             ORDER BY (xl.CAO_LIEF_ID = %s) DESC
+             LIMIT 1
+            """,
+            (ean, ean, ean, ean, cao_lief_addr or -1),
+        )
+        lief_row = cur.fetchone()
+    except Exception:
+        lief_row = None
+
+    if not lief_row or not lief_row.get('ARTIKEL_NR_LIEF'):
+        return None, 1, ''
+
+    art_nr_lief = lief_row['ARTIKEL_NR_LIEF']
+    treffer_typ = lief_row['treffer']
+    faktor = int(lief_row.get('VPE_EK') or 1) if treffer_typ == 'gebinde' else 1
+    cao_adr = lief_row.get('CAO_LIEF_ID') or cao_lief_addr
+
+    # ARTIKEL_PREIS.BESTNUM = Lieferanten-Artikelnummer (PREIS_TYP=5)
+    if cao_adr:
+        cur.execute(
+            "SELECT ARTIKEL_ID FROM ARTIKEL_PREIS "
+            " WHERE BESTNUM = %s AND ADRESS_ID = %s AND PREIS_TYP = 5 "
+            " LIMIT 1",
+            (art_nr_lief, int(cao_adr)),
+        )
+        ap_row = cur.fetchone()
+        if ap_row and ap_row.get('ARTIKEL_ID'):
+            ean_typ = 'gebinde' if treffer_typ == 'gebinde' else 'lief_stueck'
+            return int(ap_row['ARTIKEL_ID']), faktor, ean_typ
+
+    return None, 1, ''
+
+
 def scan_ean(eingang_id: int, ean: str) -> dict[str, Any]:
     """Sucht zu einem gescannten EAN die passende Position im Wareneingang.
-
-    Sucht in:
-    1. ARTIKEL.BARCODE (Stück-EAN) — Faktor = 1
-    2. ARTIKEL_VPE.BARCODE (Gebinde-EAN) — Faktor = ARTIKEL_VPE.MENGE
 
     Returns:
         dict mit ``gefunden`` (bool), ``pos_id``, ``artikel_id``,
@@ -465,35 +536,7 @@ def scan_ean(eingang_id: int, ean: str) -> dict[str, Any]:
 
     with get_db() as cur:
         _ist_bearbeitbar(cur, eingang_id)
-        artikel_id: int | None = None
-        faktor = 1
-        ean_typ = 'stueck'
-
-        # Stück-EAN
-        cur.execute(
-            "SELECT REC_ID FROM ARTIKEL WHERE BARCODE = %s LIMIT 1",
-            (ean,),
-        )
-        row = cur.fetchone()
-        if row:
-            artikel_id = int(row['REC_ID'])
-
-        # Gebinde-EAN über ARTIKEL_VPE
-        if artikel_id is None:
-            try:
-                cur.execute(
-                    "SELECT ARTIKEL_ID, MENGE FROM ARTIKEL_VPE "
-                    "WHERE BARCODE = %s LIMIT 1",
-                    (ean,),
-                )
-                row = cur.fetchone()
-                if row:
-                    artikel_id = int(row['ARTIKEL_ID'])
-                    faktor = int(row['MENGE'] or 1)
-                    ean_typ = 'gebinde'
-            except Exception:
-                # ARTIKEL_VPE-Tabelle/Spalten weichen evtl. ab — ignorieren
-                pass
+        artikel_id, faktor, ean_typ = _ean_lookup(cur, eingang_id, ean)
 
         if artikel_id is None:
             return {'gefunden': False,
@@ -514,7 +557,7 @@ def scan_ean(eingang_id: int, ean: str) -> dict[str, Any]:
             return {'gefunden': False,
                     'fehler': f'Artikel {artikel_id} nicht in diesem Wareneingang'}
 
-        # MENGE +faktor erhöhen
+        # MENGE += faktor
         neue_menge = float(pos['MENGE'] or 0) + faktor
         ergebnis = pos_menge_setzen(eingang_id, int(pos['REC_ID']), neue_menge)
 
