@@ -12,27 +12,58 @@ from typing import Any
 from common.db import get_db
 
 
-# CAO-Mimik: STADIUM-Codes aus EKBESTELL/EKBESTELL_POS.
-# Reverse-engineered aus Beobachtung der Live-Daten in cao_XT_DEV.
-#   0   = unbekannt (von uns vor 2026-05-08 falsch geschrieben)
-#   2   = offen
-#   3   = teilgeliefert
-#   9   = (Vermutung "geliefert" — vom User noch zu verifizieren)
-#   127 = storniert (vom User bestaetigt 2026-05-08 — TINYINT max,
-#         CAO nutzt 127 statt z.B. 1)
-STADIUM_LABEL = {
-    0:   'unbekannt',
+# CAO-Mimik: STADIUM-Codes aus EKBESTELL und EKBESTELL_POS.
+# Quelle: cao_faktura.exe (1.5.1.36) — UTF-16-Strings bei
+#   0x00563b88 (EKBESTELL Kopf)  und  0x00562d68 (EKBESTELL_POS).
+# Wir brauchen zwei getrennte Mappings, weil 9 in EKBESTELL "abgeschlossen"
+# heisst, in EKBESTELL_POS aber "voll berechnet".
+
+STADIUM_LABEL_KOPF = {
+    0:   'in Bearbeitung',
+    1:   'in Bearbeitung',
     2:   'offen',
-    3:   'teilgeliefert',
-    9:   'geliefert',
+    3:   'Teillieferung',
+    4:   'Ersetzt',
+    8:   'rest nicht lieferbar',
+    9:   'abgeschlossen',
+    93:  'Teillieferung WE',
+    95:  'voll geliefert WE',
+    99:  'abgerechnet',
+    127: '*** STORNO ***',
+}
+
+STADIUM_LABEL_POS = {
+    0:   'unbekannt',          # XT-Altdaten vor 2026-05-08
+    2:   'offen',
+    3:   'Teillieferung',
+    4:   'Ersetzt',
+    8:   'rest nicht lieferbar',
+    9:   'voll berechnet',
+    93:  'Teillieferung WE',
+    95:  'voll geliefert WE',
     127: 'storniert',
 }
 
+# Backwarts-Kompat: Filter-Auswahl in der UI nutzt das Header-Mapping.
+STADIUM_LABEL = STADIUM_LABEL_KOPF
 
-def _stadium_label(code: int | None) -> str:
+
+def _stadium_label_kopf(code: int | None) -> str:
     if code is None:
         return '–'
-    return STADIUM_LABEL.get(int(code), f'?? - [{code}]')
+    return STADIUM_LABEL_KOPF.get(int(code), f'?? - [{code}]')
+
+
+def _stadium_label_pos(code: int | None) -> str:
+    if code is None:
+        return '–'
+    return STADIUM_LABEL_POS.get(int(code), f'?? - [{code}]')
+
+
+# Alias fuer Diagnose-Endpunkt (zeigt fuer beide Tabellen das jeweils
+# passende Label, faellt auf Header zurueck).
+def _stadium_label(code: int | None) -> str:
+    return _stadium_label_kopf(code)
 
 
 def bestellungen_liste(
@@ -92,7 +123,7 @@ def bestellungen_liste(
         cur.execute(sql, params)
         rows = cur.fetchall()
     for r in rows:
-        r['stadium_label'] = _stadium_label(r.get('stadium'))
+        r['stadium_label'] = _stadium_label_kopf(r.get('stadium'))
     return rows
 
 
@@ -120,7 +151,7 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
         kopf = cur.fetchone()
         if not kopf:
             return None
-        kopf['stadium_label'] = _stadium_label(kopf.get('STADIUM'))
+        kopf['stadium_label'] = _stadium_label_kopf(kopf.get('STADIUM'))
 
         cur.execute(
             """
@@ -133,7 +164,7 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
         )
         positionen = cur.fetchall()
         for p in positionen:
-            p['stadium_label'] = _stadium_label(p.get('STADIUM'))
+            p['stadium_label'] = _stadium_label_pos(p.get('STADIUM'))
     return {'kopf': kopf, 'positionen': positionen}
 
 
@@ -163,7 +194,7 @@ def stadium_codes_in_use() -> list[dict[str, Any]]:
                 'tabelle':           'EKBESTELL',
                 'code':              r['code'],
                 'anzahl':            r['anzahl'],
-                'label':             _stadium_label(r['code']),
+                'label':             _stadium_label_kopf(r['code']),
                 'bsp_min_belegnum':  r['bsp_min_belegnum'],
                 'bsp_max_belegnum':  r['bsp_max_belegnum'],
             })
@@ -184,7 +215,7 @@ def stadium_codes_in_use() -> list[dict[str, Any]]:
                 'tabelle':           'EKBESTELL_POS',
                 'code':              r['code'],
                 'anzahl':            r['anzahl'],
-                'label':             _stadium_label(r['code']),
+                'label':             _stadium_label_pos(r['code']),
                 'bsp_min_belegnum':  r['bsp_min_belegnum'],
                 'bsp_max_belegnum':  r['bsp_max_belegnum'],
             })
