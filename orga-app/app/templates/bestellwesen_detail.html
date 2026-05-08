@@ -250,6 +250,19 @@
     <p class="bd-hinweis-rdo">Read-only — Bearbeiten kommt in Phase 2.</p>
     {% if positionen %}
     <div style="overflow-x:auto;">
+    {# Steuersatz-Lookup: STEUER_CODE 0..3 → kopf.MWST_0..MWST_3 (Prozent) #}
+    {% set mwst_map = {
+        0: kopf.MWST_0,
+        1: kopf.MWST_1,
+        2: kopf.MWST_2,
+        3: kopf.MWST_3,
+    } %}
+    {% set msumme_map = {
+        0: kopf.MSUMME_0,
+        1: kopf.MSUMME_1,
+        2: kopf.MSUMME_2,
+        3: kopf.MSUMME_3,
+    } %}
     <table class="bd-pos-tabelle">
         <thead>
             <tr>
@@ -260,6 +273,7 @@
                 <th>ME</th>
                 <th class="zahl-rechts">Gewicht kg</th>
                 <th class="zahl-rechts">EK €</th>
+                <th class="zahl-rechts">MwSt %</th>
                 <th class="zahl-rechts">Gesamt €</th>
                 <th>Status</th>
             </tr>
@@ -267,6 +281,7 @@
         <tbody>
         {% for p in positionen %}
         {% set pos_gewicht = ((p.GEWICHT or 0) * (p.MENGE or 0)) %}
+        {% set pos_mwst    = mwst_map.get(p.STEUER_CODE or 0) %}
         <tr>
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
@@ -275,6 +290,7 @@
             <td>{{ p.ME_EINHEIT or '–' }}</td>
             <td class="zahl-rechts">{{ pos_gewicht | eur(3) if pos_gewicht else '–' }}</td>
             <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
+            <td class="zahl-rechts">{{ pos_mwst | eur(1) if pos_mwst is not none else '–' }}</td>
             <td class="zahl-rechts">{{ (p.GPREIS or 0) | eur }}</td>
             <td><span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span></td>
         </tr>
@@ -285,18 +301,25 @@
                 <td colspan="5" class="zahl-rechts">Summen</td>
                 <td class="zahl-rechts">{{ kopf.GEWICHT | eur(3) if kopf.GEWICHT else '–' }}</td>
                 <td></td>
+                <td></td>
                 <td class="zahl-rechts">{{ (kopf.NSUMME or 0) | eur }}</td>
                 <td></td>
             </tr>
-            {% if kopf.MSUMME %}
-            <tr class="bd-summe-zeile bd-summe-mwst">
-                <td colspan="7" class="zahl-rechts">+ MwSt</td>
-                <td class="zahl-rechts">{{ (kopf.MSUMME or 0) | eur }}</td>
-                <td></td>
-            </tr>
-            {% endif %}
+            {# Pro tatsächlich benutztem MwSt-Satz eine eigene Zeile #}
+            {% for code in [0, 1, 2, 3] %}
+                {% set msum = msumme_map.get(code) %}
+                {% set msatz = mwst_map.get(code) %}
+                {% if msum and msum > 0 %}
+                <tr class="bd-summe-zeile bd-summe-mwst">
+                    <td colspan="7" class="zahl-rechts">+ MwSt</td>
+                    <td class="zahl-rechts">{{ msatz | eur(1) }}</td>
+                    <td class="zahl-rechts">{{ msum | eur }}</td>
+                    <td></td>
+                </tr>
+                {% endif %}
+            {% endfor %}
             <tr class="bd-summe-zeile bd-summe-brutto">
-                <td colspan="7" class="zahl-rechts">Brutto</td>
+                <td colspan="8" class="zahl-rechts">Brutto</td>
                 <td class="zahl-rechts">{{ (kopf.BSUMME or 0) | eur }}</td>
                 <td></td>
             </tr>
