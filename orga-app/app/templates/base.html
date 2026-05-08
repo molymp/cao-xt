@@ -461,7 +461,8 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">Betrieb</div>
       <div class="sidebar-section">
-        <div class="sidebar-group" id="grp-bestellwesen">
+        <div class="sidebar-group {% if request.path.startswith('/orga/bestellwesen') %}open{% endif %}"
+             id="grp-bestellwesen">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-bestellwesen')">
             <span class="icon">🛒</span> Bestellwesen
             <span class="toggle-arrow">▶</span>

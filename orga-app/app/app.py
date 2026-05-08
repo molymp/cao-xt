@@ -166,6 +166,17 @@ try:
     from modules.orga.bestellwesen import create_blueprint as _bw_bp
     app.register_blueprint(_bw_bp(), url_prefix='/orga/bestellwesen')
     log.info("Orga-Bestellwesen-Blueprint registriert.")
+    # Einmalige Migration: alte EKBESTELL_POS.STADIUM=0 → 2 fuer
+    # offene Bestellungen heilen (Spiegel zum 2026-05-08-Sync-Fix).
+    # Idempotent — nach erstem Lauf gibt es keine STADIUM=0 mehr.
+    try:
+        from modules.orga.bestellwesen.models import heile_alte_positions_stadium
+        ergebnis = heile_alte_positions_stadium()
+        if ergebnis.get('geheilt'):
+            log.info("EKBESTELL_POS-Migration: %s Positionen STADIUM 0->2",
+                     ergebnis['geheilt'])
+    except Exception as e:
+        log.warning("EKBESTELL_POS-Migration uebersprungen: %s", e)
 except Exception as e:
     log.warning("Orga-Bestellwesen-Blueprint konnte nicht geladen werden: %s", e)
 
