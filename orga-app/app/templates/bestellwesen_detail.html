@@ -79,8 +79,40 @@
   font-size: 0.9rem;
   vertical-align: middle;
 }
-.bd-pos-tabelle tr:last-child td { border-bottom: none; }
+.bd-pos-tabelle tbody tr:last-child td { border-bottom: 1px solid var(--creme-dunkel); }
 .zahl-rechts { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.bd-pos-tabelle tfoot td {
+  padding: 8px 10px;
+  border-bottom: none;
+  font-size: 0.92rem;
+}
+.bd-summe-zeile td {
+  background: rgba(26,64,16,0.04);
+  font-weight: 600;
+  color: var(--text-hell, #142808);
+}
+.bd-summe-mwst td {
+  font-weight: 500;
+  color: var(--text-dim, #5a7a3a);
+  background: rgba(26,64,16,0.02);
+}
+.bd-summe-brutto td {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--gruen-dunkel);
+  background: rgba(26,64,16,0.08);
+  border-top: 2px solid var(--gruen-dunkel);
+}
+.bd-summe-label {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim, #5a7a3a);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 
 .stadium-pille {
   display: inline-block;
@@ -214,28 +246,6 @@
 {% endif %}
 
 <div class="bd-card">
-    <h2>Summen</h2>
-    <div class="bd-grid">
-        <div>
-            <label>Netto</label>
-            <span class="wert">{{ '{:,.2f} €'.format(kopf.NSUMME or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</span>
-        </div>
-        <div>
-            <label>MwSt</label>
-            <span class="wert">{{ '{:,.2f} €'.format(kopf.MSUMME or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</span>
-        </div>
-        <div>
-            <label>Brutto</label>
-            <span class="wert">{{ '{:,.2f} €'.format(kopf.BSUMME or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</span>
-        </div>
-        <div>
-            <label>Gewicht (kg)</label>
-            <span class="wert">{{ kopf.GEWICHT if kopf.GEWICHT is not none else '–' }}</span>
-        </div>
-    </div>
-</div>
-
-<div class="bd-card">
     <h2>Positionen ({{ positionen|length }})</h2>
     <p class="bd-hinweis-rdo">Read-only — Bearbeiten kommt in Phase 2.</p>
     {% if positionen %}
@@ -246,8 +256,9 @@
                 <th>Pos.</th>
                 <th>Art.-Nr.</th>
                 <th>Bezeichnung</th>
-                <th class="zahl-rechts">Bestellmenge</th>
+                <th class="zahl-rechts">Menge</th>
                 <th>ME</th>
+                <th class="zahl-rechts">Gewicht kg</th>
                 <th class="zahl-rechts">EK €</th>
                 <th class="zahl-rechts">Gesamt €</th>
                 <th>Status</th>
@@ -255,18 +266,42 @@
         </thead>
         <tbody>
         {% for p in positionen %}
+        {% set pos_gewicht = ((p.GEWICHT or 0) * (p.MENGE or 0)) %}
         <tr>
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
             <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
             <td class="zahl-rechts">{{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}</td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
-            <td class="zahl-rechts">{{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
-            <td class="zahl-rechts">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+            <td class="zahl-rechts">{{ pos_gewicht | eur(3) if pos_gewicht else '–' }}</td>
+            <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
+            <td class="zahl-rechts">{{ (p.GPREIS or 0) | eur }}</td>
             <td><span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span></td>
         </tr>
         {% endfor %}
         </tbody>
+        <tfoot>
+            <tr class="bd-summe-zeile">
+                <td colspan="5" class="zahl-rechts">Summen</td>
+                <td class="zahl-rechts">{{ kopf.GEWICHT | eur(3) if kopf.GEWICHT else '–' }}</td>
+                <td></td>
+                <td class="zahl-rechts">{{ (kopf.NSUMME or 0) | eur }} €
+                    <small class="bd-summe-label">netto</small></td>
+                <td></td>
+            </tr>
+            {% if kopf.MSUMME %}
+            <tr class="bd-summe-zeile bd-summe-mwst">
+                <td colspan="7" class="zahl-rechts">+ MwSt</td>
+                <td class="zahl-rechts">{{ (kopf.MSUMME or 0) | eur }} €</td>
+                <td></td>
+            </tr>
+            {% endif %}
+            <tr class="bd-summe-zeile bd-summe-brutto">
+                <td colspan="7" class="zahl-rechts">Brutto</td>
+                <td class="zahl-rechts">{{ (kopf.BSUMME or 0) | eur }} €</td>
+                <td></td>
+            </tr>
+        </tfoot>
     </table>
     </div>
     {% else %}
