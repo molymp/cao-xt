@@ -124,7 +124,7 @@ def wareneingang_anlegen(bestell_rec_id: int,
               FIRMA_ID, INFO, KOPFTEXT, FUSSTEXT, PROJEKT,
               ZAHLART_NAME, ZAHLART_KURZ, ZAHLART_LANG,
               LIEFART_NAME, LIEFART_LANG,
-              EKBESTELL_ID, BEREINIGT
+              BEREINIGT
             ) VALUES (
               %s, %s, %s, %s, %s, %s,
               %s, %s, %s,
@@ -144,7 +144,7 @@ def wareneingang_anlegen(bestell_rec_id: int,
               %s, '', '', '', '',
               %s, %s, %s,
               %s, %s,
-              %s, 'N'
+              'N'
             )
             """,
             (
@@ -189,7 +189,6 @@ def wareneingang_anlegen(bestell_rec_id: int,
                 kopf.get('ZAHLART_LANG', '') or '',
                 kopf.get('LIEFART_NAME', '') or '',
                 kopf.get('LIEFART_LANG', '') or '',
-                bestell_rec_id,
             ),
         )
         ekeingang_id = cur.lastrowid
@@ -289,13 +288,16 @@ def wareneingang_liste(*, suche: str = '', stadium: int | None = None,
         params.append(int(stadium))
     params.append(int(limit))
 
+    # Bestell-Belegnummer wird ueber die Pos-Verknuepfung ermittelt:
+    # EKEINGANG_POS.EKBESTELL_POS_ID → EKBESTELL_POS.EKBESTELL_ID →
+    # EKBESTELL.BELEGNUM. Wenn ein Wareneingang Pos aus mehreren
+    # Bestellungen enthaelt, zeigen wir die mit der niedrigsten REC_ID.
     sql = f"""
         SELECT
             e.REC_ID                            AS rec_id,
             e.BELEGNUM                          AS belegnum,
             e.BELEGDATUM                        AS belegdatum,
             e.STADIUM                           AS stadium,
-            e.EKBESTELL_ID                      AS bestell_id,
             e.ADDR_ID                           AS addr_id,
             COALESCE(a.NAME1, '–')              AS lief_name,
             (
@@ -303,8 +305,13 @@ def wareneingang_liste(*, suche: str = '', stadium: int | None = None,
                 WHERE p.EKEINGANG_ID = e.REC_ID
             )                                   AS pos_anzahl,
             (
-                SELECT b.BELEGNUM FROM EKBESTELL b
-                WHERE b.REC_ID = e.EKBESTELL_ID
+                SELECT b.BELEGNUM
+                  FROM EKEINGANG_POS p
+                  JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
+                  JOIN EKBESTELL b      ON b.REC_ID  = bp.EKBESTELL_ID
+                 WHERE p.EKEINGANG_ID = e.REC_ID
+                 ORDER BY b.REC_ID
+                 LIMIT 1
             )                                   AS bestell_belegnum
         FROM EKEINGANG e
         LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID
@@ -333,7 +340,22 @@ def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:
                    COALESCE(a.LAND, '') AS lief_land,
                    COALESCE(a.PLZ, '') AS lief_plz,
                    COALESCE(a.ORT, '') AS lief_ort,
-                   (SELECT BELEGNUM FROM EKBESTELL WHERE REC_ID = e.EKBESTELL_ID) AS bestell_belegnum
+                   (
+                       SELECT b.REC_ID
+                         FROM EKEINGANG_POS p
+                         JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
+                         JOIN EKBESTELL b      ON b.REC_ID  = bp.EKBESTELL_ID
+                        WHERE p.EKEINGANG_ID = e.REC_ID
+                        ORDER BY b.REC_ID LIMIT 1
+                   ) AS bestell_rec_id,
+                   (
+                       SELECT b.BELEGNUM
+                         FROM EKEINGANG_POS p
+                         JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
+                         JOIN EKBESTELL b      ON b.REC_ID  = bp.EKBESTELL_ID
+                        WHERE p.EKEINGANG_ID = e.REC_ID
+                        ORDER BY b.REC_ID LIMIT 1
+                   ) AS bestell_belegnum
               FROM EKEINGANG e
          LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID
              WHERE e.REC_ID = %s

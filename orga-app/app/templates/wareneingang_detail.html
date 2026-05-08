@@ -162,9 +162,9 @@
         <div>
             <label>aus Bestellung</label>
             <span class="wert">
-              {% if kopf.EKBESTELL_ID %}
-                <a href="{{ url_for('orga_bestellwesen.detail', rec_id=kopf.EKBESTELL_ID) }}">
-                    {{ kopf.bestell_belegnum or ('#' ~ kopf.EKBESTELL_ID) }}
+              {% if kopf.bestell_rec_id %}
+                <a href="{{ url_for('orga_bestellwesen.detail', rec_id=kopf.bestell_rec_id) }}">
+                    {{ kopf.bestell_belegnum or ('#' ~ kopf.bestell_rec_id) }}
                 </a>
               {% else %}
                 –
