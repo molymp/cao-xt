@@ -204,7 +204,6 @@
                 <th class="zahl-rechts">Geliefert</th>
                 <th>ME</th>
                 <th class="zahl-rechts">EK €</th>
-                <th class="zahl-rechts">Lieferpreis €</th>
                 <th class="zahl-rechts">Gesamt €</th>
             </tr>
         </thead>
@@ -228,21 +227,20 @@
                 {% endif %}
             </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
-            <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
             <td class="zahl-rechts">
                 {% if we_gesperrt %}
-                    {{ (p.LIEFPREIS or 0) | eur(4) }}
+                    {{ (p.EPREIS or 0) | eur(4) }}
                 {% else %}
                     <input type="number" class="wd-preis-input"
-                           id="wd-lpreis-{{ p.REC_ID }}"
+                           id="wd-epreis-{{ p.REC_ID }}"
                            step="0.0001" min="0"
-                           value="{{ '{:.4f}'.format(p.LIEFPREIS or 0) }}"
+                           value="{{ '{:.4f}'.format(p.EPREIS or 0) }}"
                            data-pos-id="{{ p.REC_ID }}"
-                           onchange="wdPosLpreis(this)">
+                           onchange="wdPosEpreis(this)">
                 {% endif %}
             </td>
             <td class="zahl-rechts" id="wd-gpreis-{{ p.REC_ID }}">
-                {{ (p.GLIEFPREIS or 0) | eur }}
+                {{ (p.GPREIS or 0) | eur }}
             </td>
         </tr>
         {% endfor %}
@@ -296,6 +294,14 @@ function _flashInput(el, ok) {
     setTimeout(() => el.classList.remove('wd-input-ok', 'wd-input-err'), 1500);
 }
 
+function _wdRefreshGpreis(posId, gpreis) {
+    const gp = document.getElementById('wd-gpreis-' + posId);
+    if (gp && gpreis !== undefined) {
+        gp.textContent = gpreis.toLocaleString('de-DE',
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}
+
 async function wdPosMenge(input) {
     const posId = input.dataset.posId;
     const res = await _post(
@@ -307,29 +313,21 @@ async function wdPosMenge(input) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
         return;
     }
-    const gp = document.getElementById('wd-gpreis-' + posId);
-    if (gp && res.gliefpreis !== undefined) {
-        gp.textContent = res.gliefpreis.toLocaleString('de-DE',
-            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+    _wdRefreshGpreis(posId, res.gpreis);
 }
 
-async function wdPosLpreis(input) {
+async function wdPosEpreis(input) {
     const posId = input.dataset.posId;
     const res = await _post(
-        `${WD_DETAIL_URL}/api/positionen/${posId}/lieferpreis`,
-        { lieferpreis: input.value }
+        `${WD_DETAIL_URL}/api/positionen/${posId}/epreis`,
+        { epreis: input.value }
     );
     _flashInput(input, res.ok);
     if (!res.ok) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
         return;
     }
-    const gp = document.getElementById('wd-gpreis-' + posId);
-    if (gp && res.gliefpreis !== undefined) {
-        gp.textContent = res.gliefpreis.toLocaleString('de-DE',
-            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+    _wdRefreshGpreis(posId, res.gpreis);
 }
 
 async function wdScan() {

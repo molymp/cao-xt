@@ -289,17 +289,18 @@ def api_we_pos_menge(rec_id: int, pos_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
-@bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/lieferpreis')
-def api_we_pos_lieferpreis(rec_id: int, pos_id: int) -> Any:
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/epreis')
+def api_we_pos_epreis(rec_id: int, pos_id: int) -> Any:
+    """Setzt EKEINGANG_POS.EPREIS — der tatsaechlich gelieferte EK pro Stueck."""
     _login_check()
     body = request.get_json(silent=True) or {}
-    raw = body.get('lieferpreis')
+    raw = body.get('epreis') or body.get('lieferpreis')  # alt-kompatibel
     try:
-        lp = float(str(raw).replace(',', '.'))
+        ep = float(str(raw).replace(',', '.'))
     except (TypeError, ValueError):
-        return jsonify({'ok': False, 'fehler': 'lieferpreis ungültig'}), 400
+        return jsonify({'ok': False, 'fehler': 'epreis ungültig'}), 400
     try:
-        result = we.pos_lieferpreis_setzen(rec_id, pos_id, lp)
+        result = we.pos_epreis_setzen(rec_id, pos_id, ep)
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
