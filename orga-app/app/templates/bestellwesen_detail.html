@@ -4,16 +4,6 @@
 {% set kopf_gesperrt = (kopf.STADIUM in (9, 127)) %}
 {# Pos bearbeitbar: nicht in 8/9/127 UND Bestellung nicht gesperrt #}
 {% set POS_LOCKED_STADIUM = (8, 9, 127) %}
-{% set EDITIERBARE_POS_CODES = [
-    (2, 'offen'),
-    (3, 'Teillieferung'),
-    (4, 'Ersetzt'),
-    (8, 'rest nicht lieferbar'),
-    (9, 'voll berechnet'),
-    (93, 'Teillieferung WE'),
-    (95, 'voll geliefert WE'),
-    (127, 'storniert'),
-] %}
 
 {% block extra_style %}
 <style>
@@ -144,10 +134,47 @@
   background: var(--bg-hell, #ece3cc);
 }
 .bd-input-klein { width: 130px; }
+.bd-input-preis { width: 90px; text-align: right; }
 .bd-input-ok    { border-color: var(--gruen, #2e7a2e); background: rgba(46,122,46,0.10); }
 .bd-input-err   { border-color: var(--rot, #b83030); background: rgba(184,48,48,0.10); }
 
 .bd-select.bd-stadium { font-weight: 700; }
+
+/* Toggle „rest nicht lieferbar" pro Position */
+.bd-toggle-nl {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: rgba(200,120,10,0.18);
+  color: #a06000;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.bd-toggle-nl:hover { border-color: var(--gruen-dunkel); }
+.bd-toggle-nl.bd-toggle-an {
+  background: rgba(184,48,48,0.18);
+  color: #8a2020;
+  border-color: rgba(184,48,48,0.4);
+}
+
+/* Warn-Button (Rest nicht lieferbar abschließen) */
+.btn-warn {
+  background: var(--gold, #c8780a);
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-warn:hover { background: #a06000; }
+.btn-warn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .bd-rdo {
   font-size: 0.88rem;
@@ -293,16 +320,33 @@
             <span class="wert">{{ kopf.ERST_NAME or '–' }}</span>
         </div>
         <div>
-            <label>Liefer-AB-Nr.</label>
+            <label>AB Nr.</label>
+            {% if kopf_gesperrt %}
             <span class="wert">{{ kopf.LIEF_AB or '–' }}</span>
+            {% else %}
+            <input type="text" class="bd-input" id="bd-lief-ab"
+                   value="{{ kopf.LIEF_AB or '' }}"
+                   maxlength="50"
+                   placeholder="Auftragsbestätigungs-Nr."
+                   onchange="bdKopfMetadata()">
+            {% endif %}
+        </div>
+        <div>
+            <label>Liefertermin</label>
+            {% if kopf_gesperrt %}
+            <span class="wert">{{ kopf.TERMIN.strftime('%d.%m.%Y') if kopf.TERMIN else '–' }}</span>
+            {% else %}
+            <input type="date" class="bd-input" id="bd-termin"
+                   value="{{ kopf.TERMIN.isoformat() if kopf.TERMIN else '' }}"
+                   onchange="bdKopfMetadata()">
+            {% endif %}
         </div>
     </div>
     {% if not kopf_gesperrt %}
     <div class="bd-aktion-zeile">
-        <label class="bd-aktion-label">Liefertermin für alle bearbeitbaren Positionen setzen:</label>
-        <input type="date" id="bd-kopf-liefertermin" class="bd-input">
-        <button type="button" class="btn btn-primary" id="bd-kopf-liefertermin-btn"
-                onclick="bdKopfLiefertermin()">Übernehmen</button>
+        <span class="bd-aktion-label">💡 Liefertermin auch auf alle bearbeitbaren Positionen anwenden:</span>
+        <button type="button" class="btn btn-neutral"
+                onclick="bdKopfLieferterminAufPos()">Auf Positionen übernehmen</button>
         <span class="bd-feedback" id="bd-kopf-feedback"></span>
     </div>
     {% endif %}
@@ -365,6 +409,7 @@
                 <th>ME</th>
                 <th class="zahl-rechts">Gewicht kg</th>
                 <th class="zahl-rechts">EK €</th>
+                <th class="zahl-rechts">Liefer- preis €</th>
                 <th class="zahl-rechts">MwSt %</th>
                 <th class="zahl-rechts">Gesamt €</th>
                 <th>Liefertermin</th>
@@ -376,6 +421,7 @@
         {% set pos_gewicht = ((p.GEWICHT or 0) * (p.MENGE or 0)) %}
         {% set pos_mwst    = mwst_map.get(p.STEUER_CODE or 0) %}
         {% set pos_locked  = kopf_gesperrt or (p.STADIUM in POS_LOCKED_STADIUM) %}
+        {% set ist_nicht_lieferbar = (p.STADIUM == 8) %}
         <tr id="pos-zeile-{{ p.REC_ID }}">
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
@@ -384,6 +430,17 @@
             <td>{{ p.ME_EINHEIT or '–' }}</td>
             <td class="zahl-rechts">{{ pos_gewicht | eur(3) if pos_gewicht else '–' }}</td>
             <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
+            <td class="zahl-rechts">
+                {% if pos_locked %}
+                    {{ (p.LIEFPREIS or 0) | eur(4) }}
+                {% else %}
+                    <input type="number" class="bd-input bd-input-preis zahl-rechts"
+                           step="0.0001" min="0"
+                           value="{{ '{:.4f}'.format(p.LIEFPREIS or 0) }}"
+                           data-pos-id="{{ p.REC_ID }}"
+                           onchange="bdPosLieferpreis(this)">
+                {% endif %}
+            </td>
             <td class="zahl-rechts">{{ pos_mwst | eur(1) if pos_mwst is not none else '–' }}</td>
             <td class="zahl-rechts">{{ (p.GPREIS or 0) | eur }}</td>
             <td>
@@ -400,13 +457,14 @@
                 {% if pos_locked %}
                     <span class="stadium-pille stadium-{{ p.STADIUM or 0 }}">{{ p.stadium_label }}</span>
                 {% else %}
-                    <select class="bd-select bd-stadium stadium-{{ p.STADIUM or 0 }}"
+                    <button type="button"
+                            class="bd-toggle-nl{% if ist_nicht_lieferbar %} bd-toggle-an{% endif %}"
                             data-pos-id="{{ p.REC_ID }}"
-                            onchange="bdPosStatus(this)">
-                        {% for code, label in EDITIERBARE_POS_CODES %}
-                        <option value="{{ code }}" {% if p.STADIUM == code %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
+                            data-aktiv="{{ '1' if ist_nicht_lieferbar else '0' }}"
+                            onclick="bdPosNichtLieferbar(this)"
+                            title="Klicken um zwischen 'offen' und 'rest nicht lieferbar' zu wechseln">
+                        {% if ist_nicht_lieferbar %}🚫 nicht lieferbar{% else %}offen{% endif %}
+                    </button>
                 {% endif %}
             </td>
         </tr>
@@ -416,6 +474,7 @@
             <tr class="bd-summe-zeile">
                 <td colspan="5" class="zahl-rechts">Summen</td>
                 <td class="zahl-rechts">{{ kopf.GEWICHT | eur(3) if kopf.GEWICHT else '–' }}</td>
+                <td></td>
                 <td></td>
                 <td></td>
                 <td class="zahl-rechts">{{ (kopf.NSUMME or 0) | eur }}</td>
@@ -428,7 +487,7 @@
                 {% set msatz = mwst_map.get(code) %}
                 {% if msum and msum > 0 %}
                 <tr class="bd-summe-zeile bd-summe-mwst">
-                    <td colspan="7" class="zahl-rechts">+ MwSt</td>
+                    <td colspan="8" class="zahl-rechts">+ MwSt</td>
                     <td class="zahl-rechts">{{ msatz | eur(1) }}</td>
                     <td class="zahl-rechts">{{ msum | eur }}</td>
                     <td></td>
@@ -437,7 +496,7 @@
                 {% endif %}
             {% endfor %}
             <tr class="bd-summe-zeile bd-summe-brutto">
-                <td colspan="8" class="zahl-rechts">Brutto</td>
+                <td colspan="9" class="zahl-rechts">Brutto</td>
                 <td class="zahl-rechts">{{ (kopf.BSUMME or 0) | eur }}</td>
                 <td></td>
                 <td></td>
@@ -451,6 +510,23 @@
 </div>
 
 {% if not kopf_gesperrt %}
+<div class="bd-card">
+    <h2>Bestellung weiterführen</h2>
+    <p class="bd-hinweis-rdo">
+        Liefermengen werden in CAO-XT nicht direkt an der Bestellung gepflegt —
+        eine Bestellung wird als <strong>Wareneingang</strong> oder direkt als
+        <strong>Einkauf</strong> weitergeführt; daraus folgt automatisch der
+        Status der Positionen. Diese Buchungs-Workflows kommen in einer
+        späteren Phase zu CAO-XT, aktuell bitte noch in CAO-Faktura selbst.
+    </p>
+    <div class="bd-aktion-zeile">
+        <button type="button" class="btn btn-neutral" disabled title="Phase 7 — kommt in CAO-XT später">📥 Als Wareneingang (in CAO-XT)</button>
+        <button type="button" class="btn btn-neutral" disabled title="Phase 8 — kommt in CAO-XT später">🛒 Als Einkauf (in CAO-XT)</button>
+        <button type="button" class="btn btn-warn" id="bd-rnl-btn"
+                onclick="bdRestNichtLieferbar()">⚠ Rest nicht lieferbar — Bestellung abschließen</button>
+    </div>
+</div>
+
 <div class="bd-card bd-storno-card">
     <h2>Bestellung stornieren</h2>
     <p class="bd-hinweis-rdo">
@@ -485,11 +561,33 @@ function _flash(el, ok, msg) {
     setTimeout(() => { el.textContent = ''; el.className = 'bd-feedback'; }, 4000);
 }
 
-async function bdKopfLiefertermin() {
-    const inp = document.getElementById('bd-kopf-liefertermin');
-    const fb  = document.getElementById('bd-kopf-feedback');
-    const datum = inp.value;
-    if (!datum) { _flash(fb, false, 'Bitte ein Datum wählen.'); return; }
+function _flashInput(el, ok) {
+    el.classList.toggle('bd-input-ok', ok);
+    el.classList.toggle('bd-input-err', !ok);
+    setTimeout(() => el.classList.remove('bd-input-ok', 'bd-input-err'), 1500);
+}
+
+// Header-Metadaten (LIEF_AB + TERMIN). Wird beim Verlassen eines der
+// Inputs aufgerufen — schreibt nur die geänderten Werte.
+async function bdKopfMetadata() {
+    const lief_ab = document.getElementById('bd-lief-ab').value;
+    const termin  = document.getElementById('bd-termin').value;
+    const res = await _post(`${BD_DETAIL_URL}/api/metadata`, {
+        lief_ab, termin
+    });
+    const fb = document.getElementById('bd-kopf-feedback');
+    if (res.ok) {
+        _flash(fb, true, '✓ gespeichert');
+    } else {
+        _flash(fb, false, '⚠ ' + (res.fehler || 'Fehler'));
+    }
+}
+
+// Header-TERMIN auf alle bearbeitbaren Positionen übertragen.
+async function bdKopfLieferterminAufPos() {
+    const datum = document.getElementById('bd-termin').value;
+    const fb = document.getElementById('bd-kopf-feedback');
+    if (!datum) { _flash(fb, false, 'Bitte zuerst Liefertermin oben setzen.'); return; }
     const res = await _post(`${BD_DETAIL_URL}/api/liefertermin`, { datum });
     if (!res.ok) { _flash(fb, false, '⚠ ' + (res.fehler || 'Fehler')); return; }
     _flash(fb, true, `✓ ${res.positionen_geaendert} Position(en) aktualisiert. Seite wird neu geladen …`);
@@ -503,33 +601,72 @@ async function bdPosLiefertermin(input) {
         `${BD_DETAIL_URL}/api/positionen/${posId}/liefertermin`,
         { datum }
     );
-    input.classList.toggle('bd-input-ok', res.ok);
-    input.classList.toggle('bd-input-err', !res.ok);
-    setTimeout(() => {
-        input.classList.remove('bd-input-ok', 'bd-input-err');
-    }, 1500);
+    _flashInput(input, res.ok);
     if (!res.ok) alert('Fehler: ' + (res.fehler || 'unbekannt'));
 }
 
-async function bdPosStatus(select) {
-    const posId = select.dataset.posId;
-    const stadium = select.value;
+async function bdPosLieferpreis(input) {
+    const posId = input.dataset.posId;
+    const lieferpreis = input.value;
+    const res = await _post(
+        `${BD_DETAIL_URL}/api/positionen/${posId}/lieferpreis`,
+        { lieferpreis }
+    );
+    _flashInput(input, res.ok);
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    // GPREIS-Spalte (Gesamt) live aktualisieren — die ist die direkt
+    // benachbarte Spalte „MwSt %" weiter, dann „Gesamt €".
+    const tr = input.closest('tr');
+    if (tr && res.gliefpreis !== undefined) {
+        const tds = tr.querySelectorAll('td');
+        // Reihenfolge: Pos, Art-Nr, Bez, Menge, ME, Gewicht, EK, Liefer, MwSt, Gesamt, ...
+        if (tds.length > 9) {
+            tds[9].textContent = (res.gliefpreis).toLocaleString('de-DE',
+                { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+    }
+}
+
+async function bdPosNichtLieferbar(btn) {
+    const posId = btn.dataset.posId;
+    const aktiv = btn.dataset.aktiv === '1';
+    const neuStadium = aktiv ? 2 : 8;  // Toggle: an → offen, aus → nicht lieferbar
     const res = await _post(
         `${BD_DETAIL_URL}/api/positionen/${posId}/status`,
-        { stadium }
+        { stadium: neuStadium }
     );
     if (!res.ok) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
         return;
     }
-    // Wenn der neue Status die Position sperrt (8/9/127), reload damit
-    // Inputs zu read-only-Spans werden.
-    if ([8, 9, 127].includes(parseInt(stadium))) {
+    // Wenn jetzt 'nicht lieferbar' (=8) → Pos wird gesperrt; reload damit
+    // Inputs zu read-only-Pille werden.
+    if (neuStadium === 8) {
         location.reload();
     } else {
-        // Style-Klasse anpassen (Farbe der Pille folgt der Klasse)
-        select.className = 'bd-select bd-stadium stadium-' + stadium;
+        btn.dataset.aktiv = '0';
+        btn.classList.remove('bd-toggle-an');
+        btn.textContent = 'offen';
     }
+}
+
+async function bdRestNichtLieferbar() {
+    if (!confirm('Alle noch offenen / teilgelieferten Positionen auf "rest nicht lieferbar" setzen und Bestellung abschließen?')) {
+        return;
+    }
+    const btn = document.getElementById('bd-rnl-btn');
+    btn.disabled = true;
+    const res = await _post(`${BD_DETAIL_URL}/api/rest-nicht-lieferbar`, {});
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        btn.disabled = false;
+        return;
+    }
+    alert(`✓ ${res.positionen_geaendert} Position(en) auf "rest nicht lieferbar" gesetzt.`);
+    location.reload();
 }
 
 async function bdStorno() {

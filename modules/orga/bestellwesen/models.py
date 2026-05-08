@@ -193,8 +193,11 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
 _POS_BEARBEITBAR_STADIUM_NOT_IN = (8, 9, 127)
 _KOPF_BEARBEITBAR_STADIUM_NOT_IN = (9, 127)
 
-# Status-Codes, die per UI gesetzt werden duerfen.
-ERLAUBTE_POS_STADIUM_CODES = (2, 3, 4, 8, 9, 93, 95, 127)
+# Status-Codes, die per UI direkt manipuliert werden duerfen. Nur die
+# manuellen Aktionen — alles andere (Teillieferung, voll geliefert WE,
+# voll berechnet, Storno-Code 127) entsteht entweder durch Wareneingang/
+# Einkauf-Buchungen oder durch die explizite Storno-Aktion.
+ERLAUBTE_POS_STADIUM_CODES = (2, 8)  # offen / rest nicht lieferbar
 
 
 def kopf_liefertermin_setzen(rec_id: int, datum: date | None) -> int:
@@ -325,6 +328,115 @@ def position_status_setzen(pos_id: int, stadium: int) -> None:
             "UPDATE EKBESTELL_POS SET STADIUM = %s WHERE REC_ID = %s",
             (stadium, pos_id),
         )
+
+
+def kopf_metadata_setzen(rec_id: int,
+                         lief_ab: str | None = None,
+                         termin: date | None = None,
+                         info_rtf: str | None = None) -> None:
+    """Setzt Header-Metadaten der Bestellung.
+
+    Felder die übergeben werden, werden geschrieben; ``None`` =
+    nicht anfassen. Strings werden auf ``''`` getrimmt (CAO-Konvention:
+    keine NULLs in optionalen VARCHAR-Spalten).
+
+    - ``lief_ab``  → EKBESTELL.LIEF_AB (Auftragsbestätigungsnummer)
+    - ``termin``   → EKBESTELL.TERMIN  (Header-Liefertermin)
+    - ``info_rtf`` → EKBESTELL.INFO    (Lieferinfo, RTF-formatiert)
+    """
+    rec_id = int(rec_id)
+    sets: list[str] = []
+    params: list[Any] = []
+    if lief_ab is not None:
+        sets.append('LIEF_AB = %s')
+        params.append(lief_ab[:50])  # CAO-Feld typischerweise begrenzt
+    if termin is not None:
+        sets.append('TERMIN = %s')
+        params.append(termin)
+    if info_rtf is not None:
+        sets.append('INFO = %s')
+        params.append(info_rtf)
+    if not sets:
+        return
+    with get_db() as cur:
+        cur.execute(
+            "SELECT STADIUM FROM EKBESTELL WHERE REC_ID = %s",
+            (rec_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LookupError(f'Bestellung {rec_id} nicht gefunden')
+        if int(row['STADIUM']) in _KOPF_BEARBEITBAR_STADIUM_NOT_IN:
+            raise PermissionError('Bestellung gesperrt (abgeschlossen / storniert)')
+        params.append(rec_id)
+        cur.execute(
+            f"UPDATE EKBESTELL SET {', '.join(sets)} WHERE REC_ID = %s",
+            params,
+        )
+
+
+def position_lieferpreis_setzen(pos_id: int, lieferpreis: float | None) -> dict[str, float]:
+    """Setzt LIEFPREIS einer Position; GLIEFPREIS = LIEFPREIS × MENGE.
+
+    Args:
+        pos_id: REC_ID der EKBESTELL_POS-Zeile.
+        lieferpreis: Neuer Stück-Lieferpreis (decimal). ``None`` = nichts
+            tun.
+
+    Returns:
+        Dict mit ``lieferpreis`` und ``gliefpreis`` (wie geschrieben).
+    """
+    if lieferpreis is None:
+        return {}
+    pos_id = int(pos_id)
+    lpreis = float(lieferpreis)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, MENGE, STADIUM FROM EKBESTELL_POS WHERE REC_ID = %s",
+            (pos_id,),
+        )
+        pos = cur.fetchone()
+        if not pos:
+            raise LookupError(f'Position {pos_id} nicht gefunden')
+        if int(pos['STADIUM']) in _POS_BEARBEITBAR_STADIUM_NOT_IN:
+            raise PermissionError(f'Position gesperrt (STADIUM={pos["STADIUM"]})')
+        gpreis = round(lpreis * float(pos['MENGE'] or 0), 2)
+        # CAO-Mimik (Binary @0x0255b32c):
+        # UPDATE EKBESTELL_POS SET LIEFPREIS=:LPREIS, GLIEFPREIS=:GPREIS WHERE REC_ID=:ID
+        cur.execute(
+            "UPDATE EKBESTELL_POS SET LIEFPREIS = %s, GLIEFPREIS = %s "
+            "WHERE REC_ID = %s",
+            (lpreis, gpreis, pos_id),
+        )
+    return {'lieferpreis': lpreis, 'gliefpreis': gpreis}
+
+
+def bestellung_rest_nicht_lieferbar(rec_id: int) -> dict[str, int]:
+    """Setzt alle Positionen mit STADIUM in (2, 3) auf 8 — schließt damit
+    die Bestellung mit „Rest nicht lieferbar" ab.
+
+    CAO-Mimik (Binary @0x02563554):
+    ``UPDATE EKBESTELL_POS SET STADIUM=8 WHERE STADIUM in(2,3)
+       and EKBESTELL_ID=...``
+    """
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT STADIUM FROM EKBESTELL WHERE REC_ID = %s",
+            (rec_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise LookupError(f'Bestellung {rec_id} nicht gefunden')
+        if int(row['STADIUM']) in _KOPF_BEARBEITBAR_STADIUM_NOT_IN:
+            raise PermissionError('Bestellung gesperrt')
+        cur.execute(
+            "UPDATE EKBESTELL_POS SET STADIUM = 8 "
+            "WHERE STADIUM IN (2, 3) AND EKBESTELL_ID = %s",
+            (rec_id,),
+        )
+        n = cur.rowcount
+    return {'positionen_geaendert': n}
 
 
 def bestellung_stornieren(rec_id: int) -> dict[str, int]:
