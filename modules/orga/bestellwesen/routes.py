@@ -366,6 +366,17 @@ def api_we_pos_anhaengen(rec_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/entfernen')
+def api_we_pos_entfernen(rec_id: int, pos_id: int) -> Any:
+    """Entfernt eine ungebuchte Position aus einem offenen Wareneingang."""
+    _login_check()
+    try:
+        result = we.pos_entfernen(rec_id, pos_id)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
 @bp.post('/wareneingang/<int:rec_id>/api/storno')
 def api_we_storno(rec_id: int) -> Any:
     _login_check()

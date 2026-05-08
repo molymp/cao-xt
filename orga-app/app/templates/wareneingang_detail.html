@@ -203,6 +203,23 @@
 .wd-plus-btn:hover { background: var(--gruen, #2e7a2e); }
 .wd-plus-btn:active { transform: scale(0.92); }
 
+.wd-trash-btn {
+  width: 32px; height: 32px;
+  background: transparent; color: var(--rot, #b83030);
+  border: 1px solid var(--creme-dunkel);
+  border-radius: 50%;
+  font-size: 1rem;
+  cursor: pointer; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.1s, transform 0.07s, border-color 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wd-trash-btn:hover {
+  background: rgba(184,48,48,0.10);
+  border-color: var(--rot, #b83030);
+}
+.wd-trash-btn:active { transform: scale(0.92); }
+
 /* Info-Feld am Header (RTF -> Plain Text) */
 .wd-memo {
   margin-top: 14px; padding-top: 14px;
@@ -324,6 +341,7 @@
                 <th>aus Bestellung</th>
                 <th>gebucht in EK</th>
                 <th>EK-Rechnung</th>
+                {% if not we_gesperrt %}<th></th>{% endif %}
             </tr>
         </thead>
         <tbody>
@@ -380,6 +398,17 @@
                     <span class="wd-rdo">–</span>
                 {% endif %}
             </td>
+            {% if not we_gesperrt %}
+            <td>
+                {% if p.GEBUCHT_FLAG != 'Y' %}
+                <button type="button" class="wd-trash-btn"
+                        title="Position entfernen{% if p.bestell_belegnum %} — geht zurück in offene Bestellungen{% endif %}"
+                        data-pos-id="{{ p.REC_ID }}"
+                        data-menge="{{ '{:g}'.format(p.MENGE or 0) }}"
+                        onclick="wdEntfernen(this)">🗑</button>
+                {% endif %}
+            </td>
+            {% endif %}
         </tr>
         {% endfor %}
         </tbody>
@@ -639,6 +668,28 @@ async function wdStorno() {
     const res = await _post(`${WD_DETAIL_URL}/api/storno`, {});
     if (!res.ok) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    location.reload();
+}
+
+// ── Pos aus Wareneingang entfernen (geht zurueck in offene Bestellungen) ──
+async function wdEntfernen(btn) {
+    const posId = btn.dataset.posId;
+    const menge = parseFloat(btn.dataset.menge || '0');
+    if (menge > 0) {
+        if (!confirm(`Position aus dem Wareneingang entfernen?\n\nDie aktuell erfasste Menge (${menge}) geht verloren.`)) {
+            return;
+        }
+    }
+    btn.disabled = true;
+    const res = await _post(
+        `${WD_DETAIL_URL}/api/positionen/${posId}/entfernen`,
+        {}
+    );
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        btn.disabled = false;
         return;
     }
     location.reload();
