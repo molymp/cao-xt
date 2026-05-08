@@ -383,7 +383,7 @@ def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:
                    bp.MENGE              AS bestell_menge,
                    bp.EKBESTELL_ID       AS bestell_rec_id,
                    b.BELEGNUM            AS bestell_belegnum,
-                   (SELECT j.BELEGNUM
+                   (SELECT j.VRENUM
                       FROM JOURNALPOS jp
                       JOIN JOURNAL    j  ON j.REC_ID = jp.JOURNAL_ID
                      WHERE jp.QUELLE = 5
