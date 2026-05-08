@@ -136,21 +136,55 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
 def stadium_codes_in_use() -> list[dict[str, Any]]:
     """Welche STADIUM-Codes kommen tatsächlich in EKBESTELL und EKBESTELL_POS vor?
 
-    Hilft, das STADIUM_LABEL-Mapping ggf. zu ergänzen, ohne raten zu müssen.
+    Liefert pro STADIUM-Code aus jeder Tabelle Anzahl + Beispiel-Belegnummer,
+    damit unbekannte Codes (z.B. 9, 127) direkt in CAO nachgeschlagen werden
+    können.
     """
+    out: list[dict[str, Any]] = []
     with get_db() as cur:
+        # Header: EKBESTELL
         cur.execute(
-            "SELECT 'EKBESTELL' AS tabelle, STADIUM AS code, COUNT(*) AS anzahl "
-            "FROM EKBESTELL GROUP BY STADIUM "
-            "UNION ALL "
-            "SELECT 'EKBESTELL_POS', STADIUM, COUNT(*) "
-            "FROM EKBESTELL_POS GROUP BY STADIUM "
-            "ORDER BY tabelle, code"
+            """
+            SELECT b.STADIUM   AS code,
+                   COUNT(*)    AS anzahl,
+                   MIN(b.BELEGNUM) AS bsp_min_belegnum,
+                   MAX(b.BELEGNUM) AS bsp_max_belegnum
+              FROM EKBESTELL b
+             GROUP BY b.STADIUM
+             ORDER BY b.STADIUM
+            """
         )
-        rows = cur.fetchall()
-    for r in rows:
-        r['label'] = _stadium_label(r['code'])
-    return rows
+        for r in cur.fetchall():
+            out.append({
+                'tabelle':           'EKBESTELL',
+                'code':              r['code'],
+                'anzahl':            r['anzahl'],
+                'label':             _stadium_label(r['code']),
+                'bsp_min_belegnum':  r['bsp_min_belegnum'],
+                'bsp_max_belegnum':  r['bsp_max_belegnum'],
+            })
+        # Positionen: EKBESTELL_POS
+        cur.execute(
+            """
+            SELECT p.STADIUM   AS code,
+                   COUNT(*)    AS anzahl,
+                   MIN(p.BELEGNUM) AS bsp_min_belegnum,
+                   MAX(p.BELEGNUM) AS bsp_max_belegnum
+              FROM EKBESTELL_POS p
+             GROUP BY p.STADIUM
+             ORDER BY p.STADIUM
+            """
+        )
+        for r in cur.fetchall():
+            out.append({
+                'tabelle':           'EKBESTELL_POS',
+                'code':              r['code'],
+                'anzahl':            r['anzahl'],
+                'label':             _stadium_label(r['code']),
+                'bsp_min_belegnum':  r['bsp_min_belegnum'],
+                'bsp_max_belegnum':  r['bsp_max_belegnum'],
+            })
+    return out
 
 
 def heile_alte_positions_stadium() -> dict[str, int]:
