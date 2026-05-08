@@ -766,7 +766,8 @@
         späteren Phase zu CAO-XT, aktuell bitte noch in CAO-Faktura selbst.
     </p>
     <div class="bd-aktion-zeile">
-        <button type="button" class="btn btn-neutral" disabled title="Phase 7 — kommt in CAO-XT später">📥 Als Wareneingang (in CAO-XT)</button>
+        <button type="button" class="btn btn-primary" id="bd-we-btn"
+                onclick="bdWareneingangAnlegen()">📥 Als Wareneingang weiterführen</button>
         <button type="button" class="btn btn-neutral" disabled title="Phase 8 — kommt in CAO-XT später">🛒 Als Einkauf (in CAO-XT)</button>
         <button type="button" class="btn btn-warn" id="bd-rnl-btn"
                 onclick="bdRestNichtLieferbar()">⚠ Rest nicht lieferbar — Bestellung abschließen</button>
@@ -1055,6 +1056,22 @@ async function bdPosNichtLieferbar(btn) {
         btn.classList.remove('bd-toggle-an');
         btn.textContent = 'offen';
     }
+}
+
+async function bdWareneingangAnlegen() {
+    if (!confirm('Aus dieser Bestellung einen Wareneingang anlegen?\n\nAlle offenen Positionen werden mit Soll-Menge übernommen, Liefermengen 0. Du gibst die echten Mengen anschließend per Scan oder Tastatur ein.')) {
+        return;
+    }
+    const btn = document.getElementById('bd-we-btn');
+    btn.disabled = true;
+    const res = await _post(`${BD_DETAIL_URL}/api/wareneingang-anlegen`, {});
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        btn.disabled = false;
+        return;
+    }
+    // Zur Wareneingangs-Detailseite navigieren
+    window.location = '/orga/bestellwesen/wareneingang/' + res.rec_id;
 }
 
 async function bdRestNichtLieferbar() {

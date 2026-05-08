@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}Wareneingang {{ kopf.BELEGNUM }}{% endblock %}
+
+{% set we_gesperrt = (kopf.STADIUM in (9, 127)) %}
+
+{% block extra_style %}
+<style>
+.wd-kopf { display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+.wd-kopf h1 { font-size: 1.6rem; }
+.wd-kopf a.zurueck {
+  font-size: 0.9rem; color: var(--gruen-dunkel);
+  text-decoration: none; font-weight: 700;
+}
+.wd-kopf a.zurueck:hover { text-decoration: underline; }
+
+.wd-card {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--schatten); padding: 18px 22px; margin-bottom: 18px;
+}
+.wd-card h2 {
+  font-size: 0.92rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--gruen-dunkel); margin-bottom: 12px;
+}
+.wd-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 18px;
+}
+.wd-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.wd-grid label {
+  font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim, #5a7a3a);
+}
+.wd-grid .wert {
+  font-size: 0.95rem; font-weight: 600; color: var(--text-hell, #142808);
+}
+
+/* Scan-Feld */
+.wd-scan-card {
+  background: var(--gruen-dunkel); color: var(--creme);
+  border-radius: var(--radius); box-shadow: var(--schatten);
+  padding: 18px 22px; margin-bottom: 18px;
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+}
+.wd-scan-card label {
+  font-size: 0.85rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--creme);
+}
+.wd-scan-input {
+  flex: 1 1 280px;
+  padding: 10px 14px; font-size: 1rem;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-radius: var(--radius-klein);
+  background: rgba(255,255,255,0.95); color: var(--text-hell);
+  font-family: 'Nunito', sans-serif; min-width: 200px;
+}
+.wd-scan-input:focus { outline: none; border-color: var(--gold, #c8780a); }
+.wd-scan-feedback {
+  flex: 1 1 280px;
+  padding: 6px 12px;
+  font-size: 0.92rem; font-weight: 700;
+  border-radius: var(--radius-klein);
+  background: rgba(255,255,255,0.10);
+  min-height: 32px;
+  display: flex; align-items: center;
+}
+.wd-scan-feedback.ok  { background: rgba(46,200,46,0.25); color: #d4ffd4; }
+.wd-scan-feedback.err { background: rgba(255,80,80,0.30); color: #ffd0d0; }
+
+/* Positions-Tabelle */
+.wd-pos-tabelle { width: 100%; border-collapse: collapse; }
+.wd-pos-tabelle th {
+  background: var(--creme-dunkel); color: var(--gruen-dunkel);
+  padding: 8px 10px; text-align: left;
+  font-size: 0.72rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;
+}
+.wd-pos-tabelle td {
+  padding: 8px 10px; border-bottom: 1px solid var(--creme-dunkel);
+  font-size: 0.9rem; vertical-align: middle;
+}
+.wd-pos-tabelle tr:last-child td { border-bottom: none; }
+.zahl-rechts { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Highlight nach Scan */
+.wd-pos-tabelle tr.flash-ok td  { background: rgba(46,200,46,0.18) !important; }
+.wd-pos-tabelle tr.flash-err td { background: rgba(255,80,80,0.18) !important; }
+
+/* Mengen-Inputs (Soll vs. Ist) */
+.wd-menge-soll {
+  color: var(--text-dim, #5a7a3a);
+}
+.wd-menge-input {
+  width: 80px; padding: 5px 8px; text-align: right;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  background: white; font-family: 'Nunito', sans-serif;
+  font-size: 0.92rem; font-weight: 700;
+}
+.wd-menge-input:focus {
+  outline: none; border-color: var(--gruen-hell, #4a9428);
+  background: var(--bg-hell, #ece3cc);
+}
+.wd-input-ok    { border-color: var(--gruen, #2e7a2e); background: rgba(46,122,46,0.10); }
+.wd-input-err   { border-color: var(--rot, #b83030); background: rgba(184,48,48,0.10); }
+
+.wd-preis-input {
+  width: 90px; padding: 5px 8px; text-align: right;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  background: white; font-family: 'Nunito', sans-serif;
+  font-size: 0.92rem;
+}
+
+.wd-rdo { color: var(--text-dim, #5a7a3a); font-size: 0.88rem; }
+
+.btn-warn {
+  background: var(--gold, #c8780a); color: white; border: none;
+  padding: 10px 18px; border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif; font-size: 0.9rem;
+  font-weight: 700; cursor: pointer; transition: background 0.15s;
+}
+.btn-warn:hover { background: #a06000; }
+.btn-warn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-danger {
+  background: var(--rot, #b83030); color: white; border: none;
+  padding: 10px 18px; border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif; font-size: 0.9rem;
+  font-weight: 700; cursor: pointer;
+}
+.btn-danger:hover { background: #8a2020; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wd-kopf">
+    <h1>📥 Wareneingang {{ kopf.BELEGNUM or ('#' ~ kopf.REC_ID) }}</h1>
+    <a href="{{ url_for('orga_bestellwesen.wareneingang_uebersicht') }}" class="zurueck">← zurück zur Übersicht</a>
+</div>
+
+<div class="wd-card">
+    <h2>Lieferant + Beleg</h2>
+    <div class="wd-grid">
+        <div>
+            <label>Lieferant</label>
+            <span class="wert">{{ kopf.lief_name }}</span>
+        </div>
+        <div>
+            <label>Beleg-Nr.</label>
+            <span class="wert">{{ kopf.BELEGNUM }}</span>
+        </div>
+        <div>
+            <label>Belegdatum</label>
+            <span class="wert">{{ kopf.BELEGDATUM.strftime('%d.%m.%Y') if kopf.BELEGDATUM else '–' }}</span>
+        </div>
+        <div>
+            <label>Status</label>
+            <span class="wert">{{ kopf.stadium_label }}</span>
+        </div>
+        <div>
+            <label>aus Bestellung</label>
+            <span class="wert">
+              {% if kopf.EKBESTELL_ID %}
+                <a href="{{ url_for('orga_bestellwesen.detail', rec_id=kopf.EKBESTELL_ID) }}">
+                    {{ kopf.bestell_belegnum or ('#' ~ kopf.EKBESTELL_ID) }}
+                </a>
+              {% else %}
+                –
+              {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+{% if not we_gesperrt %}
+<div class="wd-scan-card">
+    <label for="wd-scan">📷 Barcode scannen</label>
+    <input type="text" class="wd-scan-input" id="wd-scan"
+           placeholder="EAN scannen oder eintippen + Enter"
+           autocomplete="off"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();wdScan();}">
+    <div class="wd-scan-feedback" id="wd-scan-feedback">
+        Stück- oder Gebinde-EAN scannen → erhöht Menge der Position automatisch.
+    </div>
+</div>
+{% endif %}
+
+<div class="wd-card">
+    <h2>Positionen ({{ positionen|length }})</h2>
+    {% if we_gesperrt %}
+    <p class="wd-rdo">Wareneingang ist <strong>{{ kopf.stadium_label }}</strong> — Bearbeiten gesperrt.</p>
+    {% endif %}
+    {% if positionen %}
+    <div style="overflow-x:auto;">
+    <table class="wd-pos-tabelle">
+        <thead>
+            <tr>
+                <th>Pos.</th>
+                <th>Art.-Nr.</th>
+                <th>Bezeichnung</th>
+                <th class="zahl-rechts">Bestellt</th>
+                <th class="zahl-rechts">Geliefert</th>
+                <th>ME</th>
+                <th class="zahl-rechts">EK €</th>
+                <th class="zahl-rechts">Lieferpreis €</th>
+                <th class="zahl-rechts">Gesamt €</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for p in positionen %}
+        <tr id="we-pos-{{ p.REC_ID }}">
+            <td>{{ p.POSITION }}</td>
+            <td><code>{{ p.ARTNUM or '–' }}</code></td>
+            <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
+            <td class="zahl-rechts wd-menge-soll">{{ '{:g}'.format(p.MENGE_SOLL) if p.MENGE_SOLL is not none else '–' }}</td>
+            <td class="zahl-rechts">
+                {% if we_gesperrt %}
+                    {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
+                {% else %}
+                    <input type="number" class="wd-menge-input"
+                           id="wd-menge-{{ p.REC_ID }}"
+                           step="0.001" min="0"
+                           value="{{ '{:g}'.format(p.MENGE or 0) }}"
+                           data-pos-id="{{ p.REC_ID }}"
+                           onchange="wdPosMenge(this)">
+                {% endif %}
+            </td>
+            <td>{{ p.ME_EINHEIT or '–' }}</td>
+            <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
+            <td class="zahl-rechts">
+                {% if we_gesperrt %}
+                    {{ (p.LIEFPREIS or 0) | eur(4) }}
+                {% else %}
+                    <input type="number" class="wd-preis-input"
+                           id="wd-lpreis-{{ p.REC_ID }}"
+                           step="0.0001" min="0"
+                           value="{{ '{:.4f}'.format(p.LIEFPREIS or 0) }}"
+                           data-pos-id="{{ p.REC_ID }}"
+                           onchange="wdPosLpreis(this)">
+                {% endif %}
+            </td>
+            <td class="zahl-rechts" id="wd-gpreis-{{ p.REC_ID }}">
+                {{ (p.GLIEFPREIS or 0) | eur }}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="wd-rdo">Keine Positionen.</p>
+    {% endif %}
+</div>
+
+{% if not we_gesperrt %}
+<div class="wd-card">
+    <h2>Aktionen</h2>
+    <p class="wd-rdo">
+        <strong>Phase A:</strong> Mengen werden gespeichert, aber noch nicht
+        gebucht (kein Bestand-Update, kein Status auf der Bestellung).
+        Buchen kommt in Phase B.
+    </p>
+    <button type="button" class="btn-danger" onclick="wdStorno()">⛔ Wareneingang stornieren</button>
+</div>
+{% endif %}
+
+<script>
+const WD_REC_ID = {{ kopf.REC_ID }};
+const WD_DETAIL_URL = '{{ url_for("orga_bestellwesen.wareneingang_detail", rec_id=kopf.REC_ID) }}';
+
+async function _post(url, body) {
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {}),
+        });
+        return await res.json();
+    } catch (e) {
+        return { ok: false, fehler: 'Verbindungsfehler' };
+    }
+}
+
+function _flashRow(rowId, klass) {
+    const tr = document.getElementById(rowId);
+    if (!tr) return;
+    tr.classList.add(klass);
+    setTimeout(() => tr.classList.remove(klass), 1800);
+}
+
+function _flashInput(el, ok) {
+    el.classList.toggle('wd-input-ok', ok);
+    el.classList.toggle('wd-input-err', !ok);
+    setTimeout(() => el.classList.remove('wd-input-ok', 'wd-input-err'), 1500);
+}
+
+async function wdPosMenge(input) {
+    const posId = input.dataset.posId;
+    const res = await _post(
+        `${WD_DETAIL_URL}/api/positionen/${posId}/menge`,
+        { menge: input.value }
+    );
+    _flashInput(input, res.ok);
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    const gp = document.getElementById('wd-gpreis-' + posId);
+    if (gp && res.gliefpreis !== undefined) {
+        gp.textContent = res.gliefpreis.toLocaleString('de-DE',
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}
+
+async function wdPosLpreis(input) {
+    const posId = input.dataset.posId;
+    const res = await _post(
+        `${WD_DETAIL_URL}/api/positionen/${posId}/lieferpreis`,
+        { lieferpreis: input.value }
+    );
+    _flashInput(input, res.ok);
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    const gp = document.getElementById('wd-gpreis-' + posId);
+    if (gp && res.gliefpreis !== undefined) {
+        gp.textContent = res.gliefpreis.toLocaleString('de-DE',
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}
+
+async function wdScan() {
+    const inp = document.getElementById('wd-scan');
+    const fb  = document.getElementById('wd-scan-feedback');
+    const ean = inp.value.trim();
+    if (!ean) return;
+    const res = await _post(`${WD_DETAIL_URL}/api/scan`, { ean });
+    inp.value = '';
+    inp.focus();
+
+    fb.classList.remove('ok', 'err');
+    if (!res.ok) {
+        fb.classList.add('err');
+        fb.textContent = '⚠ ' + (res.fehler || 'Fehler');
+        return;
+    }
+    if (!res.gefunden) {
+        fb.classList.add('err');
+        fb.textContent = '⚠ ' + (res.fehler || 'Nicht gefunden');
+        return;
+    }
+    fb.classList.add('ok');
+    const typ = res.ean_typ === 'gebinde' ? `Gebinde (×${res.faktor})` : 'Stück';
+    fb.textContent = `✓ ${typ}: ${res.artikel_name} — ${res.menge_neu} von ${res.menge_soll} erfasst`;
+
+    const inputEl = document.getElementById('wd-menge-' + res.pos_id);
+    if (inputEl) inputEl.value = res.menge_neu;
+    _flashRow('we-pos-' + res.pos_id, 'flash-ok');
+    const gp = document.getElementById('wd-gpreis-' + res.pos_id);
+    if (gp && res.menge_neu !== undefined) {
+        // GPREIS wird vom Server gerechnet — wir lassen es vorerst, der
+        // nächste Reload hat den korrekten Wert.
+    }
+}
+
+async function wdStorno() {
+    if (!confirm('Wareneingang wirklich stornieren?')) return;
+    const res = await _post(`${WD_DETAIL_URL}/api/storno`, {});
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    location.reload();
+}
+
+// Scan-Feld bei Seitenladung fokussieren — Workflow ist „scan-zentriert"
+document.addEventListener('DOMContentLoaded', () => {
+    const scan = document.getElementById('wd-scan');
+    if (scan) scan.focus();
+});
+</script>
+{% endblock %}

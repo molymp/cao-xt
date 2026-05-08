@@ -16,6 +16,7 @@ from typing import Any
 from flask import Blueprint, render_template, request, jsonify, abort, session
 
 from . import models as m
+from . import wareneingang as we
 
 
 bp = Blueprint('orga_bestellwesen', __name__, template_folder=None)
@@ -222,6 +223,112 @@ def api_rest_nicht_lieferbar(rec_id: int) -> Any:
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **ergebnis})
+
+
+# ── Wareneingang (Phase A: Erfassen ohne Buchen) ────────────────────
+
+
+@bp.post('/<int:rec_id>/api/wareneingang-anlegen')
+def api_wareneingang_anlegen(rec_id: int) -> Any:
+    """Erstellt einen EKEINGANG-Beleg aus einer EKBESTELL."""
+    _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        ergebnis = we.wareneingang_anlegen(rec_id, ma_id, ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(ergebnis)
+
+
+@bp.get('/wareneingang/')
+def wareneingang_uebersicht():
+    """Liste aller EKEINGANG-Belege."""
+    _login_check()
+    suche = (request.args.get('q') or '').strip()
+    stadium_raw = (request.args.get('stadium') or '').strip()
+    stadium = int(stadium_raw) if stadium_raw.isdigit() else None
+    eingaenge = we.wareneingang_liste(suche=suche, stadium=stadium)
+    return render_template(
+        'wareneingang.html',
+        eingaenge=eingaenge,
+        suche=suche,
+        stadium=stadium,
+        stadium_label=we.STADIUM_LABEL_KOPF,
+    )
+
+
+@bp.get('/wareneingang/<int:rec_id>')
+def wareneingang_detail(rec_id: int):
+    """Detail-Ansicht eines Wareneingangs (Pos-Tabelle, editierbar)."""
+    _login_check()
+    daten = we.wareneingang_detail(rec_id)
+    if not daten:
+        abort(404)
+    return render_template(
+        'wareneingang_detail.html',
+        kopf=daten['kopf'],
+        positionen=daten['positionen'],
+        stadium_label=we.STADIUM_LABEL_KOPF,
+    )
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/menge')
+def api_we_pos_menge(rec_id: int, pos_id: int) -> Any:
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    raw = body.get('menge')
+    try:
+        menge = float(str(raw).replace(',', '.'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'menge fehlt/ungültig'}), 400
+    try:
+        result = we.pos_menge_setzen(rec_id, pos_id, menge)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/lieferpreis')
+def api_we_pos_lieferpreis(rec_id: int, pos_id: int) -> Any:
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    raw = body.get('lieferpreis')
+    try:
+        lp = float(str(raw).replace(',', '.'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'lieferpreis ungültig'}), 400
+    try:
+        result = we.pos_lieferpreis_setzen(rec_id, pos_id, lp)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/scan')
+def api_we_scan(rec_id: int) -> Any:
+    """Barcode-Scan: erkennt Stück- oder Gebinde-EAN, erhöht die
+    passende Position-Menge entsprechend."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    ean = (body.get('ean') or '').strip()
+    if not ean:
+        return jsonify({'ok': False, 'fehler': 'EAN fehlt'}), 400
+    try:
+        result = we.scan_ean(rec_id, ean)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/storno')
+def api_we_storno(rec_id: int) -> Any:
+    _login_check()
+    try:
+        result = we.storno(rec_id)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
 
 
 def create_blueprint():
