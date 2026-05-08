@@ -3819,7 +3819,7 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
                       NOW(), %s, %s,
                       -2, '', '',
                       '', '',
-                      0
+                      2
                     )
                 """, (
                     ekbestell_rec_id, belegnum, int(cao_lief),
