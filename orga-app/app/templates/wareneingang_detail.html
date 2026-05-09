@@ -782,15 +782,19 @@ async function wdEntfernen(btn) {
         }
     }
     btn.disabled = true;
+    cxLadenZeigen('Position wird entfernt …');
     const res = await _post(
         `${WD_DETAIL_URL}/api/positionen/${posId}/entfernen`,
         {}
     );
     if (!res.ok) {
+        cxLadenAusblenden();
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
         btn.disabled = false;
         return;
     }
+    // Bleibt sichtbar bis location.reload das Dokument abloest
+    cxLadenZeigen('Seite wird neu geladen …');
     location.reload();
 }
 

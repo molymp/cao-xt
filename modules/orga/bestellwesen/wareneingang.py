@@ -383,20 +383,15 @@ def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:
         #   * bestell_rec_id / bestell_belegnum – Verknüpfung zur Bestellung (falls weitergeführt)
         #   * rech_belegnum   – BELEGNUM der EK-Rechnung (JOURNAL.QUELLE=5),
         #                       falls die Pos schon berechnet wurde
+        # Pos-Detail OHNE die korrelierende rech_belegnum-Subquery — die
+        # holen wir separat per LEFT JOIN GROUP BY (1 Query statt N).
         cur.execute(
             """
             SELECT p.*,
                    bp.LIEFARTNUM         AS lief_artnum,
                    bp.MENGE              AS bestell_menge,
                    bp.EKBESTELL_ID       AS bestell_rec_id,
-                   b.BELEGNUM            AS bestell_belegnum,
-                   (SELECT j.VRENUM
-                      FROM JOURNALPOS jp
-                      JOIN JOURNAL    j  ON j.REC_ID = jp.JOURNAL_ID
-                     WHERE jp.QUELLE = 5
-                       AND jp.QUELLE_WE = p.REC_ID
-                       AND j.STADIUM <> 127
-                     LIMIT 1)            AS rech_belegnum
+                   b.BELEGNUM            AS bestell_belegnum
               FROM EKEINGANG_POS p
               LEFT JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
               LEFT JOIN EKBESTELL     b  ON b.REC_ID  = bp.EKBESTELL_ID
@@ -406,9 +401,31 @@ def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:
             (rec_id,),
         )
         pos = cur.fetchall()
-        # Fallback fuer 'Bestellt': wenn MENGE_SOLL leer/0, nutze die
-        # zugeordnete EKBESTELL_POS.MENGE.
+
+        # EK-Rechnungs-Belegnummern für alle Pos in einer einzigen Query
+        if pos:
+            pos_ids = [int(p['REC_ID']) for p in pos]
+            fmt = ','.join(['%s'] * len(pos_ids))
+            cur.execute(
+                f"""
+                SELECT jp.QUELLE_WE AS pos_id,
+                       MIN(j.VRENUM) AS vrenum
+                  FROM JOURNALPOS jp
+                  JOIN JOURNAL    j ON j.REC_ID = jp.JOURNAL_ID
+                 WHERE jp.QUELLE = 5
+                   AND j.STADIUM <> 127
+                   AND jp.QUELLE_WE IN ({fmt})
+                 GROUP BY jp.QUELLE_WE
+                """,
+                pos_ids,
+            )
+            rech_map = {int(r['pos_id']): r['vrenum'] for r in cur.fetchall()}
+        else:
+            rech_map = {}
+
+        # Mappings zusammenführen + Fallback für MENGE_SOLL
         for r in pos:
+            r['rech_belegnum'] = rech_map.get(int(r['REC_ID']))
             soll = r.get('MENGE_SOLL') or 0
             if not soll:
                 soll = r.get('bestell_menge') or 0

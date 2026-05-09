@@ -207,7 +207,7 @@ function weNeuOeffnen() {
     </thead>
     <tbody>
     {% for e in eingaenge %}
-    <tr onclick="window.location='{{ url_for('orga_bestellwesen.wareneingang_detail', rec_id=e.rec_id) }}'">
+    <tr onclick="cxLadenZeigen('Wareneingang wird geladen …'); window.location='{{ url_for('orga_bestellwesen.wareneingang_detail', rec_id=e.rec_id) }}'">
         <td><strong>{{ e.belegnum or ('#' ~ e.rec_id) }}</strong></td>
         <td>{{ e.belegdatum.strftime('%d.%m.%Y') if e.belegdatum else '–' }}</td>
         <td>{{ e.lief_name }}</td>
