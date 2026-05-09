@@ -1,15 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Bestellung {{ kopf.BELEGNUM }}{% endblock %}
 
-{% set kopf_gesperrt = (kopf.STADIUM in (9, 127)) %}
+{% set kopf_gesperrt = (kopf.STADIUM in (9, 95, 127)) %}
 {#
   Sperrlogik:
-  - POS_HARD_LOCKED (9, 127):  Position vollständig read-only (auch Toggle)
-  - POS_INPUTS_LOCKED (8):     Liefertermin/Lieferpreis read-only,
-                               aber Toggle bleibt aktiv (Rückwechsel auf 2)
+  - POS_HARD_LOCKED  (9, 93, 95, 127):  Position vollständig read-only,
+                                        Status wird als Pille angezeigt
+                                        (also auch Teillieferung-WE und
+                                        voll-geliefert-WE — die kommen
+                                        durch Wareneingangs-Buchung,
+                                        Toggle 'offen/nicht-lieferbar'
+                                        macht keinen Sinn mehr)
+  - POS_INPUTS_LOCKED (8, 9, 93, 95,
+                       127):            Liefertermin/Lieferpreis
+                                        read-only — sobald die Pos in
+                                        irgendeiner Form 'unterwegs' ist
+                                        oder ueberhaupt schon teilweise
+                                        geliefert wurde
 #}
-{% set POS_HARD_LOCKED   = (9, 127) %}
-{% set POS_INPUTS_LOCKED = (8, 9, 127) %}
+{% set POS_HARD_LOCKED   = (9, 93, 95, 127) %}
+{% set POS_INPUTS_LOCKED = (8, 9, 93, 95, 127) %}
 
 {% block extra_style %}
 <style>
