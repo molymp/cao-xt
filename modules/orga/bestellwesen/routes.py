@@ -391,34 +391,38 @@ def api_we_pos_entfernen_bulk(rec_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
-# ── Wareneingang Buchen (Phase B) ────────────────────────────────────
+# ── Wareneingang Buchen (Phase B): Lieferschein abschliessen ───────
 
 
-@bp.get('/wareneingang/<int:rec_id>/api/buchen-vorbereitung')
-def api_we_buchen_vorbereitung(rec_id: int) -> Any:
-    """Liefert Pos + aktuelle Lief-Preise — fuer das Buchen-Modal."""
+@bp.post('/wareneingang/<int:rec_id>/api/lieferschein')
+def api_we_lieferschein_setzen(rec_id: int) -> Any:
+    """Setzt LIEFNUM / LIEFDATUM auf einem offenen Wareneingang."""
     _login_check()
+    body = request.get_json(silent=True) or {}
     try:
-        return jsonify({'ok': True, **we.buchen_vorbereitung(rec_id)})
-    except (LookupError, PermissionError) as e:
+        result = we.lieferschein_setzen(
+            rec_id,
+            liefnum=body.get('liefnum'),
+            liefdatum=body.get('liefdatum'),
+        )
+    except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
 
 
 @bp.post('/wareneingang/<int:rec_id>/api/buchen')
 def api_we_buchen(rec_id: int) -> Any:
-    """Bucht den Wareneingang. Erwartet im Body optional eine Liste
-    ``preis_uebernahmen`` mit ``{pos_id, neuer_preis, neuer_vpe?,
-    alt_preis, uebernehmen}``-Eintraegen — fuer markierte Pos werden
-    ARTIKEL_PREIS und VK-Kontrolle aktualisiert."""
+    """Bucht den Wareneingang. LIEFNUM + LIEFDATUM sind verpflichtend."""
     _login_check()
     body = request.get_json(silent=True) or {}
-    pue = body.get('preis_uebernahmen') or []
-    if not isinstance(pue, list):
-        return jsonify({'ok': False, 'fehler': 'preis_uebernahmen muss Liste sein'}), 400
     ma_id = session.get('ma_id')
     ma_name = session.get('ma_name') or session.get('login_name') or 'CAO-XT'
     try:
-        result = we.buchen(rec_id, ma_id, ma_name, preis_uebernahmen=pue)
+        result = we.buchen(
+            rec_id, ma_id, ma_name,
+            liefnum=body.get('liefnum'),
+            liefdatum=body.get('liefdatum'),
+        )
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify(result)
