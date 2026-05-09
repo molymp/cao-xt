@@ -423,12 +423,17 @@ def api_picker_artikel_suche() -> Any:
         q, lief_addr_id=_arg_lief_addr())})
 
 
+def _arg_typ_filter() -> str | None:
+    raw = (request.args.get('typ', '') or '').strip().lower()
+    return raw if raw in ('lief', 'kunde') else None
+
+
 @bp.get('/api/picker/adressgruppen')
 def api_picker_adressgruppen() -> Any:
-    """Adressgruppen + virtuelle Slots (Lieferant/Kunde/Alle)."""
+    """Adressgruppen aus ``ADRESSGRUPPEN``."""
     _login_check()
     from common.picker_data import adressgruppen
-    return jsonify({'ok': True, 'zeilen': adressgruppen()})
+    return jsonify({'ok': True, 'zeilen': adressgruppen(_arg_typ_filter())})
 
 
 @bp.get('/api/picker/adressen')
@@ -436,8 +441,10 @@ def api_picker_adressen() -> Any:
     """Adressen einer Gruppe."""
     _login_check()
     from common.picker_data import adressen_in_gruppe
-    grp = request.args.get('grp', '__lief__').strip() or '__lief__'
-    return jsonify({'ok': True, 'zeilen': adressen_in_gruppe(grp)})
+    grp = (request.args.get('grp', '') or '').strip()
+    return jsonify({'ok': True,
+                    'zeilen': adressen_in_gruppe(grp or None,
+                                                 typ_filter=_arg_typ_filter())})
 
 
 @bp.get('/api/picker/adressen/suche')
@@ -446,8 +453,10 @@ def api_picker_adressen_suche() -> Any:
     _login_check()
     from common.picker_data import adressen_in_gruppe
     q = request.args.get('q', '').strip()
-    grp = request.args.get('grp', '__lief__').strip() or '__lief__'
-    return jsonify({'ok': True, 'zeilen': adressen_in_gruppe(grp, suche=q)})
+    grp = (request.args.get('grp', '') or '').strip()
+    return jsonify({'ok': True,
+                    'zeilen': adressen_in_gruppe(grp or None, suche=q,
+                                                 typ_filter=_arg_typ_filter())})
 
 
 @bp.get('/wareneingang/api/lieferant-suche')
