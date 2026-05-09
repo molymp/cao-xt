@@ -1,0 +1,394 @@
+{# ── CAO-XT gemeinsamer Picker-Dialog (Artikel oder Adresse) ──
+
+   Verwendung im Template:
+       {% include '_picker.html' %}
+
+   JS-API:
+       cxPickerOpen({
+           modus:   'artikel'  oder  'adresse',
+           urls:    { gruppen: '/orga/api/picker/wgs',
+                      liste:   '/orga/api/picker/artikel?wg={WG}',
+                      suche:   '/orga/api/picker/artikel/suche?q={Q}' },
+           onWaehlen: (item) => { ... }   // Callback bei Auswahl
+       });
+
+       cxPickerOpen({
+           modus:   'adresse',
+           urls:    { gruppen: '/orga/api/picker/adressgruppen',
+                      liste:   '/orga/api/picker/adressen?grp={GRP}',
+                      suche:   '/orga/api/picker/adressen/suche?q={Q}&grp={GRP}' },
+           onWaehlen: (adresse) => { ... }
+       });
+
+   Erwartete Server-Response: { ok: true, zeilen: [...] }
+#}
+
+<style>
+.cxp-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 9100;
+    display: flex; align-items: center; justify-content: center;
+}
+.cxp-overlay.cxp-hidden { display: none; }
+.cxp-modal {
+    background: white; border-radius: var(--radius, 12px);
+    width: 95%; max-width: 1100px;
+    height: 80vh; max-height: 800px;
+    display: flex; flex-direction: column;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+    overflow: hidden;
+}
+.cxp-kopf {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--creme-dunkel, #d4ccb8);
+    background: var(--gruen-dunkel, #1a4010); color: white;
+}
+.cxp-kopf h2 { flex: 0 0 auto; font-size: 1.05rem; margin: 0; color: white; }
+.cxp-search {
+    flex: 1 1 auto;
+    padding: 8px 12px; border: none; border-radius: 6px;
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem;
+    background: rgba(255,255,255,0.95); color: var(--text-hell, #142808);
+}
+.cxp-search:focus { outline: 2px solid var(--gold, #c8780a); }
+.cxp-close {
+    flex: 0 0 auto;
+    width: 36px; height: 36px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.18); color: white;
+    cursor: pointer; font-size: 1rem;
+}
+.cxp-close:hover { background: rgba(255,255,255,0.32); }
+
+.cxp-body {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; overflow: hidden;
+}
+
+/* Linke Spalte: Baum / Gruppen */
+.cxp-tree {
+    flex: 0 0 240px;
+    background: var(--bg-hell, #ece3cc);
+    overflow-y: auto;
+    border-right: 1px solid var(--creme-dunkel, #d4ccb8);
+    padding: 6px 0;
+}
+.cxp-tree-item {
+    display: flex; align-items: center; gap: 6px;
+    width: 100%;
+    padding: 7px 12px;
+    background: transparent; border: none;
+    text-align: left; cursor: pointer;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.88rem; color: var(--text-hell, #142808);
+    border-left: 3px solid transparent;
+}
+.cxp-tree-item:hover { background: var(--creme-warm, #d8c8a4); }
+.cxp-tree-item.aktiv {
+    background: white;
+    border-left-color: var(--gruen-dunkel, #1a4010);
+    font-weight: 700;
+}
+.cxp-tree-item.wurzel {
+    font-weight: 700;
+    border-top: 1px solid var(--creme-dunkel, #d4ccb8);
+}
+.cxp-tree-item.wurzel:first-child { border-top: none; }
+.cxp-tree-strich {
+    font-size: 0.75rem; color: var(--text-dim, #5a7a3a);
+    flex: 0 0 auto;
+}
+.cxp-tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cxp-tree-badge {
+    flex: 0 0 auto;
+    background: rgba(26,64,16,0.10);
+    border-radius: 999px;
+    padding: 0 7px;
+    font-size: 0.74rem; font-weight: 700;
+    color: var(--text-dim, #5a7a3a);
+}
+
+/* Rechte Spalte: Tabelle */
+.cxp-liste { flex: 1 1 auto; overflow: auto; }
+.cxp-tabelle { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.cxp-tabelle thead th {
+    position: sticky; top: 0;
+    background: var(--creme-dunkel, #d4ccb8);
+    color: var(--gruen-dunkel, #1a4010);
+    padding: 8px 10px; text-align: left;
+    font-size: 0.72rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    white-space: nowrap; z-index: 1;
+}
+.cxp-tabelle tbody tr {
+    cursor: pointer;
+    border-bottom: 1px solid var(--creme-dunkel, #d4ccb8);
+}
+.cxp-tabelle tbody tr:hover td { background: var(--bg-hell, #ece3cc); }
+.cxp-tabelle td { padding: 8px 10px; vertical-align: middle; }
+.cxp-tabelle td code {
+    font-family: 'Nunito Mono', Consolas, monospace;
+    font-size: 0.84rem;
+    color: var(--text-mitte, #2e4a1a);
+}
+.cxp-zahl-rechts { text-align: right; font-variant-numeric: tabular-nums; }
+
+.cxp-status {
+    padding: 28px; text-align: center;
+    color: var(--text-dim, #5a7a3a); font-size: 0.95rem;
+}
+</style>
+
+<div class="cxp-overlay cxp-hidden" id="cxp-overlay"
+     onclick="if(event.target===this)cxPickerSchliessen()">
+  <div class="cxp-modal">
+    <div class="cxp-kopf">
+      <h2 id="cxp-titel">Auswählen</h2>
+      <input type="text" id="cxp-search" class="cxp-search"
+             placeholder="🔍 Suche … (mind. 2 Zeichen)"
+             autocomplete="off"
+             oninput="cxPickerSucheInput(this.value)">
+      <button class="cxp-close" onclick="cxPickerSchliessen()">✕</button>
+    </div>
+    <div class="cxp-body">
+      <div class="cxp-tree" id="cxp-tree"></div>
+      <div class="cxp-liste">
+        <div class="cxp-status" id="cxp-status">Lade …</div>
+        <table class="cxp-tabelle" id="cxp-tabelle" style="display:none;">
+          <thead id="cxp-thead"></thead>
+          <tbody id="cxp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+const el = (id) => document.getElementById(id);
+const escH = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmt = (n, dp) => Number(n || 0).toLocaleString('de-DE', {
+    minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+let _cfg = null;
+let _baum = [];
+let _aktivGruppe = null;
+let _vorSucheGruppe = null;
+let _items = [];
+let _sucheTimer = null;
+
+// ── Spalten-Config je Modus ──
+const SPALTEN = {
+  artikel: [
+    { key: 'artnum',    label: 'Art.-Nr.',  format: v => `<code>${escH(v)}</code>` },
+    { key: 'kurzname',  label: 'Bezeichnung' },
+    { key: 'me_einheit', label: 'ME' },
+    { key: 'barcode',   label: 'Barcode',   format: v => v ? `<code>${escH(v)}</code>` : '–' },
+    { key: 'wgr_name',  label: 'Warengruppe' },
+    { key: 'ek_preis',  label: 'EK €',       format: v => fmt(v, 4), classes: 'cxp-zahl-rechts' },
+  ],
+  adresse: [
+    { key: 'kunnum',    label: 'Kunden-Nr.', format: v => `<code>${escH(v || '–')}</code>` },
+    { key: 'name',      label: 'Name' },
+    { key: 'name2',     label: '' },
+    { key: 'strasse_hausnr', label: 'Straße',
+      format: (_, row) => escH(`${row.strasse || ''} ${row.hausnr || ''}`.trim()) },
+    { key: 'plz',       label: 'PLZ' },
+    { key: 'ort',       label: 'Ort' },
+  ],
+};
+
+const ID_KEY = { artikel: 'artikel_id', adresse: 'addr_id' };
+
+window.cxPickerOpen = async function(cfg) {
+    _cfg = cfg;
+    el('cxp-titel').textContent = cfg.titel
+        || (cfg.modus === 'adresse' ? 'Adresse auswählen' : 'Artikel auswählen');
+    el('cxp-search').value = '';
+    el('cxp-search').placeholder = cfg.modus === 'adresse'
+        ? '🔍 Name, Kunden-Nr. oder Ort …'
+        : '🔍 Art-Nr., Name, Barcode oder Matchcode …';
+    el('cxp-overlay').classList.remove('cxp-hidden');
+    setTimeout(() => el('cxp-search').focus(), 50);
+
+    // Header rendern
+    const thead = el('cxp-thead');
+    thead.innerHTML = '<tr>' +
+        SPALTEN[cfg.modus].map(s =>
+            `<th class="${s.classes || ''}">${escH(s.label)}</th>`).join('') +
+        '</tr>';
+
+    // Baum laden
+    el('cxp-tree').innerHTML = '<div class="cxp-status">Lade …</div>';
+    el('cxp-status').textContent = 'Lade …';
+    el('cxp-tabelle').style.display = 'none';
+    try {
+        const r = await fetch(cfg.urls.gruppen);
+        const d = await r.json();
+        _baum = d.zeilen || [];
+        cxBaumRender();
+        // Erste Gruppe oder „Alle" als Standard
+        if (_baum.length) {
+            const start = cfg.modus === 'adresse' ? '__lief__' : 0;
+            cxGruppeWaehlen(start);
+        }
+    } catch (e) {
+        el('cxp-tree').innerHTML = '<div class="cxp-status">Fehler beim Laden.</div>';
+    }
+};
+
+window.cxPickerSchliessen = function() {
+    el('cxp-overlay').classList.add('cxp-hidden');
+    _cfg = null;
+};
+
+function cxBaumRender() {
+    const root = el('cxp-tree');
+    if (!_baum.length) { root.innerHTML = '<div class="cxp-status">Keine Einträge.</div>'; return; }
+
+    if (_cfg.modus === 'artikel') {
+        // hierarchischer Warengruppen-Baum
+        const byParent = {};
+        for (const w of _baum) {
+            const p = (w.parent_id == null) ? '__r' : w.parent_id;
+            (byParent[p] = byParent[p] || []).push(w);
+        }
+        // Direkt-Anzahl + Nachkommen für Badge
+        const direkt = {};
+        for (const w of _baum) direkt[w.id] = w.artikel_anzahl || 0;
+        const summen = {};
+        for (const w of _baum) {
+            let s = 0;
+            const stack = [w.id];
+            const seen = new Set();
+            while (stack.length) {
+                const c = stack.pop();
+                if (seen.has(c)) continue;
+                seen.add(c);
+                s += direkt[c] || 0;
+                stack.push(...(byParent[c] || []).map(x => x.id));
+            }
+            summen[w.id] = s;
+        }
+        let html = `<button class="cxp-tree-item${_aktivGruppe === 0 ? ' aktiv' : ''}"
+                            onclick="cxGruppeWaehlen(0)">
+                      <span class="cxp-tree-name">📦 Alle Artikel</span>
+                    </button>`;
+        const renderKnoten = (w, tiefe) => {
+            const aktiv  = _aktivGruppe === w.id;
+            const wurzel = tiefe === 0;
+            const pl     = 10 + tiefe * 14;
+            const sum    = summen[w.id] || 0;
+            html += `<button class="cxp-tree-item${aktiv ? ' aktiv' : ''}${wurzel ? ' wurzel' : ''}"
+                             style="padding-left:${pl}px;"
+                             onclick="cxGruppeWaehlen(${w.id})">`;
+            if (tiefe > 0) html += `<span class="cxp-tree-strich">└</span>`;
+            html += `<span class="cxp-tree-name">${escH(w.bezeichnung)}</span>`;
+            if (sum > 0) html += `<span class="cxp-tree-badge">${sum}</span>`;
+            html += `</button>`;
+            for (const k of byParent[w.id] || []) renderKnoten(k, tiefe + 1);
+        };
+        for (const r of byParent['__r'] || []) renderKnoten(r, 0);
+        root.innerHTML = html;
+    } else {
+        // Adressen: flache Liste
+        root.innerHTML = _baum.map(g => {
+            const aktiv = _aktivGruppe === g.id;
+            const cnt   = g.count != null ? `<span class="cxp-tree-badge">${g.count}</span>` : '';
+            const ico   = g.virtual ? '⭐' : '👥';
+            return `<button class="cxp-tree-item${aktiv ? ' aktiv' : ''}"
+                            onclick="cxGruppeWaehlen('${g.id}')">
+                      <span class="cxp-tree-name">${ico} ${escH(g.name)}</span>${cnt}
+                    </button>`;
+        }).join('');
+    }
+}
+
+window.cxGruppeWaehlen = async function(gid) {
+    _aktivGruppe = gid;
+    el('cxp-search').value = '';
+    cxBaumRender();
+    const status = el('cxp-status');
+    const tab    = el('cxp-tabelle');
+    status.textContent = '⏳ Lade …';
+    status.style.display = 'block';
+    tab.style.display = 'none';
+    try {
+        const url = _cfg.urls.liste.replace('{WG}',
+            String(gid)).replace('{GRP}', encodeURIComponent(String(gid)));
+        const r = await fetch(url);
+        const d = await r.json();
+        _items = d.zeilen || [];
+        cxListeRender();
+    } catch (e) {
+        status.textContent = 'Fehler beim Laden.';
+    }
+};
+
+function cxListeRender() {
+    const tbody = el('cxp-tbody');
+    const tab   = el('cxp-tabelle');
+    const status = el('cxp-status');
+    if (!_items.length) {
+        tab.style.display = 'none';
+        status.textContent = 'Keine Treffer.';
+        status.style.display = 'block';
+        return;
+    }
+    const cols = SPALTEN[_cfg.modus];
+    const idKey = ID_KEY[_cfg.modus];
+    tbody.innerHTML = _items.map(it => {
+        const tds = cols.map(c => {
+            const raw = it[c.key];
+            const html = c.format ? c.format(raw, it) : escH(raw ?? '');
+            return `<td class="${c.classes || ''}">${html}</td>`;
+        }).join('');
+        return `<tr onclick="cxItemWaehlen(${it[idKey]})">${tds}</tr>`;
+    }).join('');
+    tab.style.display = 'table';
+    status.style.display = 'none';
+}
+
+window.cxItemWaehlen = function(id) {
+    const idKey = ID_KEY[_cfg.modus];
+    const it = _items.find(x => Number(x[idKey]) === Number(id));
+    if (it && _cfg.onWaehlen) _cfg.onWaehlen(it);
+    cxPickerSchliessen();
+};
+
+window.cxPickerSucheInput = function(q) {
+    clearTimeout(_sucheTimer);
+    _sucheTimer = setTimeout(() => cxSucheAusfuehren(q), 250);
+};
+
+async function cxSucheAusfuehren(q) {
+    if ((q || '').trim().length < 2) {
+        // Zurück zur Gruppen-Anzeige
+        if (_aktivGruppe != null) cxGruppeWaehlen(_aktivGruppe);
+        return;
+    }
+    const status = el('cxp-status');
+    const tab    = el('cxp-tabelle');
+    status.textContent = '⏳ Suche …';
+    status.style.display = 'block';
+    tab.style.display = 'none';
+    try {
+        const url = _cfg.urls.suche
+            .replace('{Q}', encodeURIComponent(q))
+            .replace('{GRP}', encodeURIComponent(String(_aktivGruppe ?? '')));
+        const r = await fetch(url);
+        const d = await r.json();
+        _items = d.zeilen || [];
+        cxListeRender();
+    } catch (e) {
+        status.textContent = 'Fehler bei Suche.';
+    }
+}
+
+})();
+</script>
