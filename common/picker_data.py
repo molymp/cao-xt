@@ -39,7 +39,6 @@ def warengruppen_baum(min_artikel: int = 0) -> list[dict[str, Any]]:
                    (
                      SELECT COUNT(*) FROM ARTIKEL a
                       WHERE a.WARENGRUPPE = wg.ID
-                        AND a.ARTIKELTYP NOT IN ('L','K','S')
                    )                                    AS artikel_anzahl
               FROM WARENGRUPPEN wg
              ORDER BY wg.TOP_ID, wg.SORT, wg.NAME
@@ -115,7 +114,7 @@ def artikel_in_warengruppe(wg_id: int | None,
                   FROM ARTIKEL a
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-                 WHERE a.ARTIKELTYP NOT IN ('L','K','S')
+                 WHERE 1=1
                  ORDER BY a.KURZNAME
                  LIMIT %(limit)s
                 """,
@@ -135,7 +134,7 @@ def artikel_in_warengruppe(wg_id: int | None,
                   JOIN wg_tree t ON t.ID = a.WARENGRUPPE
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-                 WHERE a.ARTIKELTYP NOT IN ('L','K','S')
+                 WHERE 1=1
                  ORDER BY a.KURZNAME
                  LIMIT %(limit)s
                 """,
@@ -149,7 +148,6 @@ def artikel_in_warengruppe(wg_id: int | None,
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
                  WHERE a.WARENGRUPPE = %(wg)s
-                   AND a.ARTIKELTYP NOT IN ('L','K','S')
                  ORDER BY a.KURZNAME
                  LIMIT %(limit)s
                 """,
@@ -176,7 +174,6 @@ def artikel_volltext_suche(query: str, limit: int = 100,
                     OR a.BARCODE2 LIKE %(p)s OR a.BARCODE3 LIKE %(p)s
                     OR a.KURZNAME LIKE %(p)s OR a.MATCHCODE LIKE %(p)s
                     OR a.LANGNAME LIKE %(p)s)
-               AND a.ARTIKELTYP NOT IN ('L','K','S')
              ORDER BY a.KURZNAME
              LIMIT %(limit)s
             """,
