@@ -222,7 +222,7 @@
                 <input type="text" class="num-touch"
                        value="{{ '{:.3f}'.format(p.MENGE or 0).replace('.', ',') }}"
                        data-pos-id="{{ p.REC_ID }}" onchange="edPosMenge(this)"
-                       style="width:90px; padding:5px 8px; text-align:right;
+                       style="width:140px; padding:5px 8px; text-align:right;
                               border:1px solid var(--creme-dunkel);
                               border-radius:var(--radius-klein);
                               font-family:'Nunito Mono',Consolas,monospace;
@@ -237,7 +237,7 @@
                 <input type="text" class="num-touch"
                        value="{{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}"
                        data-pos-id="{{ p.REC_ID }}" onchange="edPosEpreis(this)"
-                       style="width:90px; padding:5px 8px; text-align:right;
+                       style="width:150px; padding:5px 8px; text-align:right;
                               border:1px solid var(--creme-dunkel);
                               border-radius:var(--radius-klein);
                               font-family:'Nunito Mono',Consolas,monospace;
@@ -468,7 +468,7 @@ function _edQuelleZeigen(modus, zeilen) {
                            data-pos-id="${z.pos_id}"
                            value="${_eur(z.menge_offen, 3)}"
                            onclick="event.stopPropagation();"
-                           style="width:80px; padding:4px 6px; text-align:right;
+                           style="width:130px; padding:4px 6px; text-align:right;
                                   font-family:'Nunito Mono',Consolas,monospace;
                                   border:1px solid var(--creme-dunkel);
                                   border-radius:var(--radius-klein);">
