@@ -426,6 +426,34 @@
               {% endif %}
             </span>
         </div>
+        <div>
+            <label>Lieferschein-Nr.</label>
+            {% if we_gesperrt %}
+              <span class="wert">{{ kopf.LIEFNUM or '–' }}</span>
+            {% else %}
+              <input type="text" id="wd-liefnum"
+                     value="{{ kopf.LIEFNUM or '' }}"
+                     placeholder="Lieferschein-Nr."
+                     onchange="wdLieferscheinSetzen()"
+                     style="font-family:'Nunito Mono',Consolas,monospace;
+                            padding:6px 10px; border:1px solid var(--creme-dunkel);
+                            border-radius: var(--radius-klein); width: 100%;
+                            box-sizing: border-box; font-size: 0.95rem;">
+            {% endif %}
+        </div>
+        <div>
+            <label>Lieferschein-Datum</label>
+            {% if we_gesperrt %}
+              <span class="wert">{{ kopf.LIEFDATUM.strftime('%d.%m.%Y') if kopf.LIEFDATUM else '–' }}</span>
+            {% else %}
+              <input type="date" id="wd-liefdatum"
+                     value="{{ kopf.LIEFDATUM.isoformat() if kopf.LIEFDATUM else '' }}"
+                     onchange="wdLieferscheinSetzen()"
+                     style="padding:6px 10px; border:1px solid var(--creme-dunkel);
+                            border-radius: var(--radius-klein); width: 100%;
+                            box-sizing: border-box; font-size: 0.95rem;">
+            {% endif %}
+        </div>
     </div>
     {% set info_txt = (kopf.INFO | rtf) if kopf.INFO else '' %}
     {% if info_txt %}
@@ -579,11 +607,10 @@
 <div class="wd-card">
     <h2>Aktionen</h2>
     <p class="wd-rdo">
-        Mit <strong>„Buchen"</strong> wird der Wareneingang abgeschlossen.
-        Bei der Gelegenheit kannst Du in einem Dialog für jede Position
-        prüfen, ob der EK-Preis noch stimmt — Abweichungen werden
-        anschließend in den Lieferanten-Stammpreis übernommen und für die
-        VK-Kontrolle in der Preispflege gemerkt.
+        Mit <strong>„Buchen"</strong> wird der Wareneingang abgeschlossen
+        (Lieferschein zugeordnet). Mengen sind danach unveränderlich.
+        EK-Preise kommen später mit der Eingangsrechnung
+        (<em>„Einkauf buchen"</em> — folgt in Phase C).
     </p>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button type="button" class="btn-primary"
@@ -595,38 +622,33 @@
 </div>
 {% endif %}
 
-{# ── Buchen-Modal (Phase B): Preis-Pruefung pro Pos ────────────── #}
+{# ── Buchen-Modal (Phase B): Lieferschein-Daten bestaetigen ─── #}
 <div class="wd-buchen-overlay" id="wd-buchen-overlay" style="display:none;"
      onclick="if(event.target===this)wdBuchenSchliessen()">
-  <div class="wd-buchen-modal">
+  <div class="wd-buchen-modal" style="max-width:540px;">
     <div class="wd-buchen-kopf">
-      <h2 id="wd-buchen-titel">Wareneingang buchen — EK-Preise prüfen</h2>
+      <h2>Wareneingang buchen</h2>
       <button class="wd-buchen-close" onclick="wdBuchenSchliessen()">✕</button>
     </div>
     <div class="wd-buchen-info">
-      <span id="wd-buchen-info-text">Bitte EK-Preise prüfen.</span>
-      <label style="float:right; font-weight:600; cursor:pointer; user-select:none;">
-        <input type="checkbox" id="wd-buchen-show-all"
-               onchange="_wdBuchenFilterAktualisieren()" style="vertical-align:middle;">
-        alle Positionen anzeigen
-      </label>
+      Beim Buchen wird der Wareneingang abgeschlossen — die Mengen sind
+      damit als geliefert verbucht und können nicht mehr in dieser App
+      geändert werden. Preise kommen mit der EK-Rechnung dazu.
     </div>
-    <div class="wd-buchen-tabelle-wrap">
-      <table class="wd-buchen-tabelle" id="wd-buchen-tab">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Pos</th>
-            <th style="text-align:left;">Artikel</th>
-            <th class="zahl-rechts">Menge</th>
-            <th class="zahl-rechts">alter EK</th>
-            <th class="zahl-rechts">neuer EK</th>
-            <th style="text-align:center;" title="VPE auf Stammpreis">VPE</th>
-            <th style="text-align:center;" title="als neuen Lieferanten-Preis übernehmen">übernehmen</th>
-          </tr>
-        </thead>
-        <tbody id="wd-buchen-rows"></tbody>
-      </table>
+    <div style="display:grid; grid-template-columns: 130px 1fr; gap: 12px 14px;
+                align-items:center; margin: 12px 0;">
+      <label for="wdb-liefnum" style="font-weight:700;">Lieferschein-Nr.</label>
+      <input type="text" id="wdb-liefnum" autocomplete="off"
+             style="padding:8px 12px; border:1px solid var(--creme-dunkel);
+                    border-radius: var(--radius-klein); font-size:1rem;
+                    font-family: 'Nunito Mono',Consolas,monospace;">
+
+      <label for="wdb-liefdatum" style="font-weight:700;">Lieferschein-Datum</label>
+      <input type="date" id="wdb-liefdatum"
+             style="padding:8px 12px; border:1px solid var(--creme-dunkel);
+                    border-radius: var(--radius-klein); font-size:1rem;">
     </div>
+    <div id="wdb-fehler" style="color:#8a2020; font-weight:700; margin-bottom:8px;"></div>
     <div class="wd-buchen-aktionen">
       <button class="btn-reset" onclick="wdBuchenSchliessen()">Abbrechen</button>
       <button class="btn-primary" id="wd-buchen-ok"
@@ -813,167 +835,63 @@ async function wdStorno() {
     location.reload();
 }
 
-// ── Buchen-Modal (Phase B) ────────────────────────────────────────
-let _wdBuchenDaten = null;   // gemerkt fuer das spaetere POST
-
-function _wdEur(x, dp = 4) {
-    return (Number(x) || 0).toLocaleString('de-DE',
-        { minimumFractionDigits: dp, maximumFractionDigits: dp });
+// ── Lieferschein-Felder im Header (LIEFNUM + LIEFDATUM) ───────────
+let _wdLieferscheinTimer = null;
+async function wdLieferscheinSetzen() {
+    // debounce: bei schnellem Tippen nicht jedes Zeichen abschicken
+    clearTimeout(_wdLieferscheinTimer);
+    _wdLieferscheinTimer = setTimeout(_wdLieferscheinSetzenJetzt, 300);
+}
+async function _wdLieferscheinSetzenJetzt() {
+    const liefnum = (document.getElementById('wd-liefnum')?.value || '').trim();
+    const liefdatum = (document.getElementById('wd-liefdatum')?.value || '').trim();
+    try {
+        await fetch(`${WD_DETAIL_URL}/api/lieferschein`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ liefnum, liefdatum }),
+        });
+    } catch (e) {
+        // Stummer Fehler — nicht kritisch, beim Buchen wird's eh nochmal validiert
+    }
 }
 
-async function wdBuchenStart() {
-    cxLadenZeigen('Lieferanten-Preise werden geladen …');
-    let daten;
-    try {
-        const r = await fetch(`${WD_DETAIL_URL}/api/buchen-vorbereitung`);
-        daten = await r.json();
-    } catch (e) {
-        cxLadenAusblenden();
-        alert('Verbindungsfehler.');
-        return;
-    }
-    cxLadenAusblenden();
-    if (!daten.ok) {
-        alert('Fehler: ' + (daten.fehler || 'unbekannt'));
-        return;
-    }
-    _wdBuchenDaten = daten;
-    document.getElementById('wd-buchen-show-all').checked = false;
-    _wdBuchenTabelleZeichnen(daten.positionen);
-    _wdBuchenFilterAktualisieren();
+// ── Buchen-Modal (Phase B): nur Lieferschein-Bestaetigung ─────────
+function wdBuchenStart() {
+    // Header-Werte als Default ins Modal uebernehmen, damit der User
+    // sie nicht doppelt eintippen muss.
+    const hLiefnum  = (document.getElementById('wd-liefnum')?.value || '').trim();
+    const hLiefdat  = (document.getElementById('wd-liefdatum')?.value || '').trim();
+    document.getElementById('wdb-liefnum').value   = hLiefnum;
+    document.getElementById('wdb-liefdatum').value = hLiefdat || new Date().toISOString().slice(0, 10);
+    document.getElementById('wdb-fehler').textContent = '';
     document.getElementById('wd-buchen-overlay').style.display = 'flex';
+    // Cursor in das Lieferschein-Nr.-Feld setzen, falls leer
+    setTimeout(() => {
+        const f = document.getElementById('wdb-liefnum');
+        if (f && !f.value) f.focus();
+    }, 50);
 }
 
 function wdBuchenSchliessen() {
     document.getElementById('wd-buchen-overlay').style.display = 'none';
-    _wdBuchenDaten = null;
-}
-
-// Aktualisiert: Sichtbarkeit der Zeilen, Info-Text, OK-Button-Beschriftung.
-// Strategie: Standardmaessig nur Zeilen mit echter Preis-Aenderung
-// zeigen (data-changed='1'). Toggle 'alle anzeigen' macht alle sichtbar
-// (zum manuellen Editieren).
-function _wdBuchenFilterAktualisieren() {
-    const showAll = document.getElementById('wd-buchen-show-all').checked;
-    const tbody = document.getElementById('wd-buchen-rows');
-    const rows = tbody.querySelectorAll('tr');
-    let nGeaendert = 0;
-    rows.forEach(tr => {
-        const changed = tr.dataset.changed === '1';
-        if (changed) nGeaendert++;
-        tr.style.display = (showAll || changed) ? '' : 'none';
-    });
-    const info = document.getElementById('wd-buchen-info-text');
-    const okBtn = document.getElementById('wd-buchen-ok');
-    if (nGeaendert === 0) {
-        info.innerHTML = showAll
-            ? 'Keine Preisänderungen erfasst. Du kannst beim Buchen bestehende Preise lassen, oder einzelne Werte ändern.'
-            : '<strong>✓ Keine Preisänderungen.</strong> Direkt buchen, oder oben rechts „alle Positionen anzeigen" aktivieren um manuell zu editieren.';
-        okBtn.textContent = 'Buchen ✓';
-    } else {
-        info.innerHTML = `<strong>${nGeaendert} Preisänderung${nGeaendert === 1 ? '' : 'en'}</strong> erfasst — werden als neue Lieferanten-Stammpreise übernommen (löst VK-Kontrolle aus).`;
-        okBtn.textContent = `Buchen + ${nGeaendert} Preis${nGeaendert === 1 ? '' : 'e'} übernehmen ✓`;
-    }
-}
-
-function _wdBuchenTabelleZeichnen(posListe) {
-    const tbody = document.getElementById('wd-buchen-rows');
-    tbody.innerHTML = '';
-    posListe.forEach((p, i) => {
-        const tr = document.createElement('tr');
-        tr.dataset.posId = p.pos_id;
-        tr.dataset.altPreis = p.alt_preis;
-
-        // Frei/L/K-Pos: keine Preis-Logik moeglich, nur "wird gebucht"-Info
-        const hatArtikel = p.artikel_id > 0 && p.pos_typ === 'N';
-        const altPreisLabel = p.hat_lief_preis ? _wdEur(p.alt_preis)
-                                               : '<span style="color:#a06000">– (kein Stammpreis)</span>';
-
-        if (!hatArtikel) {
-            tr.innerHTML = `
-                <td>${i + 1}</td>
-                <td>${_esc(p.bezeichnung || p.artnum || '–')}</td>
-                <td class="zahl-rechts">${_wdEur(p.menge, 3)} ${_esc(p.me)}</td>
-                <td colspan="4" class="wd-buchen-info-zelle">
-                  ${p.pos_typ === 'L' ? 'Leistungspos – kein Lager-EK' :
-                    p.pos_typ === 'K' ? 'Kommentar/Kopf-Pos' :
-                    'Pos ohne Artikel-Stammdaten'}
-                </td>`;
-            tbody.appendChild(tr);
-            return;
-        }
-
-        // Echte Pos: editierbarer neuer Preis + Haken
-        const idPreis = `wdb-preis-${p.pos_id}`;
-        const idVpe   = `wdb-vpe-${p.pos_id}`;
-        const idChk   = `wdb-uebernehmen-${p.pos_id}`;
-        tr.innerHTML = `
-          <td>${i + 1}</td>
-          <td>
-            <strong>${_esc(p.bezeichnung || '–')}</strong><br>
-            <span class="wd-buchen-info-zelle">Art-Nr ${_esc(p.artnum)}</span>
-          </td>
-          <td class="zahl-rechts">${_wdEur(p.menge, 3)} ${_esc(p.me)}</td>
-          <td class="zahl-rechts">${altPreisLabel}</td>
-          <td class="zahl-rechts">
-            <input type="text" inputmode="decimal" class="wd-buchen-input"
-                   id="${idPreis}" value="${p.alt_preis.toFixed(4).replace('.', ',')}"
-                   data-pos-id="${p.pos_id}"
-                   oninput="_wdBuchenZeileGeaendert(this)">
-          </td>
-          <td style="text-align:center;">
-            <input type="text" inputmode="decimal" class="wd-buchen-input wd-buchen-vpe"
-                   id="${idVpe}" value="${(p.alt_vpe || 1).toString().replace('.', ',')}"
-                   title="VPE für ARTIKEL_PREIS">
-          </td>
-          <td style="text-align:center;">
-            <input type="checkbox" id="${idChk}"
-                   style="width:22px; height:22px; cursor:pointer;">
-          </td>`;
-        tbody.appendChild(tr);
-    });
-}
-
-function _esc(s) {
-    return String(s == null ? '' : s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function _wdBuchenZeileGeaendert(input) {
-    // Wenn neuer Preis von altem abweicht: Zeile markieren + Haken automatisch setzen
-    const tr = input.closest('tr');
-    if (!tr) return;
-    const altPreis = parseFloat(tr.dataset.altPreis || '0') || 0;
-    const neuPreis = parseFloat(input.value.replace(',', '.')) || 0;
-    const abw = Math.abs(neuPreis - altPreis) >= 0.0001;
-    tr.classList.toggle('wd-buchen-zeile-diff', abw);
-    tr.dataset.changed = abw ? '1' : '0';
-    const chk = document.getElementById(`wdb-uebernehmen-${tr.dataset.posId}`);
-    if (chk) chk.checked = abw;
-    _wdBuchenFilterAktualisieren();
 }
 
 async function wdBuchenAbschicken() {
-    if (!_wdBuchenDaten) return;
-    const uebernahmen = [];
-    _wdBuchenDaten.positionen.forEach(p => {
-        if (!(p.artikel_id > 0) || p.pos_typ !== 'N') return;
-        const inpPreis = document.getElementById(`wdb-preis-${p.pos_id}`);
-        const inpVpe   = document.getElementById(`wdb-vpe-${p.pos_id}`);
-        const chk      = document.getElementById(`wdb-uebernehmen-${p.pos_id}`);
-        if (!inpPreis) return;
-        const neuPreis = parseFloat((inpPreis.value || '0').replace(',', '.')) || 0;
-        const neuVpe   = parseFloat((inpVpe.value || '1').replace(',', '.')) || 1;
-        uebernahmen.push({
-            pos_id:       p.pos_id,
-            alt_preis:    p.alt_preis,
-            neuer_preis:  neuPreis,
-            neuer_vpe:    neuVpe,
-            uebernehmen:  !!(chk && chk.checked),
-        });
-    });
-
+    const liefnum   = (document.getElementById('wdb-liefnum').value || '').trim();
+    const liefdatum = (document.getElementById('wdb-liefdatum').value || '').trim();
+    const fehler    = document.getElementById('wdb-fehler');
+    fehler.textContent = '';
+    if (!liefnum) {
+        fehler.textContent = 'Bitte Lieferschein-Nr. eintragen.';
+        document.getElementById('wdb-liefnum').focus();
+        return;
+    }
+    if (!liefdatum) {
+        fehler.textContent = 'Bitte Lieferschein-Datum eintragen.';
+        document.getElementById('wdb-liefdatum').focus();
+        return;
+    }
     const btn = document.getElementById('wd-buchen-ok');
     btn.disabled = true;
     cxLadenZeigen('Wareneingang wird gebucht …');
@@ -982,22 +900,21 @@ async function wdBuchenAbschicken() {
         const r = await fetch(`${WD_DETAIL_URL}/api/buchen`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ preis_uebernahmen: uebernahmen }),
+            body: JSON.stringify({ liefnum, liefdatum }),
         });
         res = await r.json();
     } catch (e) {
         cxLadenAusblenden();
         btn.disabled = false;
-        alert('Verbindungsfehler beim Buchen.');
+        fehler.textContent = 'Verbindungsfehler.';
         return;
     }
     if (!res.ok) {
         cxLadenAusblenden();
         btn.disabled = false;
-        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        fehler.textContent = 'Fehler: ' + (res.fehler || 'unbekannt');
         return;
     }
-    // Reload zeigt den gebuchten Status (STADIUM=2, alle Pos GEBUCHT_FLAG='Y')
     location.reload();
 }
 
