@@ -391,6 +391,39 @@ def api_we_pos_entfernen_bulk(rec_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+# ── Wareneingang Buchen (Phase B) ────────────────────────────────────
+
+
+@bp.get('/wareneingang/<int:rec_id>/api/buchen-vorbereitung')
+def api_we_buchen_vorbereitung(rec_id: int) -> Any:
+    """Liefert Pos + aktuelle Lief-Preise — fuer das Buchen-Modal."""
+    _login_check()
+    try:
+        return jsonify({'ok': True, **we.buchen_vorbereitung(rec_id)})
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/buchen')
+def api_we_buchen(rec_id: int) -> Any:
+    """Bucht den Wareneingang. Erwartet im Body optional eine Liste
+    ``preis_uebernahmen`` mit ``{pos_id, neuer_preis, neuer_vpe?,
+    alt_preis, uebernehmen}``-Eintraegen — fuer markierte Pos werden
+    ARTIKEL_PREIS und VK-Kontrolle aktualisiert."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    pue = body.get('preis_uebernahmen') or []
+    if not isinstance(pue, list):
+        return jsonify({'ok': False, 'fehler': 'preis_uebernahmen muss Liste sein'}), 400
+    ma_id = session.get('ma_id')
+    ma_name = session.get('ma_name') or session.get('login_name') or 'CAO-XT'
+    try:
+        result = we.buchen(rec_id, ma_id, ma_name, preis_uebernahmen=pue)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
 # ── Common-Picker-Endpunkte (Artikel + Adresse) ──────────────────────
 
 

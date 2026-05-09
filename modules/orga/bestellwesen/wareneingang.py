@@ -1297,6 +1297,322 @@ def pos_artikel_anhaengen_bulk(eingang_id: int,
     return {'angehaengt': angehaengt}
 
 
+# ── Buchen (Phase B) ─────────────────────────────────────────────────
+
+
+def buchen_vorbereitung(eingang_id: int) -> dict[str, Any]:
+    """Sammelt fuer das Buchen-Modal: Pos mit aktuellem Lief-Preis.
+
+    Pro Pos wird der aktuell gespeicherte Lieferanten-Preis aus
+    ``ARTIKEL_PREIS`` (``PREIS_TYP=5``, ``ADRESS_ID=Lieferant``) ermittelt.
+    Im UI wird das als Default-Wert fuer ``neuer Preis`` eingesetzt — der
+    User editiert nur, wo sich was geandert hat.
+
+    Pos ohne ``ARTIKEL_ID`` (Freitext/L/K) werden nicht im Preis-Modal
+    angeboten — beim Buchen kommen sie einfach mit ``GEBUCHT_FLAG='Y'``
+    durch, ohne Preis-Logik.
+
+    Returns:
+        ``{eingang_id, belegnum, lief_addr_id, lief_name, positionen: [...]}``.
+        Wirft ``LookupError`` falls Wareneingang nicht existiert oder
+        ``PermissionError`` falls bereits gebucht/storniert.
+    """
+    eingang_id = int(eingang_id)
+    with get_db() as cur:
+        cur.execute(
+            """SELECT e.REC_ID, e.BELEGNUM, e.STADIUM, e.ADDR_ID,
+                      COALESCE(a.NAME1, '–') AS lief_name
+                 FROM EKEINGANG e
+                 LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID
+                WHERE e.REC_ID = %s""",
+            (eingang_id,),
+        )
+        head = cur.fetchone()
+        if not head:
+            raise LookupError(f'Wareneingang {eingang_id} nicht gefunden')
+        if int(head['STADIUM']) != 0:
+            raise PermissionError(
+                f'Wareneingang STADIUM={head["STADIUM"]} — nur "offen" (0) '
+                f'kann gebucht werden')
+        lief_addr_id = int(head['ADDR_ID'] or -1)
+
+        cur.execute(
+            """SELECT p.REC_ID         AS pos_id,
+                      p.ARTIKEL_ID     AS artikel_id,
+                      p.ARTIKELTYP     AS pos_typ,
+                      p.ARTNUM         AS artnum,
+                      p.BEZEICHNUNG    AS bezeichnung,
+                      p.MENGE          AS menge,
+                      p.MENGE_SOLL     AS menge_soll,
+                      p.ME_EINHEIT     AS me,
+                      p.PR_EINHEIT     AS pr_einheit,
+                      p.VPE            AS vpe
+                 FROM EKEINGANG_POS p
+                WHERE p.EKEINGANG_ID = %s
+                ORDER BY p.POSITION, p.REC_ID""",
+            (eingang_id,),
+        )
+        pos_rows = cur.fetchall()
+
+        # Lief-Preise fuer alle ARTIKEL_IDs der Pos in einem Bulk-Query.
+        artikel_ids = [int(r['artikel_id']) for r in pos_rows
+                       if r.get('artikel_id')]
+        preis_map: dict[int, dict] = {}
+        if artikel_ids and lief_addr_id > 0:
+            fmt = ','.join(['%s'] * len(artikel_ids))
+            cur.execute(
+                f"""SELECT ARTIKEL_ID, PREIS, VPE, BESTNUM
+                      FROM ARTIKEL_PREIS
+                     WHERE ARTIKEL_ID IN ({fmt})
+                       AND ADRESS_ID = %s
+                       AND PREIS_TYP = 5""",
+                artikel_ids + [lief_addr_id],
+            )
+            preis_map = {int(r['ARTIKEL_ID']): r for r in cur.fetchall()}
+
+    positionen = []
+    for r in pos_rows:
+        aid = int(r['artikel_id'] or 0)
+        ap = preis_map.get(aid)
+        positionen.append({
+            'pos_id':         int(r['pos_id']),
+            'artikel_id':     aid,
+            'pos_typ':        r['pos_typ'] or 'N',
+            'artnum':         r['artnum'] or '',
+            'bezeichnung':    r['bezeichnung'] or '',
+            'menge':          float(r['menge'] or 0),
+            'menge_soll':     float(r['menge_soll'] or 0),
+            'me':             r['me'] or '',
+            'pr_einheit':     int(r['pr_einheit'] or 1),
+            'vpe':            float(r['vpe'] or 1),
+            'alt_preis':      float(ap['PREIS']) if ap else 0.0,
+            'alt_vpe':        float(ap['VPE'] or 1) if ap else 1.0,
+            'alt_bestnum':    (ap.get('BESTNUM') if ap else '') or '',
+            'hat_lief_preis': bool(ap),
+        })
+
+    return {
+        'eingang_id':   eingang_id,
+        'belegnum':     head['BELEGNUM'] or '',
+        'lief_addr_id': lief_addr_id,
+        'lief_name':    head['lief_name'],
+        'positionen':   positionen,
+    }
+
+
+def _vk_kontrolle_eintrag_we(cur, *, artikel_rec_id: int,
+                              alt_ek: float, neu_ek: float,
+                              eingang_rec_id: int, ma_id: int | None,
+                              belegnum: str, lief_kuerzel: str) -> None:
+    """Idempotenter VK-Kontroll-Eintrag bei EK-Aenderung aus Wareneingang.
+
+    Analog ``common.einkauf._vk_kontrolle_ek_eintrag``, aber mit
+    Wareneingangs-Kontext im ANMERKUNG-Feld. ``QUELLE_BEST`` bekommt
+    ``EKEINGANG.REC_ID`` (Tabelle hat dort kein FK, nur Index).
+
+    Schreibt im selben Cursor wie der Caller — kein eigener Pool-Connect.
+    """
+    anm = (f'Wareneingang {belegnum or eingang_rec_id} '
+           f'(Lief={lief_kuerzel}). '
+           f'EK {float(alt_ek):.4f} → {float(neu_ek):.4f} €.')
+    cur.execute("""
+        SELECT REC_ID, ALT_EK FROM XT_ARTIKEL_VK_KONTROLLE
+         WHERE ARTIKEL_REC_ID = %s
+           AND GRUND          = 'ek_geaendert'
+           AND ERLEDIGT_AT IS NULL
+         ORDER BY REC_ID DESC LIMIT 1
+    """, (int(artikel_rec_id),))
+    row = cur.fetchone()
+    if row:
+        cur.execute("""
+            UPDATE XT_ARTIKEL_VK_KONTROLLE
+               SET NEU_EK = %s,
+                   QUELLE_BEST = %s,
+                   ANMERKUNG = %s
+             WHERE REC_ID = %s
+        """, (float(neu_ek), int(eingang_rec_id), anm, row['REC_ID']))
+    else:
+        cur.execute("""
+            INSERT INTO XT_ARTIKEL_VK_KONTROLLE
+              (ARTIKEL_REC_ID, GRUND, ALT_EK, NEU_EK,
+               QUELLE_BEST, ANGELEGT_VON, ANMERKUNG)
+            VALUES (%s, 'ek_geaendert', %s, %s, %s, %s, %s)
+        """, (int(artikel_rec_id), float(alt_ek), float(neu_ek),
+              int(eingang_rec_id), ma_id, anm))
+
+
+def buchen(eingang_id: int, ma_id: int | None, ma_name: str | None, *,
+           preis_uebernahmen: list[dict] | None = None) -> dict[str, Any]:
+    """Bucht den Wareneingang und uebernimmt optional Preis-Aenderungen
+    in ``ARTIKEL_PREIS``.
+
+    Aktionen pro Aufruf (in einer Transaktion):
+      1. EKEINGANG.STADIUM 0 → 2 (unberechnet)
+      2. Alle EKEINGANG_POS.GEBUCHT_FLAG → 'Y'
+      3. Fuer jeden Eintrag aus ``preis_uebernahmen`` mit
+         ``uebernehmen=True`` und einer echten Aenderung
+         (|neuer_preis - alt_preis| >= 0.0001):
+           - UPSERT ARTIKEL_PREIS (PREIS_TYP=5, ADRESS_ID=<Lief>,
+             ARTIKEL_ID=<pos.ARTIKEL_ID>)
+           - VK-Kontroll-Eintrag in XT_ARTIKEL_VK_KONTROLLE (idempotent
+             pro Artikel via ERLEDIGT_AT IS NULL).
+
+    ``preis_uebernahmen`` ist eine Liste von Dicts mit den Keys
+    ``pos_id`` (int), ``neuer_preis`` (float), ``neuer_vpe`` (float,
+    optional), ``uebernehmen`` (bool), ``alt_preis`` (float, fuer
+    Idempotenz/Audit).
+    """
+    eingang_id = int(eingang_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+    preis_uebernahmen = preis_uebernahmen or []
+
+    # preis-uebernahmen nach pos_id indizieren fuer schnellen Lookup
+    pue_map: dict[int, dict] = {}
+    for pu in preis_uebernahmen:
+        try:
+            pid = int(pu.get('pos_id'))
+        except (TypeError, ValueError):
+            continue
+        pue_map[pid] = pu
+
+    with get_db_transaction() as cur:
+        # 1) Header-Status pruefen + Lief-Adresse holen
+        cur.execute(
+            """SELECT e.REC_ID, e.BELEGNUM, e.STADIUM, e.ADDR_ID,
+                      COALESCE(a.KUNNUM1, NULLIF(a.NAME1, ''), '?') AS lief_kuerzel
+                 FROM EKEINGANG e
+                 LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID
+                WHERE e.REC_ID = %s""",
+            (eingang_id,),
+        )
+        head = cur.fetchone()
+        if not head:
+            raise LookupError(f'Wareneingang {eingang_id} nicht gefunden')
+        if int(head['STADIUM']) != 0:
+            raise PermissionError(
+                f'Wareneingang STADIUM={head["STADIUM"]} — nur "offen" (0) '
+                f'kann gebucht werden')
+        lief_addr_id = int(head['ADDR_ID'] or -1)
+        belegnum = head['BELEGNUM'] or ''
+        lief_kuerzel = head['lief_kuerzel'] or '?'
+
+        # 2) Pos lesen (artikel_id muss bekannt sein fuer Preis-Logik)
+        cur.execute(
+            """SELECT REC_ID, ARTIKEL_ID, ARTNUM
+                 FROM EKEINGANG_POS
+                WHERE EKEINGANG_ID = %s""",
+            (eingang_id,),
+        )
+        pos_rows = cur.fetchall()
+        if not pos_rows:
+            raise ValueError('Wareneingang hat keine Positionen')
+
+        # 3) Pos buchen (GEBUCHT_FLAG='Y' fuer alle)
+        cur.execute(
+            """UPDATE EKEINGANG_POS
+                  SET GEBUCHT_FLAG = 'Y'
+                WHERE EKEINGANG_ID = %s""",
+            (eingang_id,),
+        )
+
+        # 4) Header auf STADIUM=2 (unberechnet)
+        cur.execute(
+            """UPDATE EKEINGANG
+                  SET STADIUM = 2
+                WHERE REC_ID = %s""",
+            (eingang_id,),
+        )
+
+        # 5) Preis-Uebernahmen anwenden (nur fuer Pos mit ARTIKEL_ID)
+        n_preis_neu = 0
+        n_preis_upd = 0
+        for p in pos_rows:
+            pid = int(p['REC_ID'])
+            aid = int(p['ARTIKEL_ID'] or 0)
+            if aid <= 0 or lief_addr_id <= 0:
+                continue
+            pu = pue_map.get(pid)
+            if not pu or not pu.get('uebernehmen'):
+                continue
+            try:
+                neu_preis = float(str(pu.get('neuer_preis', 0)).replace(',', '.'))
+                alt_preis = float(str(pu.get('alt_preis', 0)).replace(',', '.'))
+            except (TypeError, ValueError):
+                continue
+            if neu_preis < 0:
+                continue
+            if abs(neu_preis - alt_preis) < 0.0001:
+                continue  # keine echte Aenderung
+            try:
+                neu_vpe = float(str(pu.get('neuer_vpe', 1)).replace(',', '.'))
+                if neu_vpe <= 0:
+                    neu_vpe = 1.0
+            except (TypeError, ValueError):
+                neu_vpe = 1.0
+            artnr = (p['ARTNUM'] or '')[:50]
+
+            # ARTIKEL_PREIS UPSERT
+            cur.execute(
+                """SELECT PREIS, VPE FROM ARTIKEL_PREIS
+                    WHERE ARTIKEL_ID = %s
+                      AND ADRESS_ID  = %s
+                      AND PREIS_TYP  = 5""",
+                (aid, lief_addr_id),
+            )
+            ap = cur.fetchone()
+            if ap:
+                cur.execute(
+                    """UPDATE ARTIKEL_PREIS
+                          SET PREIS       = %s,
+                              VPE         = %s,
+                              BESTNUM     = %s,
+                              GEAEND      = NOW(),
+                              GEAEND_NAME = %s
+                        WHERE ARTIKEL_ID  = %s
+                          AND ADRESS_ID   = %s
+                          AND PREIS_TYP   = 5""",
+                    (neu_preis, neu_vpe, artnr, ma_name_safe,
+                     aid, lief_addr_id),
+                )
+                n_preis_upd += 1
+            else:
+                cur.execute(
+                    """INSERT INTO ARTIKEL_PREIS
+                         (ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PT2,
+                          BESTNUM, PREIS, VPE,
+                          GUELTIG_VON, GUELTIG_BIS,
+                          GEAEND, GEAEND_NAME)
+                       VALUES (%s, %s, 5, 'EK', %s, %s, %s,
+                               NULL, NULL, NOW(), %s)""",
+                    (aid, lief_addr_id, artnr, neu_preis, neu_vpe,
+                     ma_name_safe),
+                )
+                n_preis_neu += 1
+
+            # VK-Kontroll-Eintrag (idempotent)
+            try:
+                _vk_kontrolle_eintrag_we(
+                    cur,
+                    artikel_rec_id=aid,
+                    alt_ek=alt_preis,
+                    neu_ek=neu_preis,
+                    eingang_rec_id=eingang_id,
+                    ma_id=ma_id,
+                    belegnum=belegnum,
+                    lief_kuerzel=lief_kuerzel,
+                )
+            except Exception:
+                # VK-Kontrolle ist Audit-Spur, darf nicht das Buchen kippen
+                pass
+
+    return {
+        'ok': True,
+        'eingang_id': eingang_id,
+        'preis_neu':  n_preis_neu,
+        'preis_upd':  n_preis_upd,
+    }
+
+
 def storno(rec_id: int) -> dict[str, int]:
     """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
     EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.
