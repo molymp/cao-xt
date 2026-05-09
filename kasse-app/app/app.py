@@ -1845,6 +1845,15 @@ def _brand_asset(dateiname):
     return send_from_directory(_BRAND_DIR, dateiname, max_age=60 * 60 * 24)
 
 
+@app.route('/favicon.ico')
+def _favicon():
+    """Favicon-Default-Pfad — Browser fragen /favicon.ico an, wenn kein
+    <link rel='icon'> im <head> steht (z.B. login.html erbt kein base.html)."""
+    return send_from_directory(_BRAND_DIR, 'favicon.ico',
+                               max_age=60 * 60 * 24,
+                               mimetype='image/x-icon')
+
+
 @app.get('/kasse/handbuch')
 @_login_required
 def kasse_handbuch():

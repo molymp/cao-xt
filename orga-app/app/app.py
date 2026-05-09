@@ -1056,6 +1056,16 @@ def _brand_asset(dateiname):
                                max_age=60 * 60 * 24)  # 1 Tag Cache
 
 
+@app.route('/favicon.ico')
+def _favicon():
+    """Favicon-Default-Pfad — Browser fragen /favicon.ico an, wenn kein
+    <link rel='icon'> im <head> steht. Login-Templates erben kein base.html,
+    daher hier als Fallback. Liefert das Multi-Resolution-Dorfkern-ICO."""
+    return send_from_directory(_BRAND_DIR, 'favicon.ico',
+                               max_age=60 * 60 * 24,
+                               mimetype='image/x-icon')
+
+
 # ── Legacy-Redirects (Dorfkern v2 Rename /wawi → /orga) ──────
 # Bestehende Bookmarks / Druck-QR-Codes / Verweise aus CAO-Reports
 # treffen weiterhin auf /wawi/... – wir antworten 301 auf /orga/...
