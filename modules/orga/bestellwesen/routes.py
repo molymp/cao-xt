@@ -557,6 +557,44 @@ def api_ek_pos_aus_bestellpos(rec_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+@bp.post('/einkauf/<int:rec_id>/api/pos/aus-we-bulk')
+def api_ek_pos_aus_we_bulk(rec_id: int) -> Any:
+    """Body: {ekeingang_ids: [int, …]}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    raw = body.get('ekeingang_ids') or []
+    ids: list[int] = []
+    for x in raw:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        return jsonify({'ok': False, 'fehler': 'Keine Wareneingaenge gewaehlt'}), 400
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = ek.pos_aus_we_anhaengen_bulk(rec_id, ids, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/aus-bestellpos-bulk')
+def api_ek_pos_aus_bestellpos_bulk(rec_id: int) -> Any:
+    """Body: {items: [{pos_id, menge?}, …]}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    items = body.get('items') or []
+    if not isinstance(items, list) or not items:
+        return jsonify({'ok': False, 'fehler': 'Keine Positionen gewaehlt'}), 400
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = ek.pos_aus_bestellpos_anhaengen_bulk(rec_id, items, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
 @bp.post('/einkauf/<int:rec_id>/api/pos/artikel-anhaengen')
 def api_ek_pos_artikel(rec_id: int) -> Any:
     """Body: {artikel_id, menge?, eingabe_preis?}"""
@@ -645,6 +683,12 @@ def _arg_lief_addr() -> int | None:
         return None
 
 
+def _arg_nur_lief() -> bool:
+    """Liest den optionalen Filter ``nur_lief=1`` aus den Query-Parametern."""
+    raw = (request.args.get('nur_lief') or '').strip().lower()
+    return raw in ('1', 'true', 'yes', 'on')
+
+
 @bp.get('/api/picker/artikel')
 def api_picker_artikel() -> Any:
     """Artikel einer Warengruppe (rekursiv) für den Common-Picker."""
@@ -658,7 +702,8 @@ def api_picker_artikel() -> Any:
     return jsonify({'ok': True,
                     'zeilen': artikel_in_warengruppe(
                         wg if wg > 0 else None,
-                        lief_addr_id=_arg_lief_addr())})
+                        lief_addr_id=_arg_lief_addr(),
+                        nur_lief=_arg_nur_lief())})
 
 
 @bp.get('/api/picker/artikel/suche')
@@ -668,7 +713,8 @@ def api_picker_artikel_suche() -> Any:
     from common.picker_data import artikel_volltext_suche
     q = request.args.get('q', '').strip()
     return jsonify({'ok': True, 'zeilen': artikel_volltext_suche(
-        q, lief_addr_id=_arg_lief_addr())})
+        q, lief_addr_id=_arg_lief_addr(),
+        nur_lief=_arg_nur_lief())})
 
 
 def _arg_typ_filter() -> str | None:

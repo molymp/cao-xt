@@ -34,6 +34,14 @@
   background:#eee; color:#666; }
 .ek-pille-0   { background:rgba(200,120,10,0.18); color:#a06000; }
 .ek-pille-2   { background:rgba(60,120,200,0.18); color:#2a4a8a; }
+
+/* In-Bearbeitung-Badge: Phase VOR der Verbuchung */
+.ek-bearb {
+  display:inline-block; padding:2px 10px; border-radius:4px;
+  font-size:0.78rem; font-weight:700;
+  background:rgba(200,120,10,0.18); color:#a06000;
+  text-transform:uppercase; letter-spacing:0.04em;
+}
 .ek-pille-3   { background:rgba(220,140,40,0.20); color:#a05010; }
 .ek-pille-4   { background:rgba(220,100,40,0.22); color:#a04010; }
 .ek-pille-5   { background:rgba(220, 60,40,0.25); color:#a02810; }
@@ -141,8 +149,14 @@
             <span class="wert">{{ kopf.RDATUM.strftime('%d.%m.%Y') if kopf.RDATUM else '–' }}</span>
         </div>
         <div>
-            <label>Status</label>
-            <span class="wert"><span class="ek-pille ek-pille-{{ kopf.STADIUM or 0 }}">{{ kopf.stadium_label }}</span></span>
+            <label>{% if kopf.ist_offen %}Phase{% else %}Zahl-Stadium{% endif %}</label>
+            <span class="wert">
+              {% if kopf.ist_offen %}
+                <span class="ek-bearb">✏️ in Bearbeitung</span>
+              {% else %}
+                <span class="ek-pille ek-pille-{{ kopf.STADIUM or 0 }}">{{ kopf.stadium_label }}</span>
+              {% endif %}
+            </span>
         </div>
         <div>
             <label>Netto €</label>
@@ -271,7 +285,9 @@
       </table>
     </div>
     <div class="ed-modal-aktionen">
-      <button class="btn-aktion" onclick="edQuelleSchliessen()">Schließen</button>
+      <button class="btn-aktion" onclick="edQuelleSchliessen()">Abbrechen</button>
+      <button class="btn-primary" id="ed-modal-ok"
+              onclick="edQuelleUebernehmen()">Markierte übernehmen ✓</button>
     </div>
   </div>
 </div>
@@ -366,41 +382,55 @@ async function edAusBestellung() {
     _edQuelleZeigen('bestellung', res.zeilen);
 }
 
+// Mode-State fuer das Modal: 'we' oder 'bestellung'
+let _edQuelleModus = null;
+
 function _edQuelleZeigen(modus, zeilen) {
+    _edQuelleModus = modus;
     const titel = document.getElementById('ed-modal-titel');
     const info  = document.getElementById('ed-modal-info');
     const thead = document.getElementById('ed-modal-thead');
     const tbody = document.getElementById('ed-modal-tbody');
+
     if (modus === 'we') {
         titel.textContent = 'Aus Wareneingang übernehmen';
-        info.textContent = 'Wähle einen Wareneingang. Alle gebuchten, noch nicht berechneten Positionen werden in den Einkauf übernommen.';
+        info.textContent = 'Wähle einen oder mehrere Wareneingänge. Alle gebuchten, noch nicht berechneten Positionen daraus werden in den Einkauf übernommen.';
         thead.innerHTML = `<tr>
+            <th style="width:30px;"><input type="checkbox" id="ed-mod-alle"
+                onchange="_edModAlleToggle(this)"></th>
             <th>Beleg-Nr.</th><th>Datum</th><th>Lieferschein-Nr.</th>
-            <th>Lief-Datum</th><th class="zahl-rechts">Pos offen</th><th></th></tr>`;
+            <th>Lief-Datum</th><th class="zahl-rechts">Pos offen</th></tr>`;
         if (!zeilen.length) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">Keine offenen Wareneingänge für diesen Lieferanten.</td></tr>';
         } else {
             tbody.innerHTML = zeilen.map(z => `
                 <tr>
+                  <td><input type="checkbox" class="ed-mod-cb" data-id="${z.we_rec_id}"
+                       onchange="_edModCbAktualisieren()"></td>
                   <td><strong>${_esc(z.belegnum || '#'+z.we_rec_id)}</strong></td>
                   <td>${z.belegdatum ? z.belegdatum.split('T')[0].split('-').reverse().join('.') : '–'}</td>
                   <td><code>${_esc(z.liefnum || '–')}</code></td>
                   <td>${z.liefdatum ? z.liefdatum.split('T')[0].split('-').reverse().join('.') : '–'}</td>
                   <td class="zahl-rechts">${z.pos_offen}</td>
-                  <td><button class="btn-aktion" onclick="edAusWEUebernehmen(${z.we_rec_id})">übernehmen ✓</button></td>
                 </tr>`).join('');
         }
     } else {
         titel.textContent = 'Aus Bestellung übernehmen';
-        info.textContent = 'Wähle eine offene Bestellposition. Die Restmenge wird in den Einkauf übernommen.';
+        info.textContent = 'Wähle eine oder mehrere offene Bestellpositionen. Pro Zeile kann die zu übernehmende Menge angepasst werden (Default: noch offene Restmenge).';
         thead.innerHTML = `<tr>
+            <th style="width:30px;"><input type="checkbox" id="ed-mod-alle"
+                onchange="_edModAlleToggle(this)"></th>
             <th>Bestellung</th><th>Datum</th><th>Pos</th><th>Art-Nr.</th><th>Bezeichnung</th>
-            <th class="zahl-rechts">offen</th><th>ME</th><th class="zahl-rechts">EK €</th><th></th></tr>`;
+            <th class="zahl-rechts">offen</th><th>ME</th>
+            <th class="zahl-rechts">Übernahme-Menge</th>
+            <th class="zahl-rechts">EK €</th></tr>`;
         if (!zeilen.length) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#888;">Keine offenen Bestellpositionen für diesen Lieferanten.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#888;">Keine offenen Bestellpositionen für diesen Lieferanten.</td></tr>';
         } else {
             tbody.innerHTML = zeilen.map(z => `
                 <tr>
+                  <td><input type="checkbox" class="ed-mod-cb" data-id="${z.pos_id}"
+                       onchange="_edModCbAktualisieren()"></td>
                   <td><strong>${_esc(z.bestell_nr || '#'+z.bestell_id)}</strong></td>
                   <td>${z.bestell_datum ? z.bestell_datum.split('T')[0].split('-').reverse().join('.') : '–'}</td>
                   <td>${z.position}</td>
@@ -408,38 +438,80 @@ function _edQuelleZeigen(modus, zeilen) {
                   <td>${_esc(z.bezeichnung || '–').slice(0, 40)}</td>
                   <td class="zahl-rechts"><strong>${(+z.menge_offen).toLocaleString('de-DE')}</strong></td>
                   <td>${_esc(z.me || '')}</td>
+                  <td class="zahl-rechts">
+                    <input type="text" inputmode="decimal" class="ed-mod-menge"
+                           data-pos-id="${z.pos_id}"
+                           value="${(+z.menge_offen).toString().replace('.', ',')}"
+                           style="width:80px; padding:4px 6px; text-align:right;
+                                  font-family:'Nunito Mono',Consolas,monospace;
+                                  border:1px solid var(--creme-dunkel);
+                                  border-radius:var(--radius-klein);">
+                  </td>
                   <td class="zahl-rechts">${_eur(z.bestell_eprice, 4)}</td>
-                  <td><button class="btn-aktion" onclick="edAusBestellpos(${z.pos_id}, ${+z.menge_offen})">übernehmen ✓</button></td>
                 </tr>`).join('');
         }
     }
+    _edModCbAktualisieren();
     document.getElementById('ed-quelle-overlay').style.display = 'flex';
+}
+
+function _edModAlleToggle(cb) {
+    document.querySelectorAll('.ed-mod-cb').forEach(c => { c.checked = cb.checked; });
+    _edModCbAktualisieren();
+}
+function _edModCbAktualisieren() {
+    const n = document.querySelectorAll('.ed-mod-cb:checked').length;
+    const btn = document.getElementById('ed-modal-ok');
+    if (!btn) return;
+    if (n === 0) {
+        btn.textContent = 'Markierte übernehmen';
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+    } else {
+        btn.textContent = `${n} markierte übernehmen ✓`;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    }
 }
 
 function edQuelleSchliessen() {
     document.getElementById('ed-quelle-overlay').style.display = 'none';
+    _edQuelleModus = null;
 }
 
-async function edAusWEUebernehmen(weId) {
-    cxLadenZeigen('Pos werden übernommen …');
-    const res = await _post(`${ED_API}/pos/aus-we`, { ekeingang_id: weId });
-    cxLadenAusblenden();
-    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
-    location.reload();
-}
-
-async function edAusBestellpos(posId, menge) {
-    const eingabe = prompt(`Menge zur Übernahme (Vorschlag: ${menge}):`,
-                            menge.toString().replace('.', ','));
-    if (eingabe === null) return;
-    const m = parseFloat(eingabe.replace(',', '.'));
-    if (!(m > 0)) { alert('Ungültige Menge'); return; }
-    cxLadenZeigen('Pos wird übernommen …');
-    const res = await _post(`${ED_API}/pos/aus-bestellpos`,
-                             { bestellpos_id: posId, menge: m });
-    cxLadenAusblenden();
-    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
-    location.reload();
+async function edQuelleUebernehmen() {
+    if (!_edQuelleModus) return;
+    const checked = Array.from(document.querySelectorAll('.ed-mod-cb:checked'));
+    if (!checked.length) return;
+    if (_edQuelleModus === 'we') {
+        const ids = checked.map(c => parseInt(c.dataset.id));
+        cxLadenZeigen(`Übernehme ${ids.length} Wareneingang(änge) …`);
+        const res = await _post(`${ED_API}/pos/aus-we-bulk`,
+                                 { ekeingang_ids: ids });
+        cxLadenAusblenden();
+        if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+        location.reload();
+    } else {
+        const items = checked.map(c => {
+            const pid = parseInt(c.dataset.id);
+            const inp = document.querySelector(
+                `.ed-mod-menge[data-pos-id="${pid}"]`);
+            const m = inp ? parseFloat((inp.value || '').replace(',', '.')) : 0;
+            return { pos_id: pid, menge: m };
+        }).filter(x => x.menge > 0);
+        if (!items.length) { alert('Keine gültigen Mengen erfasst'); return; }
+        cxLadenZeigen(`Übernehme ${items.length} Bestellposition(en) …`);
+        const res = await _post(`${ED_API}/pos/aus-bestellpos-bulk`,
+                                 { items });
+        cxLadenAusblenden();
+        if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+        if (res.fehler && res.fehler.length) {
+            alert('Mit Fehlern übernommen:\n' + res.fehler.join('\n'));
+        }
+        location.reload();
+    }
 }
 
 // ── + Artikel-Picker ──────────────────────────────────────────────
@@ -448,6 +520,10 @@ function edArtikelPicker() {
     cxPickerOpen({
         modus: 'artikel',
         titel: 'Artikel zum Einkauf hinzufügen',
+        // Default: nur Artikel mit Lieferantenpreis fuer diesen Lief
+        // (User kann den Filter im Picker per Checkbox ausschalten)
+        nurLiefPreisDefault: true,
+        multi: true,
         urls: {
             gruppen: '/orga/bestellwesen/api/picker/wgs',
             liste:   '/orga/bestellwesen/api/picker/artikel?wg={WG}' + liefArg,

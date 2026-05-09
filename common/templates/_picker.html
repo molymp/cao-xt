@@ -222,6 +222,15 @@
              placeholder="🔍 Suche … (mind. 2 Zeichen)"
              autocomplete="off"
              oninput="cxPickerSucheInput(this.value)">
+      <label id="cxp-nur-lief-wrap" style="display:none; align-items:center;
+             gap:6px; font-size:0.86rem; font-weight:700;
+             color:var(--text-dim,#5a7a3a); white-space:nowrap;
+             cursor:pointer; user-select:none;">
+        <input type="checkbox" id="cxp-nur-lief"
+               onchange="cxPickerNurLiefToggle(this.checked)"
+               style="width:18px; height:18px; cursor:pointer;">
+        nur Lief-Preis
+      </label>
       <button class="cxp-uebernehmen" id="cxp-uebernehmen"
               style="display:none;" disabled
               onclick="cxPickerUebernehmen()">Übernehmen</button>
@@ -319,6 +328,22 @@ window.cxPickerOpen = async function(cfg) {
         : '🔍 Art-Nr., Name, Barcode oder Matchcode …';
     el('cxp-overlay').classList.remove('cxp-hidden');
     setTimeout(() => el('cxp-search').focus(), 50);
+
+    // 'nur Lief-Preis'-Toggle: nur sichtbar im Artikel-Modus mit Lief-Bezug.
+    // Default kann via cfg.nurLiefPreisDefault gesetzt werden — typisch
+    // True wenn man im Einkauf nur Artikel mit Stammpreis vom Lieferanten
+    // sehen will.
+    const wrap = el('cxp-nur-lief-wrap');
+    const nurLiefCb = el('cxp-nur-lief');
+    const hatLiefBezug = cfg.modus === 'artikel' && /lief_addr_id=\d+/.test(
+        Object.values(cfg.urls || {}).join(' '));
+    if (hatLiefBezug) {
+        wrap.style.display = 'inline-flex';
+        nurLiefCb.checked = !!cfg.nurLiefPreisDefault;
+    } else {
+        wrap.style.display = 'none';
+        nurLiefCb.checked = false;
+    }
 
     // Übernehmen-Button nur im Multi-Modus sichtbar
     const ueb = el('cxp-uebernehmen');
@@ -471,14 +496,34 @@ window.cxGruppeWaehlen = async function(gid) {
     status.style.display = 'block';
     tab.style.display = 'none';
     try {
-        const url = _cfg.urls.liste.replace('{WG}',
+        let url = _cfg.urls.liste.replace('{WG}',
             String(gid)).replace('{GRP}', encodeURIComponent(String(gid)));
+        url = _cxAppendNurLief(url);
         const r = await fetch(url);
         const d = await r.json();
         _items = d.zeilen || [];
         cxListeRender();
     } catch (e) {
         status.textContent = 'Fehler beim Laden.';
+    }
+};
+
+// Fuer Toggle 'nur Lief-Preis': haengt &nur_lief=1 an die URL an,
+// wenn die Checkbox aktiv ist.
+function _cxAppendNurLief(url) {
+    const cb = el('cxp-nur-lief');
+    if (!cb || !cb.checked) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return url + sep + 'nur_lief=1';
+}
+
+window.cxPickerNurLiefToggle = function(_aktiv) {
+    // Bei Toggle: aktuelle Ansicht neu laden (Liste oder Suche)
+    const q = (el('cxp-search').value || '').trim();
+    if (q.length >= 2) {
+        cxSucheAusfuehren(q);
+    } else {
+        cxGruppeWaehlen(_aktivGruppe || 0);
     }
 };
 
@@ -572,9 +617,10 @@ async function cxSucheAusfuehren(q) {
     status.style.display = 'block';
     tab.style.display = 'none';
     try {
-        const url = _cfg.urls.suche
+        let url = _cfg.urls.suche
             .replace('{Q}', encodeURIComponent(q))
             .replace('{GRP}', encodeURIComponent(String(_aktivGruppe ?? '')));
+        url = _cxAppendNurLief(url);
         const r = await fetch(url);
         const d = await r.json();
         _items = d.zeilen || [];

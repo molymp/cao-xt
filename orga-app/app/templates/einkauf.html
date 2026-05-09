@@ -46,8 +46,20 @@
 .ek-pille { display:inline-block; padding:2px 10px;
   border-radius:999px; font-size:0.78rem; font-weight:700;
   background:#eee; color:#666; }
-.ek-pille-0   { background:rgba(200,120,10,0.18);  color:#a06000; }  /* in Bearbeitung */
+.ek-pille-0   { background:rgba(200,120,10,0.18);  color:#a06000; }  /* in Bearbeitung (alt) */
 .ek-pille-2   { background:rgba(60,120,200,0.18);  color:#2a4a8a; }  /* offen */
+
+/* In-Bearbeitung-Badge: Phase VOR der Verbuchung. Wird neben der
+   Beleg-Nr. gezeigt, NICHT im 'Zahl-Stadium' (das nur fuer gebuchte
+   Belege Sinn macht). */
+.ek-bearb {
+  display:inline-block; margin-left:6px;
+  padding:1px 8px; border-radius:4px;
+  font-size:0.70rem; font-weight:700;
+  background:rgba(200,120,10,0.18); color:#a06000;
+  text-transform:uppercase; letter-spacing:0.04em;
+  vertical-align:middle;
+}
 .ek-pille-3   { background:rgba(220,140,40,0.20);  color:#a05010; }  /* 1× gemahnt */
 .ek-pille-4   { background:rgba(220,100,40,0.22);  color:#a04010; }  /* 2× gemahnt */
 .ek-pille-5   { background:rgba(220, 60,40,0.25);  color:#a02810; }  /* 3× gemahnt */
@@ -150,19 +162,28 @@ function ekNeu() {
             <th class="zahl-rechts">Pos.</th>
             <th class="zahl-rechts">Netto €</th>
             <th class="zahl-rechts">Brutto €</th>
-            <th>Status</th>
+            <th title="Zahlungs-Status — nur fuer gebuchte Belege relevant">Zahl-Stadium</th>
         </tr>
     </thead>
     <tbody>
     {% for e in eintraege %}
     <tr onclick="cxLadenZeigen('Einkauf wird geladen …'); window.location='{{ url_for('orga_bestellwesen.einkauf_detail', rec_id=e.rec_id) }}'">
-        <td><strong>{{ e.vrenum or ('#' ~ e.rec_id) }}</strong></td>
+        <td>
+            <strong>{{ e.vrenum or ('#' ~ e.rec_id) }}</strong>
+            {% if e.ist_offen %}<span class="ek-bearb">✏️ in Bearbeitung</span>{% endif %}
+        </td>
         <td>{{ e.rdatum.strftime('%d.%m.%Y') if e.rdatum else '–' }}</td>
         <td>{{ e.lief_name }}</td>
         <td class="zahl-rechts">{{ e.pos_anzahl }}</td>
         <td class="zahl-rechts">{{ '{:,.2f}'.format(e.nsumme or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
         <td class="zahl-rechts">{{ '{:,.2f}'.format(e.bsumme or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-        <td><span class="ek-pille ek-pille-{{ e.stadium or 0 }}">{{ e.stadium_label }}</span></td>
+        <td>
+            {% if e.ist_offen %}
+              <span style="color:#aaa;">–</span>
+            {% else %}
+              <span class="ek-pille ek-pille-{{ e.stadium or 0 }}">{{ e.stadium_label }}</span>
+            {% endif %}
+        </td>
     </tr>
     {% endfor %}
     </tbody>

@@ -921,6 +921,53 @@ def pos_aus_we_anhaengen(eingang_rec_id: int, ekeingang_id: int,
     return {'angehaengt': ang, 'uebersprungen': skip}
 
 
+def pos_aus_we_anhaengen_bulk(eingang_rec_id: int, ekeingang_ids: list[int],
+                               *, ma_name: str | None = None) -> dict[str, Any]:
+    """Mehrere Wareneingaenge auf einmal uebernehmen — schleift einfach
+    durch die IDs. Antwortet mit Summen-Counter."""
+    ang_total = 0
+    skip_total = 0
+    for we_id in ekeingang_ids:
+        try:
+            r = pos_aus_we_anhaengen(eingang_rec_id, int(we_id), ma_name=ma_name)
+            ang_total += int(r.get('angehaengt', 0))
+            skip_total += int(r.get('uebersprungen', 0))
+        except (LookupError, PermissionError, ValueError):
+            skip_total += 1
+    return {'angehaengt': ang_total, 'uebersprungen': skip_total}
+
+
+def pos_aus_bestellpos_anhaengen_bulk(eingang_rec_id: int,
+                                       items: list[dict],
+                                       *, ma_name: str | None = None) -> dict[str, Any]:
+    """Mehrere Bestellpositionen auf einmal uebernehmen.
+
+    items: list of ``{pos_id, menge?}``-Dicts. Wenn menge fehlt, wird
+    die noch offene Restmenge uebernommen.
+    """
+    ang = 0
+    fehler: list[str] = []
+    for it in items:
+        try:
+            pid = int(it.get('pos_id') or 0)
+            if pid <= 0:
+                continue
+            mraw = it.get('menge')
+            if mraw is not None:
+                try:
+                    m = float(str(mraw).replace(',', '.'))
+                except (TypeError, ValueError):
+                    m = None
+            else:
+                m = None
+            pos_aus_bestellpos_anhaengen(eingang_rec_id, pid,
+                                          menge=m, ma_name=ma_name)
+            ang += 1
+        except (LookupError, PermissionError, ValueError) as e:
+            fehler.append(f'Pos {it.get("pos_id")}: {e}')
+    return {'angehaengt': ang, 'fehler': fehler}
+
+
 def pos_aus_bestellpos_anhaengen(eingang_rec_id: int, bestellpos_id: int,
                                   *, menge: float | None = None,
                                   ma_name: str | None = None) -> dict[str, Any]:

@@ -93,10 +93,30 @@ _ARTIKEL_SELECT = """
 """
 
 
+def _lief_filter_sql(nur_lief: bool) -> str:
+    """Liefert eine WHERE-Klausel-Erweiterung, die Artikel ohne
+    ARTIKEL_PREIS-Eintrag fuer den uebergebenen Lieferanten ausfiltert.
+    Gibt einen leeren String zurueck wenn ``nur_lief=False`` oder kein
+    Lieferant gesetzt ist."""
+    if not nur_lief:
+        return ''
+    # Bedingung greift nur wenn lief > 0 — sonst leere Filterung.
+    return (
+        " AND %(lief)s > 0"
+        " AND EXISTS ("
+        "   SELECT 1 FROM ARTIKEL_PREIS ap2"
+        "    WHERE ap2.ARTIKEL_ID = a.REC_ID"
+        "      AND ap2.ADRESS_ID  = %(lief)s"
+        "      AND ap2.PREIS_TYP  = 5"
+        " )"
+    )
+
+
 def artikel_in_warengruppe(wg_id: int | None,
                            mit_untergruppen: bool = True,
                            limit: int = 500,
-                           lief_addr_id: int | None = None) -> list[dict[str, Any]]:
+                           lief_addr_id: int | None = None,
+                           nur_lief: bool = False) -> list[dict[str, Any]]:
     """Artikel einer Warengruppe (rekursiv inkl. Untergruppen).
 
     Args:
@@ -104,8 +124,12 @@ def artikel_in_warengruppe(wg_id: int | None,
         mit_untergruppen: bei True wird über CTE rekursiv abgestiegen
         lief_addr_id: bevorzugter CAO-ADDR_ID des Lieferanten — die
             Lief-Bestnum-Spalte zeigt dann dessen Eintrag.
+        nur_lief: wenn True UND ``lief_addr_id`` gesetzt: nur Artikel
+            mit ARTIKEL_PREIS-Eintrag (PREIS_TYP=5) fuer diesen
+            Lieferanten zurueckgeben.
     """
     lief = int(lief_addr_id) if lief_addr_id else -1
+    extra = _lief_filter_sql(nur_lief)
     with get_db() as cur:
         if not wg_id:
             cur.execute(
@@ -114,7 +138,7 @@ def artikel_in_warengruppe(wg_id: int | None,
                   FROM ARTIKEL a
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-                 WHERE 1=1
+                 WHERE 1=1 {extra}
                  ORDER BY a.KURZNAME
                  LIMIT %(limit)s
                 """,
@@ -134,7 +158,7 @@ def artikel_in_warengruppe(wg_id: int | None,
                   JOIN wg_tree t ON t.ID = a.WARENGRUPPE
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-                 WHERE 1=1
+                 WHERE 1=1 {extra}
                  ORDER BY a.KURZNAME
                  LIMIT %(limit)s
                 """,
@@ -147,7 +171,7 @@ def artikel_in_warengruppe(wg_id: int | None,
                   FROM ARTIKEL a
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-                 WHERE a.WARENGRUPPE = %(wg)s
+                 WHERE a.WARENGRUPPE = %(wg)s {extra}
                  ORDER BY a.KURZNAME
                  LIMIT %(limit)s
                 """,
@@ -157,12 +181,18 @@ def artikel_in_warengruppe(wg_id: int | None,
 
 
 def artikel_volltext_suche(query: str, limit: int = 100,
-                           lief_addr_id: int | None = None) -> list[dict[str, Any]]:
-    """Volltextsuche über Artikel — gleiche Felder wie ``artikel_in_warengruppe``."""
+                           lief_addr_id: int | None = None,
+                           nur_lief: bool = False) -> list[dict[str, Any]]:
+    """Volltextsuche über Artikel — gleiche Felder wie ``artikel_in_warengruppe``.
+
+    ``nur_lief=True`` filtert auf Artikel mit ARTIKEL_PREIS-Eintrag
+    (PREIS_TYP=5) fuer den uebergebenen Lieferanten.
+    """
     pat = f"%{(query or '').strip()}%"
     if len((query or '').strip()) < 2:
         return []
     lief = int(lief_addr_id) if lief_addr_id else -1
+    extra = _lief_filter_sql(nur_lief)
     with get_db() as cur:
         cur.execute(
             f"""
@@ -174,6 +204,7 @@ def artikel_volltext_suche(query: str, limit: int = 100,
                     OR a.BARCODE2 LIKE %(p)s OR a.BARCODE3 LIKE %(p)s
                     OR a.KURZNAME LIKE %(p)s OR a.MATCHCODE LIKE %(p)s
                     OR a.LANGNAME LIKE %(p)s)
+                   {extra}
              ORDER BY a.KURZNAME
              LIMIT %(limit)s
             """,
