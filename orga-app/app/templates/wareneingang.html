@@ -170,9 +170,9 @@ function weNeuOeffnen() {
         modus: 'adresse',
         titel: 'Lieferant für neuen Wareneingang wählen',
         urls: {
-            gruppen: '/orga/api/picker/adressgruppen',
-            liste:   '/orga/api/picker/adressen?grp={GRP}',
-            suche:   '/orga/api/picker/adressen/suche?q={Q}&grp={GRP}',
+            gruppen: '/orga/bestellwesen/api/picker/adressgruppen',
+            liste:   '/orga/bestellwesen/api/picker/adressen?grp={GRP}',
+            suche:   '/orga/bestellwesen/api/picker/adressen/suche?q={Q}&grp={GRP}',
         },
         onWaehlen: async (a) => {
             if (!confirm(`Neuen Wareneingang für "${a.name}" anlegen?`)) return;
