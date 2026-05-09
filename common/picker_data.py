@@ -276,7 +276,7 @@ def adressen_in_gruppe(grp_id: int | str | None,
                COALESCE(a.STRASSE, '')             AS strasse,
                COALESCE(a.HAUSNR, '')              AS hausnr,
                COALESCE(a.LAND, '')                AS land,
-               COALESCE(a.TELEFON, '')             AS telefon,
+               COALESCE(a.TELE1, '')               AS telefon,
                COALESCE(a.EMAIL, '')               AS email
           FROM ADRESSEN a
           {join_lief}
