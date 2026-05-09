@@ -243,11 +243,29 @@ def adressen_in_gruppe(grp_id: int | str | None,
     if grp_id not in (None, 0, '0', ''):
         try:
             grp_int = int(grp_id)
-            # Direkter Filter auf KUNDENGRUPPE — Untergruppen werden vom
-            # User durch Klick auf den Unter-Knoten im Baum aufgerufen.
-            # (Frueher rekursiver CTE; war auf grossen DBs zu langsam.)
-            where.append("a.KUNDENGRUPPE = %s")
-            params.append(grp_int)
+            # Untergruppen-IDs einmalig holen (eine schnelle Query),
+            # dann simpler IN-Filter — kein rekursiver CTE pro Aufruf.
+            with get_db() as cur_tree:
+                cur_tree.execute(
+                    "SELECT REC_ID, TOP_ID FROM ADRESSGRUPPEN"
+                )
+                kinder = {}
+                for r in cur_tree.fetchall():
+                    p = r.get('TOP_ID')
+                    kinder.setdefault(p, []).append(int(r['REC_ID']))
+            ids = set([grp_int])
+            stack = [grp_int]
+            while stack:
+                cur_id = stack.pop()
+                for k in kinder.get(cur_id, []):
+                    if k not in ids:
+                        ids.add(k)
+                        stack.append(k)
+            id_list = list(ids)
+            if id_list:
+                fmt = ','.join(['%s'] * len(id_list))
+                where.append(f"a.KUNDENGRUPPE IN ({fmt})")
+                params.extend(id_list)
         except (TypeError, ValueError):
             pass
 
