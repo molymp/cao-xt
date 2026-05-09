@@ -742,13 +742,15 @@ async function wdStorno() {
 // ── Artikel-Picker (Wareneingang ohne Bestell-Bezug) ──────────────
 // Nutzt die gemeinsame cxPickerOpen()-API aus common/templates/_picker.html
 function wdArtikelPicker() {
+    const liefAddr = {{ kopf.ADDR_ID or 0 }};
+    const liefArg  = liefAddr ? '&lief_addr_id=' + liefAddr : '';
     cxPickerOpen({
         modus: 'artikel',
         titel: 'Artikel zum Wareneingang hinzufügen',
         urls: {
             gruppen: '/orga/bestellwesen/api/picker/wgs',
-            liste:   '/orga/bestellwesen/api/picker/artikel?wg={WG}',
-            suche:   '/orga/bestellwesen/api/picker/artikel/suche?q={Q}',
+            liste:   '/orga/bestellwesen/api/picker/artikel?wg={WG}' + liefArg,
+            suche:   '/orga/bestellwesen/api/picker/artikel/suche?q={Q}' + liefArg,
         },
         onWaehlen: async (a) => {
             const res = await _post(

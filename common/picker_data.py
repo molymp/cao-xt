@@ -51,142 +51,134 @@ def warengruppen_baum(min_artikel: int = 0) -> list[dict[str, Any]]:
         # min_artikel hat. Pragmatisch: filtern wir hier nicht, das macht
         # das Frontend (zeigt eh den Baum).
         pass
-    # parent_id=0 bei Wurzeln aus CAO — wir mappen 0 auf None für Frontend
+    # CAO-Wurzeln: TOP_ID kann -1, 0 oder NULL sein — auf None mappen
     for r in rows:
-        if r.get('parent_id') in (0, '0', None):
+        if r.get('parent_id') in (-1, 0, '-1', '0', None):
             r['parent_id'] = None
     return rows
 
 
+_ARTIKEL_SELECT = """
+    a.REC_ID    AS artikel_id,
+    a.ARTNUM    AS artnum,
+    a.BARCODE   AS barcode,
+    a.BARCODE2  AS barcode2,
+    a.BARCODE3  AS barcode3,
+    a.KURZNAME  AS kurzname,
+    a.MATCHCODE AS matchcode,
+    a.LANGNAME  AS langname,
+    a.EK_PREIS  AS ek_preis,
+    a.VK1, a.VK2, a.VK3, a.VK4, a.VK5,
+    a.VK1B, a.VK2B, a.VK3B, a.VK4B, a.VK5B,
+    a.STEUER_CODE,
+    a.ARTIKELTYP    AS artikeltyp,
+    a.PR_EINHEIT    AS pr_einheit,
+    a.VPE           AS vpe,
+    a.VPE_EK        AS vpe_ek,
+    a.MENGE_AKT     AS bestand,
+    a.WARENGRUPPE   AS wg_id,
+    a.SN_FLAG,
+    me.BEZEICHNUNG  AS me_einheit,
+    me.ME_CODE      AS me_code,
+    wg.NAME         AS wgr_name,
+    -- Lief-Bestnum: erster gefundener Eintrag in ARTIKEL_PREIS PREIS_TYP=5,
+    -- bevorzugt fuer ein angegebenes lief_addr_id (siehe %(lief)s)
+    (SELECT ap.BESTNUM
+       FROM ARTIKEL_PREIS ap
+      WHERE ap.ARTIKEL_ID = a.REC_ID
+        AND ap.PREIS_TYP = 5
+      ORDER BY (ap.ADRESS_ID = %(lief)s) DESC, ap.REC_ID
+      LIMIT 1)      AS lief_bestnum
+"""
+
+
 def artikel_in_warengruppe(wg_id: int | None,
                            mit_untergruppen: bool = True,
-                           limit: int = 500) -> list[dict[str, Any]]:
-    """Artikel einer Warengruppe (rekursiv inkl. Untergruppen)."""
+                           limit: int = 500,
+                           lief_addr_id: int | None = None) -> list[dict[str, Any]]:
+    """Artikel einer Warengruppe (rekursiv inkl. Untergruppen).
+
+    Args:
+        wg_id: Warengruppen-ID; None oder 0 = alle Artikel
+        mit_untergruppen: bei True wird über CTE rekursiv abgestiegen
+        lief_addr_id: bevorzugter CAO-ADDR_ID des Lieferanten — die
+            Lief-Bestnum-Spalte zeigt dann dessen Eintrag.
+    """
+    lief = int(lief_addr_id) if lief_addr_id else -1
     with get_db() as cur:
         if not wg_id:
             cur.execute(
-                """
-                SELECT a.REC_ID    AS artikel_id,
-                       a.ARTNUM    AS artnum,
-                       a.BARCODE   AS barcode,
-                       a.KURZNAME  AS kurzname,
-                       a.MATCHCODE AS matchcode,
-                       a.LANGNAME  AS langname,
-                       a.EK_PREIS  AS ek_preis,
-                       a.STEUER_CODE,
-                       a.ARTIKELTYP,
-                       a.PR_EINHEIT,
-                       a.WARENGRUPPE                AS wg_id,
-                       me.BEZEICHNUNG               AS me_einheit,
-                       me.ME_CODE                   AS me_code,
-                       wg.NAME                      AS wgr_name
+                f"""
+                SELECT {_ARTIKEL_SELECT}
                   FROM ARTIKEL a
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
                  WHERE a.ARTIKELTYP NOT IN ('L','K','S')
                  ORDER BY a.KURZNAME
-                 LIMIT %s
+                 LIMIT %(limit)s
                 """,
-                (int(limit),),
+                {'lief': lief, 'limit': int(limit)},
             )
         elif mit_untergruppen:
-            # rekursive CTE für Nachkommen
             cur.execute(
-                """
+                f"""
                 WITH RECURSIVE wg_tree AS (
-                    SELECT ID, TOP_ID FROM WARENGRUPPEN WHERE ID = %s
+                    SELECT ID, TOP_ID FROM WARENGRUPPEN WHERE ID = %(wg)s
                     UNION ALL
                     SELECT w.ID, w.TOP_ID FROM WARENGRUPPEN w
                       JOIN wg_tree t ON w.TOP_ID = t.ID
                 )
-                SELECT a.REC_ID    AS artikel_id,
-                       a.ARTNUM    AS artnum,
-                       a.BARCODE   AS barcode,
-                       a.KURZNAME  AS kurzname,
-                       a.MATCHCODE AS matchcode,
-                       a.LANGNAME  AS langname,
-                       a.EK_PREIS  AS ek_preis,
-                       a.STEUER_CODE,
-                       a.ARTIKELTYP,
-                       a.PR_EINHEIT,
-                       a.WARENGRUPPE                AS wg_id,
-                       me.BEZEICHNUNG               AS me_einheit,
-                       me.ME_CODE                   AS me_code,
-                       wg.NAME                      AS wgr_name
+                SELECT {_ARTIKEL_SELECT}
                   FROM ARTIKEL a
                   JOIN wg_tree t ON t.ID = a.WARENGRUPPE
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
                  WHERE a.ARTIKELTYP NOT IN ('L','K','S')
                  ORDER BY a.KURZNAME
-                 LIMIT %s
+                 LIMIT %(limit)s
                 """,
-                (int(wg_id), int(limit)),
+                {'lief': lief, 'wg': int(wg_id), 'limit': int(limit)},
             )
         else:
             cur.execute(
-                """
-                SELECT a.REC_ID    AS artikel_id,
-                       a.ARTNUM    AS artnum,
-                       a.BARCODE   AS barcode,
-                       a.KURZNAME  AS kurzname,
-                       a.MATCHCODE AS matchcode,
-                       a.LANGNAME  AS langname,
-                       a.EK_PREIS  AS ek_preis,
-                       a.STEUER_CODE,
-                       a.ARTIKELTYP,
-                       a.PR_EINHEIT,
-                       a.WARENGRUPPE                AS wg_id,
-                       me.BEZEICHNUNG               AS me_einheit,
-                       me.ME_CODE                   AS me_code,
-                       wg.NAME                      AS wgr_name
+                f"""
+                SELECT {_ARTIKEL_SELECT}
                   FROM ARTIKEL a
                   LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
                   LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-                 WHERE a.WARENGRUPPE = %s
+                 WHERE a.WARENGRUPPE = %(wg)s
                    AND a.ARTIKELTYP NOT IN ('L','K','S')
                  ORDER BY a.KURZNAME
-                 LIMIT %s
+                 LIMIT %(limit)s
                 """,
-                (int(wg_id), int(limit)),
+                {'lief': lief, 'wg': int(wg_id), 'limit': int(limit)},
             )
         return cur.fetchall()
 
 
-def artikel_volltext_suche(query: str, limit: int = 100) -> list[dict[str, Any]]:
-    """Volltextsuche über Artikel — gleiche Felder wie Pos-Tabelle."""
+def artikel_volltext_suche(query: str, limit: int = 100,
+                           lief_addr_id: int | None = None) -> list[dict[str, Any]]:
+    """Volltextsuche über Artikel — gleiche Felder wie ``artikel_in_warengruppe``."""
     pat = f"%{(query or '').strip()}%"
     if len((query or '').strip()) < 2:
         return []
+    lief = int(lief_addr_id) if lief_addr_id else -1
     with get_db() as cur:
         cur.execute(
-            """
-            SELECT a.REC_ID    AS artikel_id,
-                   a.ARTNUM    AS artnum,
-                   a.BARCODE   AS barcode,
-                   a.KURZNAME  AS kurzname,
-                   a.MATCHCODE AS matchcode,
-                   a.LANGNAME  AS langname,
-                   a.EK_PREIS  AS ek_preis,
-                   a.STEUER_CODE,
-                   a.ARTIKELTYP,
-                   a.PR_EINHEIT,
-                   a.WARENGRUPPE          AS wg_id,
-                   me.BEZEICHNUNG         AS me_einheit,
-                   me.ME_CODE             AS me_code,
-                   wg.NAME                AS wgr_name
+            f"""
+            SELECT {_ARTIKEL_SELECT}
               FROM ARTIKEL a
               LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
               LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
-             WHERE (a.ARTNUM    LIKE %s OR a.BARCODE   LIKE %s
-                    OR a.BARCODE2 LIKE %s OR a.BARCODE3 LIKE %s
-                    OR a.KURZNAME LIKE %s OR a.MATCHCODE LIKE %s
-                    OR a.LANGNAME LIKE %s)
+             WHERE (a.ARTNUM    LIKE %(p)s OR a.BARCODE   LIKE %(p)s
+                    OR a.BARCODE2 LIKE %(p)s OR a.BARCODE3 LIKE %(p)s
+                    OR a.KURZNAME LIKE %(p)s OR a.MATCHCODE LIKE %(p)s
+                    OR a.LANGNAME LIKE %(p)s)
                AND a.ARTIKELTYP NOT IN ('L','K','S')
              ORDER BY a.KURZNAME
-             LIMIT %s
+             LIMIT %(limit)s
             """,
-            (pat, pat, pat, pat, pat, pat, pat, int(limit)),
+            {'lief': lief, 'p': pat, 'limit': int(limit)},
         )
         return cur.fetchall()
 
@@ -195,36 +187,40 @@ def artikel_volltext_suche(query: str, limit: int = 100) -> list[dict[str, Any]]
 
 
 def adressgruppen() -> list[dict[str, Any]]:
-    """Liefert die definierten Adressgruppen plus 3 virtuelle Filter-Slots:
-    'lieferant', 'kunde', 'alle'.
+    """Liefert die definierten Adressgruppen plus 3 virtuelle Filter-Slots.
 
-    CAO-Adressen lassen sich nach Lieferant (ADRESSEN_LIEF), Kunde
-    (Standard) oder beidem filtern. ADRESS_GRUPPEN gibt es als eigene
-    Tabelle für freie Gruppierung.
+    CAO-Tabelle: ``ADRESSGRUPPEN`` (REC_ID, TOP_ID, NAME) — Hierarchie
+    via TOP_ID. Verknüpfung zu ADRESSEN: ``ADRESSEN.KUNDENGRUPPE``.
     """
     out: list[dict[str, Any]] = [
-        {'id': '__lief__', 'name': 'Lieferanten', 'count': None, 'virtual': True},
-        {'id': '__kunde__', 'name': 'Kunden',    'count': None, 'virtual': True},
-        {'id': '__alle__',  'name': 'Alle',       'count': None, 'virtual': True},
+        {'id': '__lief__',  'name': 'Lieferanten', 'parent_id': None,
+         'count': None, 'virtual': True},
+        {'id': '__kunde__', 'name': 'Kunden',      'parent_id': None,
+         'count': None, 'virtual': True},
+        {'id': '__alle__',  'name': 'Alle',        'parent_id': None,
+         'count': None, 'virtual': True},
     ]
     try:
         with get_db() as cur:
             cur.execute(
                 """
-                SELECT REC_ID AS id, NAME AS name
-                  FROM ADRESS_GRUPPEN
+                SELECT REC_ID AS id, TOP_ID AS parent_id, NAME AS name
+                  FROM ADRESSGRUPPEN
                  ORDER BY NAME
                 """,
             )
             for r in cur.fetchall():
+                pid = r.get('parent_id')
+                if pid in (-1, 0, '-1', '0', None):
+                    pid = None
                 out.append({
                     'id':       int(r['id']),
+                    'parent_id': pid,
                     'name':     r['name'] or f"Gruppe {r['id']}",
                     'count':    None,
                     'virtual':  False,
                 })
     except Exception:
-        # Tabelle nicht vorhanden → nur die virtuellen anzeigen
         pass
     return out
 
@@ -235,9 +231,9 @@ def adressen_in_gruppe(grp_id: int | str | None,
     """Adressen einer Gruppe (oder alle / Lieferanten / Kunden).
 
     Args:
-        grp_id: numerische ADRESS_GRUPPEN.REC_ID, oder
+        grp_id: numerische ``ADRESSGRUPPEN.REC_ID``, oder
             ``'__lief__'`` / ``'__kunde__'`` / ``'__alle__'``
-        suche: optionaler Substring auf NAME1 / NAME2 / KUNNUM1 / ORT
+        suche: Substring auf NAME1 / NAME2 / KUNNUM1 / ORT
     """
     where = []
     params: list[Any] = []
@@ -245,16 +241,24 @@ def adressen_in_gruppe(grp_id: int | str | None,
     if grp_id == '__lief__' or grp_id is None:
         join_lief = 'JOIN ADRESSEN_LIEF al ON al.ADDR_ID = a.REC_ID'
     elif grp_id == '__kunde__':
-        # CAO hat keine eigene "ist Kunde"-Tabelle — Approximation:
-        # alle, die nicht in ADRESSEN_LIEF stehen
         where.append("a.REC_ID NOT IN (SELECT ADDR_ID FROM ADRESSEN_LIEF)")
     elif grp_id == '__alle__':
-        pass  # kein Filter
+        pass
     else:
-        # numerische Gruppe — über ADRESSEN.GRUPPE_ID o.ä.
         try:
             grp_int = int(grp_id)
-            where.append("a.GRUPPE_ID = %s")
+            # Hierarchie: alle Adressen in dieser Gruppe ODER ihren
+            # Untergruppen — analog WG-Logik
+            where.append(
+                "a.KUNDENGRUPPE IN ("
+                "  WITH RECURSIVE g_tree AS ("
+                "      SELECT REC_ID FROM ADRESSGRUPPEN WHERE REC_ID = %s"
+                "    UNION ALL"
+                "      SELECT g.REC_ID FROM ADRESSGRUPPEN g "
+                "        JOIN g_tree t ON g.TOP_ID = t.REC_ID"
+                "  ) SELECT REC_ID FROM g_tree"
+                ")"
+            )
             params.append(grp_int)
         except (TypeError, ValueError):
             pass
@@ -272,11 +276,15 @@ def adressen_in_gruppe(grp_id: int | str | None,
         SELECT a.REC_ID                            AS addr_id,
                COALESCE(NULLIF(TRIM(a.NAME1), ''), '–') AS name,
                COALESCE(NULLIF(TRIM(a.NAME2), ''), '')  AS name2,
+               COALESCE(NULLIF(TRIM(a.NAME3), ''), '')  AS name3,
                COALESCE(a.PLZ, '')                 AS plz,
                COALESCE(a.ORT, '')                 AS ort,
                COALESCE(a.KUNNUM1, '')             AS kunnum,
                COALESCE(a.STRASSE, '')             AS strasse,
-               COALESCE(a.HAUSNR, '')              AS hausnr
+               COALESCE(a.HAUSNR, '')              AS hausnr,
+               COALESCE(a.LAND, '')                AS land,
+               COALESCE(a.TELEFON, '')             AS telefon,
+               COALESCE(a.EMAIL, '')               AS email
           FROM ADRESSEN a
           {join_lief}
         {where_sql}
@@ -284,11 +292,5 @@ def adressen_in_gruppe(grp_id: int | str | None,
          LIMIT %s
     """
     with get_db() as cur:
-        try:
-            cur.execute(sql, params)
-            return cur.fetchall()
-        except Exception:
-            # Fallback ohne GRUPPE_ID-Spalte (CAO-Versionen ohne Adressgruppen)
-            if 'a.GRUPPE_ID' in sql:
-                return adressen_in_gruppe('__alle__', suche, limit)
-            raise
+        cur.execute(sql, params)
+        return cur.fetchall()
