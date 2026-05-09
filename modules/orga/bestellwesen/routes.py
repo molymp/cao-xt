@@ -495,9 +495,30 @@ def api_we_neu() -> Any:
 
 @bp.post('/wareneingang/<int:rec_id>/api/positionen/artikel-anhaengen')
 def api_we_artikel_anhaengen(rec_id: int) -> Any:
-    """Haengt einen ausgewaehlten Artikel als neue EKEINGANG_POS-Zeile an."""
+    """Haengt einen oder mehrere Artikel als neue EKEINGANG_POS-Zeilen an.
+
+    Body: ``{artikel_id: <int>, menge: <float?>}`` ODER
+          ``{artikel_ids: [<int>, ...]}`` (Bulk; Reihenfolge bleibt erhalten).
+    """
     _login_check()
     body = request.get_json(silent=True) or {}
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+
+    # Bulk-Variante
+    if isinstance(body.get('artikel_ids'), list):
+        ids = []
+        for x in body['artikel_ids']:
+            try:
+                ids.append(int(x))
+            except (TypeError, ValueError):
+                pass
+        try:
+            result = we.pos_artikel_anhaengen_bulk(rec_id, ids, ma_name)
+        except (LookupError, PermissionError, ValueError) as e:
+            return jsonify({'ok': False, 'fehler': str(e)}), 400
+        return jsonify({'ok': True, **result})
+
+    # Single
     try:
         artikel_id = int(body.get('artikel_id'))
     except (TypeError, ValueError):
@@ -507,7 +528,6 @@ def api_we_artikel_anhaengen(rec_id: int) -> Any:
         menge = float(str(raw_menge).replace(',', '.'))
     except ValueError:
         menge = 0.0
-    ma_name = session.get('login_name') or session.get('mitarbeiter')
     try:
         result = we.pos_artikel_anhaengen(rec_id, artikel_id, menge, ma_name)
     except (LookupError, PermissionError, ValueError) as e:

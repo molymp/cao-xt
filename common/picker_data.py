@@ -186,22 +186,23 @@ def artikel_volltext_suche(query: str, limit: int = 100,
 
 
 def adressgruppen(typ_filter: str | None = None) -> list[dict[str, Any]]:
-    """Liefert die definierten Adressgruppen aus ``ADRESSGRUPPEN``.
+    """Liefert die definierten Adressgruppen aus ``ADRESSGRUPPEN`` mit
+    direkter Adressen-Anzahl pro Gruppe.
 
     Hierarchie via ``TOP_ID``. Verknüpfung zu ADRESSEN: ``KUNDENGRUPPE``.
-
-    Args:
-        typ_filter: 'lief' = nur Gruppen mit Lieferanten; 'kunde' = ohne;
-            None = alle Gruppen ohne weitere Einschränkung.
     """
     out: list[dict[str, Any]] = []
     try:
         with get_db() as cur:
             cur.execute(
                 """
-                SELECT REC_ID AS id, TOP_ID AS parent_id, NAME AS name
-                  FROM ADRESSGRUPPEN
-                 ORDER BY NAME
+                SELECT g.REC_ID AS id,
+                       g.TOP_ID AS parent_id,
+                       g.NAME   AS name,
+                       (SELECT COUNT(*) FROM ADRESSEN a
+                         WHERE a.KUNDENGRUPPE = g.REC_ID) AS count
+                  FROM ADRESSGRUPPEN g
+                 ORDER BY g.NAME
                 """,
             )
             for r in cur.fetchall():
@@ -212,7 +213,7 @@ def adressgruppen(typ_filter: str | None = None) -> list[dict[str, Any]]:
                     'id':        int(r['id']),
                     'parent_id': pid,
                     'name':      r['name'] or f"Gruppe {r['id']}",
-                    'count':     None,
+                    'count':     int(r.get('count') or 0),
                 })
     except Exception:
         pass
@@ -222,8 +223,8 @@ def adressgruppen(typ_filter: str | None = None) -> list[dict[str, Any]]:
 def adressen_in_gruppe(grp_id: int | str | None,
                        suche: str = '',
                        typ_filter: str | None = None,
-                       limit: int = 200) -> list[dict[str, Any]]:
-    """Adressen einer Gruppe (rekursiv, mit Untergruppen).
+                       limit: int = 5000) -> list[dict[str, Any]]:
+    """Adressen einer Gruppe.
 
     Args:
         grp_id: numerische ``ADRESSGRUPPEN.REC_ID``; None/0 = alle Gruppen
@@ -242,16 +243,10 @@ def adressen_in_gruppe(grp_id: int | str | None,
     if grp_id not in (None, 0, '0', ''):
         try:
             grp_int = int(grp_id)
-            where.append(
-                "a.KUNDENGRUPPE IN ("
-                "  WITH RECURSIVE g_tree AS ("
-                "      SELECT REC_ID FROM ADRESSGRUPPEN WHERE REC_ID = %s"
-                "    UNION ALL"
-                "      SELECT g.REC_ID FROM ADRESSGRUPPEN g "
-                "        JOIN g_tree t ON g.TOP_ID = t.REC_ID"
-                "  ) SELECT REC_ID FROM g_tree"
-                ")"
-            )
+            # Direkter Filter auf KUNDENGRUPPE — Untergruppen werden vom
+            # User durch Klick auf den Unter-Knoten im Baum aufgerufen.
+            # (Frueher rekursiver CTE; war auf grossen DBs zu langsam.)
+            where.append("a.KUNDENGRUPPE = %s")
             params.append(grp_int)
         except (TypeError, ValueError):
             pass

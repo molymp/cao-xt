@@ -173,7 +173,45 @@
     padding: 28px; text-align: center;
     color: var(--text-dim, #5a7a3a); font-size: 0.95rem;
 }
+
+/* Lade-Overlay (Bitte warten …) — wird via cxLadenZeigen() angezeigt */
+.cxp-laden-overlay {
+    position: fixed; inset: 0;
+    background: rgba(26,64,16,0.55);
+    z-index: 9300;
+    display: none;
+    align-items: center; justify-content: center;
+}
+.cxp-laden-overlay.cxp-laden-an { display: flex; }
+.cxp-laden-box {
+    background: white;
+    border-radius: var(--radius, 12px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+    padding: 32px 44px;
+    text-align: center;
+    min-width: 280px;
+}
+.cxp-laden-spinner {
+    width: 48px; height: 48px; margin: 0 auto 16px;
+    border: 5px solid var(--creme-dunkel, #d4ccb8);
+    border-top-color: var(--gruen-dunkel, #1a4010);
+    border-radius: 50%;
+    animation: cxp-laden-drehen 0.8s linear infinite;
+}
+@keyframes cxp-laden-drehen { to { transform: rotate(360deg); } }
+.cxp-laden-text {
+    font-size: 1.05rem; font-weight: 700;
+    color: var(--gruen-dunkel, #1a4010);
+}
 </style>
+
+<!-- ── Lade-Overlay (von cxLadenZeigen()/cxLadenAusblenden() bedient) ── -->
+<div class="cxp-laden-overlay" id="cxp-laden-overlay" aria-hidden="true">
+  <div class="cxp-laden-box">
+    <div class="cxp-laden-spinner"></div>
+    <div class="cxp-laden-text" id="cxp-laden-text">Bitte kurz warten …</div>
+  </div>
+</div>
 
 <div class="cxp-overlay cxp-hidden" id="cxp-overlay"
      onclick="if(event.target===this)cxPickerSchliessen()">
@@ -255,6 +293,18 @@ const SPALTEN = {
 };
 
 const ID_KEY = { artikel: 'artikel_id', adresse: 'addr_id' };
+
+// ── Globaler Lade-Overlay (auch ausserhalb des Pickers nutzbar) ────
+window.cxLadenZeigen = function(text) {
+    const ov = document.getElementById('cxp-laden-overlay');
+    const tx = document.getElementById('cxp-laden-text');
+    if (tx) tx.textContent = text || 'Bitte kurz warten …';
+    if (ov) ov.classList.add('cxp-laden-an');
+};
+window.cxLadenAusblenden = function() {
+    const ov = document.getElementById('cxp-laden-overlay');
+    if (ov) ov.classList.remove('cxp-laden-an');
+};
 
 window.cxPickerOpen = async function(cfg) {
     _cfg = cfg;
