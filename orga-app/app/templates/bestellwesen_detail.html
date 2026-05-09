@@ -665,10 +665,13 @@
                 {% if pos_inputs_locked %}
                     {{ (p.LIEFPREIS or 0) | eur(4) }}
                 {% else %}
+                    {# type="text" + inputmode="decimal": kein Spinner,
+                       kein step-Click der bei jedem Klick einen Server-
+                       Roundtrip ausloest. #}
                     <div class="bd-edit-wrap">
-                        <input type="number" class="bd-input bd-input-preis zahl-rechts"
+                        <input type="text" inputmode="decimal"
+                               class="bd-input bd-input-preis zahl-rechts"
                                id="lpreis-{{ p.REC_ID }}"
-                               step="0.0001" min="0"
                                value="{{ '{:.4f}'.format(p.LIEFPREIS or 0) }}"
                                data-pos-id="{{ p.REC_ID }}"
                                onchange="bdPosLieferpreis(this)">
