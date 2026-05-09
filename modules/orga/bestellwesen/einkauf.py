@@ -36,25 +36,33 @@ from common.db import get_db, get_db_transaction
 
 # ── STADIUM-Codes für JOURNAL.QUELLE in (5, 15) ─────────────────────
 #
-# CAO-Live-DB-Verteilung (QUELLE=5, gebuchte EK-Rechnungen):
-#   STADIUM=2  : 32   = offen / unbezahlt
-#   STADIUM=7  : 2    = ?
-#   STADIUM=8  : 783  = ?
-#   STADIUM=9  : 6764 = abgeschlossen / voll bezahlt
-#   STADIUM=11 : 8    = ?
-#   STADIUM=125: 95   = (Sondermarker)
-#   STADIUM=126: 95   = (Sondermarker)
-# QUELLE=15 (in Bearbeitung): nur STADIUM=0 (in unserer Live-DB)
+# Quelle: Reverse-engineered aus cao_faktura.exe UTF-16-LE-ENUM-Strings
+# (siehe reference_cao_journal_codes.md). CAO-Faktura unterscheidet
+# JOURNAL.STADIUM zwischen Verkaufs- (QUELLE=3) und Einkaufs-
+# Rechnungen (QUELLE=5) nur bei Code 11.
+#
+# Live-DB-Verteilung passt zur Decodierung:
+#   2: 32   ✓ 'offen' (unbezahlt)
+#   7: 2    ✓ Teilzahlung
+#   8: 783  ✓ bezahlt mit Skonto
+#   9: 6764 ✓ bezahlt
+#   11: 8   ✓ Angewiesen (Überweisung läuft)
+#   125: 95 ✓ Storniert (Pos-Marker)
+#   126: 95 ✓ Stornorechnung
 STADIUM_LABEL = {
     0:   'in Bearbeitung',
-    2:   'offen / unbezahlt',
-    7:   '?',
-    8:   '?',
-    9:   'voll bezahlt',
-    11:  '?',
-    125: 'Sondermarker',
-    126: 'Sondermarker',
-    127: 'storniert',
+    2:   'offen',
+    3:   '1× gemahnt',
+    4:   '2× gemahnt',
+    5:   '3× gemahnt',
+    6:   'INKASSO',
+    7:   'Teilzahlung',
+    8:   'bezahlt mit Skonto',
+    9:   'bezahlt',
+    11:  'Angewiesen',
+    125: 'Storniert',
+    126: 'Stornorechnung',
+    127: '*** STORNO ***',
 }
 
 
