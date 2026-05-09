@@ -465,12 +465,22 @@ def einkauf_detail(rec_id: int):
 
 @bp.post('/einkauf/api/neu')
 def api_ek_neu() -> Any:
-    """Legt einen leeren Einkaufs-Beleg an (Lieferant kommt spaeter)."""
+    """Legt einen Einkaufs-Beleg an. Akzeptiert optional `addr_id` —
+    der Lieferant wird dann gleich beim INSERT in den Header
+    geschrieben."""
     _login_check()
+    body = request.get_json(silent=True) or {}
+    raw_addr = body.get('addr_id')
+    addr_id: int | None = None
+    if raw_addr is not None:
+        try:
+            addr_id = int(raw_addr)
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'fehler': 'addr_id ungültig'}), 400
     ma_id = session.get('ma_id')
     ma_name = session.get('login_name') or session.get('mitarbeiter')
     try:
-        result = ek.einkauf_anlegen(ma_id, ma_name)
+        result = ek.einkauf_anlegen(ma_id, ma_name, addr_id=addr_id)
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})

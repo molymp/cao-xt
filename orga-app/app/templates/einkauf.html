@@ -73,6 +73,10 @@
     </div>
 </div>
 
+{# Gemeinsamer Picker (Adresse) — wird via cxPickerOpen() geöffnet,
+   stellt auch cxLadenZeigen()/cxLadenAusblenden() bereit. #}
+{% include '_picker.html' %}
+
 <form method="get" class="ek-filter">
     <label>
         Suche
@@ -94,23 +98,35 @@
 </form>
 
 <script>
-async function ekNeu() {
-    if (!confirm('Neuen Einkaufs-Beleg anlegen? Lieferant + Positionen werden anschließend zugeordnet.')) return;
-    try {
-        const res = await fetch('/orga/bestellwesen/einkauf/api/neu', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({}),
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            alert('Fehler: ' + (data.fehler || 'unbekannt'));
-            return;
-        }
-        window.location = '/orga/bestellwesen/einkauf/' + data.rec_id;
-    } catch (e) {
-        alert('Verbindungsfehler');
-    }
+// Neuen Einkauf anlegen via Lieferanten-Picker (analog Wareneingang)
+function ekNeu() {
+    cxPickerOpen({
+        modus: 'adresse',
+        titel: 'Lieferant für neuen Einkauf wählen',
+        urls: {
+            gruppen: '/orga/bestellwesen/api/picker/adressgruppen',
+            liste:   '/orga/bestellwesen/api/picker/adressen?grp={GRP}',
+            suche:   '/orga/bestellwesen/api/picker/adressen/suche?q={Q}&grp={GRP}',
+        },
+        onWaehlen: async (a) => {
+            if (!confirm(`Neuen Einkauf für "${a.name}" anlegen?`)) return;
+            try {
+                const res = await fetch('/orga/bestellwesen/einkauf/api/neu', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({addr_id: a.addr_id}),
+                });
+                const data = await res.json();
+                if (!data.ok) {
+                    alert('Fehler: ' + (data.fehler || 'unbekannt'));
+                    return;
+                }
+                window.location = '/orga/bestellwesen/einkauf/' + data.rec_id;
+            } catch (e) {
+                alert('Verbindungsfehler');
+            }
+        },
+    });
 }
 </script>
 
