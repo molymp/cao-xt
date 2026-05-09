@@ -1062,7 +1062,7 @@ async function bdPosNichtLieferbar(btn) {
 }
 
 async function bdWareneingangAnlegen() {
-    if (!confirm('Aus dieser Bestellung einen Wareneingang anlegen?\n\nAlle offenen Positionen werden mit Soll-Menge übernommen, Liefermengen 0. Du gibst die echten Mengen anschließend per Scan oder Tastatur ein.')) {
+    if (!confirm('Aus dieser Bestellung einen Wareneingang anlegen?\n\nAlle offenen Positionen werden mit Soll-Menge als Liefermenge übernommen (Standardfall: alles wie bestellt geliefert). Abweichungen kannst Du anschließend per Scan oder Tastatur korrigieren.')) {
         return;
     }
     const btn = document.getElementById('bd-we-btn');
