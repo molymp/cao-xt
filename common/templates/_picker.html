@@ -96,6 +96,16 @@
     border-top: 1px solid var(--creme-dunkel, #d4ccb8);
 }
 .cxp-tree-item.wurzel:first-child { border-top: none; }
+.cxp-tree-item.cxp-alle-btn {
+    font-style: italic;
+    color: var(--text-dim, #5a7a3a);
+    border-bottom: 1px solid var(--creme-dunkel, #d4ccb8);
+    margin-bottom: 4px;
+}
+.cxp-tree-item.cxp-alle-btn.aktiv {
+    background: white; border-left-color: var(--gruen-dunkel, #1a4010);
+    font-weight: 700; font-style: normal;
+}
 .cxp-tree-strich {
     font-size: 0.75rem; color: var(--text-dim, #5a7a3a);
     flex: 0 0 auto;
@@ -346,17 +356,16 @@ function cxBaumRender() {
     const nameKey   = istAdr ? 'name' : 'bezeichnung';
     const direktKey = istAdr ? 'count' : 'artikel_anzahl';
 
-    // 'Alle' als Wurzel-Knoten (lokales Konzept im Frontend, ohne Server-
-    // virtuelle Slots — 0/leer wird vom Server als 'kein Gruppen-Filter'
-    // interpretiert).
+    // 'Alle' als Reset-Button (nur einmal — falls der Server eine echte
+    // Gruppe mit dem gleichen Namen liefert, lassen wir den Reset-Button
+    // weg, sonst sähe es aus wie zwei Mal das Gleiche).
     let html = '';
     const echteEintraege = _baum;
     const istAlle = _aktivGruppe === 0 || _aktivGruppe === '0' || _aktivGruppe == null;
-    const ico = istAdr ? '👥' : '📦';
-    const allLabel = istAdr ? 'alle Adressen' : 'alle Warengruppen';
-    html += `<button class="cxp-tree-item wurzel${istAlle ? ' aktiv' : ''}"
+    const allLabel = istAdr ? '(alle anzeigen)' : '(alle anzeigen)';
+    html += `<button class="cxp-tree-item cxp-alle-btn${istAlle ? ' aktiv' : ''}"
                      onclick="cxGruppeWaehlen(0)">
-               <span class="cxp-tree-name">${ico} ${escH(allLabel)}</span>
+               <span class="cxp-tree-name">${escH(allLabel)}</span>
              </button>`;
 
     if (echteEintraege.length) {
