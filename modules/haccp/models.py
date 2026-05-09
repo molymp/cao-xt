@@ -131,6 +131,30 @@ def grenzwerte_aktuell(geraet_id: int) -> dict | None:
         return cur.fetchone()
 
 
+def grenzwerte_aktuell_alle() -> dict[int, dict]:
+    """Bulk-Variante: aktuelle Grenzwerte fuer alle Geraete in einem Query.
+
+    Liefert ``{geraet_id: grenzwert_dict}``. Spart bei N Geraeten N-1
+    DB-Roundtrips (~170ms ueber MyFRITZ-NAT pro Roundtrip).
+    """
+    jetzt = datetime.now(timezone.utc).replace(tzinfo=None)
+    with get_db_ro() as cur:
+        cur.execute(
+            """SELECT g.*
+                 FROM XT_HACCP_GRENZWERTE g
+                 JOIN (
+                     SELECT GERAET_ID, MAX(GUELTIG_AB) AS max_ab
+                       FROM XT_HACCP_GRENZWERTE
+                      WHERE GUELTIG_AB <= %s
+                      GROUP BY GERAET_ID
+                 ) AS l
+                   ON g.GERAET_ID = l.GERAET_ID
+                  AND g.GUELTIG_AB = l.max_ab""",
+            (jetzt,),
+        )
+        return {int(r['GERAET_ID']): r for r in cur.fetchall()}
+
+
 def grenzwerte_setzen(geraet_id: int, *, temp_min: float, temp_max: float,
                      karenz_min: int, erstellt_von: int,
                      drift_aktiv: bool = False, drift_k: float | None = None,
@@ -202,6 +226,29 @@ def messwerte_letzte(geraet_id: int, n: int = 1) -> list[dict]:
             (int(geraet_id), int(n)),
         )
         return list(reversed(cur.fetchall()))
+
+
+def messwerte_letzter_alle() -> dict[int, dict]:
+    """Bulk-Variante: letzter Messwert pro Geraet in einem Query.
+
+    Liefert ``{geraet_id: messwert_dict}``. Verwendet einen Self-Join
+    auf MAX(ZEITPUNKT_UTC), das ist mit dem (GERAET_ID, ZEITPUNKT_UTC)-
+    Index auf XT_HACCP_MESSWERT in MariaDB indexed-only und damit schnell.
+    """
+    with get_db_ro() as cur:
+        cur.execute(
+            """SELECT m.GERAET_ID, m.ZEITPUNKT_UTC, m.TEMP_C, m.FEUCHTE_PCT,
+                      m.BATTERY_LOW, m.NO_CONNECTION
+                 FROM XT_HACCP_MESSWERT m
+                 JOIN (
+                     SELECT GERAET_ID, MAX(ZEITPUNKT_UTC) AS max_zp
+                       FROM XT_HACCP_MESSWERT
+                      GROUP BY GERAET_ID
+                 ) AS l
+                   ON m.GERAET_ID = l.GERAET_ID
+                  AND m.ZEITPUNKT_UTC = l.max_zp"""
+        )
+        return {int(r['GERAET_ID']): r for r in cur.fetchall()}
 
 
 def rolling_median_temp(geraet_id: int, ende_utc: datetime,
@@ -445,15 +492,19 @@ def status_fuer_dashboard(jetzt: datetime) -> dict:
                     if int(g['GERAET_ID']) in quittiert_ids)
     unquittiert = total - quittiert
 
+    # Bulk-Lookup statt N Einzel-Queries (sparte vorher ~170ms x 14 Geraete = 2.4s
+    # ueber MyFRITZ-NAT).
+    letzte_alle = messwerte_letzter_alle()
+    grenz_alle = grenzwerte_aktuell_alle()
+
     offline = batt_low = 0
     for g in geraete:
         gid = int(g['GERAET_ID'])
-        letzte = messwerte_letzte(gid, 1)
-        if not letzte:
+        letzter = letzte_alle.get(gid)
+        if not letzter:
             offline += 1
             continue
-        letzter = letzte[0]
-        grenz = grenzwerte_aktuell(gid)
+        grenz = grenz_alle.get(gid)
         stale_min = int(grenz['STALE_MIN']) if grenz else 60
         alter_min = int((jetzt - letzter['ZEITPUNKT_UTC']).total_seconds() / 60)
         if alter_min >= stale_min:

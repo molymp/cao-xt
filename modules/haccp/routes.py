@@ -88,13 +88,22 @@ def _status_fuer_temp(temp: float | None, grenz: dict | None) -> str:
 
 
 def _dashboard_kacheln(jetzt):
+    """Eine Kachel pro Geraet mit Status-Ampel.
+
+    Statt fuer jedes Geraet einzeln ``messwerte_letzte()`` +
+    ``grenzwerte_aktuell()`` aufzurufen (bei 14 Geraeten ~2.4s ueber
+    MyFRITZ-NAT) holen wir beide Bulk-Maps in einem Schritt — 2 Queries
+    fuer alle Geraete.
+    """
     geraete = m.geraete_liste(nur_aktive=True)
-    kacheln = []
     heute_alle = m.sichtkontrolle_heute_alle()
+    letzte_alle = m.messwerte_letzter_alle()
+    grenz_alle  = m.grenzwerte_aktuell_alle()
+    kacheln = []
     for g in geraete:
-        letzte = m.messwerte_letzte(int(g['GERAET_ID']), 1)
-        grenz  = m.grenzwerte_aktuell(int(g['GERAET_ID']))
-        letzter = letzte[0] if letzte else None
+        gid = int(g['GERAET_ID'])
+        letzter = letzte_alle.get(gid)
+        grenz   = grenz_alle.get(gid)
         status = 'ok'
         alter_min = None
         if letzter:
@@ -114,7 +123,7 @@ def _dashboard_kacheln(jetzt):
         kacheln.append({
             'geraet': g, 'letzter': letzter, 'grenz': grenz,
             'status': status, 'alter_min': alter_min,
-            'heute_quittiert': int(g['GERAET_ID']) in heute_alle,
+            'heute_quittiert': gid in heute_alle,
         })
     return kacheln
 
@@ -162,7 +171,12 @@ def sichtkontrolle_bulk():
 @backoffice_required
 def multi_chart_json():
     """Zeitreihen aller aktiven Sensoren fuer das Startseiten-Diagramm.
-    Liefert je Sensor: name, farbe, punkte [{t, v, status}]."""
+    Liefert je Sensor: name, farbe, punkte [{t, v, status}].
+
+    Die Zeitreihen-Query (messwerte_zeitraum) muss per Geraet einzeln
+    laufen — pro Sensor potenziell tausende Punkte. Stattdessen
+    parallelisieren. Grenzwerte werden vorher in einem Bulk-Query geholt.
+    """
     stunden = int(request.args.get('stunden', 24))
     stunden = max(1, min(stunden, 720))  # zwischen 1 Stunde und 30 Tagen
     bis = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -171,13 +185,29 @@ def multi_chart_json():
     # Farben als goldene-Winkel-Hues fuer maximale Unterscheidbarkeit
     def hue(i): return (i * 137.508) % 360
 
+    geraete = m.geraete_liste(nur_aktive=True)
+    grenz_alle = m.grenzwerte_aktuell_alle()
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _werte(gid: int):
+        return m.messwerte_zeitraum(gid, von, bis)
+
+    werte_alle: dict[int, list] = {}
+    if geraete:
+        ids = [int(g['GERAET_ID']) for g in geraete]
+        with ThreadPoolExecutor(
+                max_workers=min(6, len(ids)),
+                thread_name_prefix='haccp_chart') as ex:
+            for gid, werte in zip(ids, ex.map(_werte, ids)):
+                werte_alle[gid] = werte
+
     datasets = []
-    for i, g in enumerate(m.geraete_liste(nur_aktive=True)):
+    for i, g in enumerate(geraete):
         gid = int(g['GERAET_ID'])
-        grenz = m.grenzwerte_aktuell(gid)
-        werte = m.messwerte_zeitraum(gid, von, bis)
+        grenz = grenz_alle.get(gid)
         punkte = []
-        for w in werte:
+        for w in werte_alle.get(gid, []):
             if w['TEMP_C'] is None or w['NO_CONNECTION']:
                 continue
             t = float(w['TEMP_C'])
