@@ -293,7 +293,9 @@ def api_we_pos_menge(rec_id: int, pos_id: int) -> Any:
 
 @bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/epreis')
 def api_we_pos_epreis(rec_id: int, pos_id: int) -> Any:
-    """Setzt EKEINGANG_POS.EPREIS — der tatsaechlich gelieferte EK pro Stueck."""
+    """Stub: EKEINGANG_POS hat keine Preisspalte — EPREIS wird ueber die
+    EK-Rechnung gepflegt, nicht im Wareneingang. Der Endpunkt liefert
+    eine klare Fehlermeldung statt einem 500-Crash."""
     _login_check()
     body = request.get_json(silent=True) or {}
     raw = body.get('epreis') or body.get('lieferpreis')  # alt-kompatibel
@@ -303,7 +305,7 @@ def api_we_pos_epreis(rec_id: int, pos_id: int) -> Any:
         return jsonify({'ok': False, 'fehler': 'epreis ungültig'}), 400
     try:
         result = we.pos_epreis_setzen(rec_id, pos_id, ep)
-    except (LookupError, PermissionError, ValueError) as e:
+    except (LookupError, PermissionError, ValueError, NotImplementedError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
 
