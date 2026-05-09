@@ -746,9 +746,9 @@ function wdArtikelPicker() {
         modus: 'artikel',
         titel: 'Artikel zum Wareneingang hinzufügen',
         urls: {
-            gruppen: '/orga/api/picker/wgs',
-            liste:   '/orga/api/picker/artikel?wg={WG}',
-            suche:   '/orga/api/picker/artikel/suche?q={Q}',
+            gruppen: '/orga/bestellwesen/api/picker/wgs',
+            liste:   '/orga/bestellwesen/api/picker/artikel?wg={WG}',
+            suche:   '/orga/bestellwesen/api/picker/artikel/suche?q={Q}',
         },
         onWaehlen: async (a) => {
             const res = await _post(
