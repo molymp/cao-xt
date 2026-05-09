@@ -62,8 +62,10 @@ def wareneingang_anlegen(bestell_rec_id: int,
     """Erzeugt einen EKEINGANG-Beleg aus einer Bestellung.
 
     Pos werden aus EKBESTELL_POS kopiert (nur die noch nicht erledigten,
-    STADIUM NOT IN (8,9,127)). Pro Pos wird MENGE_SOLL = Bestellmenge,
-    MENGE = 0, GEBUCHT_FLAG='N', BERECHNET='N' geschrieben.
+    STADIUM NOT IN (8,9,127)). Pro Pos wird MENGE_SOLL = Bestellmenge und
+    MENGE = Bestellmenge vorbelegt — der Lieferschein-Normalfall ist
+    "alles wie bestellt geliefert", Abweichungen korrigiert der User
+    beim Verbuchen. GEBUCHT_FLAG='N', BERECHNET='N'.
 
     Returns:
         dict mit ``rec_id``, ``belegnum``, ``positionen``.
@@ -200,8 +202,9 @@ def wareneingang_anlegen(bestell_rec_id: int,
         ekepos_cols = {r['COLUMN_NAME'] for r in cur.fetchall()}
 
         # 4) EKEINGANG_POS pro Bestellpos kopieren — Felder soweit wie
-        # möglich aus EKBESTELL_POS übernehmen, MENGE auf 0, MENGE_SOLL
-        # = Bestellmenge.
+        # möglich aus EKBESTELL_POS übernehmen, MENGE_SOLL = Bestellmenge
+        # und MENGE = Bestellmenge (Lieferschein-Standardfall: alles
+        # geliefert; Abweichungen werden anschliessend korrigiert).
         for idx, p in enumerate(pos_liste, start=1):
             wunsch_pos: dict[str, Any] = {
                 'EKEINGANG_ID':       ekeingang_id,
@@ -234,7 +237,10 @@ def wareneingang_anlegen(bestell_rec_id: int,
                 'GEGENKTO':           p.get('GEGENKTO', '') or '',
                 'BRUTTO_FLAG':        p.get('BRUTTO_FLAG', 'N') or 'N',
                 'MENGE_SOLL':         p.get('MENGE', 0) or 0,
-                'MENGE':              0,
+                # MENGE = MENGE_SOLL: Lieferschein-Standardfall ist
+                # 'alles wie bestellt geliefert'. Abweichungen tippt der
+                # User direkt in der Liste oder per Barcode-Scan ein.
+                'MENGE':              p.get('MENGE', 0) or 0,
                 'EPREIS':             p.get('EPREIS', 0) or 0,
                 'GPREIS':             0,
                 'ALTTEIL_PROZ':       0,
