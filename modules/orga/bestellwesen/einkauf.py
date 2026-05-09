@@ -176,11 +176,15 @@ def einkauf_detail(rec_id: int) -> dict[str, Any] | None:
 
 
 def einkauf_anlegen(ma_id: int | None,
-                    ma_name: str | None) -> dict[str, Any]:
-    """Legt einen leeren Einkaufs-Beleg an (JOURNAL.QUELLE=15,
-    STADIUM=0, EDI-NNNNNN-Belegnummer).
+                    ma_name: str | None,
+                    addr_id: int | None = None) -> dict[str, Any]:
+    """Legt einen Einkaufs-Beleg an (JOURNAL.QUELLE=15, STADIUM=0,
+    EDI-NNNNNN-Belegnummer).
 
-    Lieferant + Pos werden anschliessend per separaten API-Calls gesetzt.
+    Wenn ``addr_id`` gesetzt ist, wird der Lieferant inkl. KUN_*-Adress-
+    block und ggf. Zahlart aus den Stammdaten gleich beim INSERT
+    geschrieben — sonst leerer Header (Lieferant kann spaeter via
+    ``einkauf_lieferant_setzen`` zugewiesen werden).
 
     Returns: ``{rec_id, vrenum}``.
     """
@@ -188,15 +192,32 @@ def einkauf_anlegen(ma_id: int | None,
     heute = date.today()
     with get_db_transaction() as cur:
         # FIRMA_ID aus FIRMA-Tabelle (CAO-Standard: jüngste REC_ID)
-        cur.execute(
-            "SELECT REC_ID FROM FIRMA ORDER BY REC_ID DESC LIMIT 1"
-        )
+        cur.execute("SELECT REC_ID FROM FIRMA ORDER BY REC_ID DESC LIMIT 1")
         fr = cur.fetchone()
         firma_id = int(fr['REC_ID']) if fr else 1
 
-        # MwSt-Sätze aus FIRMA-Stammdaten? Wir nutzen die CAO-Default-
-        # Werte aus dem Trace; wenn die Firma andere hat, kommt das
-        # später beim Lieferant-Setzen via UPDATE
+        # Lieferanten-Stammdaten holen (falls addr_id uebergeben)
+        adr: dict[str, Any] = {}
+        if addr_id and int(addr_id) > 0:
+            cur.execute(
+                """SELECT REC_ID, ANREDE, NAME1, NAME2, NAME3, KUNNUM1,
+                          STRASSE, HAUSNR, LAND, PLZ, ORT, ADRESSZUSATZ,
+                          UST_NUM, ABTEILUNG, LIEF_ZAHLART
+                     FROM ADRESSEN WHERE REC_ID = %s""",
+                (int(addr_id),),
+            )
+            adr = cur.fetchone() or {}
+            if not adr:
+                raise LookupError(f'Adresse {addr_id} nicht gefunden')
+        addr_int = int(adr.get('REC_ID') or -1)
+
+        # ZAHLART: bevorzugt Lief-Stammwert, sonst -1
+        zahlart = adr.get('LIEF_ZAHLART')
+        try:
+            zahlart_id = int(zahlart) if zahlart is not None and int(zahlart) > 0 else -1
+        except (TypeError, ValueError):
+            zahlart_id = -1
+
         belegnum = _next_edi_belegnum(cur)
         cur.execute(
             """INSERT INTO JOURNAL
@@ -225,11 +246,11 @@ def einkauf_anlegen(ma_id: int | None,
                   KUN_UST_NUM, KUN_HAUSNR, KUN_ADRESSZUSATZ,
                   ER_DATUM, DEL_FLAG, MA_ID)
                VALUES
-                 (15, 0, -1, -1, -1, 2,
+                 (15, 0, %s, -1, -1, 2,
                   '', %s, '', -1, -1, -1,
                   -1, 0,
                   '1899-12-30', %s, '1899-12-30', '1899-12-30',
-                  0, -1, -1,
+                  0, -1, %s,
                   0, 0, 0, 0, 0,
                   0, 19, 7, 7.8, 10,
                   0, 0, 0, 0, 0,
@@ -240,17 +261,37 @@ def einkauf_anlegen(ma_id: int | None,
                   0, 0, 0, 1,
                   0, 0,
                   0, %s, %s, %s, %s,
-                  '', '', '', '', '',
-                  '', '', '', '', '',
+                  %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s,
                   '', '', '', '', '',
                   'N', 'N', '$$',
                   %s, -1,
                   '', '',
                   '',
-                  '', '', '',
+                  %s, %s, %s,
                   NOW(), 'N', %s)""",
-            (belegnum, datetime.now(), heute, ma_name_safe, heute, ma_name_safe,
-             firma_id, int(ma_id) if ma_id is not None else -1),
+            (
+                addr_int,
+                belegnum,
+                datetime.now(),
+                zahlart_id,
+                heute, ma_name_safe, heute, ma_name_safe,
+                (adr.get('KUNNUM1') or '')[:50],
+                (adr.get('ANREDE') or '')[:50],
+                (adr.get('NAME1') or '')[:100],
+                (adr.get('NAME2') or '')[:100],
+                (adr.get('NAME3') or '')[:100],
+                (adr.get('ABTEILUNG') or '')[:100],
+                (adr.get('STRASSE') or '')[:100],
+                (adr.get('LAND') or '')[:5],
+                (adr.get('PLZ') or '')[:10],
+                (adr.get('ORT') or '')[:100],
+                firma_id,
+                (adr.get('UST_NUM') or '')[:30],
+                (adr.get('HAUSNR') or '')[:20],
+                (adr.get('ADRESSZUSATZ') or '')[:100],
+                int(ma_id) if ma_id is not None else -1,
+            ),
         )
         rec_id = cur.lastrowid
     return {'rec_id': int(rec_id), 'vrenum': belegnum}
