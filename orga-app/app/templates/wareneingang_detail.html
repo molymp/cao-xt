@@ -604,9 +604,12 @@
       <button class="wd-buchen-close" onclick="wdBuchenSchliessen()">✕</button>
     </div>
     <div class="wd-buchen-info">
-      Default: alter Lieferanten-Preis. Wenn der echte Liefer-EK abweicht
-      → neuen Wert eintragen und Häkchen setzen, damit er als
-      Stammpreis übernommen wird (löst eine VK-Kontrolle aus).
+      <span id="wd-buchen-info-text">Bitte EK-Preise prüfen.</span>
+      <label style="float:right; font-weight:600; cursor:pointer; user-select:none;">
+        <input type="checkbox" id="wd-buchen-show-all"
+               onchange="_wdBuchenFilterAktualisieren()" style="vertical-align:middle;">
+        alle Positionen anzeigen
+      </label>
     </div>
     <div class="wd-buchen-tabelle-wrap">
       <table class="wd-buchen-tabelle" id="wd-buchen-tab">
@@ -835,13 +838,42 @@ async function wdBuchenStart() {
         return;
     }
     _wdBuchenDaten = daten;
+    document.getElementById('wd-buchen-show-all').checked = false;
     _wdBuchenTabelleZeichnen(daten.positionen);
+    _wdBuchenFilterAktualisieren();
     document.getElementById('wd-buchen-overlay').style.display = 'flex';
 }
 
 function wdBuchenSchliessen() {
     document.getElementById('wd-buchen-overlay').style.display = 'none';
     _wdBuchenDaten = null;
+}
+
+// Aktualisiert: Sichtbarkeit der Zeilen, Info-Text, OK-Button-Beschriftung.
+// Strategie: Standardmaessig nur Zeilen mit echter Preis-Aenderung
+// zeigen (data-changed='1'). Toggle 'alle anzeigen' macht alle sichtbar
+// (zum manuellen Editieren).
+function _wdBuchenFilterAktualisieren() {
+    const showAll = document.getElementById('wd-buchen-show-all').checked;
+    const tbody = document.getElementById('wd-buchen-rows');
+    const rows = tbody.querySelectorAll('tr');
+    let nGeaendert = 0;
+    rows.forEach(tr => {
+        const changed = tr.dataset.changed === '1';
+        if (changed) nGeaendert++;
+        tr.style.display = (showAll || changed) ? '' : 'none';
+    });
+    const info = document.getElementById('wd-buchen-info-text');
+    const okBtn = document.getElementById('wd-buchen-ok');
+    if (nGeaendert === 0) {
+        info.innerHTML = showAll
+            ? 'Keine Preisänderungen erfasst. Du kannst beim Buchen bestehende Preise lassen, oder einzelne Werte ändern.'
+            : '<strong>✓ Keine Preisänderungen.</strong> Direkt buchen, oder oben rechts „alle Positionen anzeigen" aktivieren um manuell zu editieren.';
+        okBtn.textContent = 'Buchen ✓';
+    } else {
+        info.innerHTML = `<strong>${nGeaendert} Preisänderung${nGeaendert === 1 ? '' : 'en'}</strong> erfasst — werden als neue Lieferanten-Stammpreise übernommen (löst VK-Kontrolle aus).`;
+        okBtn.textContent = `Buchen + ${nGeaendert} Preis${nGeaendert === 1 ? '' : 'e'} übernehmen ✓`;
+    }
 }
 
 function _wdBuchenTabelleZeichnen(posListe) {
@@ -916,8 +948,10 @@ function _wdBuchenZeileGeaendert(input) {
     const neuPreis = parseFloat(input.value.replace(',', '.')) || 0;
     const abw = Math.abs(neuPreis - altPreis) >= 0.0001;
     tr.classList.toggle('wd-buchen-zeile-diff', abw);
+    tr.dataset.changed = abw ? '1' : '0';
     const chk = document.getElementById(`wdb-uebernehmen-${tr.dataset.posId}`);
-    if (chk && abw) chk.checked = true;
+    if (chk) chk.checked = abw;
+    _wdBuchenFilterAktualisieren();
 }
 
 async function wdBuchenAbschicken() {
