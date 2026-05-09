@@ -2098,6 +2098,15 @@ def _brand_asset(dateiname):
                                max_age=60 * 60 * 24)
 
 
+@app.route('/favicon.ico')
+def _favicon():
+    """Favicon-Default-Pfad — Browser fragen /favicon.ico an, wenn kein
+    <link rel='icon'> im <head> steht (z.B. login.html erbt kein base.html)."""
+    return send_from_directory(_BRAND_DIR, 'favicon.ico',
+                               max_age=60 * 60 * 24,
+                               mimetype='image/x-icon')
+
+
 # ── Gemeinsame Statik (common/static/*) – dorfkern.css et al. ──
 from common.static_serving import register_common_static as _reg_common_static  # noqa: E402
 _reg_common_static(app)
