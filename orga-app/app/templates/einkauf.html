@@ -102,7 +102,8 @@
 <form method="get" class="ek-filter">
     <label>
         Suche
-        <input type="text" name="q" value="{{ suche or '' }}"
+        <input type="text" name="q" class="alpha-touch"
+               value="{{ suche or '' }}"
                placeholder="Beleg-Nr. / Lieferant" autocomplete="off">
     </label>
     <label>
@@ -191,4 +192,7 @@ function ekNeu() {
 {% else %}
 <div class="ek-leer">Keine Einkäufe gefunden.</div>
 {% endif %}
+
+{# Touch-Widgets — auto-wire fuer das Such-Input. #}
+{% include 'touch/widgets.html' %}
 {% endblock %}

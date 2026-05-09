@@ -187,7 +187,8 @@
     </div>
     <div class="ed-scan">
         <span class="ed-rdo">Barcode-Scan / Artikel-Nr.:</span>
-        <input type="text" id="ed-scan" placeholder="EAN, Barcode oder Artikel-Nr. + Enter"
+        <input type="text" id="ed-scan" class="alpha-touch"
+               placeholder="EAN, Barcode oder Artikel-Nr. + Enter"
                autocomplete="off" onkeydown="if(event.key==='Enter')edScan()">
     </div>
 </div>
@@ -218,10 +219,14 @@
             <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
             <td class="zahl-rechts">
                 {% if kopf.ist_offen %}
-                <div class="ed-edit-wrap">
-                    <input type="text" inputmode="decimal" value="{{ '{:g}'.format(p.MENGE or 0) }}"
-                           data-pos-id="{{ p.REC_ID }}" onchange="edPosMenge(this)">
-                </div>
+                <input type="text" class="num-touch"
+                       value="{{ '{:g}'.format(p.MENGE or 0) }}"
+                       data-pos-id="{{ p.REC_ID }}" onchange="edPosMenge(this)"
+                       style="width:90px; padding:5px 8px; text-align:right;
+                              border:1px solid var(--creme-dunkel);
+                              border-radius:var(--radius-klein);
+                              font-family:'Nunito Mono',Consolas,monospace;
+                              font-size:0.92rem;">
                 {% else %}
                 {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
                 {% endif %}
@@ -229,11 +234,14 @@
             <td>{{ p.ME_EINHEIT or '–' }}</td>
             <td class="zahl-rechts">
                 {% if kopf.ist_offen %}
-                <div class="ed-edit-wrap">
-                    <input type="text" inputmode="decimal"
-                           value="{{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}"
-                           data-pos-id="{{ p.REC_ID }}" onchange="edPosEpreis(this)">
-                </div>
+                <input type="text" class="num-touch"
+                       value="{{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}"
+                       data-pos-id="{{ p.REC_ID }}" onchange="edPosEpreis(this)"
+                       style="width:90px; padding:5px 8px; text-align:right;
+                              border:1px solid var(--creme-dunkel);
+                              border-radius:var(--radius-klein);
+                              font-family:'Nunito Mono',Consolas,monospace;
+                              font-size:0.92rem;">
                 {% else %}
                 {{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                 {% endif %}
@@ -439,7 +447,7 @@ function _edQuelleZeigen(modus, zeilen) {
                   <td class="zahl-rechts"><strong>${(+z.menge_offen).toLocaleString('de-DE')}</strong></td>
                   <td>${_esc(z.me || '')}</td>
                   <td class="zahl-rechts">
-                    <input type="text" inputmode="decimal" class="ed-mod-menge"
+                    <input type="text" class="ed-mod-menge num-touch"
                            data-pos-id="${z.pos_id}"
                            value="${(+z.menge_offen).toString().replace('.', ',')}"
                            onclick="event.stopPropagation();"
@@ -454,6 +462,10 @@ function _edQuelleZeigen(modus, zeilen) {
     }
     _edModCbAktualisieren();
     document.getElementById('ed-quelle-overlay').style.display = 'flex';
+    // Touch-Widgets fuer dynamisch erzeugte Inputs (Übernahme-Menge)
+    if (window.TouchInput && window.TouchInput.rewire) {
+        window.TouchInput.rewire();
+    }
 }
 
 function _edModZeileKlick(ev, tr) {
@@ -594,4 +606,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (scan) scan.focus();
 });
 </script>
+
+{# Touch-Widgets (alpha-touch / date-touch / num-touch) — auto-wired
+   nach DOMContentLoaded fuer alle inputs mit den passenden Klassen.
+   Ueber TouchInput.rewire() koennen wir nach dynamischem DOM-Update
+   (z.B. wenn die Bestellungs-Modal-Tabelle gefuellt wird) re-wiren. #}
+{% include 'touch/widgets.html' %}
 {% endblock %}
