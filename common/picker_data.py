@@ -82,12 +82,14 @@ _ARTIKEL_SELECT = """
     me.ME_CODE      AS me_code,
     wg.NAME         AS wgr_name,
     -- Lief-Bestnum: erster gefundener Eintrag in ARTIKEL_PREIS PREIS_TYP=5,
-    -- bevorzugt fuer ein angegebenes lief_addr_id (siehe %(lief)s)
+    -- bevorzugt fuer ein angegebenes lief_addr_id (siehe %(lief)s).
+    -- ARTIKEL_PREIS hat keinen eigenen PK ausser (ARTIKEL_ID, ADRESS_ID,
+    -- PREIS_TYP) — daher Tie-Breaker auf ADRESS_ID.
     (SELECT ap.BESTNUM
        FROM ARTIKEL_PREIS ap
       WHERE ap.ARTIKEL_ID = a.REC_ID
         AND ap.PREIS_TYP = 5
-      ORDER BY (ap.ADRESS_ID = %(lief)s) DESC, ap.REC_ID
+      ORDER BY (ap.ADRESS_ID = %(lief)s) DESC, ap.ADRESS_ID
       LIMIT 1)      AS lief_bestnum
 """
 
@@ -186,20 +188,16 @@ def artikel_volltext_suche(query: str, limit: int = 100,
 # ── Adress-Picker ─────────────────────────────────────────────────────
 
 
-def adressgruppen() -> list[dict[str, Any]]:
-    """Liefert die definierten Adressgruppen plus 3 virtuelle Filter-Slots.
+def adressgruppen(typ_filter: str | None = None) -> list[dict[str, Any]]:
+    """Liefert die definierten Adressgruppen aus ``ADRESSGRUPPEN``.
 
-    CAO-Tabelle: ``ADRESSGRUPPEN`` (REC_ID, TOP_ID, NAME) — Hierarchie
-    via TOP_ID. Verknüpfung zu ADRESSEN: ``ADRESSEN.KUNDENGRUPPE``.
+    Hierarchie via ``TOP_ID``. Verknüpfung zu ADRESSEN: ``KUNDENGRUPPE``.
+
+    Args:
+        typ_filter: 'lief' = nur Gruppen mit Lieferanten; 'kunde' = ohne;
+            None = alle Gruppen ohne weitere Einschränkung.
     """
-    out: list[dict[str, Any]] = [
-        {'id': '__lief__',  'name': 'Lieferanten', 'parent_id': None,
-         'count': None, 'virtual': True},
-        {'id': '__kunde__', 'name': 'Kunden',      'parent_id': None,
-         'count': None, 'virtual': True},
-        {'id': '__alle__',  'name': 'Alle',        'parent_id': None,
-         'count': None, 'virtual': True},
-    ]
+    out: list[dict[str, Any]] = []
     try:
         with get_db() as cur:
             cur.execute(
@@ -214,11 +212,10 @@ def adressgruppen() -> list[dict[str, Any]]:
                 if pid in (-1, 0, '-1', '0', None):
                     pid = None
                 out.append({
-                    'id':       int(r['id']),
+                    'id':        int(r['id']),
                     'parent_id': pid,
-                    'name':     r['name'] or f"Gruppe {r['id']}",
-                    'count':    None,
-                    'virtual':  False,
+                    'name':      r['name'] or f"Gruppe {r['id']}",
+                    'count':     None,
                 })
     except Exception:
         pass
@@ -227,28 +224,27 @@ def adressgruppen() -> list[dict[str, Any]]:
 
 def adressen_in_gruppe(grp_id: int | str | None,
                        suche: str = '',
+                       typ_filter: str | None = None,
                        limit: int = 200) -> list[dict[str, Any]]:
-    """Adressen einer Gruppe (oder alle / Lieferanten / Kunden).
+    """Adressen einer Gruppe (rekursiv, mit Untergruppen).
 
     Args:
-        grp_id: numerische ``ADRESSGRUPPEN.REC_ID``, oder
-            ``'__lief__'`` / ``'__kunde__'`` / ``'__alle__'``
+        grp_id: numerische ``ADRESSGRUPPEN.REC_ID``; None/0 = alle Gruppen
         suche: Substring auf NAME1 / NAME2 / KUNNUM1 / ORT
+        typ_filter: 'lief' = nur Lieferanten (JOIN ADRESSEN_LIEF);
+            'kunde' = nur Nicht-Lieferanten; None = alle
     """
     where = []
     params: list[Any] = []
     join_lief = ''
-    if grp_id == '__lief__' or grp_id is None:
+    if typ_filter == 'lief':
         join_lief = 'JOIN ADRESSEN_LIEF al ON al.ADDR_ID = a.REC_ID'
-    elif grp_id == '__kunde__':
+    elif typ_filter == 'kunde':
         where.append("a.REC_ID NOT IN (SELECT ADDR_ID FROM ADRESSEN_LIEF)")
-    elif grp_id == '__alle__':
-        pass
-    else:
+
+    if grp_id not in (None, 0, '0', ''):
         try:
             grp_int = int(grp_id)
-            # Hierarchie: alle Adressen in dieser Gruppe ODER ihren
-            # Untergruppen — analog WG-Logik
             where.append(
                 "a.KUNDENGRUPPE IN ("
                 "  WITH RECURSIVE g_tree AS ("

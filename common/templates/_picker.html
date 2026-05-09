@@ -243,11 +243,9 @@ window.cxPickerOpen = async function(cfg) {
         const d = await r.json();
         _baum = d.zeilen || [];
         cxBaumRender();
-        // Erste Gruppe oder „Alle" als Standard
-        if (_baum.length) {
-            const start = cfg.modus === 'adresse' ? '__lief__' : 0;
-            cxGruppeWaehlen(start);
-        }
+        // Standard: 'Alle' (wg=0 / leere grp) — Liste rechts wird sofort
+        // gefuellt, der User kann optional eine Gruppe einschraenken.
+        cxGruppeWaehlen(0);
     } catch (e) {
         el('cxp-tree').innerHTML = '<div class="cxp-status">Fehler beim Laden.</div>';
     }
@@ -264,29 +262,21 @@ function cxBaumRender() {
 
     const istAdr = _cfg.modus === 'adresse';
     // Felder normalisieren — Adress-Modus liefert 'name', Artikel 'bezeichnung'
-    const nameKey  = istAdr ? 'name' : 'bezeichnung';
+    const nameKey   = istAdr ? 'name' : 'bezeichnung';
     const direktKey = istAdr ? 'count' : 'artikel_anzahl';
 
-    // Virtuelle Slots oben separat rendern (nur Adresse hat sie)
+    // 'Alle' als Wurzel-Knoten (lokales Konzept im Frontend, ohne Server-
+    // virtuelle Slots — 0/leer wird vom Server als 'kein Gruppen-Filter'
+    // interpretiert).
     let html = '';
-    const echteEintraege = _baum.filter(g => !g.virtual);
-    const virtuell      = _baum.filter(g => g.virtual);
-
-    for (const v of virtuell) {
-        const aktiv = String(_aktivGruppe) === String(v.id);
-        html += `<button class="cxp-tree-item wurzel${aktiv ? ' aktiv' : ''}"
-                         onclick="cxGruppeWaehlen('${v.id}')">
-                   <span class="cxp-tree-name">⭐ ${escH(v.name)}</span>
-                 </button>`;
-    }
-
-    // 'Alle Artikel' nur im Artikel-Modus, falls echte Einträge da sind
-    if (!istAdr) {
-        html += `<button class="cxp-tree-item wurzel${_aktivGruppe === 0 ? ' aktiv' : ''}"
-                         onclick="cxGruppeWaehlen(0)">
-                   <span class="cxp-tree-name">📦 Alle Artikel</span>
-                 </button>`;
-    }
+    const echteEintraege = _baum;
+    const istAlle = _aktivGruppe === 0 || _aktivGruppe === '0' || _aktivGruppe == null;
+    const ico = istAdr ? '👥' : '📦';
+    const allLabel = istAdr ? 'alle Adressen' : 'alle Warengruppen';
+    html += `<button class="cxp-tree-item wurzel${istAlle ? ' aktiv' : ''}"
+                     onclick="cxGruppeWaehlen(0)">
+               <span class="cxp-tree-name">${ico} ${escH(allLabel)}</span>
+             </button>`;
 
     if (echteEintraege.length) {
         // Baum aufbauen
@@ -327,8 +317,6 @@ function cxBaumRender() {
             for (const k of byParent[w.id] || []) renderKnoten(k, tiefe + 1);
         };
         for (const r of byParent['__r'] || []) renderKnoten(r, 0);
-    } else if (!virtuell.length) {
-        html = '<div class="cxp-status">Keine Einträge.</div>';
     }
     root.innerHTML = html;
 }
