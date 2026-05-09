@@ -883,6 +883,280 @@ def pos_entfernen(eingang_id: int, pos_id: int) -> dict[str, Any]:
     return {'ok': 1}
 
 
+def lieferant_suche(suchtext: str, limit: int = 30) -> list[dict[str, Any]]:
+    """Sucht Lieferanten in ADRESSEN (Filter: muss in ADRESSEN_LIEF stehen)."""
+    pat = f"%{(suchtext or '').strip()}%"
+    if len(pat) < 4:  # nur 1 Zeichen ohne Wildcards → zu unscharf
+        return []
+    with get_db() as cur:
+        cur.execute(
+            """
+            SELECT a.REC_ID                            AS addr_id,
+                   COALESCE(NULLIF(TRIM(a.NAME1),''), '–') AS name,
+                   COALESCE(NULLIF(TRIM(a.NAME2),''), '')  AS name2,
+                   COALESCE(a.ORT, '')                 AS ort,
+                   COALESCE(a.PLZ, '')                 AS plz,
+                   COALESCE(a.KUNNUM1, '')             AS kunnum
+              FROM ADRESSEN a
+              JOIN ADRESSEN_LIEF al ON al.ADDR_ID = a.REC_ID
+             WHERE a.NAME1   LIKE %s
+                OR a.NAME2   LIKE %s
+                OR a.KUNNUM1 LIKE %s
+                OR a.ORT     LIKE %s
+             ORDER BY a.NAME1
+             LIMIT %s
+            """,
+            (pat, pat, pat, pat, int(limit)),
+        )
+        return cur.fetchall()
+
+
+def artikel_suche(suchtext: str, limit: int = 30) -> list[dict[str, Any]]:
+    """Suche in ARTIKEL: ARTNUM / BARCODE(2,3) / KURZNAME / MATCHCODE."""
+    pat = f"%{(suchtext or '').strip()}%"
+    if len(pat) < 4:
+        return []
+    with get_db() as cur:
+        cur.execute(
+            """
+            SELECT a.REC_ID    AS artikel_id,
+                   a.ARTNUM    AS artnum,
+                   a.BARCODE   AS barcode,
+                   a.KURZNAME  AS kurzname,
+                   a.MATCHCODE AS matchcode,
+                   a.EK_PREIS  AS ek_preis,
+                   a.STEUER_CODE,
+                   a.ARTIKELTYP,
+                   a.PR_EINHEIT,
+                   me.BEZEICHNUNG AS me_einheit,
+                   me.ME_CODE     AS me_code,
+                   wg.NAME        AS wgr_name,
+                   a.WARENGRUPPE
+              FROM ARTIKEL a
+              LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
+              LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
+             WHERE (a.ARTNUM    LIKE %s
+                 OR a.BARCODE   LIKE %s
+                 OR a.BARCODE2  LIKE %s
+                 OR a.BARCODE3  LIKE %s
+                 OR a.KURZNAME  LIKE %s
+                 OR a.MATCHCODE LIKE %s)
+               AND a.ARTIKELTYP NOT IN ('L', 'K', 'S')
+             ORDER BY a.KURZNAME
+             LIMIT %s
+            """,
+            (pat, pat, pat, pat, pat, pat, int(limit)),
+        )
+        return cur.fetchall()
+
+
+def wareneingang_anlegen_leer(addr_id: int,
+                              ma_id: int | None,
+                              ma_name: str | None) -> dict[str, Any]:
+    """Erstellt einen leeren Wareneingang ohne Bestell-Bezug.
+
+    Args:
+        addr_id: ADRESSEN.REC_ID des Lieferanten
+        ma_id, ma_name: erstellender Mitarbeiter
+
+    Returns:
+        dict mit ``rec_id`` und ``belegnum``.
+    """
+    addr_id = int(addr_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+    ma_id_int = int(ma_id) if ma_id is not None else -1
+
+    with get_db_transaction() as cur:
+        # Adresse lesen
+        cur.execute(
+            "SELECT REC_ID, NAME1, NAME2, NAME3, STRASSE, HAUSNR, "
+            "       LAND, PLZ, ORT, KUNNUM1, KRD_NUM "
+            "  FROM ADRESSEN WHERE REC_ID = %s",
+            (addr_id,),
+        )
+        adr = cur.fetchone()
+        if not adr:
+            raise LookupError(f'Lieferant-Adresse {addr_id} nicht gefunden')
+
+        # Belegnummer
+        belegnum = _next_registry_nummer(cur, 'WARENEINGANG')
+        heute = date.today()
+
+        # Spalten von EKEINGANG ermitteln (defensiv)
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EKEINGANG'"
+        )
+        cols_in_db = {r['COLUMN_NAME'] for r in cur.fetchall()}
+
+        wunsch: dict[str, Any] = {
+            'MA_ID':            ma_id_int,
+            'ADDR_ID':          addr_id,
+            'BELEGNUM':         belegnum,
+            'BELEGDATUM':       heute,
+            'WAEHRUNG':         '€',
+            'KURS':             1.0,
+            'STADIUM':          0,
+            'GEWICHT':          0,
+            'NSUMME':           0, 'NSUMME_0': 0, 'NSUMME_1': 0,
+            'NSUMME_2':         0, 'NSUMME_3': 0,
+            'MSUMME':           0, 'MSUMME_0': 0, 'MSUMME_1': 0,
+            'MSUMME_2':         0, 'MSUMME_3': 0,
+            'BSUMME':           0, 'BSUMME_0': 0, 'BSUMME_1': 0,
+            'BSUMME_2':         0, 'BSUMME_3': 0,
+            'GEGENKONTO':       int(adr.get('KRD_NUM') or -1),
+            'ERSTELLT':         heute,
+            'ERST_NAME':        ma_name_safe,
+            'KUN_NUM':          adr.get('KUNNUM1', '') or '',
+            'KUN_NAME1':        adr.get('NAME1', '') or '',
+            'KUN_NAME2':        adr.get('NAME2', '') or '',
+            'KUN_NAME3':        adr.get('NAME3', '') or '',
+            'KUN_STRASSE':      adr.get('STRASSE', '') or '',
+            'KUN_HAUSNR':       adr.get('HAUSNR', '') or '',
+            'KUN_LAND':         adr.get('LAND', 'DE') or 'DE',
+            'KUN_PLZ':          adr.get('PLZ', '') or '',
+            'KUN_ORT':          adr.get('ORT', '') or '',
+            'LIEF_NAME1':       adr.get('NAME1', '') or '',
+            'LIEF_NAME2':       adr.get('NAME2', '') or '',
+            'LIEF_NAME3':       adr.get('NAME3', '') or '',
+            'LIEF_STRASSE':     adr.get('STRASSE', '') or '',
+            'LIEF_HAUSNR':      adr.get('HAUSNR', '') or '',
+            'LIEF_LAND':        adr.get('LAND', '') or '',
+            'LIEF_PLZ':         adr.get('PLZ', '') or '',
+            'LIEF_ORT':         adr.get('ORT', '') or '',
+            'FIRMA_ID':         8,
+            'INFO':             '',
+            'KOPFTEXT':         '',
+            'FUSSTEXT':         '',
+            'PROJEKT':          '',
+            'BEREINIGT':        'N',
+        }
+        cols = [c for c in wunsch if c in cols_in_db]
+        vals = [wunsch[c] for c in cols]
+        cur.execute(
+            f"INSERT INTO EKEINGANG ({', '.join(cols)}) "
+            f"VALUES ({', '.join(['%s'] * len(cols))})",
+            vals,
+        )
+        rec_id = cur.lastrowid
+
+    return {'ok': True, 'rec_id': rec_id, 'belegnum': belegnum}
+
+
+def pos_artikel_anhaengen(eingang_id: int,
+                          artikel_id: int,
+                          menge: float = 0,
+                          ma_name: str | None = None) -> dict[str, Any]:
+    """Hängt einen Artikel direkt (ohne Bestell-Bezug) an einen offenen Wareneingang."""
+    eingang_id = int(eingang_id)
+    artikel_id = int(artikel_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+
+    with get_db_transaction() as cur:
+        cur.execute("SELECT ADDR_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s",
+                    (eingang_id,))
+        we = cur.fetchone()
+        if not we:
+            raise LookupError(f'Wareneingang {eingang_id} nicht gefunden')
+        if int(we['STADIUM']) != 0:
+            raise PermissionError('Wareneingang ist nicht mehr offen')
+
+        # Artikel lesen
+        cur.execute(
+            """
+            SELECT a.REC_ID, a.ARTNUM, a.BARCODE, a.MATCHCODE, a.KURZNAME,
+                   a.LANGNAME, a.ARTIKELTYP, a.WARENGRUPPE, a.GEWICHT,
+                   a.PR_EINHEIT, a.EK_PREIS, a.STEUER_CODE,
+                   me.BEZEICHNUNG AS me_einheit, me.ME_CODE AS me_code,
+                   wg.NAME        AS wgr_name
+              FROM ARTIKEL a
+              LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
+              LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
+             WHERE a.REC_ID = %s
+            """,
+            (artikel_id,),
+        )
+        art = cur.fetchone()
+        if not art:
+            raise LookupError(f'Artikel {artikel_id} nicht gefunden')
+
+        # naechste Position
+        cur.execute(
+            "SELECT COALESCE(MAX(POSITION), 0) + 1 AS np "
+            "FROM EKEINGANG_POS WHERE EKEINGANG_ID = %s",
+            (eingang_id,),
+        )
+        pos_nr = int(cur.fetchone()['np'])
+
+        # Schema
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EKEINGANG_POS'"
+        )
+        ekepos_cols = {r['COLUMN_NAME'] for r in cur.fetchall()}
+
+        wunsch_pos: dict[str, Any] = {
+            'EKEINGANG_ID':       eingang_id,
+            'ADDR_ID':            int(we['ADDR_ID']),
+            'POSITION':           pos_nr,
+            'VIEW_POS':           str(pos_nr),
+            'ARTIKELTYP':         art.get('ARTIKELTYP', 'N') or 'N',
+            'ARTIKEL_ID':         art.get('REC_ID'),
+            'ARTNUM':             (art.get('ARTNUM') or '')[:100],
+            'BARCODE':            (art.get('BARCODE') or '')[:20],
+            'MATCHCODE':          (art.get('MATCHCODE') or '')[:255],
+            'WARENGRUPPE':        art.get('WARENGRUPPE'),
+            'WARENGRUPPENNAME':   (art.get('wgr_name') or '')[:250],
+            'BEZEICHNUNG':        (art.get('LANGNAME') or art.get('KURZNAME') or ''),
+            'BEZEICHNUNG_LAND':   '',
+            'KURZBEZEICHNUNG':    (art.get('KURZNAME') or '')[:150],
+            'KURZBEZEICHNUNG_LAND': '',
+            'ME_EINHEIT':         (art.get('me_einheit') or '')[:50],
+            'ME_CODE':            (art.get('me_code') or '')[:5],
+            'PR_EINHEIT':         art.get('PR_EINHEIT', 1) or 1,
+            'VPE':                1,
+            'GEWICHT':            art.get('GEWICHT', 0) or 0,
+            'STEUER_CODE':        art.get('STEUER_CODE', 0) or 0,
+            'GEGENKTO':           '',
+            'BRUTTO_FLAG':        'N',
+            'MENGE_SOLL':         0,            # ohne Bestell-Bezug
+            'MENGE':              float(menge or 0),
+            'EPREIS':             art.get('EK_PREIS', 0) or 0,
+            'GPREIS':             round(float(menge or 0) * float(art.get('EK_PREIS') or 0), 2),
+            'ALTTEIL_PROZ':       0,
+            'ALTTEIL_FLAG':       'N',
+            'GEBUCHT_FLAG':       'N',
+            'BERECHNET':          'N',
+            'SN_FLAG':            'N',
+            'SET_ID':             0,
+            'TOP_POS_ID':         -1,
+            'LAGER_ID':           -2,
+            'FREITEXT':           '',
+            'FREITEXT_LAND':      '',
+            'FARBE':              '',
+            'MATERIAL':           '',
+            'ERST_NAME':          ma_name_safe,
+            'STADIUM':            2,
+        }
+        cols = [c for c in wunsch_pos if c in ekepos_cols]
+        vals = [wunsch_pos[c] for c in cols]
+        platzhalter = ', '.join(['%s'] * len(cols))
+        extra_cols = ''
+        extra_vals = ''
+        if 'ERSTELLT' in ekepos_cols:
+            extra_cols = ', ERSTELLT'
+            extra_vals = ', NOW()'
+        cur.execute(
+            f"INSERT INTO EKEINGANG_POS ({', '.join(cols)}{extra_cols}) "
+            f"VALUES ({platzhalter}{extra_vals})",
+            vals,
+        )
+        new_id = cur.lastrowid
+
+    return {'pos_id': int(new_id), 'position': pos_nr,
+            'artikel_name': art.get('LANGNAME') or art.get('KURZNAME')}
+
+
 def storno(rec_id: int) -> dict[str, int]:
     """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
     EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.

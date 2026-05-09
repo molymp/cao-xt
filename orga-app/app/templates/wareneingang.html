@@ -70,13 +70,91 @@
 .we-trefferzahl {
   font-size: 0.85rem; color: var(--text-dim, #5a7a3a); font-weight: 700;
 }
+
+/* Picker-Modal (Lieferanten/Artikel) */
+.picker-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9100;
+  display: flex; align-items: center; justify-content: center;
+}
+.picker-modal {
+  background: white; border-radius: var(--radius);
+  padding: 18px 22px; width: 95%; max-width: 720px;
+  max-height: 80vh; display: flex; flex-direction: column;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+}
+.picker-kopf { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.picker-kopf h2 { font-size: 1.1rem; color: var(--gruen-dunkel); }
+.picker-close {
+  width: 36px; height: 36px;
+  border: none; border-radius: 50%;
+  background: var(--creme-dunkel); color: var(--text-hell);
+  cursor: pointer; font-size: 1rem;
+}
+.picker-search {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif; font-size: 1rem;
+  margin-bottom: 12px;
+}
+.picker-search:focus { outline: none; border-color: var(--gruen-hell); }
+.picker-liste {
+  flex: 1; overflow-y: auto;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+}
+.picker-zeile {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  cursor: pointer;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px;
+  align-items: baseline;
+}
+.picker-zeile:last-child { border-bottom: none; }
+.picker-zeile:hover { background: var(--bg-hell, #ece3cc); }
+.picker-zeile-nr { font-family: 'Nunito Mono', Consolas, monospace; font-size: 0.85rem; color: var(--text-dim); }
+.picker-zeile-name { font-weight: 700; color: var(--text-hell); }
+.picker-zeile-sub { font-size: 0.85rem; color: var(--text-dim); }
+.picker-leer { padding: 20px; text-align: center; color: var(--text-dim); }
+
+.btn-primary {
+  background: var(--gruen-dunkel); color: white;
+  border: none; padding: 10px 18px;
+  border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.95rem; font-weight: 700; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover { background: var(--akzent-hell, #2e6e1a); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="we-kopf">
     <h1>📥 Wareneingänge – Übersicht</h1>
-    <span class="we-trefferzahl">{{ eingaenge|length }} Treffer</span>
+    <div style="display:flex; gap:10px; align-items:center;">
+        <span class="we-trefferzahl">{{ eingaenge|length }} Treffer</span>
+        <button type="button" class="btn-primary" onclick="weNeuOeffnen()">+ Neuer Wareneingang</button>
+    </div>
+</div>
+
+<!-- Lieferanten-Picker -->
+<div class="picker-overlay" id="we-lief-picker" style="display:none;"
+     onclick="if(event.target===this)weNeuSchliessen()">
+    <div class="picker-modal">
+        <div class="picker-kopf">
+            <h2>Lieferant für neuen Wareneingang wählen</h2>
+            <button class="picker-close" onclick="weNeuSchliessen()">✕</button>
+        </div>
+        <input type="text" class="picker-search" id="we-lief-search"
+               placeholder="Name, Kunden-Nr. oder Ort eintippen … (mind. 3 Zeichen)"
+               oninput="weLiefSuche(this.value)">
+        <div class="picker-liste" id="we-lief-liste">
+            <div class="picker-leer">Tippe einen Suchbegriff ein …</div>
+        </div>
+    </div>
 </div>
 
 <form method="get" class="we-filter">
@@ -98,6 +176,70 @@
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset" onclick="window.location='{{ url_for('orga_bestellwesen.wareneingang_uebersicht') }}'">Zurücksetzen</button>
 </form>
+
+<script>
+function weNeuOeffnen() {
+    document.getElementById('we-lief-picker').style.display = 'flex';
+    setTimeout(() => document.getElementById('we-lief-search').focus(), 50);
+}
+function weNeuSchliessen() {
+    document.getElementById('we-lief-picker').style.display = 'none';
+    document.getElementById('we-lief-search').value = '';
+    document.getElementById('we-lief-liste').innerHTML =
+        '<div class="picker-leer">Tippe einen Suchbegriff ein …</div>';
+}
+let _weLiefSucheTimer = null;
+function weLiefSuche(q) {
+    clearTimeout(_weLiefSucheTimer);
+    _weLiefSucheTimer = setTimeout(async () => {
+        const liste = document.getElementById('we-lief-liste');
+        if ((q || '').trim().length < 3) {
+            liste.innerHTML = '<div class="picker-leer">Mindestens 3 Zeichen eingeben …</div>';
+            return;
+        }
+        liste.innerHTML = '<div class="picker-leer">⏳ Suche …</div>';
+        try {
+            const res = await fetch('/orga/bestellwesen/wareneingang/api/lieferant-suche?q='
+                                    + encodeURIComponent(q));
+            const data = await res.json();
+            if (!data.ok || !data.zeilen || !data.zeilen.length) {
+                liste.innerHTML = '<div class="picker-leer">Keine Treffer.</div>';
+                return;
+            }
+            liste.innerHTML = data.zeilen.map(r => `
+                <div class="picker-zeile" onclick="weNeuAnlegen(${r.addr_id}, '${(r.name || '').replace(/'/g, '&apos;')}')">
+                    <span class="picker-zeile-nr">${r.kunnum || '–'}</span>
+                    <span class="picker-zeile-name">${escapeHtml(r.name)}${r.name2 ? ' · ' + escapeHtml(r.name2) : ''}</span>
+                    <span class="picker-zeile-sub">${escapeHtml((r.plz || '') + ' ' + (r.ort || ''))}</span>
+                </div>`).join('');
+        } catch (e) {
+            liste.innerHTML = '<div class="picker-leer">Fehler bei Suche.</div>';
+        }
+    }, 250);
+}
+function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+async function weNeuAnlegen(addrId, name) {
+    if (!confirm(`Neuen Wareneingang für "${name}" anlegen?`)) return;
+    try {
+        const res = await fetch('/orga/bestellwesen/wareneingang/api/neu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ addr_id: addrId })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            alert('Fehler: ' + (data.fehler || 'unbekannt'));
+            return;
+        }
+        window.location = '/orga/bestellwesen/wareneingang/' + data.rec_id;
+    } catch (e) {
+        alert('Verbindungsfehler');
+    }
+}
+</script>
 
 {% if eingaenge %}
 <table class="we-tabelle">

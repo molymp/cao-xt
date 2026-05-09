@@ -71,6 +71,66 @@
 .wd-scan-feedback.ok  { background: rgba(46,200,46,0.25); color: #d4ffd4; }
 .wd-scan-feedback.err { background: rgba(255,80,80,0.30); color: #ffd0d0; }
 
+.wd-add-art-btn {
+  padding: 10px 16px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-radius: var(--radius-klein);
+  background: rgba(255,255,255,0.95); color: var(--gruen-dunkel);
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.95rem; font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wd-add-art-btn:hover { background: white; border-color: var(--gold, #c8780a); }
+
+/* Picker-Modal — gleiche Kosmetik wie in der Übersicht */
+.picker-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9100;
+  display: flex; align-items: center; justify-content: center;
+}
+.picker-modal {
+  background: white; border-radius: var(--radius);
+  padding: 18px 22px; width: 95%; max-width: 720px;
+  max-height: 80vh; display: flex; flex-direction: column;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.3);
+}
+.picker-kopf { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.picker-kopf h2 { font-size: 1.1rem; color: var(--gruen-dunkel); }
+.picker-close {
+  width: 36px; height: 36px;
+  border: none; border-radius: 50%;
+  background: var(--creme-dunkel); color: var(--text-hell);
+  cursor: pointer; font-size: 1rem;
+}
+.picker-search {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+  font-family: 'Nunito', sans-serif; font-size: 1rem;
+  margin-bottom: 12px;
+}
+.picker-search:focus { outline: none; border-color: var(--gruen-hell, #4a9428); }
+.picker-liste {
+  flex: 1; overflow-y: auto;
+  border: 1px solid var(--creme-dunkel);
+  border-radius: var(--radius-klein);
+}
+.picker-zeile {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--creme-dunkel);
+  cursor: pointer;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px;
+  align-items: baseline;
+}
+.picker-zeile:last-child { border-bottom: none; }
+.picker-zeile:hover { background: var(--bg-hell, #ece3cc); }
+.picker-zeile-nr { font-family: 'Nunito Mono', Consolas, monospace; font-size: 0.85rem; color: var(--text-dim, #5a7a3a); }
+.picker-zeile-name { font-weight: 700; color: var(--text-hell, #142808); }
+.picker-zeile-sub { font-size: 0.85rem; color: var(--text-dim, #5a7a3a); }
+.picker-leer { padding: 20px; text-align: center; color: var(--text-dim, #5a7a3a); }
+
 /* Positions-Tabelle */
 .wd-pos-tabelle { width: 100%; border-collapse: collapse; }
 .wd-pos-tabelle th {
@@ -314,8 +374,28 @@
            placeholder="EAN scannen oder eintippen + Enter"
            autocomplete="off"
            onkeydown="if(event.key==='Enter'){event.preventDefault();wdScan();}">
+    <button type="button" class="wd-add-art-btn" onclick="wdArtikelPicker()">
+        🔍 Artikel auswählen …
+    </button>
     <div class="wd-scan-feedback" id="wd-scan-feedback">
         Stück- oder Gebinde-EAN scannen → erhöht Menge der Position automatisch.
+    </div>
+</div>
+
+<!-- Artikel-Picker Modal -->
+<div class="picker-overlay" id="wd-art-picker" style="display:none;"
+     onclick="if(event.target===this)wdArtikelPickerSchliessen()">
+    <div class="picker-modal">
+        <div class="picker-kopf">
+            <h2>Artikel zum Wareneingang hinzufügen</h2>
+            <button class="picker-close" onclick="wdArtikelPickerSchliessen()">✕</button>
+        </div>
+        <input type="text" class="picker-search" id="wd-art-search"
+               placeholder="Art-Nr., Name, Matchcode oder Barcode … (mind. 3 Zeichen)"
+               oninput="wdArtikelSuche(this.value)">
+        <div class="picker-liste" id="wd-art-liste">
+            <div class="picker-leer">Tippe einen Suchbegriff ein …</div>
+        </div>
     </div>
 </div>
 {% endif %}
@@ -666,6 +746,62 @@ async function wdScan() {
 async function wdStorno() {
     if (!confirm('Wareneingang wirklich stornieren?')) return;
     const res = await _post(`${WD_DETAIL_URL}/api/storno`, {});
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    location.reload();
+}
+
+// ── Artikel-Picker (Wareneingang ohne Bestell-Bezug) ──────────────
+function wdArtikelPicker() {
+    document.getElementById('wd-art-picker').style.display = 'flex';
+    setTimeout(() => document.getElementById('wd-art-search').focus(), 50);
+}
+function wdArtikelPickerSchliessen() {
+    document.getElementById('wd-art-picker').style.display = 'none';
+    document.getElementById('wd-art-search').value = '';
+    document.getElementById('wd-art-liste').innerHTML =
+        '<div class="picker-leer">Tippe einen Suchbegriff ein …</div>';
+}
+let _wdArtSucheTimer = null;
+function wdArtikelSuche(q) {
+    clearTimeout(_wdArtSucheTimer);
+    _wdArtSucheTimer = setTimeout(async () => {
+        const liste = document.getElementById('wd-art-liste');
+        if ((q || '').trim().length < 3) {
+            liste.innerHTML = '<div class="picker-leer">Mindestens 3 Zeichen eingeben …</div>';
+            return;
+        }
+        liste.innerHTML = '<div class="picker-leer">⏳ Suche …</div>';
+        try {
+            const r = await fetch('/orga/bestellwesen/wareneingang/api/artikel-suche?q='
+                                  + encodeURIComponent(q));
+            const data = await r.json();
+            if (!data.ok || !data.zeilen || !data.zeilen.length) {
+                liste.innerHTML = '<div class="picker-leer">Keine Treffer.</div>';
+                return;
+            }
+            liste.innerHTML = data.zeilen.map(a => `
+                <div class="picker-zeile" onclick="wdArtikelWaehlen(${a.artikel_id})">
+                    <span class="picker-zeile-nr">${a.artnum || '–'}</span>
+                    <span class="picker-zeile-name">${_wdEsc(a.kurzname || a.matchcode || '–')}</span>
+                    <span class="picker-zeile-sub">${a.barcode ? '🔢 ' + a.barcode : ''}${a.me_einheit ? ' · ' + _wdEsc(a.me_einheit) : ''}</span>
+                </div>`).join('');
+        } catch (e) {
+            liste.innerHTML = '<div class="picker-leer">Fehler bei Suche.</div>';
+        }
+    }, 250);
+}
+function _wdEsc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+async function wdArtikelWaehlen(artikelId) {
+    const res = await _post(
+        `${WD_DETAIL_URL}/api/positionen/artikel-anhaengen`,
+        { artikel_id: artikelId, menge: 0 }
+    );
     if (!res.ok) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
         return;

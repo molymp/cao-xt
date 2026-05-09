@@ -377,6 +377,62 @@ def api_we_pos_entfernen(rec_id: int, pos_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+@bp.get('/wareneingang/api/lieferant-suche')
+def api_we_lieferant_suche() -> Any:
+    """Suche fuer Lieferanten-Picker (Wareneingang neu anlegen)."""
+    _login_check()
+    q = (request.args.get('q') or '').strip()
+    return jsonify({'ok': True, 'zeilen': we.lieferant_suche(q)})
+
+
+@bp.get('/wareneingang/api/artikel-suche')
+def api_we_artikel_suche() -> Any:
+    """Suche fuer Artikel-Picker (Pos manuell anhaengen)."""
+    _login_check()
+    q = (request.args.get('q') or '').strip()
+    return jsonify({'ok': True, 'zeilen': we.artikel_suche(q)})
+
+
+@bp.post('/wareneingang/api/neu')
+def api_we_neu() -> Any:
+    """Legt einen leeren Wareneingang fuer einen Lieferanten an (ohne Bestellung)."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        addr_id = int(body.get('addr_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'addr_id fehlt/ungültig'}), 400
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = we.wareneingang_anlegen_leer(addr_id, ma_id, ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/artikel-anhaengen')
+def api_we_artikel_anhaengen(rec_id: int) -> Any:
+    """Haengt einen ausgewaehlten Artikel als neue EKEINGANG_POS-Zeile an."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        artikel_id = int(body.get('artikel_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'artikel_id fehlt/ungültig'}), 400
+    raw_menge = body.get('menge') or 0
+    try:
+        menge = float(str(raw_menge).replace(',', '.'))
+    except ValueError:
+        menge = 0.0
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = we.pos_artikel_anhaengen(rec_id, artikel_id, menge, ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
 @bp.post('/wareneingang/<int:rec_id>/api/storno')
 def api_we_storno(rec_id: int) -> Any:
     _login_check()
