@@ -600,7 +600,7 @@ def reporting():
 def api_status():
     return jsonify({
         'app': 'orga-app',
-        'db':  test_verbindung(),
+        'db':  test_verbindung(force=True),
         'ts':  datetime.now().isoformat(),
     })
 

@@ -2599,7 +2599,7 @@ def api_stempeluhr_pin_aendern():
 
 @app.route("/status")
 def status():
-    db_ok = db.test_verbindung()
+    db_ok = db.test_verbindung(force=True)
     drucker_ok = druck.test_drucker()
     return jsonify({
         "terminal_nr": get_terminal_nr(),

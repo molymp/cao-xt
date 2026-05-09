@@ -239,12 +239,35 @@ def euro_zu_cent(wert) -> int:
         return 0
 
 
-def test_verbindung() -> bool:
-    """Prueft DB-Verbindung mit SELECT 1. Gibt ``True`` bei Erfolg zurueck."""
+# Prozess-weit gecachtes Ergebnis von test_verbindung() — wird in
+# Context-Processors ALLER Apps pro Page-Render aufgerufen, was bei
+# 170ms pro DB-Roundtrip ueber MyFRITZ-NAT direkt 170ms Latenz pro
+# Seite kostet. 30s TTL: bei Ausfall sieht der User die rote Ampel
+# spaetestens nach einer halben Minute.
+import time as _time
+_test_verbindung_cache: tuple[float, bool] | None = None
+_TEST_VERBINDUNG_TTL_SEC = 30
+
+
+def test_verbindung(force: bool = False) -> bool:
+    """Prueft DB-Verbindung mit SELECT 1. Gibt ``True`` bei Erfolg zurueck.
+
+    Ergebnis wird prozess-weit fuer 30 Sekunden gecached, damit
+    Context-Processors auf jeder Page-Render-Iteration nicht eine
+    eigene DB-Roundtrip aufmachen. Mit ``force=True`` cache umgehen
+    (z.B. fuer explizite Healthcheck-Routen).
+    """
+    global _test_verbindung_cache
+    if not force and _test_verbindung_cache is not None:
+        ts, val = _test_verbindung_cache
+        if _time.time() - ts < _TEST_VERBINDUNG_TTL_SEC:
+            return val
     try:
         with get_db() as cur:
             cur.execute("SELECT 1")
             cur.fetchone()
-        return True
+        result = True
     except Exception:
-        return False
+        result = False
+    _test_verbindung_cache = (_time.time(), result)
+    return result
