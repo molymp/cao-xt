@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Einkäufe – Übersicht{% endblock %}
+
+{% block extra_style %}
+<style>
+.ek-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+.ek-kopf h1 { font-size:1.6rem; }
+
+.ek-filter {
+  display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
+  background:white; padding:12px 16px; border-radius:var(--radius-klein);
+  box-shadow:var(--schatten); margin-bottom:16px;
+}
+.ek-filter label {
+  display:flex; flex-direction:column; gap:4px;
+  font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a);
+  text-transform:uppercase; letter-spacing:0.05em;
+}
+.ek-filter input, .ek-filter select {
+  padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.95rem; background:white; min-width:140px;
+}
+.ek-filter button {
+  padding:8px 16px; border:none; border-radius:var(--radius-klein);
+  background:var(--gruen-dunkel); color:white; font-weight:700;
+  cursor:pointer; font-family:'Nunito',sans-serif;
+}
+.ek-filter button.btn-reset { background:var(--creme-dunkel); color:var(--gruen-dunkel); }
+
+.ek-tabelle { width:100%; border-collapse:collapse; background:white;
+  border-radius:var(--radius); overflow:hidden; box-shadow:var(--schatten); }
+.ek-tabelle th {
+  background:var(--gruen-dunkel); color:var(--creme);
+  padding:10px 14px; text-align:left;
+  font-size:0.74rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:0.06em; white-space:nowrap;
+}
+.ek-tabelle td { padding:9px 14px; border-bottom:1px solid var(--creme-dunkel);
+  font-size:0.92rem; vertical-align:middle; }
+.ek-tabelle tr:last-child td { border-bottom:none; }
+.ek-tabelle tr:hover td { background:var(--grau-hell,#f4efe2); cursor:pointer; }
+.zahl-rechts { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+.ek-pille { display:inline-block; padding:2px 10px;
+  border-radius:999px; font-size:0.78rem; font-weight:700; }
+.ek-pille-0   { background:rgba(200,120,10,0.18);  color:#a06000; }
+.ek-pille-2   { background:rgba(60,120,200,0.18);  color:#2a4a8a; }
+.ek-pille-9   { background:rgba(46,122,46,0.18);   color:#1a4010; }
+.ek-pille-127 { background:rgba(184,48,48,0.15);   color:#8a2020; text-decoration:line-through; }
+
+.ek-leer { background:white; padding:28px; border-radius:var(--radius);
+  box-shadow:var(--schatten); text-align:center; color:var(--text-dim,#5a7a3a); }
+.ek-trefferzahl { font-size:0.85rem; color:var(--text-dim,#5a7a3a); font-weight:700; }
+
+.btn-primary {
+  background:var(--gruen-dunkel); color:white; border:none;
+  padding:10px 18px; border-radius:var(--radius-klein);
+  font-family:'Nunito',sans-serif; font-size:0.95rem; font-weight:700;
+  cursor:pointer; transition:background 0.15s;
+}
+.btn-primary:hover { background:var(--akzent-hell,#2e6e1a); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ek-kopf">
+    <h1>🧾 Einkäufe – Übersicht</h1>
+    <div style="display:flex; gap:10px; align-items:center;">
+        <span class="ek-trefferzahl">{{ eintraege|length }} Treffer</span>
+        <button type="button" class="btn-primary" onclick="ekNeu()">+ Neuer Einkauf</button>
+    </div>
+</div>
+
+<form method="get" class="ek-filter">
+    <label>
+        Suche
+        <input type="text" name="q" value="{{ suche or '' }}"
+               placeholder="Beleg-Nr. / Lieferant" autocomplete="off">
+    </label>
+    <label>
+        Status
+        <select name="stadium">
+            <option value="">– alle –</option>
+            {% for code, label in stadium_label.items() %}
+                <option value="{{ code }}" {% if stadium == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <button type="submit">Filtern</button>
+    <button type="button" class="btn-reset"
+            onclick="window.location='{{ url_for('orga_bestellwesen.einkauf_uebersicht') }}'">Zurücksetzen</button>
+</form>
+
+<script>
+async function ekNeu() {
+    if (!confirm('Neuen Einkaufs-Beleg anlegen? Lieferant + Positionen werden anschließend zugeordnet.')) return;
+    try {
+        const res = await fetch('/orga/bestellwesen/einkauf/api/neu', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            alert('Fehler: ' + (data.fehler || 'unbekannt'));
+            return;
+        }
+        window.location = '/orga/bestellwesen/einkauf/' + data.rec_id;
+    } catch (e) {
+        alert('Verbindungsfehler');
+    }
+}
+</script>
+
+{% if eintraege %}
+<table class="ek-tabelle">
+    <thead>
+        <tr>
+            <th>Beleg-Nr.</th>
+            <th>Datum</th>
+            <th>Lieferant</th>
+            <th class="zahl-rechts">Pos.</th>
+            <th class="zahl-rechts">Netto €</th>
+            <th class="zahl-rechts">Brutto €</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for e in eintraege %}
+    <tr onclick="cxLadenZeigen('Einkauf wird geladen …'); window.location='{{ url_for('orga_bestellwesen.einkauf_detail', rec_id=e.rec_id) }}'">
+        <td><strong>{{ e.vrenum or ('#' ~ e.rec_id) }}</strong></td>
+        <td>{{ e.rdatum.strftime('%d.%m.%Y') if e.rdatum else '–' }}</td>
+        <td>{{ e.lief_name }}</td>
+        <td class="zahl-rechts">{{ e.pos_anzahl }}</td>
+        <td class="zahl-rechts">{{ '{:,.2f}'.format(e.nsumme or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+        <td class="zahl-rechts">{{ '{:,.2f}'.format(e.bsumme or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+        <td><span class="ek-pille ek-pille-{{ e.stadium or 0 }}">{{ e.stadium_label }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="ek-leer">Keine Einkäufe gefunden.</div>
+{% endif %}
+{% endblock %}

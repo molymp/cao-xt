@@ -17,6 +17,7 @@ from flask import Blueprint, render_template, request, jsonify, abort, session
 
 from . import models as m
 from . import wareneingang as we
+from . import einkauf as ek
 
 
 bp = Blueprint('orga_bestellwesen', __name__, template_folder=None)
@@ -426,6 +427,63 @@ def api_we_buchen(rec_id: int) -> Any:
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify(result)
+
+
+# ── Einkauf (= EK-Rechnung, Phase C) ────────────────────────────────
+
+
+@bp.get('/einkauf/')
+def einkauf_uebersicht():
+    """Liste aller Einkaufs-Belege (in Bearbeitung + verbucht)."""
+    _login_check()
+    suche = (request.args.get('q') or '').strip()
+    stadium_raw = (request.args.get('stadium') or '').strip()
+    stadium = int(stadium_raw) if stadium_raw.isdigit() else None
+    eintraege = ek.einkauf_liste(suche=suche, stadium=stadium)
+    return render_template(
+        'einkauf.html',
+        eintraege=eintraege,
+        suche=suche,
+        stadium=stadium,
+        stadium_label=ek.STADIUM_LABEL,
+    )
+
+
+@bp.get('/einkauf/<int:rec_id>')
+def einkauf_detail(rec_id: int):
+    _login_check()
+    daten = ek.einkauf_detail(rec_id)
+    if not daten:
+        abort(404)
+    return render_template(
+        'einkauf_detail.html',
+        kopf=daten['kopf'],
+        positionen=daten['positionen'],
+        stadium_label=ek.STADIUM_LABEL,
+    )
+
+
+@bp.post('/einkauf/api/neu')
+def api_ek_neu() -> Any:
+    """Legt einen leeren Einkaufs-Beleg an (Lieferant kommt spaeter)."""
+    _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = ek.einkauf_anlegen(ma_id, ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/storno')
+def api_ek_storno(rec_id: int) -> Any:
+    _login_check()
+    try:
+        result = ek.einkauf_storno(rec_id)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
 
 
 # ── Common-Picker-Endpunkte (Artikel + Adresse) ──────────────────────
