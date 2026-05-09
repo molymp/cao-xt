@@ -101,6 +101,42 @@ def _get_pool() -> pooling.MySQLConnectionPool:
     return _pool
 
 
+# Server-seitiger Query-Timeout (Sekunden). MariaDB nutzt
+# ``max_statement_time`` (FLOAT, Sekunden), MySQL nutzt
+# ``max_execution_time`` (INT, Millisekunden) — wir setzen beide,
+# der Server ignoriert die jeweils andere.
+#
+# Hintergrund: ohne diesen Timeout hingen Picker-SELECTs mehrere
+# Stunden in State "Sending data", weil das TCP-FIN vom Python-Client
+# durch MyFRITZ-NAT verloren ging und der Server beim ``send()``
+# blockierte — und dabei den MyISAM-READ-Lock auf ADRESSEN hielt.
+# Mit 30s SELF-Kill loest sich der Stau automatisch nach einer halben Minute.
+_QUERY_TIMEOUT_SEC = 30
+
+
+def _setze_query_timeout(conn) -> None:
+    """Setzt ``max_statement_time`` (MariaDB) und ``max_execution_time``
+    (MySQL) je Session, ignoriert wenn die Variable nicht existiert."""
+    try:
+        cur = conn.cursor()
+        # MariaDB: FLOAT, Sekunden
+        try:
+            cur.execute(f"SET SESSION max_statement_time = {_QUERY_TIMEOUT_SEC}")
+        except mysql.connector.Error:
+            pass
+        # MySQL: INT, Millisekunden — gilt nur fuer SELECTs read-only,
+        # ist aber genau das was wir absichern wollen
+        try:
+            cur.execute(f"SET SESSION max_execution_time = {_QUERY_TIMEOUT_SEC * 1000}")
+        except mysql.connector.Error:
+            pass
+        cur.close()
+    except Exception:
+        # Best effort — falls Setup fehlschlaegt, lieber ohne Timeout
+        # weiterarbeiten als die Connection verlieren
+        pass
+
+
 def _get_conn() -> mysql.connector.MySQLConnection:
     """Holt eine Pool-Verbindung und prueft per ping, dass sie lebt.
 
@@ -112,6 +148,10 @@ def _get_conn() -> mysql.connector.MySQLConnection:
     wir den toten Socket billig (1 Byte Write + ACK) und bauen ihn
     transparent neu auf.
 
+    Zusaetzlich setzen wir je Connection ``max_statement_time``
+    (MariaDB) bzw. ``max_execution_time`` (MySQL) auf 30s — siehe
+    ``_QUERY_TIMEOUT_SEC``.
+
     Faellt der Pool komplett aus oder schlaegt ping auch nach Retry
     fehl, wird eine frische (nicht gepoolte) Verbindung als Fallback
     aufgebaut – wie frueher.
@@ -119,11 +159,12 @@ def _get_conn() -> mysql.connector.MySQLConnection:
     try:
         conn = _get_pool().get_connection()
         conn.ping(reconnect=True, attempts=2, delay=0)
+        _setze_query_timeout(conn)
         return conn
     except Exception:
         cfg = _pool_config or {}
         _pruefe_db_whitelist(cfg.get('name', ''))
-        return mysql.connector.connect(
+        conn = mysql.connector.connect(
             host=cfg.get('host', 'localhost'),
             port=cfg.get('port', 3306),
             user=cfg.get('user', ''),
@@ -133,6 +174,8 @@ def _get_conn() -> mysql.connector.MySQLConnection:
             use_unicode=True,
             autocommit=True,
         )
+        _setze_query_timeout(conn)
+        return conn
 
 
 @contextmanager
