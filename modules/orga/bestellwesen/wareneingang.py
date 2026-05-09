@@ -1157,6 +1157,128 @@ def pos_artikel_anhaengen(eingang_id: int,
             'artikel_name': art.get('LANGNAME') or art.get('KURZNAME')}
 
 
+def pos_artikel_anhaengen_bulk(eingang_id: int,
+                               artikel_ids: list[int],
+                               ma_name: str | None = None) -> dict[str, Any]:
+    """Hängt mehrere Artikel in einem einzigen Datenbank-Vorgang an.
+
+    Wesentlich schneller als N x ``pos_artikel_anhaengen`` weil
+    EKEINGANG-/Artikel-/Schema-Lookups nur einmal stattfinden.
+    """
+    eingang_id = int(eingang_id)
+    artikel_ids = [int(a) for a in artikel_ids if a]
+    if not artikel_ids:
+        return {'angehaengt': 0}
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+
+    with get_db_transaction() as cur:
+        cur.execute("SELECT ADDR_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s",
+                    (eingang_id,))
+        we = cur.fetchone()
+        if not we:
+            raise LookupError(f'Wareneingang {eingang_id} nicht gefunden')
+        if int(we['STADIUM']) != 0:
+            raise PermissionError('Wareneingang ist nicht mehr offen')
+
+        # Alle Artikel auf einen Schwung lesen — Reihenfolge erhalten via
+        # Mapping artikel_id → row.
+        fmt = ','.join(['%s'] * len(artikel_ids))
+        cur.execute(
+            f"""
+            SELECT a.REC_ID, a.ARTNUM, a.BARCODE, a.MATCHCODE, a.KURZNAME,
+                   a.LANGNAME, a.ARTIKELTYP, a.WARENGRUPPE, a.GEWICHT,
+                   a.PR_EINHEIT, a.EK_PREIS, a.STEUER_CODE,
+                   me.BEZEICHNUNG AS me_einheit, me.ME_CODE AS me_code,
+                   wg.NAME        AS wgr_name
+              FROM ARTIKEL a
+              LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
+              LEFT JOIN WARENGRUPPEN  wg ON wg.ID     = a.WARENGRUPPE
+             WHERE a.REC_ID IN ({fmt})
+            """,
+            artikel_ids,
+        )
+        art_map = {int(r['REC_ID']): r for r in cur.fetchall()}
+
+        cur.execute(
+            "SELECT COALESCE(MAX(POSITION), 0) + 1 AS np "
+            "FROM EKEINGANG_POS WHERE EKEINGANG_ID = %s",
+            (eingang_id,),
+        )
+        pos_nr = int(cur.fetchone()['np'])
+
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EKEINGANG_POS'"
+        )
+        ekepos_cols = {r['COLUMN_NAME'] for r in cur.fetchall()}
+
+        angehaengt = 0
+        for aid in artikel_ids:   # Reihenfolge wie im Request
+            art = art_map.get(aid)
+            if not art:
+                continue
+            wunsch_pos: dict[str, Any] = {
+                'EKEINGANG_ID':       eingang_id,
+                'ADDR_ID':            int(we['ADDR_ID']),
+                'POSITION':           pos_nr,
+                'VIEW_POS':           str(pos_nr),
+                'ARTIKELTYP':         art.get('ARTIKELTYP', 'N') or 'N',
+                'ARTIKEL_ID':         art.get('REC_ID'),
+                'ARTNUM':             (art.get('ARTNUM') or '')[:100],
+                'BARCODE':            (art.get('BARCODE') or '')[:20],
+                'MATCHCODE':          (art.get('MATCHCODE') or '')[:255],
+                'WARENGRUPPE':        art.get('WARENGRUPPE'),
+                'WARENGRUPPENNAME':   (art.get('wgr_name') or '')[:250],
+                'BEZEICHNUNG':        (art.get('LANGNAME') or art.get('KURZNAME') or ''),
+                'BEZEICHNUNG_LAND':   '',
+                'KURZBEZEICHNUNG':    (art.get('KURZNAME') or '')[:150],
+                'KURZBEZEICHNUNG_LAND': '',
+                'ME_EINHEIT':         (art.get('me_einheit') or '')[:50],
+                'ME_CODE':            (art.get('me_code') or '')[:5],
+                'PR_EINHEIT':         art.get('PR_EINHEIT', 1) or 1,
+                'VPE':                1,
+                'GEWICHT':            art.get('GEWICHT', 0) or 0,
+                'STEUER_CODE':        art.get('STEUER_CODE', 0) or 0,
+                'GEGENKTO':           '',
+                'BRUTTO_FLAG':        'N',
+                'MENGE_SOLL':         0,
+                'MENGE':              0,
+                'EPREIS':             art.get('EK_PREIS', 0) or 0,
+                'GPREIS':             0,
+                'ALTTEIL_PROZ':       0,
+                'ALTTEIL_FLAG':       'N',
+                'GEBUCHT_FLAG':       'N',
+                'BERECHNET':          'N',
+                'SN_FLAG':            'N',
+                'SET_ID':             0,
+                'TOP_POS_ID':         -1,
+                'LAGER_ID':           -2,
+                'FREITEXT':           '',
+                'FREITEXT_LAND':      '',
+                'FARBE':              '',
+                'MATERIAL':           '',
+                'ERST_NAME':          ma_name_safe,
+                'STADIUM':            2,
+            }
+            cols = [c for c in wunsch_pos if c in ekepos_cols]
+            vals = [wunsch_pos[c] for c in cols]
+            platzhalter = ', '.join(['%s'] * len(cols))
+            extra_cols = ''
+            extra_vals = ''
+            if 'ERSTELLT' in ekepos_cols:
+                extra_cols = ', ERSTELLT'
+                extra_vals = ', NOW()'
+            cur.execute(
+                f"INSERT INTO EKEINGANG_POS ({', '.join(cols)}{extra_cols}) "
+                f"VALUES ({platzhalter}{extra_vals})",
+                vals,
+            )
+            pos_nr += 1
+            angehaengt += 1
+
+    return {'angehaengt': angehaengt}
+
+
 def storno(rec_id: int) -> dict[str, int]:
     """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
     EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.

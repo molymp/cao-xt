@@ -756,16 +756,16 @@ function wdArtikelPicker() {
         onWaehlen: async (artikel) => {
             // artikel ist im Multi-Modus eine Liste
             const liste = Array.isArray(artikel) ? artikel : [artikel];
-            for (const a of liste) {
-                const res = await _post(
-                    `${WD_DETAIL_URL}/api/positionen/artikel-anhaengen`,
-                    { artikel_id: a.artikel_id, menge: 0 }
-                );
-                if (!res.ok) {
-                    alert(`Fehler bei "${a.kurzname}": ` + (res.fehler || 'unbekannt'));
-                    // Trotzdem weiter — die meisten erfolgreich angehaengten Pos
-                    // bleiben drin, der Fehler-Pos uebersprungen.
-                }
+            const ids = liste.map(a => a.artikel_id);
+            cxLadenZeigen(`Übernehme ${liste.length} Artikel …`);
+            const res = await _post(
+                `${WD_DETAIL_URL}/api/positionen/artikel-anhaengen`,
+                { artikel_ids: ids }
+            );
+            if (!res.ok) {
+                cxLadenAusblenden();
+                alert('Fehler: ' + (res.fehler || 'unbekannt'));
+                return;
             }
             location.reload();
         }
