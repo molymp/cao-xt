@@ -240,21 +240,34 @@ def adressen_in_gruppe(grp_id: int | str | None,
     elif typ_filter == 'kunde':
         where.append("a.REC_ID NOT IN (SELECT ADDR_ID FROM ADRESSEN_LIEF)")
 
+    grp_int_for_tree: int | None = None
     if grp_id not in (None, 0, '0', ''):
         try:
-            grp_int = int(grp_id)
-            # Untergruppen-IDs einmalig holen (eine schnelle Query),
-            # dann simpler IN-Filter — kein rekursiver CTE pro Aufruf.
-            with get_db() as cur_tree:
-                cur_tree.execute(
-                    "SELECT REC_ID, TOP_ID FROM ADRESSGRUPPEN"
-                )
-                kinder = {}
-                for r in cur_tree.fetchall():
-                    p = r.get('TOP_ID')
-                    kinder.setdefault(p, []).append(int(r['REC_ID']))
-            ids = set([grp_int])
-            stack = [grp_int]
+            grp_int_for_tree = int(grp_id)
+        except (TypeError, ValueError):
+            grp_int_for_tree = None
+
+    if (suche or '').strip():
+        pat = f"%{suche.strip()}%"
+        where.append("(a.NAME1 LIKE %s OR a.NAME2 LIKE %s "
+                     "OR a.KUNNUM1 LIKE %s OR a.ORT LIKE %s)")
+        params.extend([pat, pat, pat, pat])
+
+    # Untergruppen-IDs werden EXTERN aufgeloest — wir berechnen sie
+    # gleich im selben Cursor wie die Hauptquery, um Connection-Pool-
+    # Deadlocks unter Last zu vermeiden.
+
+    with get_db() as cur:
+        # Schritt 1: falls Gruppen-Filter aktiv, alle Nachkommen-IDs
+        # in einem einzigen Query+Tree-Walk auflösen — gleiche Connection!
+        if grp_int_for_tree is not None:
+            cur.execute("SELECT REC_ID, TOP_ID FROM ADRESSGRUPPEN")
+            kinder: dict[int | None, list[int]] = {}
+            for r in cur.fetchall():
+                p = r.get('TOP_ID')
+                kinder.setdefault(p, []).append(int(r['REC_ID']))
+            ids = {grp_int_for_tree}
+            stack = [grp_int_for_tree]
             while stack:
                 cur_id = stack.pop()
                 for k in kinder.get(cur_id, []):
@@ -266,37 +279,28 @@ def adressen_in_gruppe(grp_id: int | str | None,
                 fmt = ','.join(['%s'] * len(id_list))
                 where.append(f"a.KUNDENGRUPPE IN ({fmt})")
                 params.extend(id_list)
-        except (TypeError, ValueError):
-            pass
 
-    if (suche or '').strip():
-        pat = f"%{suche.strip()}%"
-        where.append("(a.NAME1 LIKE %s OR a.NAME2 LIKE %s "
-                     "OR a.KUNNUM1 LIKE %s OR a.ORT LIKE %s)")
-        params.extend([pat, pat, pat, pat])
+        where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+        params.append(int(limit))
 
-    where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
-    params.append(int(limit))
-
-    sql = f"""
-        SELECT a.REC_ID                            AS addr_id,
-               COALESCE(NULLIF(TRIM(a.NAME1), ''), '–') AS name,
-               COALESCE(NULLIF(TRIM(a.NAME2), ''), '')  AS name2,
-               COALESCE(NULLIF(TRIM(a.NAME3), ''), '')  AS name3,
-               COALESCE(a.PLZ, '')                 AS plz,
-               COALESCE(a.ORT, '')                 AS ort,
-               COALESCE(a.KUNNUM1, '')             AS kunnum,
-               COALESCE(a.STRASSE, '')             AS strasse,
-               COALESCE(a.HAUSNR, '')              AS hausnr,
-               COALESCE(a.LAND, '')                AS land,
-               COALESCE(a.TELE1, '')               AS telefon,
-               COALESCE(a.EMAIL, '')               AS email
-          FROM ADRESSEN a
-          {join_lief}
-        {where_sql}
-         ORDER BY a.NAME1
-         LIMIT %s
-    """
-    with get_db() as cur:
+        sql = f"""
+            SELECT a.REC_ID                            AS addr_id,
+                   COALESCE(NULLIF(TRIM(a.NAME1), ''), '–') AS name,
+                   COALESCE(NULLIF(TRIM(a.NAME2), ''), '')  AS name2,
+                   COALESCE(NULLIF(TRIM(a.NAME3), ''), '')  AS name3,
+                   COALESCE(a.PLZ, '')                 AS plz,
+                   COALESCE(a.ORT, '')                 AS ort,
+                   COALESCE(a.KUNNUM1, '')             AS kunnum,
+                   COALESCE(a.STRASSE, '')             AS strasse,
+                   COALESCE(a.HAUSNR, '')              AS hausnr,
+                   COALESCE(a.LAND, '')                AS land,
+                   COALESCE(a.TELE1, '')               AS telefon,
+                   COALESCE(a.EMAIL, '')               AS email
+              FROM ADRESSEN a
+              {join_lief}
+            {where_sql}
+             ORDER BY a.NAME1
+             LIMIT %s
+        """
         cur.execute(sql, params)
         return cur.fetchall()
