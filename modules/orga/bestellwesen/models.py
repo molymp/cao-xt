@@ -164,11 +164,21 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
         cur.execute(
             """
             SELECT p.*,
-                   ei.LIEFERTERMIN AS liefertermin
+                   ei.LIEFERTERMIN AS liefertermin,
+                   COALESCE(we.geliefert, 0) AS geliefert_menge
             FROM EKBESTELL_POS p
             LEFT JOIN EKBESTELL_INFO ei
                    ON ei.EKBESTPOS_ID = p.REC_ID
                   AND ei.ARTIKEL_ID   = p.ARTIKEL_ID
+            LEFT JOIN (
+                SELECT ep.EKBESTELL_POS_ID AS pos_id,
+                       SUM(ep.MENGE)       AS geliefert
+                  FROM EKEINGANG_POS ep
+                  JOIN EKEINGANG     e ON e.REC_ID = ep.EKEINGANG_ID
+                 WHERE ep.GEBUCHT_FLAG = 'Y'
+                   AND e.STADIUM <> 127
+                 GROUP BY ep.EKBESTELL_POS_ID
+            ) we ON we.pos_id = p.REC_ID
             WHERE p.EKBESTELL_ID = %s
             ORDER BY p.POSITION, p.REC_ID
             """,
@@ -177,6 +187,9 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
         positionen = cur.fetchall()
         for p in positionen:
             p['stadium_label'] = _stadium_label_pos(p.get('STADIUM'))
+            soll = float(p.get('MENGE') or 0)
+            geliefert = float(p.get('geliefert_menge') or 0)
+            p['fehlt_menge'] = max(0, soll - geliefert) if soll > 0 else 0
     return {'kopf': kopf, 'positionen': positionen}
 
 
