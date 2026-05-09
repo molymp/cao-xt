@@ -185,11 +185,44 @@ def bestellung_detail(rec_id: int) -> dict[str, Any] | None:
             (int(rec_id),),
         )
         positionen = cur.fetchall()
+
+        # Lieferscheine pro Pos: kann mehrere geben (Teillieferungen,
+        # nachgereichte Lieferungen). Wir holen pro Bestellpos die
+        # Liste in einem Bulk-Query und mappen auf die Pos.
+        pos_ids = [int(p['REC_ID']) for p in positionen]
+        ls_map: dict[int, list[dict]] = {pid: [] for pid in pos_ids}
+        if pos_ids:
+            fmt = ','.join(['%s'] * len(pos_ids))
+            cur.execute(
+                f"""SELECT ep.EKBESTELL_POS_ID AS pos_id,
+                          ep.MENGE             AS menge,
+                          e.REC_ID             AS we_rec_id,
+                          e.BELEGNUM           AS we_belegnum,
+                          e.LIEFNUM            AS liefnum,
+                          e.LIEFDATUM          AS liefdatum
+                     FROM EKEINGANG_POS ep
+                     JOIN EKEINGANG     e ON e.REC_ID = ep.EKEINGANG_ID
+                    WHERE ep.EKBESTELL_POS_ID IN ({fmt})
+                      AND ep.GEBUCHT_FLAG = 'Y'
+                      AND e.STADIUM <> 127
+                    ORDER BY e.LIEFDATUM, e.REC_ID""",
+                pos_ids,
+            )
+            for r in cur.fetchall():
+                ls_map[int(r['pos_id'])].append({
+                    'we_rec_id':   int(r['we_rec_id']),
+                    'we_belegnum': r['we_belegnum'] or '',
+                    'liefnum':     r['liefnum'] or '',
+                    'liefdatum':   r['liefdatum'],
+                    'menge':       float(r['menge'] or 0),
+                })
+
         for p in positionen:
             p['stadium_label'] = _stadium_label_pos(p.get('STADIUM'))
             soll = float(p.get('MENGE') or 0)
             geliefert = float(p.get('geliefert_menge') or 0)
             p['fehlt_menge'] = max(0, soll - geliefert) if soll > 0 else 0
+            p['lieferscheine'] = ls_map.get(int(p['REC_ID']), [])
     return {'kopf': kopf, 'positionen': positionen}
 
 
