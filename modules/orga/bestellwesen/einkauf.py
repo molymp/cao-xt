@@ -28,10 +28,13 @@ Buchen mit Preisabweichung-Modal.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from typing import Any
 
 from common.db import get_db, get_db_transaction
+
+log = logging.getLogger(__name__)
 
 
 # ── STADIUM-Codes für JOURNAL.QUELLE in (5, 15) ─────────────────────
@@ -1099,3 +1102,465 @@ def pos_aus_bestellpos_anhaengen(eingang_rec_id: int, bestellpos_id: int,
         _summen_aktualisieren(cur, eingang_rec_id)
     return {'pos_id': new_pos_id, 'position': pos_nr,
             'menge': menge, 'epreis': epreis}
+
+
+# ── Phase C.3: Buchen ─────────────────────────────────────────────
+#
+# Wandelt einen "in Bearbeitung"-Einkauf (QUELLE=15, STADIUM=0,
+# VRENUM='EDI-NNNNNN') in eine verbuchte EK-Rechnung um:
+#   QUELLE=5, STADIUM=2 (offen/unbezahlt), VRENUM=Belegnummer aus
+#   REGISTRY 'EK-RECH' (Counter +1 atomar).
+#
+# Trace-Schritte siehe memory/project_einkauf_buchen_phasec.md.
+# CAO-Caches (ARTIKEL_BDATEN, EKBESTELL_OP, JOURNAL_OP) sind hier
+# bewusst NICHT aktualisiert — die werden beim naechsten CAO-Sync
+# bzw. beim Lese-Zugriff in CAO neu aufgebaut. Falls XT-Anzeigen
+# darauf bauen, separate Tasks (TODO).
+
+
+def buchen_vorschau(rec_id: int) -> dict[str, Any]:
+    """Read-only-Pruefung VOR dem eigentlichen Buchen.
+
+    Liefert:
+      ``ok`` / ``fehler`` — Beleg ueberhaupt buchbar?
+      ``warnungen`` — soft (z.B. 'kein Lieferant')
+      ``preisabweichungen`` — Liste {pos_id, artnum, bezeichnung,
+        alt_ek, neu_ek, diff_proz} fuer Pos mit
+        ``EPREIS != ARTIKEL_PREIS.PREIS`` (Lief-Preis bei PREIS_TYP=5).
+        Das UI zeigt diese Liste vor dem Buchen, der User entscheidet
+        pro Pos ob der EK-Preis im Stamm uebernommen wird.
+      ``naechste_belegnum`` — Vorschau der EK-RECH-Nummer (NICHT reserviert).
+    """
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT * FROM JOURNAL WHERE REC_ID=%s AND QUELLE=15",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            return {'ok': False, 'fehler': 'Beleg ist nicht in Bearbeitung'}
+        if int(kopf.get('STADIUM') or 0) != 0:
+            return {'ok': False,
+                    'fehler': f"STADIUM={kopf['STADIUM']} — schon gebucht"}
+
+        warnungen: list[dict[str, str]] = []
+        addr_id = int(kopf.get('ADDR_ID') or -1)
+        if addr_id <= 0:
+            warnungen.append({'art': 'lieferant_fehlt',
+                              'text': 'Kein Lieferant gesetzt'})
+
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM JOURNALPOS "
+            "WHERE JOURNAL_ID=%s AND TOP_POS_ID=-1",
+            (rec_id,)
+        )
+        if int((cur.fetchone() or {}).get('n') or 0) == 0:
+            warnungen.append({'art': 'keine_pos',
+                              'text': 'Keine Positionen'})
+
+        # Preisabweichungen: EPREIS vs. ARTIKEL_PREIS.PREIS
+        # (LEFT JOIN — Pos ohne Lief-Preis-Pflege ist NICHT abweichend)
+        preisabweichungen: list[dict[str, Any]] = []
+        if addr_id > 0:
+            cur.execute(
+                """SELECT jp.REC_ID AS pos_id, jp.ARTIKEL_ID, jp.ARTNUM,
+                          jp.BEZEICHNUNG, jp.EPREIS AS neu_ek,
+                          ap.PREIS AS alt_ek
+                     FROM JOURNALPOS jp
+                LEFT JOIN ARTIKEL_PREIS ap
+                       ON ap.ARTIKEL_ID = jp.ARTIKEL_ID
+                      AND ap.ADRESS_ID = %s
+                      AND ap.PREIS_TYP = 5
+                    WHERE jp.JOURNAL_ID = %s AND jp.TOP_POS_ID = -1
+                      AND jp.ARTIKEL_ID > 0""",
+                (addr_id, rec_id),
+            )
+            for r in cur.fetchall():
+                if r.get('alt_ek') is None:
+                    # Kein Lief-Preis gepflegt — wird beim Buchen neu
+                    # angelegt (Phase 5a-Mechanik).  Wir markieren das
+                    # als "neuer Preis", damit der User es sieht.
+                    preisabweichungen.append({
+                        'pos_id': int(r['pos_id']),
+                        'artnum': r['ARTNUM'],
+                        'bezeichnung': r['BEZEICHNUNG'],
+                        'alt_ek': None,
+                        'neu_ek': float(r['neu_ek'] or 0),
+                        'diff_proz': None,
+                        'art': 'neu',
+                    })
+                    continue
+                alt = float(r['alt_ek'] or 0)
+                neu = float(r['neu_ek'] or 0)
+                if abs(alt - neu) > 0.0001:
+                    diff_proz = ((neu - alt) / alt * 100) if alt > 0 else None
+                    preisabweichungen.append({
+                        'pos_id': int(r['pos_id']),
+                        'artnum': r['ARTNUM'],
+                        'bezeichnung': r['BEZEICHNUNG'],
+                        'alt_ek': alt,
+                        'neu_ek': neu,
+                        'diff_proz': diff_proz,
+                        'art': 'geaendert',
+                    })
+
+        # Vorschau-Belegnummer (NICHT reservieren — nur fuer Anzeige)
+        cur.execute(
+            r"SELECT VAL_INT2, VAL_CHAR FROM REGISTRY "
+            r"WHERE MAINKEY='MAIN\\NUMBERS' AND NAME='EK-RECH'"
+        )
+        row = cur.fetchone() or {}
+        next_n = int(row.get('VAL_INT2') or 0) + 1
+        pad = (row.get('VAL_CHAR') or '000000')
+        n_stellen = pad.count('0') if pad.count('0') > 0 else 6
+        belegnum_vorschau = f'{next_n:0{n_stellen}d}'
+
+    kann_buchen = not any(
+        w['art'] in ('lieferant_fehlt', 'keine_pos') for w in warnungen
+    )
+    return {
+        'ok': True,
+        'kann_buchen': kann_buchen,
+        'warnungen': warnungen,
+        'preisabweichungen': preisabweichungen,
+        'naechste_belegnum': belegnum_vorschau,
+    }
+
+
+def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
+                   ma_name: str = '',
+                   preis_uebernahmen: dict | None = None
+                   ) -> dict[str, Any]:
+    """Verbucht einen Einkauf endgueltig.
+
+    Trace-Schritte (siehe memory/project_einkauf_buchen_phasec.md):
+      8a RDATUM final
+      8b NUMMERN_LOG + Belegnummer aus REGISTRY 'EK-RECH'
+      8c Lieferanten-Status
+      8d JOURNAL final (QUELLE=5, STADIUM=2, VRENUM=…)
+      8e ZUSATZDATEN (best-effort)
+      8f Pro Pos:
+         - ARTIKEL_PREIS Update (nur bei 'uebernehmen'-Entscheidung)
+         - EKEINGANG_POS.BERECHNET='Y' (bei Pos aus WE)
+         - ARTIKEL_HISTORIE + MENGE_AKT (nur bei freien/Bestell-Pos
+           ohne WE-Bezug — bei WE-Pos wurde Lager schon beim WE-Buchen
+           gebucht)
+         - JOURNALPOS QUELLE→5
+      8h+8i EKBESTELL_POS / EKBESTELL Status-Sync
+      8m EKEINGANG.STADIUM=9 fuer voll berechnete WE
+
+    Args:
+      rec_id: JOURNAL.REC_ID des Einkaufs (muss QUELLE=15, STADIUM=0)
+      ma_id, ma_name: Mitarbeiter (fuer GEAEND_NAME, ZUSATZDATEN)
+      preis_uebernahmen: dict {pos_id (str|int) -> 'uebernehmen'|'behalten'}
+        Default-Verhalten falls Pos nicht im dict: 'uebernehmen'.
+        Aufrufer sollte vorher buchen_vorschau() aufrufen und das UI
+        die Entscheidungen sammeln lassen.
+
+    Returns:
+      ``{'ok': True, 'rec_id': ..., 'vrenum': '253433', ...}``
+    """
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+    preis_uebernahmen = preis_uebernahmen or {}
+    # Lookups vereinheitlichen: keys koennen str oder int sein
+    _entscheidung = lambda pid: (
+        preis_uebernahmen.get(str(pid))
+        or preis_uebernahmen.get(int(pid))
+        or 'uebernehmen'
+    )
+
+    # cao_log_hashsum + Phase-5a-Helper sind beide in common.*; lokal
+    # importieren um Zirkular-Imports beim Modul-Laden zu vermeiden.
+    from common import cao_log_hashsum
+    from common.einkauf import (_next_registry_nummer,
+                                 _vk_kontrolle_ek_eintrag)
+
+    with get_db_transaction() as cur:
+        # 0. Beleg lock + validieren
+        cur.execute(
+            "SELECT * FROM JOURNAL WHERE REC_ID=%s AND QUELLE=15 FOR UPDATE",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            raise PermissionError('Beleg ist nicht in Bearbeitung (QUELLE!=15)')
+        if int(kopf.get('STADIUM') or 0) != 0:
+            raise PermissionError(
+                f"STADIUM={kopf['STADIUM']} — bereits gebucht oder storniert"
+            )
+        addr_id = int(kopf.get('ADDR_ID') or -1)
+        if addr_id <= 0:
+            raise ValueError('Lieferant fehlt — bitte vor dem Buchen setzen')
+
+        cur.execute(
+            "SELECT * FROM JOURNALPOS "
+            "WHERE JOURNAL_ID=%s AND TOP_POS_ID=-1 "
+            "ORDER BY POSITION FOR UPDATE",
+            (rec_id,)
+        )
+        positionen = cur.fetchall()
+        if not positionen:
+            raise ValueError('Keine Positionen — nicht buchbar')
+
+        # 8a. RDATUM final auf NOW()
+        cur.execute(
+            "UPDATE JOURNAL SET RDATUM=NOW(), GEAEND=CURDATE(), "
+            "GEAEND_NAME=%s WHERE REC_ID=%s",
+            (ma_name_safe, rec_id)
+        )
+
+        # 8b. Belegnummer atomic aus REGISTRY 'EK-RECH'
+        belegnum = _next_registry_nummer(cur, 'EK-RECH')
+
+        # NUMMERN_LOG-Eintrag (XT-eigene HASHSUM via cao_log_hashsum)
+        cur.execute(
+            "INSERT INTO NUMMERN_LOG "
+            "(QUELLE, JOURNAL_ID, NUMMER, ANGELEGT, ANGELEGT_NAME, HASHSUM) "
+            "VALUES (5, %s, %s, NOW(), %s, %s)",
+            (rec_id, belegnum, ma_name_safe, '$$')
+        )
+        nl_id = int(cur.lastrowid)
+        cur.execute(
+            "SELECT HASHSUM FROM NUMMERN_LOG "
+            "WHERE REC_ID < %s ORDER BY REC_ID DESC LIMIT 1",
+            (nl_id,)
+        )
+        prev_row = cur.fetchone()
+        prev = prev_row.get('HASHSUM') if prev_row else None
+        try:
+            new_hash = cao_log_hashsum.compute(
+                table_name='NUMMERN_LOG',
+                hashstring=f"V1|{nl_id}|5|{rec_id}|{belegnum}",
+                previous_hashsum=prev,
+            )
+            cur.execute(
+                "UPDATE NUMMERN_LOG SET HASHSUM=%s WHERE REC_ID=%s",
+                (new_hash, nl_id)
+            )
+        except Exception as exc:
+            log.warning('NUMMERN_LOG-HASHSUM (rec %s): %s', nl_id, exc)
+
+        # 8c. Lieferanten-Status: Default-Zahlart setzen (falls leer),
+        # STATUS-Bit 16 (Lieferant) setzen.
+        zahlart_id = kopf.get('ZAHLART')
+        if zahlart_id is not None:
+            cur.execute(
+                "UPDATE ADRESSEN SET LIEF_ZAHLART=%s "
+                "WHERE REC_ID=%s AND (LIEF_ZAHLART IS NULL OR LIEF_ZAHLART<0)",
+                (int(zahlart_id), addr_id)
+            )
+        cur.execute(
+            "UPDATE ADRESSEN SET STATUS=COALESCE(STATUS,0)|16 "
+            "WHERE REC_ID=%s",
+            (addr_id,)
+        )
+
+        # 8d. JOURNAL final-state
+        cur.execute(
+            "UPDATE JOURNAL SET QUELLE=5, VRENUM=%s, STADIUM=2, "
+            "GEAEND=CURDATE(), GEAEND_NAME=%s WHERE REC_ID=%s",
+            (belegnum, ma_name_safe, rec_id)
+        )
+
+        # 8e. ZUSATZDATEN (best-effort — Tabelle/Spalten unsicher)
+        try:
+            cur.execute(
+                "INSERT INTO ZUSATZDATEN "
+                "(FREMD_ID, FREMD_QUELLE, MA_ID, MA_NAME, ERSTELLT) "
+                "VALUES (%s, 5, %s, %s, NOW())",
+                (rec_id, ma_id or -1, ma_name_safe)
+            )
+        except Exception as exc:
+            log.info('ZUSATZDATEN nicht geschrieben (%s): %s', rec_id, exc)
+
+        # 8f. Pro Pos
+        for p in positionen:
+            pos_id = int(p['REC_ID'])
+            artikel_id = int(p.get('ARTIKEL_ID') or 0)
+            menge = float(p.get('MENGE') or 0)
+            epreis = float(p.get('EPREIS') or 0)
+            ekeingang_flag = (p.get('EKEINGANG') or 'N')
+            we_pos_id = int(p.get('QUELLE_WE') or 0)
+            best_pos_id = int(p.get('QUELLE_SRC') or 0)
+
+            # 8f.1 ARTIKEL_PREIS: existiert Lief-Preis?
+            if artikel_id > 0:
+                cur.execute(
+                    "SELECT REC_ID, PREIS FROM ARTIKEL_PREIS "
+                    "WHERE ARTIKEL_ID=%s AND ADRESS_ID=%s AND PREIS_TYP=5 "
+                    "FOR UPDATE",
+                    (artikel_id, addr_id)
+                )
+                ap = cur.fetchone()
+                ent = _entscheidung(pos_id)
+
+                if ap is None:
+                    # Kein Lief-Preis: bei 'uebernehmen' anlegen
+                    if ent == 'uebernehmen':
+                        cur.execute(
+                            "INSERT INTO ARTIKEL_PREIS "
+                            "(ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PREIS, "
+                            " GEAEND, ANGELEGT) "
+                            "VALUES (%s, %s, 5, %s, NOW(), NOW())",
+                            (artikel_id, addr_id, epreis)
+                        )
+                else:
+                    alt_preis = float(ap.get('PREIS') or 0)
+                    if abs(alt_preis - epreis) > 0.0001 and ent == 'uebernehmen':
+                        cur.execute(
+                            "UPDATE ARTIKEL_PREIS SET PREIS=%s, GEAEND=NOW() "
+                            "WHERE REC_ID=%s",
+                            (epreis, ap['REC_ID'])
+                        )
+                        try:
+                            _vk_kontrolle_ek_eintrag(
+                                artikel_rec_id=artikel_id,
+                                alt_ek=alt_preis,
+                                neu_ek=epreis,
+                                bestellung_rec_id=rec_id,
+                                ma_id=ma_id,
+                                bestell_nr=belegnum,
+                                lief_kuerzel='',
+                            )
+                        except Exception as exc:
+                            log.warning('VK-Kontrolle ART %s: %s',
+                                        artikel_id, exc)
+                    else:
+                        # Nur Touch-Marker fuer "wann zuletzt gesehen"
+                        cur.execute(
+                            "UPDATE ARTIKEL_PREIS SET GEAEND=NOW() "
+                            "WHERE REC_ID=%s",
+                            (ap['REC_ID'],)
+                        )
+
+            # 8f.2 Lager-Bewegung
+            if ekeingang_flag == 'Y' and we_pos_id > 0:
+                # Aus WE: Lager schon gebucht → nur 'berechnet' markieren
+                cur.execute(
+                    "UPDATE EKEINGANG_POS SET BERECHNET='Y' WHERE REC_ID=%s",
+                    (we_pos_id,)
+                )
+                if best_pos_id > 0:
+                    cur.execute(
+                        "UPDATE EKBESTELL_POS SET EKEINGANG='N' "
+                        "WHERE REC_ID=%s",
+                        (best_pos_id,)
+                    )
+            else:
+                # Frei oder direkt aus Bestellung → Lager bewegen
+                if artikel_id > 0:
+                    cur.execute(
+                        "SELECT MENGE_AKT FROM ARTIKEL "
+                        "WHERE REC_ID=%s FOR UPDATE",
+                        (artikel_id,)
+                    )
+                    art = cur.fetchone() or {}
+                    alt_lager = float(art.get('MENGE_AKT') or 0)
+                    neu_lager = alt_lager + menge
+                    try:
+                        cur.execute(
+                            "INSERT INTO ARTIKEL_HISTORIE "
+                            "(ARTIKEL_ID, QUELLE, QUELLE_STR, "
+                            " MENGE_LAGER, MENGE_GEBUCHT, JID, "
+                            " GEAND, GEAND_NAME, INFO) "
+                            "VALUES (%s, 5, %s, %s, %s, %s, "
+                            "        NOW(), %s, '')",
+                            (artikel_id, f'EK-Rechnung {belegnum}',
+                             neu_lager, menge, rec_id, ma_name_safe)
+                        )
+                    except Exception as exc:
+                        log.warning('ARTIKEL_HISTORIE ART %s: %s',
+                                    artikel_id, exc)
+                    cur.execute(
+                        "UPDATE ARTIKEL "
+                        "SET MENGE_AKT=COALESCE(MENGE_AKT,0)+%s, "
+                        "    SHOP_CHANGE_FLAG=1 "
+                        "WHERE REC_ID=%s",
+                        (menge, artikel_id)
+                    )
+
+            # 8f.3 JOURNALPOS finalisieren
+            cur.execute(
+                "UPDATE JOURNALPOS "
+                "SET QUELLE=5, VRENUM=%s, GEBUCHT='Y', "
+                "    GEAEND=CURDATE(), GEAEND_NAME=%s "
+                "WHERE REC_ID=%s",
+                (belegnum, ma_name_safe, pos_id)
+            )
+
+        # 8h+8i EKBESTELL/EKBESTELL_POS Status-Sync
+        cur.execute(
+            "SELECT DISTINCT bp.EKBESTELL_ID "
+            "  FROM JOURNALPOS jp "
+            "  JOIN EKBESTELL_POS bp ON bp.REC_ID = jp.QUELLE_SRC "
+            " WHERE jp.JOURNAL_ID=%s AND jp.QUELLE_SRC>0",
+            (rec_id,)
+        )
+        bestell_ids = [int(r['EKBESTELL_ID']) for r in cur.fetchall()]
+        for bid in bestell_ids:
+            # Pro Bestellpos: STADIUM=9 wenn alles abgerechnet,
+            # =3 wenn teilweise. Wir zaehlen ueber JOURNALPOS QUELLE=5.
+            cur.execute(
+                """UPDATE EKBESTELL_POS bp
+                      SET STADIUM = CASE
+                          WHEN (bp.MENGE - COALESCE((
+                              SELECT SUM(jp.MENGE) FROM JOURNALPOS jp
+                              JOIN JOURNAL j ON j.REC_ID=jp.JOURNAL_ID
+                              WHERE jp.QUELLE_SRC=bp.REC_ID AND j.QUELLE=5
+                          ), 0)) <= 0.0001 THEN 9
+                          WHEN COALESCE((
+                              SELECT SUM(jp.MENGE) FROM JOURNALPOS jp
+                              JOIN JOURNAL j ON j.REC_ID=jp.JOURNAL_ID
+                              WHERE jp.QUELLE_SRC=bp.REC_ID AND j.QUELLE=5
+                          ), 0) > 0 THEN 3
+                          ELSE bp.STADIUM
+                      END
+                    WHERE bp.EKBESTELL_ID=%s
+                      AND bp.STADIUM IN (2,3,93,95)""",
+                (bid,)
+            )
+            cur.execute(
+                """UPDATE EKBESTELL b
+                      SET STADIUM = CASE
+                          WHEN (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                 WHERE p.EKBESTELL_ID=b.REC_ID
+                                   AND p.STADIUM NOT IN (9,127)) = 0 THEN 9
+                          WHEN (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                 WHERE p.EKBESTELL_ID=b.REC_ID
+                                   AND p.STADIUM IN (9,3)) > 0 THEN 3
+                          ELSE b.STADIUM
+                      END
+                    WHERE b.REC_ID=%s""",
+                (bid,)
+            )
+
+        # 8m. EKEINGANG.STADIUM=9 fuer voll berechnete WE
+        cur.execute(
+            "SELECT DISTINCT QUELLE_WE FROM JOURNALPOS "
+            "WHERE JOURNAL_ID=%s AND QUELLE_WE>0 AND EKEINGANG='Y'",
+            (rec_id,)
+        )
+        we_pos_ids = [int(r['QUELLE_WE']) for r in cur.fetchall()
+                       if int(r.get('QUELLE_WE') or 0) > 0]
+        if we_pos_ids:
+            placeholders = ','.join(['%s'] * len(we_pos_ids))
+            cur.execute(
+                f"SELECT DISTINCT EKEINGANG_ID FROM EKEINGANG_POS "
+                f"WHERE REC_ID IN ({placeholders})",
+                we_pos_ids
+            )
+            we_ids = [int(r['EKEINGANG_ID']) for r in cur.fetchall()]
+            for we_id in we_ids:
+                cur.execute(
+                    "UPDATE EKEINGANG SET STADIUM=9 "
+                    "WHERE REC_ID=%s AND NOT EXISTS ("
+                    "  SELECT 1 FROM EKEINGANG_POS "
+                    "  WHERE EKEINGANG_ID=%s AND BERECHNET='N'"
+                    ")",
+                    (we_id, we_id)
+                )
+
+    return {'ok': True, 'rec_id': rec_id, 'vrenum': belegnum,
+            'nummern_log_id': nl_id}

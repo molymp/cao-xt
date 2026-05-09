@@ -277,13 +277,51 @@
     <p class="ed-rdo">
         Solange der Beleg „in Bearbeitung" ist (QUELLE=15, STADIUM=0),
         kann er noch ohne Spuren in der Buchhaltung gelöscht werden.
-        „Buchen" folgt in Phase C.3 (mit Preisprüfung + VK-Kontrolle).
+        Beim Buchen werden EK-Preisabweichungen geprüft und können
+        in den Lieferantenpreis (PREIS_TYP=5) übernommen werden.
     </p>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn-primary" onclick="edBuchenVorschau()">✓ Beleg buchen …</button>
         <button type="button" class="btn-danger" onclick="edStorno()">⛔ Einkauf verwerfen</button>
     </div>
 </div>
 {% endif %}
+
+{# ── Modal: Buchen-Vorschau (Preisabweichungen, Warnungen) ──────── #}
+<div class="ed-modal-overlay" id="ed-buchen-overlay" style="display:none;"
+     onclick="if(event.target===this)edBuchenSchliessen()">
+  <div class="ed-modal">
+    <div class="ed-modal-kopf">
+      <h2>Beleg buchen — Preisprüfung</h2>
+      <button class="ed-modal-close" onclick="edBuchenSchliessen()">✕</button>
+    </div>
+    <div class="ed-modal-info" id="ed-buchen-info">…</div>
+    <div id="ed-buchen-warn" style="display:none;
+         background:rgba(220,140,40,0.18); color:#a05010;
+         padding:10px 14px; border-radius:var(--radius-klein);
+         margin-bottom:12px; font-size:0.92rem;"></div>
+    <div class="ed-modal-tabelle-wrap" id="ed-buchen-tab-wrap">
+      <table class="ed-modal-tabelle" id="ed-buchen-tab">
+        <thead>
+          <tr>
+            <th>Art-Nr.</th>
+            <th>Bezeichnung</th>
+            <th class="zahl-rechts">Stamm-EK €</th>
+            <th class="zahl-rechts">neuer EK €</th>
+            <th class="zahl-rechts">Δ %</th>
+            <th>Übernahme</th>
+          </tr>
+        </thead>
+        <tbody id="ed-buchen-tbody"></tbody>
+      </table>
+    </div>
+    <div class="ed-modal-aktionen">
+      <button class="btn-aktion" onclick="edBuchenSchliessen()">Abbrechen</button>
+      <button class="btn-primary" id="ed-buchen-ok"
+              onclick="edBuchenAusfuehren()">Buchen ✓</button>
+    </div>
+  </div>
+</div>
 
 {# ── Modal für „Aus Wareneingang" / „Aus Bestellung" ──────────── #}
 <div class="ed-modal-overlay" id="ed-quelle-overlay" style="display:none;"
@@ -615,6 +653,109 @@ async function edScan() {
                            { artikel_id: treffer.artikel_id, menge: 1 });
     cxLadenAusblenden();
     if (!r.ok) { alert('Fehler: ' + (r.fehler || 'unbekannt')); return; }
+    location.reload();
+}
+
+// ── Buchen: Vorschau + Ausfuehren ─────────────────────────────────
+async function edBuchenVorschau() {
+    cxLadenZeigen('Beleg wird geprüft …');
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/buchen-vorschau`);
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return;
+    }
+    cxLadenAusblenden();
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    _edBuchenZeigen(res);
+}
+
+function _edBuchenZeigen(vor) {
+    const info = document.getElementById('ed-buchen-info');
+    const warn = document.getElementById('ed-buchen-warn');
+    const tbody = document.getElementById('ed-buchen-tbody');
+    const tabWrap = document.getElementById('ed-buchen-tab-wrap');
+    const okBtn = document.getElementById('ed-buchen-ok');
+
+    info.innerHTML = `Nächste Belegnummer: <strong>${_esc(vor.naechste_belegnum)}</strong>. ` +
+        `Beim Buchen wird die Belegnummer aus REGISTRY 'EK-RECH' gezogen und der ` +
+        `Beleg in den Status „offen/unbezahlt" überführt.`;
+
+    if (vor.warnungen && vor.warnungen.length) {
+        warn.style.display = 'block';
+        warn.innerHTML = '⚠️ ' + vor.warnungen.map(w => _esc(w.text)).join(' · ');
+    } else {
+        warn.style.display = 'none';
+    }
+
+    if (!vor.preisabweichungen || !vor.preisabweichungen.length) {
+        tabWrap.style.display = 'none';
+        tbody.innerHTML = '';
+    } else {
+        tabWrap.style.display = '';
+        tbody.innerHTML = vor.preisabweichungen.map(a => {
+            const altTxt = (a.alt_ek == null) ? '<em>(neu)</em>' : _eur(a.alt_ek, 4);
+            const diffTxt = (a.diff_proz == null) ? '–'
+                : (a.diff_proz > 0 ? '+' : '') + a.diff_proz.toFixed(1).replace('.', ',') + ' %';
+            const diffColor = (a.diff_proz == null) ? '#888'
+                : (a.diff_proz >= 0 ? '#a02810' : '#1a4010');
+            return `
+                <tr data-pos-id="${a.pos_id}">
+                  <td><code>${_esc(a.artnum || '–')}</code></td>
+                  <td>${_esc((a.bezeichnung || '–').slice(0, 50))}</td>
+                  <td class="zahl-rechts">${altTxt}</td>
+                  <td class="zahl-rechts"><strong>${_eur(a.neu_ek, 4)}</strong></td>
+                  <td class="zahl-rechts" style="color:${diffColor};">${diffTxt}</td>
+                  <td>
+                    <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="radio" name="upd-${a.pos_id}" value="uebernehmen" checked>
+                      übernehmen
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; margin-left:14px; cursor:pointer;">
+                      <input type="radio" name="upd-${a.pos_id}" value="behalten">
+                      behalten
+                    </label>
+                  </td>
+                </tr>`;
+        }).join('');
+    }
+
+    okBtn.disabled = !vor.kann_buchen;
+    okBtn.style.opacity = vor.kann_buchen ? '1' : '0.5';
+    okBtn.style.cursor = vor.kann_buchen ? 'pointer' : 'not-allowed';
+    okBtn.textContent = vor.kann_buchen
+        ? `Buchen als ${vor.naechste_belegnum} ✓`
+        : 'Buchen nicht möglich';
+
+    document.getElementById('ed-buchen-overlay').style.display = 'flex';
+}
+
+function edBuchenSchliessen() {
+    document.getElementById('ed-buchen-overlay').style.display = 'none';
+}
+
+async function edBuchenAusfuehren() {
+    // Per Pos die radio-Auswahl einsammeln
+    const preis = {};
+    document.querySelectorAll('#ed-buchen-tbody tr').forEach(tr => {
+        const pid = tr.dataset.posId;
+        const sel = tr.querySelector(`input[name="upd-${pid}"]:checked`);
+        if (sel) preis[pid] = sel.value;
+    });
+    cxLadenZeigen('Buchung läuft …');
+    const res = await _post(`${ED_API}/buchen`, {preis_uebernahmen: preis});
+    cxLadenAusblenden();
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    alert(`Beleg gebucht als ${res.vrenum}.`);
     location.reload();
 }
 

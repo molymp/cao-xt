@@ -663,6 +663,40 @@ def api_ek_pos_entfernen(rec_id: int, pos_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+@bp.get('/einkauf/<int:rec_id>/api/buchen-vorschau')
+def api_ek_buchen_vorschau(rec_id: int) -> Any:
+    """Read-only-Pruefung: Preisabweichungen + Warnungen vor dem Buchen."""
+    _login_check()
+    try:
+        result = ek.buchen_vorschau(rec_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.post('/einkauf/<int:rec_id>/api/buchen')
+def api_ek_buchen(rec_id: int) -> Any:
+    """Verbucht den Einkauf endgueltig.
+
+    Body: ``{"preis_uebernahmen": {"<pos_id>": "uebernehmen"|"behalten"}}``
+    """
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    preis_uebernahmen = body.get('preis_uebernahmen') or {}
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_buchen(
+            rec_id,
+            ma_id=ma_id,
+            ma_name=ma_name,
+            preis_uebernahmen=preis_uebernahmen,
+        )
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
 # ── Common-Picker-Endpunkte (Artikel + Adresse) ──────────────────────
 
 
