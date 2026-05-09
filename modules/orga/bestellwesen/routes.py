@@ -388,6 +388,15 @@ def api_picker_wgs() -> Any:
     return jsonify({'ok': True, 'zeilen': warengruppen_baum()})
 
 
+def _arg_lief_addr() -> int | None:
+    """Holt die optionale lief_addr_id aus den Query-Parametern."""
+    raw = request.args.get('lief_addr_id', '').strip()
+    try:
+        return int(raw) if raw else None
+    except ValueError:
+        return None
+
+
 @bp.get('/api/picker/artikel')
 def api_picker_artikel() -> Any:
     """Artikel einer Warengruppe (rekursiv) für den Common-Picker."""
@@ -399,7 +408,9 @@ def api_picker_artikel() -> Any:
     except ValueError:
         wg = 0
     return jsonify({'ok': True,
-                    'zeilen': artikel_in_warengruppe(wg if wg > 0 else None)})
+                    'zeilen': artikel_in_warengruppe(
+                        wg if wg > 0 else None,
+                        lief_addr_id=_arg_lief_addr())})
 
 
 @bp.get('/api/picker/artikel/suche')
@@ -408,7 +419,8 @@ def api_picker_artikel_suche() -> Any:
     _login_check()
     from common.picker_data import artikel_volltext_suche
     q = request.args.get('q', '').strip()
-    return jsonify({'ok': True, 'zeilen': artikel_volltext_suche(q)})
+    return jsonify({'ok': True, 'zeilen': artikel_volltext_suche(
+        q, lief_addr_id=_arg_lief_addr())})
 
 
 @bp.get('/api/picker/adressgruppen')
