@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Einkauf {{ kopf.VRENUM }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.ed-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+.ed-kopf h1 { font-size:1.6rem; }
+.ed-kopf a.zurueck { color:var(--text-dim,#5a7a3a); text-decoration:none;
+  font-size:0.9rem; font-weight:700; }
+.ed-kopf a.zurueck:hover { text-decoration:underline; }
+
+.ed-card { background:white; padding:16px 20px; border-radius:var(--radius);
+  box-shadow:var(--schatten); margin-bottom:18px; }
+.ed-card h2 { font-size:1.1rem; color:var(--gruen-dunkel); margin-bottom:10px; }
+
+.ed-grid { display:grid; gap:14px;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+.ed-grid label { display:block; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--text-dim,#5a7a3a); margin-bottom:3px; }
+.ed-grid .wert { font-size:1.0rem; font-weight:600; color:var(--text-hell); }
+
+.ed-tab { width:100%; border-collapse:collapse; }
+.ed-tab th { background:var(--gruen-dunkel); color:var(--creme);
+  padding:8px 10px; text-align:left; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; }
+.ed-tab td { padding:8px 10px; border-bottom:1px solid var(--creme-dunkel);
+  font-size:0.92rem; vertical-align:middle; }
+.zahl-rechts { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+.ek-pille { display:inline-block; padding:2px 10px; border-radius:999px;
+  font-size:0.78rem; font-weight:700; }
+.ek-pille-0   { background:rgba(200,120,10,0.18); color:#a06000; }
+.ek-pille-2   { background:rgba(60,120,200,0.18); color:#2a4a8a; }
+.ek-pille-9   { background:rgba(46,122,46,0.18);  color:#1a4010; }
+.ek-pille-127 { background:rgba(184,48,48,0.15);  color:#8a2020;
+  text-decoration:line-through; }
+
+.btn-primary { background:var(--gruen-dunkel); color:white; border:none;
+  padding:10px 18px; border-radius:var(--radius-klein);
+  font-family:'Nunito',sans-serif; font-size:0.95rem; font-weight:700;
+  cursor:pointer; }
+.btn-primary:hover { background:var(--akzent-hell,#2e6e1a); }
+.btn-danger { background:var(--rot,#b83030); color:white; border:none;
+  padding:10px 18px; border-radius:var(--radius-klein);
+  font-family:'Nunito',sans-serif; font-size:0.9rem; font-weight:700;
+  cursor:pointer; }
+.btn-danger:hover { background:#8a2020; }
+
+.ed-rdo { color:var(--text-dim,#5a7a3a); font-size:0.92rem; }
+.ed-todo { background:#fff3d6; border:1px dashed #d4a850; padding:14px 16px;
+  border-radius:var(--radius-klein); color:#7a5a10; font-style:italic;
+  margin-top:10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ed-kopf">
+    <h1>🧾 Einkauf {{ kopf.VRENUM or ('#' ~ kopf.REC_ID) }}</h1>
+    <a href="{{ url_for('orga_bestellwesen.einkauf_uebersicht') }}" class="zurueck">← zurück zur Übersicht</a>
+</div>
+
+<div class="ed-card">
+    <h2>Kopf-Daten</h2>
+    <div class="ed-grid">
+        <div>
+            <label>Lieferant</label>
+            <span class="wert">{{ kopf.lief_name }}</span>
+        </div>
+        <div>
+            <label>Beleg-Nr.</label>
+            <span class="wert">{{ kopf.VRENUM or '–' }}</span>
+        </div>
+        <div>
+            <label>Datum</label>
+            <span class="wert">{{ kopf.RDATUM.strftime('%d.%m.%Y') if kopf.RDATUM else '–' }}</span>
+        </div>
+        <div>
+            <label>Status</label>
+            <span class="wert"><span class="ek-pille ek-pille-{{ kopf.STADIUM or 0 }}">{{ kopf.stadium_label }}</span></span>
+        </div>
+        <div>
+            <label>Netto €</label>
+            <span class="wert zahl-rechts">{{ '{:,.2f}'.format(kopf.NSUMME or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+        </div>
+        <div>
+            <label>Brutto €</label>
+            <span class="wert zahl-rechts">{{ '{:,.2f}'.format(kopf.BSUMME or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="ed-card">
+    <h2>Positionen ({{ positionen|length }})</h2>
+    {% if positionen %}
+    <table class="ed-tab">
+        <thead>
+            <tr>
+                <th>Pos</th>
+                <th>Art-Nr.</th>
+                <th>Bezeichnung</th>
+                <th class="zahl-rechts">Menge</th>
+                <th>ME</th>
+                <th class="zahl-rechts">EK €</th>
+                <th class="zahl-rechts">Gesamt €</th>
+                <th>aus</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for p in positionen %}
+        <tr>
+            <td>{{ p.POSITION }}</td>
+            <td><code>{{ p.ARTNUM or '–' }}</code></td>
+            <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
+            <td class="zahl-rechts">{{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}</td>
+            <td>{{ p.ME_EINHEIT or '–' }}</td>
+            <td class="zahl-rechts">{{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+            <td class="zahl-rechts">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+            <td>
+                {% if p.EKEINGANG == 'Y' and p.QUELLE_WE and p.QUELLE_WE > 0 %}
+                  <span style="color:#5a7a3a;" title="aus Wareneingang">📦 WE</span>
+                {% elif p.QUELLE_SRC and p.QUELLE_SRC > 0 %}
+                  <span style="color:#5a7a3a;" title="direkt aus Bestellung">📋 Best.</span>
+                {% else %}
+                  <span style="color:#aaa;" title="frei (Pfand, Lieferkosten etc.)">–</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="ed-rdo">Noch keine Positionen.</p>
+    {% endif %}
+
+    {% if kopf.ist_offen %}
+    <div class="ed-todo">
+        ⚒️ <strong>Phase C.2/C.3 in Arbeit</strong> — die Aktionen
+        „Lieferant zuordnen", „Pos aus Wareneingang", „Pos aus Bestellung",
+        „freie Pos", Barcode-Scan, Artikel-Picker und „Buchen mit
+        Preisprüfung" folgen in den nächsten Iterationen.
+        Aktuell ist nur Anlegen + Stornieren implementiert.
+    </div>
+    {% endif %}
+</div>
+
+{% if kopf.ist_offen %}
+<div class="ed-card">
+    <h2>Aktionen</h2>
+    <p class="ed-rdo">
+        Solange der Beleg „in Bearbeitung" ist (QUELLE=15, STADIUM=0),
+        kann er noch ohne Spuren in der Buchhaltung gelöscht werden.
+    </p>
+    <button type="button" class="btn-danger" onclick="edStorno()">
+        ⛔ Einkauf verwerfen
+    </button>
+</div>
+{% endif %}
+
+<script>
+const ED_REC_ID = {{ kopf.REC_ID }};
+
+async function edStorno() {
+    if (!confirm('Diesen Einkaufs-Beleg verwerfen? Wird komplett gelöscht (geht nur solange in Bearbeitung).')) return;
+    try {
+        const res = await fetch(`/orga/bestellwesen/einkauf/${ED_REC_ID}/api/storno`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            alert('Fehler: ' + (data.fehler || 'unbekannt'));
+            return;
+        }
+        window.location = '/orga/bestellwesen/einkauf/';
+    } catch (e) {
+        alert('Verbindungsfehler');
+    }
+}
+</script>
+{% endblock %}
