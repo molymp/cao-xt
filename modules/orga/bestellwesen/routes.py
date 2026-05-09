@@ -377,6 +377,67 @@ def api_we_pos_entfernen(rec_id: int, pos_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+# ── Common-Picker-Endpunkte (Artikel + Adresse) ──────────────────────
+
+
+@bp.get('/api/picker/wgs')
+def api_picker_wgs() -> Any:
+    """Warengruppen-Baum für den Common-Picker."""
+    _login_check()
+    from common.picker_data import warengruppen_baum
+    return jsonify({'ok': True, 'zeilen': warengruppen_baum()})
+
+
+@bp.get('/api/picker/artikel')
+def api_picker_artikel() -> Any:
+    """Artikel einer Warengruppe (rekursiv) für den Common-Picker."""
+    _login_check()
+    from common.picker_data import artikel_in_warengruppe
+    raw_wg = request.args.get('wg', '0').strip()
+    try:
+        wg = int(raw_wg)
+    except ValueError:
+        wg = 0
+    return jsonify({'ok': True,
+                    'zeilen': artikel_in_warengruppe(wg if wg > 0 else None)})
+
+
+@bp.get('/api/picker/artikel/suche')
+def api_picker_artikel_suche() -> Any:
+    """Volltextsuche Artikel."""
+    _login_check()
+    from common.picker_data import artikel_volltext_suche
+    q = request.args.get('q', '').strip()
+    return jsonify({'ok': True, 'zeilen': artikel_volltext_suche(q)})
+
+
+@bp.get('/api/picker/adressgruppen')
+def api_picker_adressgruppen() -> Any:
+    """Adressgruppen + virtuelle Slots (Lieferant/Kunde/Alle)."""
+    _login_check()
+    from common.picker_data import adressgruppen
+    return jsonify({'ok': True, 'zeilen': adressgruppen()})
+
+
+@bp.get('/api/picker/adressen')
+def api_picker_adressen() -> Any:
+    """Adressen einer Gruppe."""
+    _login_check()
+    from common.picker_data import adressen_in_gruppe
+    grp = request.args.get('grp', '__lief__').strip() or '__lief__'
+    return jsonify({'ok': True, 'zeilen': adressen_in_gruppe(grp)})
+
+
+@bp.get('/api/picker/adressen/suche')
+def api_picker_adressen_suche() -> Any:
+    """Volltextsuche Adressen (innerhalb einer Gruppe)."""
+    _login_check()
+    from common.picker_data import adressen_in_gruppe
+    q = request.args.get('q', '').strip()
+    grp = request.args.get('grp', '__lief__').strip() or '__lief__'
+    return jsonify({'ok': True, 'zeilen': adressen_in_gruppe(grp, suche=q)})
+
+
 @bp.get('/wareneingang/api/lieferant-suche')
 def api_we_lieferant_suche() -> Any:
     """Suche fuer Lieferanten-Picker (Wareneingang neu anlegen)."""

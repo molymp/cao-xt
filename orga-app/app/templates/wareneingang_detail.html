@@ -382,22 +382,8 @@
     </div>
 </div>
 
-<!-- Artikel-Picker Modal -->
-<div class="picker-overlay" id="wd-art-picker" style="display:none;"
-     onclick="if(event.target===this)wdArtikelPickerSchliessen()">
-    <div class="picker-modal">
-        <div class="picker-kopf">
-            <h2>Artikel zum Wareneingang hinzufügen</h2>
-            <button class="picker-close" onclick="wdArtikelPickerSchliessen()">✕</button>
-        </div>
-        <input type="text" class="picker-search" id="wd-art-search"
-               placeholder="Art-Nr., Name, Matchcode oder Barcode … (mind. 3 Zeichen)"
-               oninput="wdArtikelSuche(this.value)">
-        <div class="picker-liste" id="wd-art-liste">
-            <div class="picker-leer">Tippe einen Suchbegriff ein …</div>
-        </div>
-    </div>
-</div>
+{# Gemeinsamer Picker-Dialog (Artikel + Adresse) #}
+{% include '_picker.html' %}
 {% endif %}
 
 <div class="wd-card">
@@ -754,59 +740,28 @@ async function wdStorno() {
 }
 
 // ── Artikel-Picker (Wareneingang ohne Bestell-Bezug) ──────────────
+// Nutzt die gemeinsame cxPickerOpen()-API aus common/templates/_picker.html
 function wdArtikelPicker() {
-    document.getElementById('wd-art-picker').style.display = 'flex';
-    setTimeout(() => document.getElementById('wd-art-search').focus(), 50);
-}
-function wdArtikelPickerSchliessen() {
-    document.getElementById('wd-art-picker').style.display = 'none';
-    document.getElementById('wd-art-search').value = '';
-    document.getElementById('wd-art-liste').innerHTML =
-        '<div class="picker-leer">Tippe einen Suchbegriff ein …</div>';
-}
-let _wdArtSucheTimer = null;
-function wdArtikelSuche(q) {
-    clearTimeout(_wdArtSucheTimer);
-    _wdArtSucheTimer = setTimeout(async () => {
-        const liste = document.getElementById('wd-art-liste');
-        if ((q || '').trim().length < 3) {
-            liste.innerHTML = '<div class="picker-leer">Mindestens 3 Zeichen eingeben …</div>';
-            return;
-        }
-        liste.innerHTML = '<div class="picker-leer">⏳ Suche …</div>';
-        try {
-            const r = await fetch('/orga/bestellwesen/wareneingang/api/artikel-suche?q='
-                                  + encodeURIComponent(q));
-            const data = await r.json();
-            if (!data.ok || !data.zeilen || !data.zeilen.length) {
-                liste.innerHTML = '<div class="picker-leer">Keine Treffer.</div>';
+    cxPickerOpen({
+        modus: 'artikel',
+        titel: 'Artikel zum Wareneingang hinzufügen',
+        urls: {
+            gruppen: '/orga/api/picker/wgs',
+            liste:   '/orga/api/picker/artikel?wg={WG}',
+            suche:   '/orga/api/picker/artikel/suche?q={Q}',
+        },
+        onWaehlen: async (a) => {
+            const res = await _post(
+                `${WD_DETAIL_URL}/api/positionen/artikel-anhaengen`,
+                { artikel_id: a.artikel_id, menge: 0 }
+            );
+            if (!res.ok) {
+                alert('Fehler: ' + (res.fehler || 'unbekannt'));
                 return;
             }
-            liste.innerHTML = data.zeilen.map(a => `
-                <div class="picker-zeile" onclick="wdArtikelWaehlen(${a.artikel_id})">
-                    <span class="picker-zeile-nr">${a.artnum || '–'}</span>
-                    <span class="picker-zeile-name">${_wdEsc(a.kurzname || a.matchcode || '–')}</span>
-                    <span class="picker-zeile-sub">${a.barcode ? '🔢 ' + a.barcode : ''}${a.me_einheit ? ' · ' + _wdEsc(a.me_einheit) : ''}</span>
-                </div>`).join('');
-        } catch (e) {
-            liste.innerHTML = '<div class="picker-leer">Fehler bei Suche.</div>';
+            location.reload();
         }
-    }, 250);
-}
-function _wdEsc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-async function wdArtikelWaehlen(artikelId) {
-    const res = await _post(
-        `${WD_DETAIL_URL}/api/positionen/artikel-anhaengen`,
-        { artikel_id: artikelId, menge: 0 }
-    );
-    if (!res.ok) {
-        alert('Fehler: ' + (res.fehler || 'unbekannt'));
-        return;
-    }
-    location.reload();
+    });
 }
 
 // ── Pos aus Wareneingang entfernen (geht zurueck in offene Bestellungen) ──

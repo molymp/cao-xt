@@ -140,22 +140,8 @@
     </div>
 </div>
 
-<!-- Lieferanten-Picker -->
-<div class="picker-overlay" id="we-lief-picker" style="display:none;"
-     onclick="if(event.target===this)weNeuSchliessen()">
-    <div class="picker-modal">
-        <div class="picker-kopf">
-            <h2>Lieferant für neuen Wareneingang wählen</h2>
-            <button class="picker-close" onclick="weNeuSchliessen()">✕</button>
-        </div>
-        <input type="text" class="picker-search" id="we-lief-search"
-               placeholder="Name, Kunden-Nr. oder Ort eintippen … (mind. 3 Zeichen)"
-               oninput="weLiefSuche(this.value)">
-        <div class="picker-liste" id="we-lief-liste">
-            <div class="picker-leer">Tippe einen Suchbegriff ein …</div>
-        </div>
-    </div>
-</div>
+{# Gemeinsamer Picker (Adresse) — wird via cxPickerOpen() geoeffnet #}
+{% include '_picker.html' %}
 
 <form method="get" class="we-filter">
     <label>
@@ -178,66 +164,32 @@
 </form>
 
 <script>
+// Wareneingang neu anlegen via Lieferanten-Picker (gemeinsames Modul)
 function weNeuOeffnen() {
-    document.getElementById('we-lief-picker').style.display = 'flex';
-    setTimeout(() => document.getElementById('we-lief-search').focus(), 50);
-}
-function weNeuSchliessen() {
-    document.getElementById('we-lief-picker').style.display = 'none';
-    document.getElementById('we-lief-search').value = '';
-    document.getElementById('we-lief-liste').innerHTML =
-        '<div class="picker-leer">Tippe einen Suchbegriff ein …</div>';
-}
-let _weLiefSucheTimer = null;
-function weLiefSuche(q) {
-    clearTimeout(_weLiefSucheTimer);
-    _weLiefSucheTimer = setTimeout(async () => {
-        const liste = document.getElementById('we-lief-liste');
-        if ((q || '').trim().length < 3) {
-            liste.innerHTML = '<div class="picker-leer">Mindestens 3 Zeichen eingeben …</div>';
-            return;
-        }
-        liste.innerHTML = '<div class="picker-leer">⏳ Suche …</div>';
-        try {
-            const res = await fetch('/orga/bestellwesen/wareneingang/api/lieferant-suche?q='
-                                    + encodeURIComponent(q));
-            const data = await res.json();
-            if (!data.ok || !data.zeilen || !data.zeilen.length) {
-                liste.innerHTML = '<div class="picker-leer">Keine Treffer.</div>';
-                return;
+    cxPickerOpen({
+        modus: 'adresse',
+        titel: 'Lieferant für neuen Wareneingang wählen',
+        urls: {
+            gruppen: '/orga/api/picker/adressgruppen',
+            liste:   '/orga/api/picker/adressen?grp={GRP}',
+            suche:   '/orga/api/picker/adressen/suche?q={Q}&grp={GRP}',
+        },
+        onWaehlen: async (a) => {
+            if (!confirm(`Neuen Wareneingang für "${a.name}" anlegen?`)) return;
+            try {
+                const res = await fetch('/orga/bestellwesen/wareneingang/api/neu', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ addr_id: a.addr_id })
+                });
+                const data = await res.json();
+                if (!data.ok) { alert('Fehler: ' + (data.fehler || 'unbekannt')); return; }
+                window.location = '/orga/bestellwesen/wareneingang/' + data.rec_id;
+            } catch (e) {
+                alert('Verbindungsfehler');
             }
-            liste.innerHTML = data.zeilen.map(r => `
-                <div class="picker-zeile" onclick="weNeuAnlegen(${r.addr_id}, '${(r.name || '').replace(/'/g, '&apos;')}')">
-                    <span class="picker-zeile-nr">${r.kunnum || '–'}</span>
-                    <span class="picker-zeile-name">${escapeHtml(r.name)}${r.name2 ? ' · ' + escapeHtml(r.name2) : ''}</span>
-                    <span class="picker-zeile-sub">${escapeHtml((r.plz || '') + ' ' + (r.ort || ''))}</span>
-                </div>`).join('');
-        } catch (e) {
-            liste.innerHTML = '<div class="picker-leer">Fehler bei Suche.</div>';
         }
-    }, 250);
-}
-function escapeHtml(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-async function weNeuAnlegen(addrId, name) {
-    if (!confirm(`Neuen Wareneingang für "${name}" anlegen?`)) return;
-    try {
-        const res = await fetch('/orga/bestellwesen/wareneingang/api/neu', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ addr_id: addrId })
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            alert('Fehler: ' + (data.fehler || 'unbekannt'));
-            return;
-        }
-        window.location = '/orga/bestellwesen/wareneingang/' + data.rec_id;
-    } catch (e) {
-        alert('Verbindungsfehler');
-    }
+    });
 }
 </script>
 
