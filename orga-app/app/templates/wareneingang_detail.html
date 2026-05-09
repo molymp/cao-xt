@@ -433,10 +433,12 @@
                 {% if we_gesperrt %}
                     {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
                 {% else %}
+                    {# type="text" + inputmode="decimal": kein Spinner, kein
+                       step-Increment-Click -- nur Tastatur / Touch-Numpad. #}
                     <div class="wd-edit-wrap">
-                        <input type="number" class="wd-menge-input"
+                        <input type="text" inputmode="decimal"
+                               class="wd-menge-input"
                                id="wd-menge-{{ p.REC_ID }}"
-                               step="0.001" min="0"
                                value="{{ '{:g}'.format(p.MENGE or 0) }}"
                                data-pos-id="{{ p.REC_ID }}"
                                onchange="wdPosMenge(this)">
