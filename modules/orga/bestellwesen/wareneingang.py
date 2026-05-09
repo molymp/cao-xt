@@ -460,7 +460,12 @@ def _ist_bearbeitbar(cur, rec_id: int) -> dict[str, Any]:
 
 
 def pos_menge_setzen(eingang_id: int, pos_id: int, menge: float) -> dict[str, Any]:
-    """Setzt EKEINGANG_POS.MENGE und aktualisiert GPREIS = EPREIS × MENGE."""
+    """Setzt EKEINGANG_POS.MENGE.
+
+    EKEINGANG_POS hat in CAO keine Preisspalten (kein EPREIS / GPREIS) —
+    Preise gehoeren zur EK-Rechnung (separates JOURNAL mit QUELLE=5).
+    Hier nur die Menge persistieren.
+    """
     eingang_id = int(eingang_id)
     pos_id = int(pos_id)
     if menge < 0:
@@ -468,44 +473,33 @@ def pos_menge_setzen(eingang_id: int, pos_id: int, menge: float) -> dict[str, An
     with get_db() as cur:
         _ist_bearbeitbar(cur, eingang_id)
         cur.execute(
-            "SELECT EPREIS FROM EKEINGANG_POS "
+            "SELECT REC_ID FROM EKEINGANG_POS "
             "WHERE REC_ID = %s AND EKEINGANG_ID = %s",
             (pos_id, eingang_id),
         )
-        p = cur.fetchone()
-        if not p:
+        if not cur.fetchone():
             raise LookupError(f'Position {pos_id} nicht gefunden')
-        gpreis = round(float(p['EPREIS'] or 0) * float(menge), 2)
         cur.execute(
-            "UPDATE EKEINGANG_POS SET MENGE = %s, GPREIS = %s WHERE REC_ID = %s",
-            (menge, gpreis, pos_id),
+            "UPDATE EKEINGANG_POS SET MENGE = %s WHERE REC_ID = %s",
+            (menge, pos_id),
         )
-    return {'menge': float(menge), 'gpreis': gpreis}
+    return {'menge': float(menge)}
 
 
 def pos_epreis_setzen(eingang_id: int, pos_id: int,
                       epreis: float) -> dict[str, Any]:
-    """Setzt EKEINGANG_POS.EPREIS (Liefer-EK pro Stueck) und GPREIS."""
-    eingang_id = int(eingang_id)
-    pos_id = int(pos_id)
-    if epreis < 0:
-        raise ValueError('EK muss >= 0 sein')
-    with get_db() as cur:
-        _ist_bearbeitbar(cur, eingang_id)
-        cur.execute(
-            "SELECT MENGE FROM EKEINGANG_POS "
-            "WHERE REC_ID = %s AND EKEINGANG_ID = %s",
-            (pos_id, eingang_id),
-        )
-        p = cur.fetchone()
-        if not p:
-            raise LookupError(f'Position {pos_id} nicht gefunden')
-        gpreis = round(float(epreis) * float(p['MENGE'] or 0), 2)
-        cur.execute(
-            "UPDATE EKEINGANG_POS SET EPREIS = %s, GPREIS = %s WHERE REC_ID = %s",
-            (epreis, gpreis, pos_id),
-        )
-    return {'epreis': float(epreis), 'gpreis': gpreis}
+    """No-op-Stub: EKEINGANG_POS hat keine Preisspalte.
+
+    Frueher hat dieser Endpunkt EPREIS auf der Wareneingangs-Pos
+    persistiert; das gibt es in CAO aber nicht — Preise leben
+    ausschliesslich auf der EK-Rechnung. Aus UX-Sicht ist die Funktion
+    hier obsolet, der Endpunkt bleibt nur, damit alte Aufrufe nicht
+    in 500-Errors enden.
+    """
+    raise NotImplementedError(
+        'EKEINGANG_POS hat keine Preisspalte — Preise werden ueber die '
+        'EK-Rechnung gepflegt, nicht im Wareneingang.'
+    )
 
 
 # ── Barcode-Scan ──────────────────────────────────────────────────────
