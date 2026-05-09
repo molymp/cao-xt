@@ -808,16 +808,29 @@ def arbeitszeitkonten():
         else:
             sel_ids = [i for i in cookie_ids if i in alle_ids]
 
-    # Daten pro MA aggregieren (nur fuer ausgewaehlte MAs).
+    # Daten pro MA aggregieren (nur fuer ausgewaehlte MAs) — parallel.
+    # Pro MA fallen ~7 DB-Roundtrips an (arbeitszeitkonto_jahr + urlaub_saldo +
+    # ma_in_zeiterfassung); sequentiell brauchten 15 MAs x 1.2s = ~18s ueber
+    # MyFRITZ-NAT (~170ms/Roundtrip). Mit 6 parallelen Workern faellt das auf
+    # ~3s. Limit 6, damit der DB-Pool (15 Slots) auch fuer waitress-Threads (8)
+    # und gleichzeitige Sessions Reserve hat.
+    from concurrent.futures import ThreadPoolExecutor
     mas_selected = [ma for ma in mitarbeiter if int(ma['PERS_ID']) in sel_ids]
-    zeilen = []
-    for ma in mas_selected:
+
+    def _ma_daten(ma):
         pid = int(ma['PERS_ID'])
         daten = m.arbeitszeitkonto_jahr(pid, jahr, modus)
         saldo = m.urlaub_saldo(pid, jahr)
         in_ze = m.ma_in_zeiterfassung(pid, date(jahr, 1, 1))
-        zeilen.append({'ma': ma, 'd': daten, 'saldo': saldo,
-                       'in_zeiterfassung': in_ze})
+        return {'ma': ma, 'd': daten, 'saldo': saldo,
+                'in_zeiterfassung': in_ze}
+
+    zeilen: list[dict] = []
+    if mas_selected:
+        with ThreadPoolExecutor(
+                max_workers=min(6, len(mas_selected)),
+                thread_name_prefix='azk') as ex:
+            zeilen = list(ex.map(_ma_daten, mas_selected))
 
     # Monatsauswahl fuer Stundenzettel-Batch: Default = letzter abgeschlossener
     # Monat (= Monat VOR heute; im Januar → Dezember des Vorjahres).
@@ -1009,17 +1022,40 @@ def stundenzettel_batch():
                                 jahr=jahr))
 
     stichtag = date(jahr, monat, 1)
+    # Per-MA Lookup + Datenaufbereitung parallel — pro MA fallen mehrere
+    # DB-Queries an (ma_by_id + ma_in_zeiterfassung + stundenzettel_monat_daten).
+    # Bei 15 MAs sequentiell schnell mal 5+ Sekunden.
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _ma_daten(pid: int):
+        """Liefert (daten, uebersprungen_label, error)."""
+        try:
+            ma = m.ma_by_id(pid)
+            if not ma:
+                return (None, None, None)
+            if not m.ma_in_zeiterfassung(pid, stichtag):
+                return (None, f"{ma.get('NAME','')}, {ma.get('VNAME','')}", None)
+            return (m.stundenzettel_monat_daten(pid, jahr, monat), None, None)
+        except Exception as e:
+            return (None, None, f'{pid}: {e}')
+
     daten_liste: list[dict] = []
     uebersprungen: list[str] = []
-    for pid in pers_ids:
-        ma = m.ma_by_id(pid)
-        if not ma:
-            continue
-        if not m.ma_in_zeiterfassung(pid, stichtag):
-            uebersprungen.append(
-                f"{ma.get('NAME','')}, {ma.get('VNAME','')}")
-            continue
-        daten_liste.append(m.stundenzettel_monat_daten(pid, jahr, monat))
+    if pers_ids:
+        with ThreadPoolExecutor(
+                max_workers=min(6, len(pers_ids)),
+                thread_name_prefix='sz') as ex:
+            for d, sk, err in ex.map(_ma_daten, pers_ids):
+                if err:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        'Stundenzettel-Batch: %s', err)
+                    continue
+                if sk:
+                    uebersprungen.append(sk)
+                    continue
+                if d:
+                    daten_liste.append(d)
 
     if not daten_liste:
         flash('Keiner der ausgewaehlten Mitarbeiter nimmt an der '
@@ -1322,26 +1358,41 @@ def schichtplan():
 
     # Wochen-KPI: Pause wird tagesweise aus der Tagesarbeitszeit ermittelt.
     # tag_summary[(pers_id, datum)] → {brutto_min, pause_min, netto_min}
-    kpi = {}
-    tag_summary = {}
-    for ma in mitarbeiter:
+    # tagesarbeitszeit_min() ist Pure-Python; az_soll_woche_min() macht
+    # 1 DB-Roundtrip pro MA (~170ms ueber MyFRITZ-NAT). Bei 15 MAs = ~2.5s.
+    # → Per-MA Aggregat parallel rechnen (ThreadPoolExecutor).
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _ma_kpi(ma):
+        pid = ma['PERS_ID']
         ist_netto = 0
         ist_brutto = 0
         pause_ges = 0
+        ts: dict = {}
         for tag in tage:
-            zs = plan.get((ma['PERS_ID'], tag), [])
+            zs = plan.get((pid, tag), [])
             agg = m.tagesarbeitszeit_min(zs, pause_reg)
-            tag_summary[(ma['PERS_ID'], tag)] = agg
+            ts[(pid, tag)] = agg
             ist_brutto += agg['brutto_min']
             pause_ges  += agg['pause_min']
             ist_netto  += agg['netto_min']
-        soll = m.az_soll_woche_min(ma['PERS_ID'], montag)
-        kpi[ma['PERS_ID']] = {
+        soll = m.az_soll_woche_min(pid, montag)
+        return pid, ts, {
             'ist_min':    ist_netto,
             'brutto_min': ist_brutto,
             'pause_min':  pause_ges,
             'soll_min':   soll,
         }
+
+    kpi: dict = {}
+    tag_summary: dict = {}
+    if mitarbeiter:
+        with ThreadPoolExecutor(
+                max_workers=min(6, len(mitarbeiter)),
+                thread_name_prefix='schp') as ex:
+            for pid, ts, k in ex.map(_ma_kpi, mitarbeiter):
+                tag_summary.update(ts)
+                kpi[pid] = k
 
     jahr, kw = m._iso_jahr_kw(montag)
     status = m.woche_status(jahr, kw)

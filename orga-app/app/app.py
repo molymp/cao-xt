@@ -364,31 +364,55 @@ def logout():
 @app.route('/')
 @_login_required
 def dashboard():
-    monatsumsatz   = _monatsumsatz_6_monate()
-    tageseinnahmen = _tageseinnahmen_heute()
-    offene_vorgaenge = _offene_vorgaenge()
-    # HACCP-Ampeln: Temperaturstatus + Sichtkontrolle.
-    # Bei Fehler (DB weg, HACCP-Tabellen fehlen) nicht das Dashboard sprengen.
-    try:
-        from modules.haccp import models as haccp_models
-        haccp = haccp_models.status_fuer_dashboard(datetime.now(timezone.utc).replace(tzinfo=None))
-    except Exception as e:
-        log.warning('HACCP-Status fuer Dashboard nicht ladbar: %s', e)
-        haccp = None
-    # Personal-Widget: Abwesenheiten heute + offene Urlaubsantraege.
-    try:
-        from modules.orga.personal import models as personal_models
-        personal = personal_models.status_fuer_dashboard(date.today())
-    except Exception as e:
-        log.warning('Personal-Status fuer Dashboard nicht ladbar: %s', e)
-        personal = None
+    # Dashboard-Widgets parallel laden — jedes Widget hat seine eigenen
+    # DB-Queries; sequentiell waeren das ueber MyFRITZ-NAT 5x ~170ms = ~850ms
+    # Overhead, parallel laeuft das Ganze in der Zeit des langsamsten Widgets.
+    # ThreadPoolExecutor ist sauber, weil jeder Thread eigene Pool-Connection
+    # holt und unabhaengig arbeitet.
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _haccp():
+        try:
+            from modules.haccp import models as haccp_models
+            return haccp_models.status_fuer_dashboard(
+                datetime.now(timezone.utc).replace(tzinfo=None))
+        except Exception as e:
+            log.warning('HACCP-Status fuer Dashboard nicht ladbar: %s', e)
+            return None
+
+    def _personal():
+        try:
+            from modules.orga.personal import models as personal_models
+            return personal_models.status_fuer_dashboard(date.today())
+        except Exception as e:
+            log.warning('Personal-Status fuer Dashboard nicht ladbar: %s', e)
+            return None
+
+    widgets = {
+        'monatsumsatz':     _monatsumsatz_6_monate,
+        'tageseinnahmen':   _tageseinnahmen_heute,
+        'offene_vorgaenge': _offene_vorgaenge,
+        'haccp':            _haccp,
+        'personal':         _personal,
+    }
+    werte: dict = {}
+    with ThreadPoolExecutor(max_workers=len(widgets),
+                            thread_name_prefix='dash') as ex:
+        futures = {name: ex.submit(fn) for name, fn in widgets.items()}
+        for name, fut in futures.items():
+            try:
+                werte[name] = fut.result()
+            except Exception as e:
+                log.warning('Dashboard-Widget %r fehlgeschlagen: %s', name, e)
+                werte[name] = None
+
     return render_template(
         'dashboard.html',
-        monatsumsatz=monatsumsatz,
-        tageseinnahmen=tageseinnahmen,
-        offene_vorgaenge=offene_vorgaenge,
-        haccp=haccp,
-        personal=personal,
+        monatsumsatz=werte['monatsumsatz'],
+        tageseinnahmen=werte['tageseinnahmen'],
+        offene_vorgaenge=werte['offene_vorgaenge'],
+        haccp=werte['haccp'],
+        personal=werte['personal'],
         heute=date.today().strftime('%d.%m.%Y'),
     )
 
