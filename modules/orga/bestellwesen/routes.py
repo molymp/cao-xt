@@ -496,6 +496,135 @@ def api_ek_storno(rec_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+# ── Einkauf Pos-Operationen (Phase C.2) ────────────────────────────
+
+
+@bp.get('/einkauf/<int:rec_id>/api/offene-we')
+def api_ek_offene_we(rec_id: int) -> Any:
+    _login_check()
+    try:
+        return jsonify({'ok': True, 'zeilen': ek.offene_we_des_lieferanten(rec_id)})
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+
+
+@bp.get('/einkauf/<int:rec_id>/api/offene-bestellpos')
+def api_ek_offene_bestellpos(rec_id: int) -> Any:
+    _login_check()
+    try:
+        return jsonify({'ok': True, 'zeilen': ek.offene_bestellpos_des_lieferanten(rec_id)})
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/aus-we')
+def api_ek_pos_aus_we(rec_id: int) -> Any:
+    """Body: {ekeingang_id}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        we_id = int(body.get('ekeingang_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'ekeingang_id fehlt/ungültig'}), 400
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = ek.pos_aus_we_anhaengen(rec_id, we_id, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/aus-bestellpos')
+def api_ek_pos_aus_bestellpos(rec_id: int) -> Any:
+    """Body: {bestellpos_id, menge?}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        bp_id = int(body.get('bestellpos_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'bestellpos_id fehlt/ungültig'}), 400
+    raw_menge = body.get('menge')
+    try:
+        menge = float(str(raw_menge).replace(',', '.')) if raw_menge is not None else None
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'menge ungültig'}), 400
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = ek.pos_aus_bestellpos_anhaengen(
+            rec_id, bp_id, menge=menge, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/artikel-anhaengen')
+def api_ek_pos_artikel(rec_id: int) -> Any:
+    """Body: {artikel_id, menge?, eingabe_preis?}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        artikel_id = int(body.get('artikel_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'artikel_id fehlt/ungültig'}), 400
+    try:
+        menge = float(str(body.get('menge', 1)).replace(',', '.'))
+    except (TypeError, ValueError):
+        menge = 1.0
+    raw_preis = body.get('eingabe_preis')
+    try:
+        preis = float(str(raw_preis).replace(',', '.')) if raw_preis is not None else None
+    except (TypeError, ValueError):
+        preis = None
+    ma_name = session.get('login_name') or session.get('mitarbeiter')
+    try:
+        result = ek.pos_artikel_anhaengen(
+            rec_id, artikel_id,
+            menge=menge, eingabe_preis=preis, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/<int:pos_id>/menge')
+def api_ek_pos_menge(rec_id: int, pos_id: int) -> Any:
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        menge = float(str(body.get('menge', 0)).replace(',', '.'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'menge ungültig'}), 400
+    try:
+        result = ek.pos_menge_setzen(rec_id, pos_id, menge)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/<int:pos_id>/epreis')
+def api_ek_pos_epreis(rec_id: int, pos_id: int) -> Any:
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        epreis = float(str(body.get('epreis', 0)).replace(',', '.'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'epreis ungültig'}), 400
+    try:
+        result = ek.pos_epreis_setzen(rec_id, pos_id, epreis)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/pos/<int:pos_id>/entfernen')
+def api_ek_pos_entfernen(rec_id: int, pos_id: int) -> Any:
+    _login_check()
+    try:
+        result = ek.pos_entfernen(rec_id, pos_id)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
 # ── Common-Picker-Endpunkte (Artikel + Adresse) ──────────────────────
 
 
