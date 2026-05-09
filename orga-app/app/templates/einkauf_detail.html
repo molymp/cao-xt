@@ -25,7 +25,7 @@
 .ed-tab th { background:var(--gruen-dunkel); color:var(--creme);
   padding:8px 10px; text-align:left; font-size:0.74rem; font-weight:800;
   text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; }
-.ed-tab td { padding:8px 10px; border-bottom:1px solid var(--creme-dunkel);
+.ed-tab td { padding:6px 10px; border-bottom:1px solid var(--creme-dunkel);
   font-size:0.92rem; vertical-align:middle; }
 .zahl-rechts { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 
@@ -59,11 +59,59 @@
   font-family:'Nunito',sans-serif; font-size:0.9rem; font-weight:700;
   cursor:pointer; }
 .btn-danger:hover { background:#8a2020; }
+.btn-aktion { background:var(--creme); color:var(--gruen-dunkel);
+  border:1px solid var(--creme-dunkel);
+  padding:8px 14px; border-radius:var(--radius-klein);
+  font-family:'Nunito',sans-serif; font-size:0.9rem; font-weight:700;
+  cursor:pointer; transition:background 0.15s; }
+.btn-aktion:hover { background:var(--bg-hell,#ece3cc); }
 
 .ed-rdo { color:var(--text-dim,#5a7a3a); font-size:0.92rem; }
-.ed-todo { background:#fff3d6; border:1px dashed #d4a850; padding:14px 16px;
-  border-radius:var(--radius-klein); color:#7a5a10; font-style:italic;
-  margin-top:10px; }
+.ed-aktion-leiste { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+
+.ed-edit-wrap { position:relative; display:inline-flex; align-items:stretch; gap:4px; }
+.ed-edit-wrap input { padding:5px 8px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito Mono',Consolas,monospace;
+  font-size:0.92rem; width:90px; text-align:right; }
+.ed-edit-wrap input:focus { outline:none; border-color:var(--gruen-hell); }
+.ed-del { background:transparent; border:none; cursor:pointer;
+  color:var(--rot,#b83030); font-size:1.1rem; padding:2px 6px; }
+.ed-del:hover { color:#8a2020; }
+
+/* Scan-Karte */
+.ed-scan { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.ed-scan input { flex:1; min-width:240px;
+  padding:10px 14px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito Mono',Consolas,monospace;
+  font-size:1.0rem; }
+
+/* Aus-WE / Aus-Bestellung Modal */
+.ed-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5);
+  z-index:9300; display:flex; align-items:center; justify-content:center; }
+.ed-modal { background:white; border-radius:var(--radius);
+  width:96vw; max-width:1000px; max-height:92vh;
+  display:flex; flex-direction:column;
+  box-shadow:0 12px 60px rgba(0,0,0,0.35); padding:18px 22px; }
+.ed-modal-kopf { display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:10px; }
+.ed-modal-kopf h2 { color:var(--gruen-dunkel); font-size:1.15rem; margin:0; }
+.ed-modal-close { width:36px; height:36px; border:none; border-radius:50%;
+  background:var(--creme-dunkel); color:var(--text-hell); cursor:pointer;
+  font-size:1rem; }
+.ed-modal-info { font-size:0.88rem; color:var(--text-dim,#5a7a3a);
+  background:var(--bg-hell,#ece3cc); padding:8px 12px;
+  border-radius:var(--radius-klein); margin-bottom:12px; }
+.ed-modal-tabelle-wrap { flex:1; overflow:auto; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); }
+.ed-modal-tabelle { width:100%; border-collapse:collapse; font-size:0.92rem; }
+.ed-modal-tabelle th { background:var(--gruen-dunkel); color:var(--creme);
+  padding:8px 10px; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;
+  position:sticky; top:0; z-index:1; text-align:left; }
+.ed-modal-tabelle td { padding:7px 10px; border-bottom:1px solid var(--creme-dunkel);
+  vertical-align:middle; }
+.ed-modal-aktionen { display:flex; justify-content:flex-end; gap:12px;
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--creme-dunkel); }
 </style>
 {% endblock %}
 
@@ -72,6 +120,10 @@
     <h1>🧾 Einkauf {{ kopf.VRENUM or ('#' ~ kopf.REC_ID) }}</h1>
     <a href="{{ url_for('orga_bestellwesen.einkauf_uebersicht') }}" class="zurueck">← zurück zur Übersicht</a>
 </div>
+
+{# Picker (Artikel + Adresse) — wird via cxPickerOpen() geöffnet,
+   stellt auch cxLadenZeigen()/cxLadenAusblenden() bereit. #}
+{% include '_picker.html' %}
 
 <div class="ed-card">
     <h2>Kopf-Daten</h2>
@@ -94,19 +146,35 @@
         </div>
         <div>
             <label>Netto €</label>
-            <span class="wert zahl-rechts">{{ '{:,.2f}'.format(kopf.NSUMME or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+            <span class="wert zahl-rechts" id="ed-nsumme">{{ '{:,.2f}'.format(kopf.NSUMME or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
         </div>
         <div>
             <label>Brutto €</label>
-            <span class="wert zahl-rechts">{{ '{:,.2f}'.format(kopf.BSUMME or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
+            <span class="wert zahl-rechts" id="ed-bsumme">{{ '{:,.2f}'.format(kopf.BSUMME or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
         </div>
     </div>
 </div>
 
+{% if kopf.ist_offen %}
+<div class="ed-card">
+    <h2>Positionen hinzufügen</h2>
+    <div class="ed-aktion-leiste">
+        <button class="btn-aktion" onclick="edAusWE()">📦 Aus Wareneingang</button>
+        <button class="btn-aktion" onclick="edAusBestellung()">📋 Aus Bestellung</button>
+        <button class="btn-aktion" onclick="edArtikelPicker()">🔍 Artikel auswählen …</button>
+    </div>
+    <div class="ed-scan">
+        <span class="ed-rdo">Barcode-Scan / Artikel-Nr.:</span>
+        <input type="text" id="ed-scan" placeholder="EAN, Barcode oder Artikel-Nr. + Enter"
+               autocomplete="off" onkeydown="if(event.key==='Enter')edScan()">
+    </div>
+</div>
+{% endif %}
+
 <div class="ed-card">
     <h2>Positionen ({{ positionen|length }})</h2>
     {% if positionen %}
-    <table class="ed-tab">
+    <table class="ed-tab" id="ed-pos-tab">
         <thead>
             <tr>
                 <th>Pos</th>
@@ -116,19 +184,39 @@
                 <th>ME</th>
                 <th class="zahl-rechts">EK €</th>
                 <th class="zahl-rechts">Gesamt €</th>
-                <th>aus</th>
+                <th>Quelle</th>
+                {% if kopf.ist_offen %}<th></th>{% endif %}
             </tr>
         </thead>
         <tbody>
         {% for p in positionen %}
-        <tr>
+        <tr id="ed-zeile-{{ p.REC_ID }}">
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
             <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}</td>
+            <td class="zahl-rechts">
+                {% if kopf.ist_offen %}
+                <div class="ed-edit-wrap">
+                    <input type="text" inputmode="decimal" value="{{ '{:g}'.format(p.MENGE or 0) }}"
+                           data-pos-id="{{ p.REC_ID }}" onchange="edPosMenge(this)">
+                </div>
+                {% else %}
+                {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
+                {% endif %}
+            </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
-            <td class="zahl-rechts">{{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-            <td class="zahl-rechts">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+            <td class="zahl-rechts">
+                {% if kopf.ist_offen %}
+                <div class="ed-edit-wrap">
+                    <input type="text" inputmode="decimal"
+                           value="{{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}"
+                           data-pos-id="{{ p.REC_ID }}" onchange="edPosEpreis(this)">
+                </div>
+                {% else %}
+                {{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                {% endif %}
+            </td>
+            <td class="zahl-rechts" id="ed-gpreis-{{ p.REC_ID }}">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
             <td>
                 {% if p.EKEINGANG == 'Y' and p.QUELLE_WE and p.QUELLE_WE > 0 %}
                   <span style="color:#5a7a3a;" title="aus Wareneingang">📦 WE</span>
@@ -138,22 +226,18 @@
                   <span style="color:#aaa;" title="frei (Pfand, Lieferkosten etc.)">–</span>
                 {% endif %}
             </td>
+            {% if kopf.ist_offen %}
+            <td>
+                <button class="ed-del" onclick="edPosEntfernen({{ p.REC_ID }})"
+                        title="Pos entfernen">🗑</button>
+            </td>
+            {% endif %}
         </tr>
         {% endfor %}
         </tbody>
     </table>
     {% else %}
     <p class="ed-rdo">Noch keine Positionen.</p>
-    {% endif %}
-
-    {% if kopf.ist_offen %}
-    <div class="ed-todo">
-        ⚒️ <strong>Phase C.2/C.3 in Arbeit</strong> — die Aktionen
-        „Lieferant zuordnen", „Pos aus Wareneingang", „Pos aus Bestellung",
-        „freie Pos", Barcode-Scan, Artikel-Picker und „Buchen mit
-        Preisprüfung" folgen in den nächsten Iterationen.
-        Aktuell ist nur Anlegen + Stornieren implementiert.
-    </div>
     {% endif %}
 </div>
 
@@ -163,33 +247,269 @@
     <p class="ed-rdo">
         Solange der Beleg „in Bearbeitung" ist (QUELLE=15, STADIUM=0),
         kann er noch ohne Spuren in der Buchhaltung gelöscht werden.
+        „Buchen" folgt in Phase C.3 (mit Preisprüfung + VK-Kontrolle).
     </p>
-    <button type="button" class="btn-danger" onclick="edStorno()">
-        ⛔ Einkauf verwerfen
-    </button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn-danger" onclick="edStorno()">⛔ Einkauf verwerfen</button>
+    </div>
 </div>
 {% endif %}
 
+{# ── Modal für „Aus Wareneingang" / „Aus Bestellung" ──────────── #}
+<div class="ed-modal-overlay" id="ed-quelle-overlay" style="display:none;"
+     onclick="if(event.target===this)edQuelleSchliessen()">
+  <div class="ed-modal">
+    <div class="ed-modal-kopf">
+      <h2 id="ed-modal-titel">Quelle wählen</h2>
+      <button class="ed-modal-close" onclick="edQuelleSchliessen()">✕</button>
+    </div>
+    <div class="ed-modal-info" id="ed-modal-info">…</div>
+    <div class="ed-modal-tabelle-wrap">
+      <table class="ed-modal-tabelle" id="ed-modal-tab">
+        <thead id="ed-modal-thead"></thead>
+        <tbody id="ed-modal-tbody"></tbody>
+      </table>
+    </div>
+    <div class="ed-modal-aktionen">
+      <button class="btn-aktion" onclick="edQuelleSchliessen()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ED_REC_ID = {{ kopf.REC_ID }};
+const ED_LIEF_ADDR = {{ kopf.ADDR_ID or 0 }};
+const ED_API = `/orga/bestellwesen/einkauf/${ED_REC_ID}/api`;
+
+function _eur(x, dp = 2) {
+    return (Number(x) || 0).toLocaleString('de-DE',
+        { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function _esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+async function _post(url, body) {
+    try {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body || {}),
+        });
+        return await r.json();
+    } catch (e) {
+        return { ok: false, fehler: 'Verbindungsfehler' };
+    }
+}
 
 async function edStorno() {
     if (!confirm('Diesen Einkaufs-Beleg verwerfen? Wird komplett gelöscht (geht nur solange in Bearbeitung).')) return;
-    try {
-        const res = await fetch(`/orga/bestellwesen/einkauf/${ED_REC_ID}/api/storno`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({}),
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            alert('Fehler: ' + (data.fehler || 'unbekannt'));
-            return;
-        }
-        window.location = '/orga/bestellwesen/einkauf/';
-    } catch (e) {
-        alert('Verbindungsfehler');
-    }
+    const res = await _post(`${ED_API}/storno`, {});
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    window.location = '/orga/bestellwesen/einkauf/';
 }
+
+// ── Pos-Inline-Edit ───────────────────────────────────────────────
+async function edPosMenge(input) {
+    const posId = input.dataset.posId;
+    const menge = input.value.replace(',', '.');
+    const res = await _post(`${ED_API}/pos/${posId}/menge`, { menge });
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    document.getElementById('ed-gpreis-' + posId).textContent = _eur(res.gpreis);
+}
+async function edPosEpreis(input) {
+    const posId = input.dataset.posId;
+    const epreis = input.value.replace(',', '.');
+    const res = await _post(`${ED_API}/pos/${posId}/epreis`, { epreis });
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    document.getElementById('ed-gpreis-' + posId).textContent = _eur(res.gpreis);
+}
+async function edPosEntfernen(posId) {
+    if (!confirm('Position wirklich entfernen?')) return;
+    const res = await _post(`${ED_API}/pos/${posId}/entfernen`, {});
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    location.reload();
+}
+
+// ── + Aus Wareneingang ────────────────────────────────────────────
+async function edAusWE() {
+    cxLadenZeigen('Offene Wareneingänge werden geladen …');
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/offene-we`);
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return;
+    }
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    _edQuelleZeigen('we', res.zeilen);
+}
+
+// ── + Aus Bestellung ──────────────────────────────────────────────
+async function edAusBestellung() {
+    cxLadenZeigen('Offene Bestellpositionen werden geladen …');
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/offene-bestellpos`);
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return;
+    }
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    _edQuelleZeigen('bestellung', res.zeilen);
+}
+
+function _edQuelleZeigen(modus, zeilen) {
+    const titel = document.getElementById('ed-modal-titel');
+    const info  = document.getElementById('ed-modal-info');
+    const thead = document.getElementById('ed-modal-thead');
+    const tbody = document.getElementById('ed-modal-tbody');
+    if (modus === 'we') {
+        titel.textContent = 'Aus Wareneingang übernehmen';
+        info.textContent = 'Wähle einen Wareneingang. Alle gebuchten, noch nicht berechneten Positionen werden in den Einkauf übernommen.';
+        thead.innerHTML = `<tr>
+            <th>Beleg-Nr.</th><th>Datum</th><th>Lieferschein-Nr.</th>
+            <th>Lief-Datum</th><th class="zahl-rechts">Pos offen</th><th></th></tr>`;
+        if (!zeilen.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">Keine offenen Wareneingänge für diesen Lieferanten.</td></tr>';
+        } else {
+            tbody.innerHTML = zeilen.map(z => `
+                <tr>
+                  <td><strong>${_esc(z.belegnum || '#'+z.we_rec_id)}</strong></td>
+                  <td>${z.belegdatum ? z.belegdatum.split('T')[0].split('-').reverse().join('.') : '–'}</td>
+                  <td><code>${_esc(z.liefnum || '–')}</code></td>
+                  <td>${z.liefdatum ? z.liefdatum.split('T')[0].split('-').reverse().join('.') : '–'}</td>
+                  <td class="zahl-rechts">${z.pos_offen}</td>
+                  <td><button class="btn-aktion" onclick="edAusWEUebernehmen(${z.we_rec_id})">übernehmen ✓</button></td>
+                </tr>`).join('');
+        }
+    } else {
+        titel.textContent = 'Aus Bestellung übernehmen';
+        info.textContent = 'Wähle eine offene Bestellposition. Die Restmenge wird in den Einkauf übernommen.';
+        thead.innerHTML = `<tr>
+            <th>Bestellung</th><th>Datum</th><th>Pos</th><th>Art-Nr.</th><th>Bezeichnung</th>
+            <th class="zahl-rechts">offen</th><th>ME</th><th class="zahl-rechts">EK €</th><th></th></tr>`;
+        if (!zeilen.length) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#888;">Keine offenen Bestellpositionen für diesen Lieferanten.</td></tr>';
+        } else {
+            tbody.innerHTML = zeilen.map(z => `
+                <tr>
+                  <td><strong>${_esc(z.bestell_nr || '#'+z.bestell_id)}</strong></td>
+                  <td>${z.bestell_datum ? z.bestell_datum.split('T')[0].split('-').reverse().join('.') : '–'}</td>
+                  <td>${z.position}</td>
+                  <td><code>${_esc(z.artnum || '–')}</code></td>
+                  <td>${_esc(z.bezeichnung || '–').slice(0, 40)}</td>
+                  <td class="zahl-rechts"><strong>${(+z.menge_offen).toLocaleString('de-DE')}</strong></td>
+                  <td>${_esc(z.me || '')}</td>
+                  <td class="zahl-rechts">${_eur(z.bestell_eprice, 4)}</td>
+                  <td><button class="btn-aktion" onclick="edAusBestellpos(${z.pos_id}, ${+z.menge_offen})">übernehmen ✓</button></td>
+                </tr>`).join('');
+        }
+    }
+    document.getElementById('ed-quelle-overlay').style.display = 'flex';
+}
+
+function edQuelleSchliessen() {
+    document.getElementById('ed-quelle-overlay').style.display = 'none';
+}
+
+async function edAusWEUebernehmen(weId) {
+    cxLadenZeigen('Pos werden übernommen …');
+    const res = await _post(`${ED_API}/pos/aus-we`, { ekeingang_id: weId });
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    location.reload();
+}
+
+async function edAusBestellpos(posId, menge) {
+    const eingabe = prompt(`Menge zur Übernahme (Vorschlag: ${menge}):`,
+                            menge.toString().replace('.', ','));
+    if (eingabe === null) return;
+    const m = parseFloat(eingabe.replace(',', '.'));
+    if (!(m > 0)) { alert('Ungültige Menge'); return; }
+    cxLadenZeigen('Pos wird übernommen …');
+    const res = await _post(`${ED_API}/pos/aus-bestellpos`,
+                             { bestellpos_id: posId, menge: m });
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    location.reload();
+}
+
+// ── + Artikel-Picker ──────────────────────────────────────────────
+function edArtikelPicker() {
+    const liefArg = ED_LIEF_ADDR ? '&lief_addr_id=' + ED_LIEF_ADDR : '';
+    cxPickerOpen({
+        modus: 'artikel',
+        titel: 'Artikel zum Einkauf hinzufügen',
+        urls: {
+            gruppen: '/orga/bestellwesen/api/picker/wgs',
+            liste:   '/orga/bestellwesen/api/picker/artikel?wg={WG}' + liefArg,
+            suche:   '/orga/bestellwesen/api/picker/artikel/suche?q={Q}' + liefArg,
+        },
+        onWaehlen: async (artikel) => {
+            const liste = Array.isArray(artikel) ? artikel : [artikel];
+            cxLadenZeigen(`Übernehme ${liste.length} Artikel …`);
+            for (const a of liste) {
+                await _post(`${ED_API}/pos/artikel-anhaengen`,
+                             { artikel_id: a.artikel_id, menge: 1 });
+            }
+            cxLadenAusblenden();
+            location.reload();
+        },
+    });
+}
+
+// ── Barcode-Scan ──────────────────────────────────────────────────
+async function edScan() {
+    const inp = document.getElementById('ed-scan');
+    const code = inp.value.trim();
+    if (!code) return;
+    inp.value = '';
+    inp.focus();
+    // Erst per ARTNUM suchen, dann per BARCODE — wir nutzen die
+    // bestehende artikel-suche-API (die macht beides).
+    cxLadenZeigen('Suche Artikel …');
+    let res;
+    try {
+        const r = await fetch('/orga/bestellwesen/wareneingang/api/artikel-suche?q=' +
+                              encodeURIComponent(code));
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return;
+    }
+    if (!res.ok || !res.zeilen || !res.zeilen.length) {
+        cxLadenAusblenden();
+        alert('Kein Artikel zu „' + code + '" gefunden');
+        return;
+    }
+    // Eindeutiger Treffer: direkt anhängen. Mehrere → nimm den ersten
+    // exakten ARTNUM-/BARCODE-Match.
+    let treffer = res.zeilen[0];
+    const exakt = res.zeilen.find(a =>
+        (a.artnum || '').toLowerCase() === code.toLowerCase() ||
+        (a.barcode || '').toLowerCase() === code.toLowerCase() ||
+        (a.barcode2 || '').toLowerCase() === code.toLowerCase() ||
+        (a.barcode3 || '').toLowerCase() === code.toLowerCase());
+    if (exakt) treffer = exakt;
+    const r = await _post(`${ED_API}/pos/artikel-anhaengen`,
+                           { artikel_id: treffer.artikel_id, menge: 1 });
+    cxLadenAusblenden();
+    if (!r.ok) { alert('Fehler: ' + (r.fehler || 'unbekannt')); return; }
+    location.reload();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const scan = document.getElementById('ed-scan');
+    if (scan) scan.focus();
+});
 </script>
 {% endblock %}
