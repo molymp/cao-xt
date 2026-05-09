@@ -637,13 +637,14 @@
                 <th>Bezeichnung</th>
                 <th class="zahl-rechts">Menge</th>
                 <th class="zahl-rechts" title="aus gebuchten Wareneingängen kumuliert">geliefert</th>
+                <th title="Lieferscheine vom Lieferanten — bei Teillieferungen mehrere">Lieferschein(e)</th>
                 <th>ME</th>
                 <th class="zahl-rechts">Gewicht kg</th>
                 <th class="zahl-rechts">EK €</th>
                 <th class="zahl-rechts">Liefer- preis €</th>
                 <th class="zahl-rechts">MwSt %</th>
                 <th class="zahl-rechts">Gesamt €</th>
-                <th>Liefertermin</th>
+                <th>Wunsch- Liefertermin</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -669,6 +670,21 @@
                     {% endif %}
                 {% else %}
                     <span style="color:#aaa;">–</span>
+                {% endif %}
+            </td>
+            <td style="font-size:0.85rem;">
+                {% if p.lieferscheine %}
+                  {% for ls in p.lieferscheine %}
+                    <div style="white-space:nowrap;">
+                      <code>{{ ls.liefnum or '–' }}</code>
+                      {% if ls.liefdatum %}
+                        · {{ ls.liefdatum.strftime('%d.%m.%y') }}
+                      {% endif %}
+                      <span style="color:#5a7a3a;">({{ '{:g}'.format(ls.menge) }})</span>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <span style="color:#aaa;">–</span>
                 {% endif %}
             </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
