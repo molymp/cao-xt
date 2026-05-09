@@ -61,11 +61,18 @@ def wareneingang_anlegen(bestell_rec_id: int,
                          ma_name: str | None) -> dict[str, Any]:
     """Erzeugt einen EKEINGANG-Beleg aus einer Bestellung.
 
-    Pos werden aus EKBESTELL_POS kopiert (nur die noch nicht erledigten,
-    STADIUM NOT IN (8,9,127)). Pro Pos wird MENGE_SOLL = Bestellmenge und
-    MENGE = Bestellmenge vorbelegt — der Lieferschein-Normalfall ist
-    "alles wie bestellt geliefert", Abweichungen korrigiert der User
-    beim Verbuchen. GEBUCHT_FLAG='N', BERECHNET='N'.
+    Es werden nur die Pos uebernommen, deren Liefer-Restmenge groesser 0
+    ist — also Pos in STADIUM 2 (offen) und 93 (Teillieferung WE).
+    Ausgeschlossen: 8 (rest nicht lieferbar), 9 (voll berechnet),
+    95 (voll geliefert WE), 127 (storniert).
+
+    Pro Pos wird MENGE_SOLL = Bestellmenge und MENGE = noch offene Menge
+    vorbelegt (= Bestellmenge minus bereits gelieferte Menge ueber alle
+    bisherigen, gebuchten Wareneingaenge). Im Standardfall (Pos noch
+    nie geliefert) ist das die volle Bestellmenge. Bei Teillieferungen
+    nur die fehlende Restmenge.
+
+    GEBUCHT_FLAG='N', BERECHNET='N'.
 
     Returns:
         dict mit ``rec_id``, ``belegnum``, ``positionen``.
@@ -87,19 +94,38 @@ def wareneingang_anlegen(bestell_rec_id: int,
         kopf = cur.fetchone()
         if not kopf:
             raise LookupError(f'Bestellung {bestell_rec_id} nicht gefunden')
-        if int(kopf['STADIUM']) in (9, 127):
+        if int(kopf['STADIUM']) in (9, 95, 127):
             raise PermissionError('Bestellung ist abgeschlossen oder storniert')
 
+        # Pro Pos: bereits gelieferte Menge ueber alle gebuchten WE.
+        # Wir nehmen das in einem JOIN/SUM gleich mit, dann brauchen wir
+        # spaeter nur einmal durch die Liste laufen.
         cur.execute(
             """
-            SELECT * FROM EKBESTELL_POS
-             WHERE EKBESTELL_ID = %s
-               AND STADIUM NOT IN (8, 9, 127)
-             ORDER BY POSITION, REC_ID
+            SELECT p.*,
+                   COALESCE((
+                       SELECT SUM(ep.MENGE)
+                         FROM EKEINGANG_POS ep
+                         JOIN EKEINGANG     e ON e.REC_ID = ep.EKEINGANG_ID
+                        WHERE ep.EKBESTELL_POS_ID = p.REC_ID
+                          AND ep.GEBUCHT_FLAG = 'Y'
+                          AND e.STADIUM <> 127
+                   ), 0) AS bereits_geliefert
+              FROM EKBESTELL_POS p
+             WHERE p.EKBESTELL_ID = %s
+               AND p.STADIUM NOT IN (8, 9, 95, 127)
+             ORDER BY p.POSITION, p.REC_ID
             """,
             (bestell_rec_id,),
         )
         pos_liste = cur.fetchall()
+        # Pos ohne Restmenge (bereits voll geliefert) ueberspringen — kann
+        # passieren, wenn STADIUM noch nicht aktualisiert wurde, oder bei
+        # Sonderfaellen.
+        pos_liste = [
+            p for p in pos_liste
+            if (float(p['MENGE'] or 0) - float(p['bereits_geliefert'] or 0)) > 0.0001
+        ]
         if not pos_liste:
             raise ValueError('Keine offenen Positionen — Wareneingang nicht nötig')
 
@@ -237,10 +263,12 @@ def wareneingang_anlegen(bestell_rec_id: int,
                 'GEGENKTO':           p.get('GEGENKTO', '') or '',
                 'BRUTTO_FLAG':        p.get('BRUTTO_FLAG', 'N') or 'N',
                 'MENGE_SOLL':         p.get('MENGE', 0) or 0,
-                # MENGE = MENGE_SOLL: Lieferschein-Standardfall ist
-                # 'alles wie bestellt geliefert'. Abweichungen tippt der
-                # User direkt in der Liste oder per Barcode-Scan ein.
-                'MENGE':              p.get('MENGE', 0) or 0,
+                # MENGE = noch offene Menge (Bestellmenge minus bereits
+                # gelieferte Menge ueber alle gebuchten WE). Im Standardfall
+                # 'alles wie bestellt geliefert' = Bestellmenge; bei
+                # Teillieferungen nur die Restmenge.
+                'MENGE':              max(0, float(p.get('MENGE') or 0)
+                                          - float(p.get('bereits_geliefert') or 0)),
                 'EPREIS':             p.get('EPREIS', 0) or 0,
                 'GPREIS':             0,
                 'ALTTEIL_PROZ':       0,
