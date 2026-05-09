@@ -1387,12 +1387,153 @@ def buchen(eingang_id: int, ma_id: int | None, ma_name: str | None, *,
             (liefnum, liefdatum, ma_name_safe, eingang_id),
         )
 
+        # Bestell-Synchronisation: pro EKEINGANG_POS, die zu einer
+        # Bestellpos gehoert, die kumulierte Liefermenge ueber alle
+        # gebuchten Wareneingaenge berechnen und die Bestellpos auf
+        # 3 (Teillieferung) bzw. 9 (voll) setzen. Dabei auch
+        # EKBESTELL_INFO.LIEFERTERMIN auf den LIEFDATUM dieses WE setzen.
+        bestell_ids = _bestellpos_synchronisieren(cur, eingang_id, liefdatum)
+        # Header-Status der betroffenen Bestellungen neu auswerten
+        for bid in bestell_ids:
+            _bestell_header_aktualisieren(cur, bid)
+
     return {
         'ok': True,
         'eingang_id': eingang_id,
         'liefnum': liefnum,
         'liefdatum': liefdatum.isoformat() if hasattr(liefdatum, 'isoformat') else str(liefdatum),
+        'bestellungen_aktualisiert': sorted(bestell_ids),
     }
+
+
+def _bestellpos_synchronisieren(cur, eingang_id: int,
+                                  liefdatum) -> set[int]:
+    """Aktualisiert EKBESTELL_POS fuer alle Pos des Wareneingangs.
+
+    Pro Bestellpos die kumulierte Liefermenge ueber alle gebuchten
+    Wareneingaenge bilden und:
+      - menge_geliefert >= bestellmenge → STADIUM=9, EKEINGANG='Y'
+      - 0 < menge_geliefert < bestellmenge → STADIUM=3, EKEINGANG='Y'
+      - sonst → unveraendert
+    Plus: EKBESTELL_INFO.LIEFERTERMIN = LIEFDATUM des Wareneingangs
+    (UPSERT auf PK EKBESTPOS_ID).
+
+    Wir lassen STADIUM von Pos in 8 (rest nicht lieferbar) oder 127
+    (storniert) absichtlich in Ruhe — die haben einen Sonderstatus.
+
+    Returns: Set der EKBESTELL_IDs deren Pos angefasst wurden.
+    """
+    cur.execute(
+        """SELECT DISTINCT bp.REC_ID    AS pos_id,
+                          bp.EKBESTELL_ID AS bestell_id,
+                          bp.MENGE      AS soll,
+                          bp.STADIUM    AS pos_stadium,
+                          bp.ARTIKEL_ID AS artikel_id
+             FROM EKEINGANG_POS ep
+             JOIN EKBESTELL_POS bp ON bp.REC_ID = ep.EKBESTELL_POS_ID
+            WHERE ep.EKEINGANG_ID = %s
+              AND ep.EKBESTELL_POS_ID IS NOT NULL
+              AND ep.EKBESTELL_POS_ID > 0""",
+        (eingang_id,),
+    )
+    bestell_pos_rows = cur.fetchall()
+    if not bestell_pos_rows:
+        return set()
+
+    bestell_ids: set[int] = set()
+    for bpr in bestell_pos_rows:
+        pos_id = int(bpr['pos_id'])
+        bestell_ids.add(int(bpr['bestell_id']))
+        soll = float(bpr['soll'] or 0)
+        cur_st = int(bpr['pos_stadium'] or 0)
+        # Sonderstatus nicht ueberschreiben
+        if cur_st in (8, 127):
+            continue
+
+        # Kumulierte Liefermenge ueber alle gebuchten WE (inkl. dem
+        # aktuellen — der ist ja jetzt schon GEBUCHT_FLAG='Y').
+        cur.execute(
+            """SELECT COALESCE(SUM(ep.MENGE), 0) AS gel
+                 FROM EKEINGANG_POS ep
+                 JOIN EKEINGANG     e ON e.REC_ID = ep.EKEINGANG_ID
+                WHERE ep.EKBESTELL_POS_ID = %s
+                  AND ep.GEBUCHT_FLAG = 'Y'
+                  AND e.STADIUM <> 127""",
+            (pos_id,),
+        )
+        geliefert = float(cur.fetchone()['gel'] or 0)
+        if geliefert <= 0:
+            continue
+
+        if geliefert + 0.0001 >= soll and soll > 0:
+            neuer_st = 9
+        else:
+            neuer_st = 3
+        cur.execute(
+            """UPDATE EKBESTELL_POS
+                  SET STADIUM   = %s,
+                      EKEINGANG = 'Y'
+                WHERE REC_ID = %s""",
+            (neuer_st, pos_id),
+        )
+        # Liefertermin in EKBESTELL_INFO (UPSERT auf PK EKBESTPOS_ID)
+        cur.execute(
+            """INSERT INTO EKBESTELL_INFO
+                 (ARTIKEL_ID, EKBESTPOS_ID, LIEFERTERMIN, LIEFERINFO)
+               VALUES (%s, %s, %s, NULL)
+               ON DUPLICATE KEY UPDATE LIEFERTERMIN = VALUES(LIEFERTERMIN)""",
+            (int(bpr['artikel_id'] or 0), pos_id, liefdatum),
+        )
+    return bestell_ids
+
+
+def _bestell_header_aktualisieren(cur, bestell_id: int) -> None:
+    """Setzt EKBESTELL.STADIUM neu auf Basis der Pos-Stadien.
+
+    Logik:
+      - alle Pos in (9, 8, 127) (mit mind. einer in 9) → 9 (abgeschlossen)
+      - mind. eine Pos in (3, 9) → 3 (Teillieferung)
+      - sonst → unveraendert (z.B. weiterhin 2)
+
+    Storno-Bestellungen (STADIUM=127) werden nicht angefasst.
+    """
+    cur.execute(
+        "SELECT STADIUM FROM EKBESTELL WHERE REC_ID = %s",
+        (bestell_id,),
+    )
+    h = cur.fetchone()
+    if not h:
+        return
+    if int(h['STADIUM']) == 127:
+        return  # storniert, nicht anfassen
+
+    cur.execute(
+        """SELECT STADIUM, COUNT(*) AS n
+             FROM EKBESTELL_POS
+            WHERE EKBESTELL_ID = %s
+            GROUP BY STADIUM""",
+        (bestell_id,),
+    )
+    verteilung = {int(r['STADIUM']): int(r['n']) for r in cur.fetchall()}
+    if not verteilung:
+        return
+
+    aktive_pos = sum(n for st, n in verteilung.items() if st != 127)
+    voll       = verteilung.get(9, 0) + verteilung.get(8, 0)
+    teil_oder_voll = (verteilung.get(3, 0) + verteilung.get(9, 0)
+                      + verteilung.get(8, 0))
+
+    if aktive_pos > 0 and voll == aktive_pos and verteilung.get(9, 0) > 0:
+        neu = 9
+    elif teil_oder_voll > 0:
+        neu = 3
+    else:
+        return  # alles noch offen — Header bleibt
+
+    cur.execute(
+        "UPDATE EKBESTELL SET STADIUM = %s WHERE REC_ID = %s",
+        (neu, bestell_id),
+    )
 
 
 def lieferschein_setzen(eingang_id: int, *,

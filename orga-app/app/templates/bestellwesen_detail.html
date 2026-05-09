@@ -636,6 +636,7 @@
                 <th>Art.-Nr.</th>
                 <th>Bezeichnung</th>
                 <th class="zahl-rechts">Menge</th>
+                <th class="zahl-rechts" title="aus gebuchten Wareneingängen kumuliert">geliefert</th>
                 <th>ME</th>
                 <th class="zahl-rechts">Gewicht kg</th>
                 <th class="zahl-rechts">EK €</th>
@@ -658,6 +659,18 @@
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
             <td>{{ p.BEZEICHNUNG or p.KURZBEZEICHNUNG or '–' }}</td>
             <td class="zahl-rechts">{{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}</td>
+            <td class="zahl-rechts" title="{% if p.fehlt_menge > 0 %}fehlt noch: {{ '{:g}'.format(p.fehlt_menge) }} {{ p.ME_EINHEIT or '' }}{% else %}komplett geliefert{% endif %}">
+                {% if p.geliefert_menge and p.geliefert_menge > 0 %}
+                    <strong>{{ '{:g}'.format(p.geliefert_menge) }}</strong>
+                    {% if p.fehlt_menge > 0 %}
+                      <span style="color:#a06000; font-size:0.82rem;">
+                        (fehlt {{ '{:g}'.format(p.fehlt_menge) }})
+                      </span>
+                    {% endif %}
+                {% else %}
+                    <span style="color:#aaa;">–</span>
+                {% endif %}
+            </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
             <td class="zahl-rechts">{{ pos_gewicht | eur(3) if pos_gewicht else '–' }}</td>
             <td class="zahl-rechts">{{ (p.EPREIS or 0) | eur(4) }}</td>
