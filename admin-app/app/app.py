@@ -524,7 +524,7 @@ def db_config_save():
 @_login_required
 def db_config_test():
     """Testet die aktuelle DB-Verbindung."""
-    ok = test_verbindung()
+    ok = test_verbindung(force=True)
     return jsonify(ok=ok, msg='Verbindung erfolgreich.' if ok else 'Verbindung fehlgeschlagen.')
 
 
