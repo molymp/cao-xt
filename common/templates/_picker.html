@@ -121,13 +121,37 @@
     font-size: 0.72rem; font-weight: 800;
     text-transform: uppercase; letter-spacing: 0.06em;
     white-space: nowrap; z-index: 1;
+    cursor: pointer; user-select: none;
 }
+.cxp-tabelle thead th:hover { background: var(--creme-warm, #d8c8a4); }
+.cxp-sort-pfeil { display: inline-block; margin-left: 4px; opacity: 0.4; font-size: 0.85em; }
+.cxp-tabelle thead th.aktiv .cxp-sort-pfeil { opacity: 1; }
+.cxp-tabelle thead th.aktiv { background: var(--gruen-dunkel, #1a4010); color: var(--creme, #ece3cc); }
 .cxp-tabelle tbody tr {
     cursor: pointer;
     border-bottom: 1px solid var(--creme-dunkel, #d4ccb8);
 }
 .cxp-tabelle tbody tr:hover td { background: var(--bg-hell, #ece3cc); }
+.cxp-tabelle tbody tr.cxp-aktiviert td {
+    background: rgba(46,122,46,0.20);
+    box-shadow: inset 3px 0 0 var(--gruen, #2e7a2e);
+}
+.cxp-tabelle tbody tr.cxp-aktiviert:hover td { background: rgba(46,122,46,0.28); }
 .cxp-tabelle td { padding: 8px 10px; vertical-align: middle; }
+.cxp-tabelle td.cxp-check {
+    width: 36px; text-align: center;
+    color: var(--gruen, #2e7a2e); font-size: 1.1rem;
+}
+
+.cxp-uebernehmen {
+    flex: 0 0 auto;
+    padding: 8px 16px; border: none; border-radius: 6px;
+    background: var(--gold, #c8780a); color: white;
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer;
+}
+.cxp-uebernehmen:hover { background: #a06000; }
+.cxp-uebernehmen:disabled { opacity: 0.4; cursor: not-allowed; }
 .cxp-tabelle td code {
     font-family: 'Nunito Mono', Consolas, monospace;
     font-size: 0.84rem;
@@ -150,6 +174,9 @@
              placeholder="🔍 Suche … (mind. 2 Zeichen)"
              autocomplete="off"
              oninput="cxPickerSucheInput(this.value)">
+      <button class="cxp-uebernehmen" id="cxp-uebernehmen"
+              style="display:none;" disabled
+              onclick="cxPickerUebernehmen()">Übernehmen</button>
       <button class="cxp-close" onclick="cxPickerSchliessen()">✕</button>
     </div>
     <div class="cxp-body">
@@ -181,6 +208,9 @@ let _aktivGruppe = null;
 let _vorSucheGruppe = null;
 let _items = [];
 let _sucheTimer = null;
+let _sortCol = null;     // Spalten-Key oder null = unsortiert
+let _sortDir = 0;        // 0 = aus, 1 = asc, -1 = desc
+let _ausgewaehltMap = new Map();  // Multi-Select: id → Item (ueber Gruppen hinweg)
 
 // ── Spalten-Config je Modus ──
 const SPALTEN = {
@@ -218,6 +248,9 @@ const ID_KEY = { artikel: 'artikel_id', adresse: 'addr_id' };
 
 window.cxPickerOpen = async function(cfg) {
     _cfg = cfg;
+    _sortCol = null;
+    _sortDir = 0;
+    _ausgewaehltMap = new Map();
     el('cxp-titel').textContent = cfg.titel
         || (cfg.modus === 'adresse' ? 'Adresse auswählen' : 'Artikel auswählen');
     el('cxp-search').value = '';
@@ -227,12 +260,17 @@ window.cxPickerOpen = async function(cfg) {
     el('cxp-overlay').classList.remove('cxp-hidden');
     setTimeout(() => el('cxp-search').focus(), 50);
 
-    // Header rendern
-    const thead = el('cxp-thead');
-    thead.innerHTML = '<tr>' +
-        SPALTEN[cfg.modus].map(s =>
-            `<th class="${s.classes || ''}">${escH(s.label)}</th>`).join('') +
-        '</tr>';
+    // Übernehmen-Button nur im Multi-Modus sichtbar
+    const ueb = el('cxp-uebernehmen');
+    if (cfg.multi) {
+        ueb.style.display = '';
+        ueb.disabled = true;
+        ueb.textContent = 'Übernehmen';
+    } else {
+        ueb.style.display = 'none';
+    }
+
+    cxKopfRender();
 
     // Baum laden
     el('cxp-tree').innerHTML = '<div class="cxp-status">Lade …</div>';
@@ -254,7 +292,50 @@ window.cxPickerOpen = async function(cfg) {
 window.cxPickerSchliessen = function() {
     el('cxp-overlay').classList.add('cxp-hidden');
     _cfg = null;
+    _ausgewaehltMap = new Map();
 };
+
+function cxKopfRender() {
+    // Spalten-Header mit Sortier-Pfeilen.
+    const thead = el('cxp-thead');
+    const cols = SPALTEN[_cfg.modus];
+    let html = '<tr>';
+    if (_cfg.multi) html += '<th class="cxp-check"></th>';
+    for (const c of cols) {
+        const aktiv  = _sortCol === c.key && _sortDir !== 0;
+        const pfeil  = aktiv ? (_sortDir > 0 ? '▲' : '▼') : '⇅';
+        html += `<th class="${c.classes || ''}${aktiv ? ' aktiv' : ''}"
+                     onclick="cxSortToggle('${c.key}')">${escH(c.label)}
+                 <span class="cxp-sort-pfeil">${pfeil}</span></th>`;
+    }
+    html += '</tr>';
+    thead.innerHTML = html;
+}
+
+window.cxSortToggle = function(colKey) {
+    if (_sortCol !== colKey) {
+        _sortCol = colKey;
+        _sortDir = 1;
+    } else if (_sortDir === 1) {
+        _sortDir = -1;
+    } else {
+        _sortCol = null;
+        _sortDir = 0;
+    }
+    cxKopfRender();
+    cxListeRender();
+};
+
+function _cxCmp(a, b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb) && String(a).match(/^-?[\d.,]+$/) && String(b).match(/^-?[\d.,]+$/)) {
+        return na - nb;
+    }
+    return String(a).localeCompare(String(b), 'de', { sensitivity: 'base', numeric: true });
+}
 
 function cxBaumRender() {
     const root = el('cxp-tree');
@@ -354,22 +435,64 @@ function cxListeRender() {
     }
     const cols = SPALTEN[_cfg.modus];
     const idKey = ID_KEY[_cfg.modus];
-    tbody.innerHTML = _items.map(it => {
-        const tds = cols.map(c => {
+
+    // Sortieren — kopierte Liste, damit Original-Reihenfolge erhalten
+    let liste = _items.slice();
+    if (_sortCol && _sortDir !== 0) {
+        liste.sort((a, b) => _sortDir * _cxCmp(a[_sortCol], b[_sortCol]));
+    }
+
+    tbody.innerHTML = liste.map(it => {
+        const id = it[idKey];
+        const aktiv = _cfg.multi && _ausgewaehltMap.has(id);
+        let tds = '';
+        if (_cfg.multi) {
+            tds += `<td class="cxp-check">${aktiv ? '✓' : ''}</td>`;
+        }
+        tds += cols.map(c => {
             const raw = it[c.key];
             const html = c.format ? c.format(raw, it) : escH(raw ?? '');
             return `<td class="${c.classes || ''}">${html}</td>`;
         }).join('');
-        return `<tr onclick="cxItemWaehlen(${it[idKey]})">${tds}</tr>`;
+        return `<tr class="${aktiv ? 'cxp-aktiviert' : ''}"
+                     onclick="cxItemKlick(${id})">${tds}</tr>`;
     }).join('');
     tab.style.display = 'table';
     status.style.display = 'none';
+    cxUebernehmenAktualisieren();
 }
 
-window.cxItemWaehlen = function(id) {
-    const idKey = ID_KEY[_cfg.modus];
-    const it = _items.find(x => Number(x[idKey]) === Number(id));
-    if (it && _cfg.onWaehlen) _cfg.onWaehlen(it);
+window.cxItemKlick = function(id) {
+    if (_cfg.multi) {
+        if (_ausgewaehltMap.has(id)) {
+            _ausgewaehltMap.delete(id);
+        } else {
+            const idKey = ID_KEY[_cfg.modus];
+            const it = _items.find(x => Number(x[idKey]) === Number(id));
+            if (it) _ausgewaehltMap.set(id, it);
+        }
+        cxListeRender();
+    } else {
+        const idKey = ID_KEY[_cfg.modus];
+        const it = _items.find(x => Number(x[idKey]) === Number(id));
+        if (it && _cfg.onWaehlen) _cfg.onWaehlen(it);
+        cxPickerSchliessen();
+    }
+};
+
+function cxUebernehmenAktualisieren() {
+    if (!_cfg || !_cfg.multi) return;
+    const btn = el('cxp-uebernehmen');
+    const n = _ausgewaehltMap.size;
+    btn.disabled = n === 0;
+    btn.textContent = n > 0 ? `✓ ${n} übernehmen` : 'Übernehmen';
+}
+
+window.cxPickerUebernehmen = function() {
+    if (!_cfg || !_cfg.multi) return;
+    // Map enthaelt alle ueber Gruppen-Wechsel hinweg gesammelten Items.
+    const ausgewaehlt = Array.from(_ausgewaehltMap.values());
+    if (_cfg.onWaehlen) _cfg.onWaehlen(ausgewaehlt);
     cxPickerSchliessen();
 };
 
