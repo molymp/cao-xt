@@ -1277,18 +1277,29 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
     from common.einkauf import (_next_registry_nummer,
                                  _vk_kontrolle_ek_eintrag)
 
+    # ── ACHTUNG: CAO-Tabellen sind MyISAM, also KEINE Transaktionen.
+    # Rollback ist effektiv ein No-Op. Wir designen daher idempotent:
+    # jeder Schritt darf mehrfach laufen ohne Schaden anzurichten.
+    # Der Aufrufer kann bei einem Crash mid-flight einfach erneut
+    # aufrufen — die WHERE-Clauses und Existenz-Checks fangen ab.
     with get_db_transaction() as cur:
-        # 0. Beleg lock + validieren
+        # 0. Beleg validieren — akzeptiert sowohl frisch (QUELLE=15)
+        # als auch resume nach partieller Buchung (QUELLE=5, STADIUM=2).
         cur.execute(
-            "SELECT * FROM JOURNAL WHERE REC_ID=%s AND QUELLE=15 FOR UPDATE",
+            "SELECT * FROM JOURNAL WHERE REC_ID=%s AND QUELLE IN (5, 15)",
             (rec_id,)
         )
         kopf = cur.fetchone()
         if not kopf:
-            raise PermissionError('Beleg ist nicht in Bearbeitung (QUELLE!=15)')
-        if int(kopf.get('STADIUM') or 0) != 0:
+            raise PermissionError('Beleg nicht gefunden')
+        ist_resume = (int(kopf.get('QUELLE') or 0) == 5
+                      and int(kopf.get('STADIUM') or 0) == 2)
+        ist_frisch = (int(kopf.get('QUELLE') or 0) == 15
+                      and int(kopf.get('STADIUM') or 0) == 0)
+        if not (ist_frisch or ist_resume):
             raise PermissionError(
-                f"STADIUM={kopf['STADIUM']} — bereits gebucht oder storniert"
+                f"QUELLE={kopf['QUELLE']}, STADIUM={kopf['STADIUM']} — "
+                "weder in Bearbeitung noch resumebar (offen/unbezahlt)"
             )
         addr_id = int(kopf.get('ADDR_ID') or -1)
         if addr_id <= 0:
@@ -1297,50 +1308,66 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
         cur.execute(
             "SELECT * FROM JOURNALPOS "
             "WHERE JOURNAL_ID=%s AND TOP_POS_ID=-1 "
-            "ORDER BY POSITION FOR UPDATE",
+            "ORDER BY POSITION",
             (rec_id,)
         )
         positionen = cur.fetchall()
         if not positionen:
             raise ValueError('Keine Positionen — nicht buchbar')
 
-        # 8a. RDATUM final auf NOW()
-        cur.execute(
-            "UPDATE JOURNAL SET RDATUM=NOW(), GEAEND=CURDATE(), "
-            "GEAEND_NAME=%s WHERE REC_ID=%s",
-            (ma_name_safe, rec_id)
-        )
-
-        # 8b. Belegnummer atomic aus REGISTRY 'EK-RECH'
-        belegnum = _next_registry_nummer(cur, 'EK-RECH')
-
-        # NUMMERN_LOG-Eintrag (XT-eigene HASHSUM via cao_log_hashsum)
-        cur.execute(
-            "INSERT INTO NUMMERN_LOG "
-            "(QUELLE, JOURNAL_ID, NUMMER, ANGELEGT, ANGELEGT_NAME, HASHSUM) "
-            "VALUES (5, %s, %s, NOW(), %s, %s)",
-            (rec_id, belegnum, ma_name_safe, '$$')
-        )
-        nl_id = int(cur.lastrowid)
-        cur.execute(
-            "SELECT HASHSUM FROM NUMMERN_LOG "
-            "WHERE REC_ID < %s ORDER BY REC_ID DESC LIMIT 1",
-            (nl_id,)
-        )
-        prev_row = cur.fetchone()
-        prev = prev_row.get('HASHSUM') if prev_row else None
-        try:
-            new_hash = cao_log_hashsum.compute(
-                table_name='NUMMERN_LOG',
-                hashstring=f"V1|{nl_id}|5|{rec_id}|{belegnum}",
-                previous_hashsum=prev,
-            )
+        # 8a/8b/8d Header — nur bei frischem Lauf.  Bei resume ist die
+        # VRENUM schon vergeben und das JOURNAL ist auf QUELLE=5/STADIUM=2.
+        if ist_frisch:
             cur.execute(
-                "UPDATE NUMMERN_LOG SET HASHSUM=%s WHERE REC_ID=%s",
-                (new_hash, nl_id)
+                "UPDATE JOURNAL SET RDATUM=NOW(), GEAEND=CURDATE(), "
+                "GEAEND_NAME=%s WHERE REC_ID=%s AND QUELLE=15",
+                (ma_name_safe, rec_id)
             )
-        except Exception as exc:
-            log.warning('NUMMERN_LOG-HASHSUM (rec %s): %s', nl_id, exc)
+            belegnum = _next_registry_nummer(cur, 'EK-RECH')
+
+            # NUMMERN_LOG-Eintrag (XT-eigene HASHSUM)
+            cur.execute(
+                "INSERT INTO NUMMERN_LOG "
+                "(QUELLE, JOURNAL_ID, NUMMER, ANGELEGT, ANGELEGT_NAME, HASHSUM) "
+                "VALUES (5, %s, %s, NOW(), %s, %s)",
+                (rec_id, belegnum, ma_name_safe, '$$')
+            )
+            nl_id = int(cur.lastrowid)
+            cur.execute(
+                "SELECT HASHSUM FROM NUMMERN_LOG "
+                "WHERE REC_ID < %s ORDER BY REC_ID DESC LIMIT 1",
+                (nl_id,)
+            )
+            prev_row = cur.fetchone()
+            prev = prev_row.get('HASHSUM') if prev_row else None
+            try:
+                new_hash = cao_log_hashsum.compute(
+                    table_name='NUMMERN_LOG',
+                    hashstring=f"V1|{nl_id}|5|{rec_id}|{belegnum}",
+                    previous_hashsum=prev,
+                )
+                cur.execute(
+                    "UPDATE NUMMERN_LOG SET HASHSUM=%s WHERE REC_ID=%s",
+                    (new_hash, nl_id)
+                )
+            except Exception as exc:
+                log.warning('NUMMERN_LOG-HASHSUM (rec %s): %s', nl_id, exc)
+        else:
+            # Resume: existierende Daten weiterverwenden
+            belegnum = (kopf.get('VRENUM') or '').strip()
+            if not belegnum:
+                raise PermissionError(
+                    'Resume nicht möglich — JOURNAL.VRENUM leer')
+            cur.execute(
+                "SELECT REC_ID FROM NUMMERN_LOG "
+                "WHERE QUELLE=5 AND JOURNAL_ID=%s AND NUMMER=%s "
+                "ORDER BY REC_ID DESC LIMIT 1",
+                (rec_id, belegnum)
+            )
+            row = cur.fetchone()
+            nl_id = int(row['REC_ID']) if row else 0
+            log.info('einkauf_buchen RESUME: rec_id=%s vrenum=%s',
+                     rec_id, belegnum)
 
         # 8c. Lieferanten-Status: Default-Zahlart setzen (falls leer),
         # STATUS-Bit 16 (Lieferant) setzen.
@@ -1357,26 +1384,37 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
             (addr_id,)
         )
 
-        # 8d. JOURNAL final-state
+        # 8d. JOURNAL final-state. MA_ID setzen falls noch nicht (Audit).
         cur.execute(
             "UPDATE JOURNAL SET QUELLE=5, VRENUM=%s, STADIUM=2, "
-            "GEAEND=CURDATE(), GEAEND_NAME=%s WHERE REC_ID=%s",
-            (belegnum, ma_name_safe, rec_id)
+            "GEAEND=CURDATE(), GEAEND_NAME=%s, "
+            "MA_ID=COALESCE(NULLIF(MA_ID,0), %s) "
+            "WHERE REC_ID=%s",
+            (belegnum, ma_name_safe, ma_id or 0, rec_id)
         )
 
-        # 8e. ZUSATZDATEN (best-effort — Tabelle/Spalten unsicher)
+        # 8e. ZUSATZDATEN (best-effort — Snapshot des bearbeitenden MA).
+        # ZUSATZDATEN hat KEIN REC_ID/MA_ID/ERSTELLT — nur natuerliche Keys
+        # FREMD_ID + FREMD_QUELLE + MA_*-Snapshot-Spalten.  Wir schreiben
+        # nur das Minimum und ignorieren Duplikate (PK-Kollision wenn der
+        # Beleg ein zweites Mal angefasst wird).
         try:
             cur.execute(
-                "INSERT INTO ZUSATZDATEN "
-                "(FREMD_ID, FREMD_QUELLE, MA_ID, MA_NAME, ERSTELLT) "
-                "VALUES (%s, 5, %s, %s, NOW())",
-                (rec_id, ma_id or -1, ma_name_safe)
+                "INSERT IGNORE INTO ZUSATZDATEN "
+                "(FREMD_ID, FREMD_QUELLE, MA_NAME) "
+                "VALUES (%s, 5, %s)",
+                (rec_id, ma_name_safe)
             )
         except Exception as exc:
             log.info('ZUSATZDATEN nicht geschrieben (%s): %s', rec_id, exc)
 
-        # 8f. Pro Pos
+        # 8f. Pro Pos — nur die Pos verarbeiten, die noch QUELLE=15 sind.
+        # Schon-finalisierte Pos (QUELLE=5) ueberspringen wir, damit
+        # MENGE_AKT/ARTIKEL_HISTORIE bei einem Re-Run nicht dupliziert
+        # werden. Idempotenz!
         for p in positionen:
+            if int(p.get('QUELLE') or 0) != 15:
+                continue
             pos_id = int(p['REC_ID'])
             artikel_id = int(p.get('ARTIKEL_ID') or 0)
             menge = float(p.get('MENGE') or 0)
@@ -1386,9 +1424,10 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
             best_pos_id = int(p.get('QUELLE_SRC') or 0)
 
             # 8f.1 ARTIKEL_PREIS: existiert Lief-Preis?
+            # Composite-PK: (ARTIKEL_ID, ADRESS_ID, PREIS_TYP) — keine REC_ID.
             if artikel_id > 0:
                 cur.execute(
-                    "SELECT REC_ID, PREIS FROM ARTIKEL_PREIS "
+                    "SELECT PREIS FROM ARTIKEL_PREIS "
                     "WHERE ARTIKEL_ID=%s AND ADRESS_ID=%s AND PREIS_TYP=5 "
                     "FOR UPDATE",
                     (artikel_id, addr_id)
@@ -1397,22 +1436,25 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
                 ent = _entscheidung(pos_id)
 
                 if ap is None:
-                    # Kein Lief-Preis: bei 'uebernehmen' anlegen
+                    # Kein Lief-Preis: bei 'uebernehmen' anlegen.
+                    # ARTIKEL_PREIS hat kein ANGELEGT — nur GEAEND/GEAEND_NAME.
                     if ent == 'uebernehmen':
                         cur.execute(
                             "INSERT INTO ARTIKEL_PREIS "
-                            "(ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PREIS, "
-                            " GEAEND, ANGELEGT) "
-                            "VALUES (%s, %s, 5, %s, NOW(), NOW())",
-                            (artikel_id, addr_id, epreis)
+                            "(ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PT2, "
+                            " PREIS, GEAEND, GEAEND_NAME) "
+                            "VALUES (%s, %s, 5, 'EK', %s, NOW(), %s)",
+                            (artikel_id, addr_id, epreis, ma_name_safe)
                         )
                 else:
                     alt_preis = float(ap.get('PREIS') or 0)
                     if abs(alt_preis - epreis) > 0.0001 and ent == 'uebernehmen':
                         cur.execute(
-                            "UPDATE ARTIKEL_PREIS SET PREIS=%s, GEAEND=NOW() "
-                            "WHERE REC_ID=%s",
-                            (epreis, ap['REC_ID'])
+                            "UPDATE ARTIKEL_PREIS "
+                            "SET PREIS=%s, GEAEND=NOW(), GEAEND_NAME=%s "
+                            "WHERE ARTIKEL_ID=%s AND ADRESS_ID=%s "
+                            "  AND PREIS_TYP=5",
+                            (epreis, ma_name_safe, artikel_id, addr_id)
                         )
                         try:
                             _vk_kontrolle_ek_eintrag(
@@ -1431,8 +1473,9 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
                         # Nur Touch-Marker fuer "wann zuletzt gesehen"
                         cur.execute(
                             "UPDATE ARTIKEL_PREIS SET GEAEND=NOW() "
-                            "WHERE REC_ID=%s",
-                            (ap['REC_ID'],)
+                            "WHERE ARTIKEL_ID=%s AND ADRESS_ID=%s "
+                            "  AND PREIS_TYP=5",
+                            (artikel_id, addr_id)
                         )
 
             # 8f.2 Lager-Bewegung
@@ -1481,13 +1524,14 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
                         (menge, artikel_id)
                     )
 
-            # 8f.3 JOURNALPOS finalisieren
+            # 8f.3 JOURNALPOS finalisieren (Schema hat KEIN GEAEND/MA_ID,
+            # nur QUELLE/VRENUM/GEBUCHT — Audit liegt in JOURNAL).
+            # WHERE QUELLE=15 als zusaetzlicher Idempotenz-Schutz.
             cur.execute(
                 "UPDATE JOURNALPOS "
-                "SET QUELLE=5, VRENUM=%s, GEBUCHT='Y', "
-                "    GEAEND=CURDATE(), GEAEND_NAME=%s "
-                "WHERE REC_ID=%s",
-                (belegnum, ma_name_safe, pos_id)
+                "SET QUELLE=5, VRENUM=%s, GEBUCHT='Y' "
+                "WHERE REC_ID=%s AND QUELLE=15",
+                (belegnum, pos_id)
             )
 
         # 8h+8i EKBESTELL/EKBESTELL_POS Status-Sync
