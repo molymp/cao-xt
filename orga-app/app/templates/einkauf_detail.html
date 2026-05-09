@@ -220,7 +220,7 @@
             <td class="zahl-rechts">
                 {% if kopf.ist_offen %}
                 <input type="text" class="num-touch"
-                       value="{{ '{:g}'.format(p.MENGE or 0) }}"
+                       value="{{ '{:.3f}'.format(p.MENGE or 0).replace('.', ',') }}"
                        data-pos-id="{{ p.REC_ID }}" onchange="edPosMenge(this)"
                        style="width:90px; padding:5px 8px; text-align:right;
                               border:1px solid var(--creme-dunkel);
@@ -228,7 +228,7 @@
                               font-family:'Nunito Mono',Consolas,monospace;
                               font-size:0.92rem;">
                 {% else %}
-                {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
+                {{ '{:.3f}'.format(p.MENGE).replace('.', ',') if p.MENGE is not none else '–' }}
                 {% endif %}
             </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
@@ -243,7 +243,7 @@
                               font-family:'Nunito Mono',Consolas,monospace;
                               font-size:0.92rem;">
                 {% else %}
-                {{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                {{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}
                 {% endif %}
             </td>
             <td class="zahl-rechts" id="ed-gpreis-{{ p.REC_ID }}">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
@@ -317,6 +317,19 @@ function _eur(x, dp = 2) {
     return (Number(x) || 0).toLocaleString('de-DE',
         { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
+// DE-Zahl ("1.234,567" oder "1,5") -> JS-Number-String "1234.567".
+// Toleriert auch reine en-Eingaben ("1.5") solange es nur EINEN Punkt
+// gibt und keinen Komma.
+function _deToNum(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!s) return '0';
+    // Wenn Komma vorhanden -> de-Format: Punkte sind Tausender, Komma ist Dezimal
+    if (s.indexOf(',') >= 0) {
+        return s.replace(/\./g, '').replace(',', '.');
+    }
+    // Sonst: rohes en-Format (z.B. vom Nutzer "1.5" eingetippt)
+    return s;
+}
 function _esc(s) {
     return String(s == null ? '' : s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -345,16 +358,20 @@ async function edStorno() {
 // ── Pos-Inline-Edit ───────────────────────────────────────────────
 async function edPosMenge(input) {
     const posId = input.dataset.posId;
-    const menge = input.value.replace(',', '.');
+    const menge = _deToNum(input.value);
     const res = await _post(`${ED_API}/pos/${posId}/menge`, { menge });
     if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    // Eingabe nach Server-Antwort einheitlich nachformatieren (3 NK)
+    input.value = _eur(parseFloat(menge) || 0, 3);
     document.getElementById('ed-gpreis-' + posId).textContent = _eur(res.gpreis);
 }
 async function edPosEpreis(input) {
     const posId = input.dataset.posId;
-    const epreis = input.value.replace(',', '.');
+    const epreis = _deToNum(input.value);
     const res = await _post(`${ED_API}/pos/${posId}/epreis`, { epreis });
     if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    // EK einheitlich auf 4 NK formatieren
+    input.value = _eur(parseFloat(epreis) || 0, 4);
     document.getElementById('ed-gpreis-' + posId).textContent = _eur(res.gpreis);
 }
 async function edPosEntfernen(posId) {
@@ -444,12 +461,12 @@ function _edQuelleZeigen(modus, zeilen) {
                   <td>${z.position}</td>
                   <td><code>${_esc(z.artnum || '–')}</code></td>
                   <td>${_esc(z.bezeichnung || '–').slice(0, 40)}</td>
-                  <td class="zahl-rechts"><strong>${(+z.menge_offen).toLocaleString('de-DE')}</strong></td>
+                  <td class="zahl-rechts"><strong>${_eur(z.menge_offen, 3)}</strong></td>
                   <td>${_esc(z.me || '')}</td>
                   <td class="zahl-rechts">
                     <input type="text" class="ed-mod-menge num-touch"
                            data-pos-id="${z.pos_id}"
-                           value="${(+z.menge_offen).toString().replace('.', ',')}"
+                           value="${_eur(z.menge_offen, 3)}"
                            onclick="event.stopPropagation();"
                            style="width:80px; padding:4px 6px; text-align:right;
                                   font-family:'Nunito Mono',Consolas,monospace;
@@ -516,7 +533,7 @@ async function edQuelleUebernehmen() {
             const pid = parseInt(r.dataset.id);
             const inp = document.querySelector(
                 `.ed-mod-menge[data-pos-id="${pid}"]`);
-            const m = inp ? parseFloat((inp.value || '').replace(',', '.')) : 0;
+            const m = inp ? parseFloat(_deToNum(inp.value)) : 0;
             return { pos_id: pid, menge: m };
         }).filter(x => x.menge > 0);
         if (!items.length) { alert('Keine gültigen Mengen erfasst'); return; }
