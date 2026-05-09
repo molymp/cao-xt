@@ -15,7 +15,12 @@ from common.db import (
     test_verbindung,
 )
 
-init_pool("orga_app_pool", db_config={
+# Pool-Size 15: das Dashboard fuehrt pro Request 5 sequentielle Queries
+# (Monatsumsatz, Tageseinnahmen, Vorgaenge, HACCP, Personal). Bei waitress
+# Default 4 Threads + parallelen Tabs / Geraeten reicht der frueher genutzte
+# Default 5 nicht — der Pool lief unter Last regelmaessig leer und
+# Requests stauten sich in der waitress-Queue.
+init_pool("orga_app_pool", pool_size=15, db_config={
     'host':     config.DB_HOST,
     'port':     config.DB_PORT,
     'name':     config.DB_NAME,
