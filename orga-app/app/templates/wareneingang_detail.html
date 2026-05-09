@@ -263,22 +263,15 @@
 .wd-plus-btn:hover { background: var(--gruen, #2e7a2e); }
 .wd-plus-btn:active { transform: scale(0.92); }
 
-.wd-trash-btn {
-  width: 32px; height: 32px;
-  background: transparent; color: var(--rot, #b83030);
-  border: 1px solid var(--creme-dunkel);
-  border-radius: 50%;
-  font-size: 1rem;
-  cursor: pointer; line-height: 1;
-  display: inline-flex; align-items: center; justify-content: center;
-  transition: background 0.1s, transform 0.07s, border-color 0.1s;
-  -webkit-tap-highlight-color: transparent;
+.wd-aktionsleiste {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px; flex-wrap: wrap;
 }
-.wd-trash-btn:hover {
-  background: rgba(184,48,48,0.10);
-  border-color: var(--rot, #b83030);
+.wd-aktionsleiste .btn-warn:disabled {
+  opacity: 0.4; cursor: not-allowed;
 }
-.wd-trash-btn:active { transform: scale(0.92); }
+.wd-cb-pos { width: 18px; height: 18px; cursor: pointer; }
+#wd-cb-alle { width: 18px; height: 18px; cursor: pointer; }
 
 /* Info-Feld am Header (RTF -> Plain Text) */
 .wd-memo {
@@ -390,12 +383,19 @@
     <h2>Positionen ({{ positionen|length }})</h2>
     {% if we_gesperrt %}
     <p class="wd-rdo">Wareneingang ist <strong>{{ kopf.stadium_label }}</strong> — Bearbeiten gesperrt.</p>
+    {% else %}
+    <div class="wd-aktionsleiste">
+        <button type="button" class="btn-warn" id="wd-bulk-delete"
+                onclick="wdEntfernenBulk()" disabled>🗑 Markierte Positionen entfernen</button>
+        <span class="wd-rdo" id="wd-bulk-info"></span>
+    </div>
     {% endif %}
     {% if positionen %}
     <div style="overflow-x:auto;">
     <table class="wd-pos-tabelle">
         <thead>
             <tr>
+                {% if not we_gesperrt %}<th><input type="checkbox" id="wd-cb-alle" onchange="wdCbAlleToggle(this)"></th>{% endif %}
                 <th>Pos.</th>
                 <th>Art.-Nr.</th>
                 <th>Lief-Art.-Nr.</th>
@@ -407,12 +407,20 @@
                 <th>aus Bestellung</th>
                 <th>gebucht in EK</th>
                 <th>EK-Rechnung</th>
-                {% if not we_gesperrt %}<th></th>{% endif %}
             </tr>
         </thead>
         <tbody>
         {% for p in positionen %}
         <tr id="we-pos-{{ p.REC_ID }}">
+            {% if not we_gesperrt %}
+            <td>
+                {% if p.GEBUCHT_FLAG != 'Y' %}
+                <input type="checkbox" class="wd-cb-pos"
+                       value="{{ p.REC_ID }}"
+                       onchange="wdCbAktualisieren()">
+                {% endif %}
+            </td>
+            {% endif %}
             <td>{{ p.POSITION }}</td>
             <td><code>{{ p.ARTNUM or '–' }}</code></td>
             <td><code>{{ p.lief_artnum or '–' }}</code></td>
@@ -464,17 +472,6 @@
                     <span class="wd-rdo">–</span>
                 {% endif %}
             </td>
-            {% if not we_gesperrt %}
-            <td>
-                {% if p.GEBUCHT_FLAG != 'Y' %}
-                <button type="button" class="wd-trash-btn"
-                        title="Position entfernen{% if p.bestell_belegnum %} — geht zurück in offene Bestellungen{% endif %}"
-                        data-pos-id="{{ p.REC_ID }}"
-                        data-menge="{{ '{:g}'.format(p.MENGE or 0) }}"
-                        onclick="wdEntfernen(this)">🗑</button>
-                {% endif %}
-            </td>
-            {% endif %}
         </tr>
         {% endfor %}
         </tbody>
@@ -485,66 +482,17 @@
     {% endif %}
 </div>
 
-{% if not we_gesperrt and offene_best %}
-<div class="wd-card">
-    <h2>Offene Bestellungen ({{ offene_best|length }})</h2>
+{% if not we_gesperrt %}
+{# Offene Bestellungen werden lazy via JS geladen — spart 1-2s beim
+   ersten Page-Load. Container bleibt leer bis fetch fertig. #}
+<div class="wd-card" id="wd-offen-card" style="display:none;">
+    <h2 id="wd-offen-titel">Offene Bestellungen</h2>
     <p class="wd-rdo">
         Position auf den Wareneingang ziehen oder per <strong>+</strong>-Button
         anhängen. Mengen können danach in der Liste oben editiert werden.
     </p>
-    <div style="overflow-x:auto;">
-    <table class="wd-pos-tabelle wd-offen-tabelle" id="wd-offen-tabelle">
-        <thead>
-            <tr>
-                <th></th>
-                <th>Bestell-Nr.</th>
-                <th>Datum</th>
-                <th>Lief-AB-Nr.</th>
-                <th>Art-Nr.</th>
-                <th>Bezeichnung</th>
-                <th class="zahl-rechts">Bestellmenge</th>
-                <th class="zahl-rechts">berechnet in EK</th>
-                <th class="zahl-rechts">OP-Menge EK</th>
-                <th class="zahl-rechts">in WE gebucht</th>
-                <th class="zahl-rechts">OP-Menge WE</th>
-                <th class="zahl-rechts">Menge offen</th>
-                <th class="zahl-rechts">PE</th>
-                <th class="zahl-rechts">ArtikelID</th>
-            </tr>
-        </thead>
-        <tbody>
-        {% for r in offene_best %}
-        <tr id="wd-offen-{{ r.pos_id }}"
-            class="wd-offen-row"
-            draggable="true"
-            data-pos-id="{{ r.pos_id }}"
-            data-menge-offen="{{ '{:g}'.format(r.menge_offen) }}">
-            <td>
-                <button type="button" class="wd-plus-btn"
-                        title="In Wareneingang übernehmen"
-                        onclick="wdAnhaengen({{ r.pos_id }}, {{ '{:g}'.format(r.menge_offen) }})">＋</button>
-            </td>
-            <td>
-                <a href="{{ url_for('orga_bestellwesen.detail', rec_id=r.bestell_id) }}">
-                    {{ r.bestell_nr }}
-                </a>
-            </td>
-            <td>{{ r.datum.strftime('%d.%m.%Y') if r.datum else '–' }}</td>
-            <td>{{ r.lief_ab or '–' }}</td>
-            <td><code>{{ r.artnum or '–' }}</code></td>
-            <td>{{ r.bezeichnung or r.kurzbezeichnung or '–' }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(r.bestellmenge) }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(r.berechnet_ek or 0) }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(r.op_menge_ek) }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(r.we_gebucht or 0) }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(r.op_menge_we) }}</td>
-            <td class="zahl-rechts" style="font-weight:700;">{{ '{:g}'.format(r.menge_offen) }}</td>
-            <td class="zahl-rechts">{{ '{:g}'.format(r.pe or 1) }}</td>
-            <td class="zahl-rechts"><code>{{ r.artikel_id }}</code></td>
-        </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+    <div id="wd-offen-container" style="overflow-x:auto;">
+        <p class="wd-rdo">⏳ Lade offene Bestellungen …</p>
     </div>
 </div>
 {% endif %}
@@ -772,28 +720,48 @@ function wdArtikelPicker() {
     });
 }
 
-// ── Pos aus Wareneingang entfernen (geht zurueck in offene Bestellungen) ──
-async function wdEntfernen(btn) {
-    const posId = btn.dataset.posId;
-    const menge = parseFloat(btn.dataset.menge || '0');
-    if (menge > 0) {
-        if (!confirm(`Position aus dem Wareneingang entfernen?\n\nDie aktuell erfasste Menge (${menge}) geht verloren.`)) {
-            return;
-        }
+// ── Bulk-Auswahl: Pos-Checkboxen ──────────────────────────────────
+function wdCbAlleToggle(cb) {
+    document.querySelectorAll('.wd-cb-pos').forEach(c => { c.checked = cb.checked; });
+    wdCbAktualisieren();
+}
+
+function wdCbAktualisieren() {
+    const ids = Array.from(document.querySelectorAll('.wd-cb-pos:checked'))
+                     .map(c => parseInt(c.value, 10));
+    const btn  = document.getElementById('wd-bulk-delete');
+    const info = document.getElementById('wd-bulk-info');
+    if (!btn) return;
+    btn.disabled = ids.length === 0;
+    btn.textContent = ids.length > 0
+        ? `🗑 ${ids.length} markierte Position${ids.length > 1 ? 'en' : ''} entfernen`
+        : '🗑 Markierte Positionen entfernen';
+    info.textContent = '';
+}
+
+async function wdEntfernenBulk() {
+    const ids = Array.from(document.querySelectorAll('.wd-cb-pos:checked'))
+                     .map(c => parseInt(c.value, 10));
+    if (!ids.length) return;
+    // Anzahl der Pos mit MENGE > 0 ermitteln (für eine sinnvolle Bestätigung)
+    let mitMenge = 0;
+    for (const id of ids) {
+        const inp = document.getElementById('wd-menge-' + id);
+        if (inp && parseFloat(inp.value) > 0) mitMenge++;
     }
-    btn.disabled = true;
-    cxLadenZeigen('Position wird entfernt …');
+    let frage = `${ids.length} Position(en) entfernen?`;
+    if (mitMenge > 0) frage += `\n\n${mitMenge} davon haben bereits Mengen erfasst, die verloren gehen.`;
+    if (!confirm(frage)) return;
+    cxLadenZeigen(`${ids.length} Position(en) werden entfernt …`);
     const res = await _post(
-        `${WD_DETAIL_URL}/api/positionen/${posId}/entfernen`,
-        {}
+        `${WD_DETAIL_URL}/api/positionen/entfernen-bulk`,
+        { pos_ids: ids }
     );
     if (!res.ok) {
         cxLadenAusblenden();
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
-        btn.disabled = false;
         return;
     }
-    // Bleibt sichtbar bis location.reload das Dokument abloest
     cxLadenZeigen('Seite wird neu geladen …');
     location.reload();
 }
@@ -811,53 +779,113 @@ async function wdAnhaengen(bestellPosId, menge) {
     location.reload();  // damit Pos-Tabelle + offene Liste aktualisiert sind
 }
 
-// Drag-and-Drop von "Offene Bestellungen" → Pos-Tabelle
-document.addEventListener('DOMContentLoaded', () => {
-    // Scan-Feld fokussieren
-    const scan = document.getElementById('wd-scan');
-    if (scan) scan.focus();
+// Lazy-Load: offene Bestellungen erst nach DOMContentLoaded holen.
+async function wdOffeneBestellungenLaden() {
+    const card = document.getElementById('wd-offen-card');
+    const cont = document.getElementById('wd-offen-container');
+    const titel = document.getElementById('wd-offen-titel');
+    if (!card || !cont) return;
+    try {
+        const r = await fetch(`${WD_DETAIL_URL}/api/offene-bestellungen`);
+        const d = await r.json();
+        const zeilen = (d.ok && d.zeilen) ? d.zeilen : [];
+        if (!zeilen.length) {
+            cont.innerHTML = '<p class="wd-rdo">Keine offenen Bestellpositionen für diesen Lieferanten.</p>';
+            card.style.display = '';
+            return;
+        }
+        titel.textContent = `Offene Bestellungen (${zeilen.length})`;
+        const fmt = n => Number(n || 0).toLocaleString('de-DE',
+            { maximumFractionDigits: 4 });
+        const escH = s => String(s ?? '')
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const tabHtml = `
+        <table class="wd-pos-tabelle wd-offen-tabelle" id="wd-offen-tabelle">
+            <thead><tr>
+                <th></th><th>Bestell-Nr.</th><th>Datum</th><th>Lief-AB-Nr.</th>
+                <th>Art-Nr.</th><th>Bezeichnung</th>
+                <th class="zahl-rechts">Bestellmenge</th>
+                <th class="zahl-rechts">berechnet in EK</th>
+                <th class="zahl-rechts">OP-Menge EK</th>
+                <th class="zahl-rechts">in WE gebucht</th>
+                <th class="zahl-rechts">OP-Menge WE</th>
+                <th class="zahl-rechts">Menge offen</th>
+                <th class="zahl-rechts">PE</th>
+                <th class="zahl-rechts">ArtikelID</th>
+            </tr></thead>
+            <tbody>${zeilen.map(r => {
+                const datum = r.datum ? new Date(r.datum).toLocaleDateString('de-DE') : '–';
+                const link = `/orga/bestellwesen/${r.bestell_id}`;
+                return `<tr class="wd-offen-row" draggable="true"
+                            data-pos-id="${r.pos_id}"
+                            data-menge-offen="${r.menge_offen}">
+                    <td><button type="button" class="wd-plus-btn"
+                            title="In Wareneingang übernehmen"
+                            onclick="wdAnhaengen(${r.pos_id}, ${r.menge_offen})">＋</button></td>
+                    <td><a href="${link}">${escH(r.bestell_nr)}</a></td>
+                    <td>${datum}</td>
+                    <td>${escH(r.lief_ab || '–')}</td>
+                    <td><code>${escH(r.artnum || '–')}</code></td>
+                    <td>${escH(r.bezeichnung || r.kurzbezeichnung || '–')}</td>
+                    <td class="zahl-rechts">${fmt(r.bestellmenge)}</td>
+                    <td class="zahl-rechts">${fmt(r.berechnet_ek || 0)}</td>
+                    <td class="zahl-rechts">${fmt(r.op_menge_ek)}</td>
+                    <td class="zahl-rechts">${fmt(r.we_gebucht || 0)}</td>
+                    <td class="zahl-rechts">${fmt(r.op_menge_we)}</td>
+                    <td class="zahl-rechts" style="font-weight:700;">${fmt(r.menge_offen)}</td>
+                    <td class="zahl-rechts">${fmt(r.pe || 1)}</td>
+                    <td class="zahl-rechts"><code>${r.artikel_id}</code></td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table>`;
+        cont.innerHTML = tabHtml;
+        card.style.display = '';
+        wdDragDropAktivieren();
+    } catch (e) {
+        cont.innerHTML = '<p class="wd-rdo">Fehler beim Laden der offenen Bestellungen.</p>';
+        card.style.display = '';
+    }
+}
 
+function wdDragDropAktivieren() {
     const offenTab = document.getElementById('wd-offen-tabelle');
     const posTab   = document.querySelector('.wd-card .wd-pos-tabelle:not(.wd-offen-tabelle)');
     if (!offenTab || !posTab) return;
-
-    // Source: jede Zeile mit draggable=true
     offenTab.querySelectorAll('tr.wd-offen-row').forEach(tr => {
         tr.addEventListener('dragstart', ev => {
             tr.classList.add('dragging');
             ev.dataTransfer.effectAllowed = 'copy';
             ev.dataTransfer.setData('text/plain', JSON.stringify({
-                pos_id: tr.dataset.posId,
-                menge:  tr.dataset.mengeOffen
+                pos_id: tr.dataset.posId, menge: tr.dataset.mengeOffen
             }));
         });
-        tr.addEventListener('dragend', () => {
-            tr.classList.remove('dragging');
-        });
+        tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
     });
-
-    // Target: Pos-Tabelle
     posTab.addEventListener('dragover', ev => {
         ev.preventDefault();
         ev.dataTransfer.dropEffect = 'copy';
         posTab.classList.add('drop-aktiv');
     });
-    posTab.addEventListener('dragleave', () => {
-        posTab.classList.remove('drop-aktiv');
-    });
+    posTab.addEventListener('dragleave', () => posTab.classList.remove('drop-aktiv'));
     posTab.addEventListener('drop', async ev => {
         ev.preventDefault();
         posTab.classList.remove('drop-aktiv');
         try {
             const data = JSON.parse(ev.dataTransfer.getData('text/plain'));
             if (data && data.pos_id) {
-                await wdAnhaengen(parseInt(data.pos_id),
-                                  parseFloat(data.menge) || 0);
+                await wdAnhaengen(parseInt(data.pos_id), parseFloat(data.menge) || 0);
             }
         } catch (e) {
             console.warn('Drop-Daten ungültig', e);
         }
     });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const scan = document.getElementById('wd-scan');
+    if (scan) scan.focus();
+    // Offene Bestellungen lazy laden — Page erscheint sofort
+    setTimeout(wdOffeneBestellungenLaden, 50);
 });
 </script>
 {% endblock %}

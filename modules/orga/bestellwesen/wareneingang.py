@@ -871,33 +871,34 @@ def pos_aus_bestellpos_anhaengen(eingang_id: int,
 
 
 def pos_entfernen(eingang_id: int, pos_id: int) -> dict[str, Any]:
-    """Entfernt eine Wareneingangs-Position aus einem offenen Wareneingang.
+    """Entfernt eine einzelne Wareneingangs-Position (siehe Bulk-Variante)."""
+    return pos_entfernen_bulk(eingang_id, [pos_id])
 
-    Nur erlaubt wenn:
-    - Wareneingang STADIUM=0 (offen)
-    - Pos GEBUCHT_FLAG='N' (noch nicht gebucht)
 
-    Wenn die Pos aus einer offenen Bestellung uebernommen wurde
-    (EKBESTELL_POS_ID gesetzt), taucht sie nach dem Loeschen automatisch
-    wieder in der 'offenen Bestellungen'-Liste auf, da menge_offen dort
-    dynamisch berechnet wird.
+def pos_entfernen_bulk(eingang_id: int, pos_ids: list[int]) -> dict[str, Any]:
+    """Entfernt mehrere Positionen aus einem offenen Wareneingang in
+    einer einzigen DELETE-Anweisung.
+
+    Sperr-Logik wie ``pos_entfernen``: WE muss STADIUM=0 sein, Pos
+    duerfen nicht GEBUCHT_FLAG='Y' haben — solche werden uebersprungen.
     """
     eingang_id = int(eingang_id)
-    pos_id = int(pos_id)
+    pos_ids = [int(p) for p in pos_ids if p]
+    if not pos_ids:
+        return {'entfernt': 0}
     with get_db() as cur:
         _ist_bearbeitbar(cur, eingang_id)
+        # Filter: nur Pos die zu diesem WE gehoeren UND nicht gebucht sind
+        fmt = ','.join(['%s'] * len(pos_ids))
         cur.execute(
-            "SELECT REC_ID, GEBUCHT_FLAG FROM EKEINGANG_POS "
-            "WHERE REC_ID = %s AND EKEINGANG_ID = %s",
-            (pos_id, eingang_id),
+            f"DELETE FROM EKEINGANG_POS "
+            f" WHERE EKEINGANG_ID = %s "
+            f"   AND COALESCE(GEBUCHT_FLAG, 'N') <> 'Y' "
+            f"   AND REC_ID IN ({fmt})",
+            [eingang_id] + pos_ids,
         )
-        p = cur.fetchone()
-        if not p:
-            raise LookupError(f'Position {pos_id} nicht gefunden')
-        if (p.get('GEBUCHT_FLAG') or 'N') == 'Y':
-            raise PermissionError('Bereits gebuchte Position kann nicht entfernt werden')
-        cur.execute("DELETE FROM EKEINGANG_POS WHERE REC_ID = %s", (pos_id,))
-    return {'ok': 1}
+        n = cur.rowcount
+    return {'entfernt': int(n)}
 
 
 def lieferant_suche(suchtext: str, limit: int = 30) -> list[dict[str, Any]]:

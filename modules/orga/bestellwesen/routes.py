@@ -265,19 +265,12 @@ def wareneingang_detail(rec_id: int):
     daten = we.wareneingang_detail(rec_id)
     if not daten:
         abort(404)
-    # Bei offenem Wareneingang: offene Bestellpositionen des Lieferanten
-    # anbieten (Drag-and-Drop / Plus-Button → in WE übernehmen).
-    offene_best: list = []
-    if daten['kopf'].get('STADIUM') == 0:
-        try:
-            offene_best = we.offene_bestell_positionen(rec_id)
-        except Exception:
-            offene_best = []
+    # Offene Bestellungen werden jetzt lazy via JS geholt (siehe
+    # /api/offene-bestellungen) — spart 1-2s beim Page-Load.
     return render_template(
         'wareneingang_detail.html',
         kopf=daten['kopf'],
         positionen=daten['positionen'],
-        offene_best=offene_best,
         stadium_label=we.STADIUM_LABEL_KOPF,
     )
 
@@ -368,10 +361,29 @@ def api_we_pos_anhaengen(rec_id: int) -> Any:
 
 @bp.post('/wareneingang/<int:rec_id>/api/positionen/<int:pos_id>/entfernen')
 def api_we_pos_entfernen(rec_id: int, pos_id: int) -> Any:
-    """Entfernt eine ungebuchte Position aus einem offenen Wareneingang."""
+    """Entfernt eine einzelne ungebuchte Position."""
     _login_check()
     try:
         result = we.pos_entfernen(rec_id, pos_id)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.post('/wareneingang/<int:rec_id>/api/positionen/entfernen-bulk')
+def api_we_pos_entfernen_bulk(rec_id: int) -> Any:
+    """Entfernt mehrere ungebuchte Positionen in einem Roundtrip."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    raw = body.get('pos_ids') or []
+    ids: list[int] = []
+    for x in raw:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    try:
+        result = we.pos_entfernen_bulk(rec_id, ids)
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
