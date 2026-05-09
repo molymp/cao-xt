@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Dorfkern Favicon — vereinfachte 16-px-Variante.
+  Punktraster wird auf 1 Akzent-Punkt reduziert, weil bei 16 px die
+  einzelnen Raster-Punkte zu einer matschigen Reihe verschmelzen.
+  Ergebnis: Dach + Terracotta-Punkt (Markenkern) + Boden — auch in der
+  Browser-Tableiste eindeutig wiedererkennbar.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="Dorfkern">
+  <path d="M6 28 L 11 28 L 40 6.5 L 69 28 L 74 28" fill="none" stroke="#141414"
+        stroke-width="6" stroke-linecap="square" stroke-linejoin="miter"/>
+  <circle cx="40" cy="48" r="11" fill="#b65c3a"/>
+  <path d="M10 72 L 70 72" fill="none" stroke="#141414"
+        stroke-width="6" stroke-linecap="square"/>
+</svg>
