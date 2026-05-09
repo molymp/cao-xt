@@ -230,6 +230,46 @@ def rolle_von(ma_id: int) -> Optional[str]:
 
 # ── Rechtepruefung ────────────────────────────────────────────────────────────
 
+def _request_cache_get():
+    """Liefert den Per-Request-Cache fuer Permissions (oder None ausserhalb
+    eines Flask-Request-Contexts). Wir cachen ``rolle_von`` und die ganze
+    Permission-Map auf ``flask.g``, damit base.html mit ihren 18 hat_recht-
+    Aufrufen pro Page-Render nicht 18-mal die DB anfasst — das hat unter
+    MyFRITZ-NAT (~170ms pro DB-Roundtrip) bis zu 4s Sidebar-Latenz erzeugt.
+    """
+    try:
+        from flask import g, has_request_context
+        if not has_request_context():
+            return None
+        cache = getattr(g, '_perm_cache', None)
+        if cache is None:
+            cache = {}
+            g._perm_cache = cache
+        return cache
+    except Exception:
+        return None
+
+
+def _permissions_fuer_rolle(rolle: str) -> dict[str, str]:
+    """Liest alle (OBJEKT_KEY, RECHT) fuer eine Rolle in einem Query.
+    Wird nur einmal pro Request gemacht und im g-Cache gehalten."""
+    out: dict[str, str] = {}
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT OBJEKT_KEY, RECHT "
+                "  FROM DORFKERN_ROLLE_PERMISSION "
+                " WHERE ROLLE = %s",
+                (rolle,),
+            )
+            for r in cur.fetchall():
+                out[str(r['OBJEKT_KEY'])] = str(r.get('RECHT') or '').upper()
+    except Exception as exc:
+        log.warning("permissions_fuer_rolle(%s): DB-Fehler: %s",
+                    rolle, exc)
+    return out
+
+
 def hat_recht(ma_id: int, objekt_key: str,
               recht: str = 'BEIDES') -> bool:
     """Prueft, ob der Mitarbeiter das geforderte Recht auf ``objekt_key`` hat.
@@ -243,30 +283,42 @@ def hat_recht(ma_id: int, objekt_key: str,
 
     Returns:
         ``True``, wenn erlaubt; sonst ``False`` (fail-closed).
+
+    Performance: Innerhalb eines Flask-Requests werden Rolle und
+    Permissions-Map auf ``g`` gecached. Das druckt 18 hat_recht()-Calls
+    in der Sidebar von 18 x 2 DB-Hits = 36 Roundtrips auf 2 Roundtrips.
     """
     if recht not in _VALID_RECHTE:
         log.warning("hat_recht: ungueltiges Recht %r", recht)
         return False
-    rolle = rolle_von(ma_id)
+
+    cache = _request_cache_get()
+
+    # 1) Rolle ermitteln (gecached)
+    if cache is not None and 'rolle' in cache:
+        rolle = cache['rolle']
+    else:
+        rolle = rolle_von(ma_id)
+        if cache is not None:
+            cache['rolle'] = rolle
     if rolle is None:
         return False
-    # Admin-Wildcard: keine DB-Lookup noetig
+
+    # 2) Admin-Wildcard
     if rolle == ROLLE_ADMIN:
         return True
-    try:
-        with get_db() as cur:
-            cur.execute(
-                "SELECT RECHT FROM DORFKERN_ROLLE_PERMISSION "
-                "WHERE ROLLE = %s AND OBJEKT_KEY = %s",
-                (rolle, objekt_key))
-            row = cur.fetchone()
-    except Exception as exc:
-        log.warning("hat_recht(%s, %s): DB-Fehler: %s",
-                    ma_id, objekt_key, exc)
+
+    # 3) Permission-Map fuer die Rolle (gecached, einmaliger Bulk-Lookup)
+    if cache is not None and 'perms' in cache:
+        perms = cache['perms']
+    else:
+        perms = _permissions_fuer_rolle(rolle)
+        if cache is not None:
+            cache['perms'] = perms
+
+    gewaehrt = perms.get(objekt_key)
+    if not gewaehrt:
         return False
-    if row is None:
-        return False
-    gewaehrt = str(row.get('RECHT') or '').upper()
     return recht in _DECKT_AB.get(gewaehrt, frozenset())
 
 
