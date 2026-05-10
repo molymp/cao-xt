@@ -2344,8 +2344,12 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
 
     with get_db_transaction() as cur:
         cur.execute(
-            "SELECT QUELLE, STADIUM, BSUMME, ADDR_ID, GEGENKONTO "
-            "  FROM JOURNAL WHERE REC_ID=%s",
+            "SELECT j.QUELLE, j.STADIUM, j.BSUMME, j.ADDR_ID, "
+            "       j.GEGENKONTO, j.VRENUM, "
+            "       COALESCE(a.NAME1, j.KUN_NAME1, '') AS lief_name "
+            "  FROM JOURNAL j "
+            "  LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID "
+            " WHERE j.REC_ID=%s",
             (rec_id,)
         )
         kopf = cur.fetchone()
@@ -2366,6 +2370,18 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
 
         addr_id = int(kopf.get('ADDR_ID') or -1)
         fibu_gegenkto = int(kopf.get('GEGENKONTO') or 0)
+
+        # CAO-Defaults uebernehmen (Trace 2026-05-10):
+        # BELEGNUM   = JOURNAL.VRENUM (z.B. '253430')
+        # VERW_ZWECK = 'ZA EK-RE <Lieferantenname>'
+        # Beide werden nur gesetzt, wenn der Aufrufer keine eigenen
+        # Werte uebergibt — der UI-User kann also ueberschreiben.
+        if not belegnum:
+            belegnum = (kopf.get('VRENUM') or '').strip()
+        if not verw_zweck:
+            lief_name = (kopf.get('lief_name') or '').strip()
+            if lief_name:
+                verw_zweck = f'ZA EK-RE {lief_name}'
 
         # Zahlart-Name + FIBU_KTO-Default aus ZAHLUNGSARTEN.FIBU_KONTEN
         if zahlart_id is not None:

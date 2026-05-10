@@ -1029,8 +1029,14 @@ function edZahlungErfassen() {
     document.getElementById('ed-zerf-datum').value = `${dd}.${mm}.${heute.getFullYear()}`;
     document.getElementById('ed-zerf-betrag').value = _eur(ED_BSUMME);
     document.getElementById('ed-zerf-skonto').value = '0,00';
-    document.getElementById('ed-zerf-belegnum').value = '';
-    document.getElementById('ed-zerf-vz').value = '';
+    // CAO-Defaults vorbelegen (Server schreibt sowieso die gleichen
+    // Werte wenn die Felder leer bleiben — wir zeigen sie aber gleich
+    // an, damit der User vor dem Speichern einen ueberblick hat).
+    document.getElementById('ed-zerf-belegnum').value =
+        {{ (kopf.VRENUM or '')|tojson }};
+    {% set _lief = (kopf.lief_name or '')|trim %}
+    document.getElementById('ed-zerf-vz').value =
+        {{ ('ZA EK-RE ' + _lief if _lief else '')|tojson }};
     // Summary
     const sum = document.getElementById('ed-zerf-summary');
     sum.innerHTML = `Beleg <strong>{{ kopf.VRENUM or kopf.REC_ID }}</strong> · Brutto <strong>${_eur(ED_BSUMME)}</strong>`;
