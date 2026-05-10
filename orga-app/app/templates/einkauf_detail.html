@@ -302,10 +302,13 @@
         <button type="button" class="btn-primary" onclick="edZahlungErfassen()">💶 Zahlung erfassen …</button>
     </div>
     {% endif %}
-    <div id="ed-bank-vorschlag" style="display:none; margin-top:14px;
+    <div id="ed-bank-vorschlag" style="margin-top:14px;
          padding:10px 14px; background:rgba(60,120,200,0.07);
          border-left:3px solid #2a4a8a;
-         border-radius:var(--radius-klein);"></div>
+         border-radius:var(--radius-klein); font-size:0.92rem;
+         color:var(--text-dim,#5a7a3a);">
+        🏦 Hibiscus-Bankumsatz-Vorschläge werden geladen …
+    </div>
 </div>
 
 <div class="ed-card">
@@ -1099,11 +1102,15 @@ async function _edBankVorschlaegeLaden() {
         const r = await fetch(`${ED_API}/bankumsatz-kandidaten`);
         res = await r.json();
     } catch (e) {
-        wrap.style.display = 'none';
+        wrap.innerHTML = '🏦 <em>Hibiscus-Vorschlaege nicht abrufbar (Verbindungsfehler).</em>';
         return;
     }
-    if (!res.ok || !res.kandidaten || !res.kandidaten.length) {
-        wrap.style.display = 'none';
+    if (!res.ok) {
+        wrap.innerHTML = `🏦 <em>Fehler beim Laden: ${_esc(res.fehler || 'unbekannt')}</em>`;
+        return;
+    }
+    if (!res.kandidaten || !res.kandidaten.length) {
+        wrap.innerHTML = '🏦 <em>Keine passenden Hibiscus-Bankumsätze gefunden.</em>';
         return;
     }
     const kk = res.kandidaten;
