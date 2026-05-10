@@ -801,16 +801,16 @@
 <div class="bd-card">
     <h2>Bestellung weiterführen</h2>
     <p class="bd-hinweis-rdo">
-        Liefermengen werden in CAO-XT nicht direkt an der Bestellung gepflegt —
+        Liefermengen werden in Dorfkern nicht direkt an der Bestellung gepflegt —
         eine Bestellung wird als <strong>Wareneingang</strong> oder direkt als
         <strong>Einkauf</strong> weitergeführt; daraus folgt automatisch der
         Status der Positionen. Diese Buchungs-Workflows kommen in einer
-        späteren Phase zu CAO-XT, aktuell bitte noch in CAO-Faktura selbst.
+        späteren Phase zu Dorfkern, aktuell bitte noch in CAO-Faktura selbst.
     </p>
     <div class="bd-aktion-zeile">
         <button type="button" class="btn btn-primary" id="bd-we-btn"
                 onclick="bdWareneingangAnlegen()">📥 Als Wareneingang weiterführen</button>
-        <button type="button" class="btn btn-neutral" disabled title="Phase 8 — kommt in CAO-XT später">🛒 Als Einkauf (in CAO-XT)</button>
+        <button type="button" class="btn btn-neutral" disabled title="Phase 8 — kommt in Dorfkern später">🛒 Als Einkauf (in Dorfkern)</button>
         <button type="button" class="btn btn-warn" id="bd-rnl-btn"
                 onclick="bdRestNichtLieferbar()">⚠ Rest nicht lieferbar — Bestellung abschließen</button>
     </div>
@@ -1164,7 +1164,7 @@ async function bdStorno() {
         btn.disabled = false;
         return;
     }
-    if (!confirm('Bestellung wirklich komplett stornieren? Diese Aktion ist über CAO-XT nicht reversibel.')) {
+    if (!confirm('Bestellung wirklich komplett stornieren? Diese Aktion ist über Dorfkern nicht reversibel.')) {
         btn.disabled = false;
         return;
     }

@@ -936,12 +936,12 @@ async function ekBezugTogglePflege(artikelId, adressId, aktuell, quelle, parentA
   //   STK (default)     → VPE_EK (= override anlegen)
   const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
   const erkl = (neu === 'VPE_EK')
-    ? 'Bei "VPE_EK" wird der Roh-EK durch VPE geteilt → Stück-EK in CAO. '
+    ? 'Bei "VPE_EK" wird der Roh-EK durch VPE geteilt → Stück-EK in Dorfkern. '
       + 'Beispiel: 16,84 € / 20 = 0,8420 € pro Stück.'
     : 'Bei "STK" wird der Roh-EK direkt als Stück-EK übernommen.';
   if (!confirm(
     `EK-Bezug für Artikel × Lieferant auf "${neu}" setzen?\n\n` +
-    'Wirkt für die Anzeige hier und für künftige CAO-Sync-Läufe.\n\n' +
+    'Wirkt für die Anzeige hier und für künftige Dorfkern-Sync-Läufe.\n\n' +
     erkl
   )) {
     console.log('ekBezugToggle: User abgebrochen');
@@ -1017,7 +1017,7 @@ async function artikelEkBezugTogglePflege(artnr, aktuell) {
   const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
   const erkl = (neu === 'VPE_EK')
     ? 'Bei "VPE_EK" interpretiert die Preispflege ARTIKEL.EK_PREIS als '
-      + 'Karton-Preis und teilt für Faktor-Anzeige durch VPE_EK. CAO selbst '
+      + 'Karton-Preis und teilt für Faktor-Anzeige durch VPE_EK. Dorfkern selbst '
       + 'bleibt unverändert.'
     : 'Bei "STK" wird ARTIKEL.EK_PREIS direkt als Stück-EK interpretiert (Standard).';
   if (!confirm(
