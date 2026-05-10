@@ -367,7 +367,8 @@
     <div class="zerf-grid">
       <label>
         <span class="lbl">Datum</span>
-        <input id="ed-zerf-datum" type="text" class="date-touch" placeholder="TT.MM.JJJJ" autocomplete="off">
+        <input id="ed-zerf-datum" type="text" class="date-touch" placeholder="TT.MM.JJJJ" autocomplete="off"
+               onchange="_edSkontoCardSync()">
       </label>
       <label>
         <span class="lbl">Zahlart</span>
@@ -1173,13 +1174,28 @@ function _edSkontoCardSync() {
     const an   = document.getElementById('ed-zerf-skonto-an').checked;
     card.classList.toggle('aktiv', an);
     card.classList.toggle('inaktiv', !an);
-    // Hint im Card-Header
+    // Hint im Card-Header — zeigt Skonto-Frist + Warnung bei abgelaufener Frist
     const hint = document.getElementById('ed-zerf-skonto-hint');
+    hint.style.color = '';
     if (ED_BSUMME < 0) {
         hint.textContent = 'Bei Gutschrift kein Skonto';
     } else if (_edZielInfo && _edZielInfo.skonto_proz > 0.001 && _edZielInfo.skonto_datum) {
-        const sd = _edZielInfo.skonto_datum.split('-').reverse().join('.');
-        hint.textContent = `${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % bis ${sd}`;
+        const sd_iso = _edZielInfo.skonto_datum;
+        const sd_de  = sd_iso.split('-').reverse().join('.');
+        // Vergleich mit dem Eingegebenen Datum (nicht nur "heute")
+        const heute_iso = (() => {
+            const v = (document.getElementById('ed-zerf-datum') || {}).value;
+            const m = (v || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+            if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+            const t = new Date();
+            return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+        })();
+        if (heute_iso > sd_iso) {
+            hint.style.color = '#a02810';
+            hint.textContent = `⚠ Skonto-Frist abgelaufen (Skonto bis ${sd_de})`;
+        } else {
+            hint.textContent = `${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % bis ${sd_de}`;
+        }
     } else {
         hint.textContent = 'Kein Skonto laut Stammdaten';
     }
