@@ -1495,8 +1495,10 @@ async function edZahlungStorno(zid) {
 document.addEventListener('DOMContentLoaded', () => {
     const scan = document.getElementById('ed-scan');
     if (scan) scan.focus();
-    // Zahlungen automatisch laden (falls Beleg gebucht ist)
-    _edZahlungenLaden();
+    // Zahlungen + Bank-Vorschlaege parallel laden — entkoppelt, damit
+    // ein Fehler in Zahlungen nicht die Hibiscus-Vorschlaege blockt.
+    _edZahlungenLaden().catch(e => console.error('Zahlungen-Load:', e));
+    _edBankVorschlaegeLaden().catch(e => console.error('Bank-Vorschlag:', e));
 });
 </script>
 
