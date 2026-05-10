@@ -213,76 +213,102 @@ def umsatz_kategorie_setzen(umsatz_id: int, umsatztyp_id: int | None) -> None:
         )
 
 
-# Zeitraum-Presets fuer das UI-Filter-Dropdown.
-# Die Werte werden lazy berechnet relativ zu ``date.today()``.
+# Zeitraum-Presets fuer das UI-Filter-Dropdown — uebernommen aus dem
+# Hibiscus-Standard (Settings → Zeitraeume), reine Wert-Berechnung in
+# Python (Hibiscus speichert die Liste zwar in einer cfg-Datei aber
+# die Werte sind ja immer dynamisch relativ zu "heute").
 
 def zeitraum_presets() -> list[dict[str, Any]]:
-    """Liefert eine Liste von Zeitraum-Vorlagen (von, bis, label).
-
-    Nicht aus der DB — Hibiscus speichert keine solche Liste; nur
-    BPD-Konfig pro Bank-Schnittstelle. Wir nehmen die uebliche
-    Buchhaltungs-Auswahl.
+    """Liefert die Hibiscus-Standard-Zeitraeume als Liste von dicts
+    ``{key, label, von, bis}``. ``Alles`` hat ``von/bis=None`` (= kein
+    Datums-Filter).
     """
     from datetime import date, timedelta
     heute = date.today()
     j = heute.year
     m = heute.month
     # Hilfen
-    def monat_anfang(y, mo): return date(y, mo, 1)
+    def monat_anfang(y, mo):
+        # mo kann negativ/>12 sein — wir korrigieren
+        while mo < 1: mo += 12; y -= 1
+        while mo > 12: mo -= 12; y += 1
+        return date(y, mo, 1)
     def monat_ende(y, mo):
-        return (monat_anfang(y, mo + 1) - timedelta(days=1)
-                if mo < 12 else date(y, 12, 31))
+        ma = monat_anfang(y, mo + 1)
+        return ma - timedelta(days=1)
     def quartal_grenzen(y, q):
-        # q in 1..4 → Monate (1..3), (4..6), (7..9), (10..12)
         m_start = (q - 1) * 3 + 1
         return monat_anfang(y, m_start), monat_ende(y, m_start + 2)
+    # ISO-Wochen-Helfer: Montag der Woche, in der `d` liegt
+    def woche_montag(d):
+        return d - timedelta(days=d.weekday())
+    def woche_sonntag(d):
+        return woche_montag(d) + timedelta(days=6)
+
     aktuelles_q = (m - 1) // 3 + 1
     letztes_q   = aktuelles_q - 1 if aktuelles_q > 1 else 4
     j_letztes_q = j if aktuelles_q > 1 else j - 1
+    vorletztes_q   = letztes_q - 1 if letztes_q > 1 else 4
+    j_vorletztes_q = j_letztes_q if letztes_q > 1 else j_letztes_q - 1
+
+    diese_woche_mo = woche_montag(heute)
+    letzte_woche_mo = diese_woche_mo - timedelta(days=7)
+    vorletzte_woche_mo = diese_woche_mo - timedelta(days=14)
 
     out = [
-        {'key': 'aktueller_monat',
-         'label': 'Aktueller Monat',
-         'von':   monat_anfang(j, m),
-         'bis':   heute},
-        {'key': 'letzter_monat',
-         'label': 'Letzter Monat',
-         'von':   monat_anfang(j, m - 1) if m > 1 else date(j-1, 12, 1),
-         'bis':   monat_ende(j, m - 1)   if m > 1 else date(j-1, 12, 31)},
-        {'key': 'vorletzter_monat',
-         'label': 'Vorletzter Monat',
-         'von':   monat_anfang(j, m - 2) if m > 2 else
-                  monat_anfang(j-1, 12 + m - 2),
-         'bis':   monat_ende(j, m - 2)   if m > 2 else
-                  monat_ende(j-1, 12 + m - 2)},
-        {'key': 'letzte_30',
-         'label': 'Letzte 30 Tage',
-         'von':   heute - timedelta(days=30),
-         'bis':   heute},
-        {'key': 'letzte_90',
-         'label': 'Letzte 90 Tage',
-         'von':   heute - timedelta(days=90),
-         'bis':   heute},
-        {'key': 'letzte_365',
-         'label': 'Letzte 365 Tage',
-         'von':   heute - timedelta(days=365),
-         'bis':   heute},
-        {'key': 'aktuelles_quartal',
-         'label': f'Aktuelles Quartal (Q{aktuelles_q}/{j})',
-         'von':   quartal_grenzen(j, aktuelles_q)[0],
-         'bis':   heute},
-        {'key': 'letztes_quartal',
-         'label': f'Letztes Quartal (Q{letztes_q}/{j_letztes_q})',
-         'von':   quartal_grenzen(j_letztes_q, letztes_q)[0],
-         'bis':   quartal_grenzen(j_letztes_q, letztes_q)[1]},
-        {'key': 'dieses_jahr',
-         'label': f'Dieses Jahr ({j})',
-         'von':   date(j, 1, 1),
-         'bis':   heute},
-        {'key': 'letztes_jahr',
-         'label': f'Letztes Jahr ({j-1})',
-         'von':   date(j-1, 1, 1),
-         'bis':   date(j-1, 12, 31)},
+        # ── Tage ─────────────────────────────────────────
+        {'key': 'letzte_7',   'label': 'Letzte 7 Tage',
+         'von': heute - timedelta(days=7),  'bis': heute},
+        {'key': 'letzte_30',  'label': 'Letzte 30 Tage',
+         'von': heute - timedelta(days=30), 'bis': heute},
+        {'key': 'letzte_90',  'label': 'Letzte 90 Tage',
+         'von': heute - timedelta(days=90), 'bis': heute},
+        {'key': 'letzte_365', 'label': 'Letzte 365 Tage',
+         'von': heute - timedelta(days=365),'bis': heute},
+        {'key': 'letzte_3j',  'label': 'Letzte 3 Jahre',
+         'von': date(j-3, m, min(heute.day, 28)), 'bis': heute},
+        {'key': 'letzte_5j',  'label': 'Letzte 5 Jahre',
+         'von': date(j-5, m, min(heute.day, 28)), 'bis': heute},
+        {'key': 'letzte_10j', 'label': 'Letzte 10 Jahre',
+         'von': date(j-10, m, min(heute.day, 28)),'bis': heute},
+        # ── Woche ────────────────────────────────────────
+        {'key': 'woche_diese',     'label': 'Woche: Diese',
+         'von': diese_woche_mo,         'bis': woche_sonntag(heute)},
+        {'key': 'woche_letzte',    'label': 'Woche: Letzte',
+         'von': letzte_woche_mo,        'bis': letzte_woche_mo + timedelta(days=6)},
+        {'key': 'woche_vorletzte', 'label': 'Woche: Vorletzte',
+         'von': vorletzte_woche_mo,     'bis': vorletzte_woche_mo + timedelta(days=6)},
+        # ── Monat ────────────────────────────────────────
+        {'key': 'monat_dieser',     'label': 'Monat: Dieser',
+         'von': monat_anfang(j, m),     'bis': monat_ende(j, m)},
+        {'key': 'monat_letzter',    'label': 'Monat: Letzter',
+         'von': monat_anfang(j, m - 1), 'bis': monat_ende(j, m - 1)},
+        {'key': 'monat_vorletzter', 'label': 'Monat: Vorletzter',
+         'von': monat_anfang(j, m - 2), 'bis': monat_ende(j, m - 2)},
+        {'key': 'monat_letzte_12',  'label': 'Monat: Letzte 12',
+         'von': monat_anfang(j, m - 11),'bis': monat_ende(j, m)},
+        # ── Quartal ─────────────────────────────────────
+        {'key': 'quartal_dieses',
+         'label': f'Quartal: Dieses (Q{aktuelles_q}/{j})',
+         'von': quartal_grenzen(j, aktuelles_q)[0],
+         'bis': quartal_grenzen(j, aktuelles_q)[1]},
+        {'key': 'quartal_letztes',
+         'label': f'Quartal: Letztes (Q{letztes_q}/{j_letztes_q})',
+         'von': quartal_grenzen(j_letztes_q, letztes_q)[0],
+         'bis': quartal_grenzen(j_letztes_q, letztes_q)[1]},
+        {'key': 'quartal_vorletztes',
+         'label': f'Quartal: Vorletztes (Q{vorletztes_q}/{j_vorletztes_q})',
+         'von': quartal_grenzen(j_vorletztes_q, vorletztes_q)[0],
+         'bis': quartal_grenzen(j_vorletztes_q, vorletztes_q)[1]},
+        # ── Jahr ─────────────────────────────────────────
+        {'key': 'jahr_dieses',     'label': f'Jahr: Dieses ({j})',
+         'von': date(j, 1, 1),     'bis': date(j, 12, 31)},
+        {'key': 'jahr_letztes',    'label': f'Jahr: Letztes ({j-1})',
+         'von': date(j-1, 1, 1),   'bis': date(j-1, 12, 31)},
+        {'key': 'jahr_vorletztes', 'label': f'Jahr: Vorletztes ({j-2})',
+         'von': date(j-2, 1, 1),   'bis': date(j-2, 12, 31)},
+        # ── Alles ────────────────────────────────────────
+        {'key': 'alles', 'label': 'Alles', 'von': None, 'bis': None},
     ]
     return out
 
