@@ -594,6 +594,39 @@ def api_ek_zahlung_erfassen(rec_id: int) -> Any:
     return jsonify(result)
 
 
+@bp.get('/einkauf/<int:rec_id>/api/bankumsatz-kandidaten')
+def api_ek_bankumsatz_kandidaten(rec_id: int) -> Any:
+    """Hibiscus-Bankumsatz-Match-Kandidaten fuer offenen EK-Beleg."""
+    _login_check()
+    try:
+        kandidaten = ek.bankumsatz_kandidaten_fuer_einkauf(rec_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, 'kandidaten': kandidaten})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/bankumsatz-uebernehmen')
+def api_ek_bankumsatz_uebernehmen(rec_id: int) -> Any:
+    """Uebernimmt einen Hibiscus-Umsatz als ZAHLUNGEN-Eintrag.
+    Body: ``{umsatz_id: int}``"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        umsatz_id = int(body.get('umsatz_id') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'umsatz_id muss int sein'}), 400
+    if umsatz_id <= 0:
+        return jsonify({'ok': False, 'fehler': 'umsatz_id fehlt'}), 400
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.bankumsatz_uebernehmen(
+            rec_id, umsatz_id, ma_id=ma_id, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
 @bp.post('/einkauf/zahlungen/<int:zahlung_id>/storno')
 def api_ek_zahlung_storno(zahlung_id: int) -> Any:
     """Storniert eine Zahlung. Body: {grund: str (Pflicht)}"""

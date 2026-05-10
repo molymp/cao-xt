@@ -2538,6 +2538,317 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
     return {'ok': True, 'rec_id': new_id, 'stadium': neues_stadium}
 
 
+# ── Phase E.3: Auto-Match Bankumsatz ↔ EK-Zahlung ────────────────
+
+
+def _fibu_kto_zu_hibiscus_konto(cur, fibu_kto: int) -> int | None:
+    """Mappt FIBU_KONTEN.KONTO (z.B. 1210) auf hibiscus.konto.id (z.B. 48)
+    via IBAN-Gleichheit. None wenn nicht zuordenbar (Kasse, Schecks)."""
+    if not fibu_kto or fibu_kto < 1:
+        return None
+    cur.execute(
+        """SELECT k.id
+             FROM FIBU_KONTEN fk
+             JOIN konto k ON k.iban = fk.IBAN AND k.iban != ''
+            WHERE fk.KONTORAHMEN = (
+                  SELECT IFNULL(VAL_CHAR, 'SKR03') FROM REGISTRY
+                   WHERE MAINKEY=%s AND NAME='KONTORAHMEN' LIMIT 1)
+              AND fk.KONTO = %s
+            LIMIT 1""",
+        ('MAIN\\BELEGE', int(fibu_kto))
+    )
+    row = cur.fetchone()
+    return int(row['id']) if row else None
+
+
+def _name_token_match(adress_name: str, empf_name: str) -> bool:
+    """True wenn ein "wichtiges" Wort des Lieferanten-Namens im
+    Bankumsatz-Empfaenger vorkommt. Wir nehmen den ersten Token mit
+    >= 4 Zeichen, der nicht in der Stoppwort-Liste steht.
+    """
+    stop = {'gmbh', 'ag', 'kg', 'ohg', 'co', 'mbh', 'haftungsbeschr',
+             'lebensmittel', 'gruppe', 'group', 'firma', 'company'}
+    a = (adress_name or '').lower()
+    e = (empf_name or '').lower()
+    if not a or not e:
+        return False
+    import re
+    tokens = re.findall(r'[a-zA-ZäöüÄÖÜß]{4,}', a)
+    relevant = [t for t in tokens if t.lower() not in stop]
+    if not relevant:
+        relevant = tokens   # Fallback wenn alles Stoppwort
+    return any(t.lower() in e for t in relevant)
+
+
+def bankumsatz_kandidaten_fuer_einkauf(rec_id: int) -> list[dict[str, Any]]:
+    """Sucht moegliche Hibiscus-Bankumsaetze fuer eine offene EK-Rechnung.
+
+    Match-Score (max 100):
+      - empfaenger_konto = ADRESSEN.IBAN          → +50
+      - |umsatz.betrag| = offener_Betrag (±1ct)   → +30
+      - umsatz.datum innerhalb RDATUM ±60 Tage    → +10
+      - empfaenger_name enthaelt Lieferantenname  → +10
+
+    Liefert sortierte Liste von Kandidaten ab Score>=50, max 5.
+    """
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        # Beleg-Header + Lieferanten-Daten
+        cur.execute(
+            """SELECT j.REC_ID, j.QUELLE, j.STADIUM, j.RDATUM, j.BSUMME,
+                      j.ADDR_ID, j.VRENUM, j.STADIUM,
+                      a.NAME1 AS lief_name, a.IBAN AS lief_iban
+                 FROM JOURNAL j
+            LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
+                WHERE j.REC_ID = %s""",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            return []
+        if int(kopf.get('QUELLE') or 0) != 5:
+            return []
+        st = int(kopf.get('STADIUM') or 0)
+        if st not in (2, 7, 11):
+            return []   # nur offene/Teil/angewiesen
+        bsumme = float(kopf.get('BSUMME') or 0)
+        rdatum = kopf.get('RDATUM')
+        lief_name = (kopf.get('lief_name') or '').strip()
+        lief_iban = (kopf.get('lief_iban') or '').strip()
+
+        # Offener Betrag = BSUMME minus aktive Zahlungen
+        cur.execute(
+            "SELECT COALESCE(SUM(ABS(BETRAG))+SUM(ABS(SKONTO_BETRAG)),0) AS s "
+            "  FROM ZAHLUNGEN "
+            " WHERE JOURNAL_ID=%s AND QUELLE=5 AND STORNO=0 AND GEBUCHT='Y'",
+            (rec_id,)
+        )
+        s_aktiv = float((cur.fetchone() or {}).get('s') or 0)
+        offen = abs(bsumme) - s_aktiv
+        if offen <= 0.01:
+            return []   # eigentlich voll bezahlt — kein Kandidat noetig
+
+        # Bereits verlinkte umsatz-IDs (UW_NUM > 0 bei ART='UB' = SEPA aus Banking)
+        cur.execute(
+            "SELECT DISTINCT UW_NUM FROM ZAHLUNGEN "
+            " WHERE QUELLE=5 AND ART='UB' AND UW_NUM > 0"
+        )
+        verbraucht = {int(r['UW_NUM']) for r in cur.fetchall() or []
+                       if r.get('UW_NUM')}
+
+        if not rdatum:
+            return []
+        rd = rdatum.date() if hasattr(rdatum, 'date') else rdatum
+        from datetime import timedelta
+        von = rd - timedelta(days=60)
+        bis = rd + timedelta(days=60)
+
+        # Kandidaten suchen: gleicher Betrag (±1ct), gleiches Datums-Fenster
+        # — gefiltert nach Konten, deren IBAN NICHT NULL ist (Hibiscus
+        # hat dann Online-Zugang).
+        cur.execute(
+            """SELECT u.id AS umsatz_id, u.konto_id, u.datum, u.valuta,
+                      u.betrag, u.empfaenger_name, u.empfaenger_konto,
+                      u.zweck, u.zweck2, u.zweck3, u.art, u.umsatztyp_id,
+                      k.bezeichnung AS konto_bez, k.iban AS konto_iban
+                 FROM umsatz u
+                 JOIN konto k ON k.id = u.konto_id
+                WHERE u.datum BETWEEN %s AND %s
+                  AND ABS(ABS(u.betrag) - %s) < 0.02
+                ORDER BY u.datum DESC""",
+            (von, bis, offen)
+        )
+        rohe = cur.fetchall()
+
+    out: list[dict[str, Any]] = []
+    for u in rohe:
+        if int(u['umsatz_id']) in verbraucht:
+            continue
+        score = 0
+        gruende: list[str] = []
+        # Betrag (Pflicht — schon im SQL gefiltert, also immer +30)
+        score += 30
+        gruende.append('Betrag passt')
+        # Datum +10 (auch schon im SQL — aber der Score zeigt es)
+        score += 10
+        # IBAN-Match
+        empf_iban = (u.get('empfaenger_konto') or '').strip()
+        if lief_iban and empf_iban and lief_iban == empf_iban:
+            score += 50
+            gruende.append('Lieferanten-IBAN exakt')
+        # Name-Token-Match
+        if _name_token_match(lief_name, u.get('empfaenger_name') or ''):
+            score += 10
+            gruende.append('Name passt')
+        if score < 50:
+            continue
+        out.append({
+            'umsatz_id':       int(u['umsatz_id']),
+            'konto_id':        int(u['konto_id']),
+            'konto_bez':       u['konto_bez'],
+            'konto_iban':      u['konto_iban'],
+            'datum':           u['datum'],
+            'valuta':          u['valuta'],
+            'betrag':          float(u['betrag']),
+            'empfaenger_name': u['empfaenger_name'] or '',
+            'empfaenger_konto': u['empfaenger_konto'] or '',
+            'zweck':           ((u['zweck'] or '') + ' '
+                                + (u['zweck2'] or '') + ' '
+                                + (u['zweck3'] or '')).strip(),
+            'art':             u['art'] or '',
+            'score':           score,
+            'gruende':         gruende,
+        })
+    out.sort(key=lambda x: -x['score'])
+    return out[:5]
+
+
+def bankumsatz_uebernehmen(rec_id: int, umsatz_id: int, *,
+                            ma_id: int | None = None,
+                            ma_name: str = '') -> dict[str, Any]:
+    """Uebernimmt einen Hibiscus-Bankumsatz als ZAHLUNGEN-Eintrag.
+
+    - ZAHLUNGEN-Eintrag mit ART='UB' (Ueberweisung), UW_NUM=umsatz_id
+    - Betrag/Datum aus dem Hibiscus-Umsatz (NICHT geflippt — der ist
+      schon mit dem richtigen CAO-Vorzeichen, weil EK = Geld-Ausgang
+      = umsatz.betrag negativ).
+    - FIBU_KTO = das CAO-Konto, das zum Hibiscus-Konto gehoert
+    - VERW_ZWECK = das ist der zweck aus Hibiscus
+    - JOURNAL.STADIUM neu berechnen (analog manueller Erfassung)
+    - JOURNAL_OP-Rebuild
+    - Hibiscus-umsatz wird gleichzeitig als FLAG_GEPRUEFT markiert
+      (Reconciliation-Spur).
+
+    Returns: ``{ok, zahlung_id, stadium}``.
+    """
+    rec_id = int(rec_id)
+    umsatz_id = int(umsatz_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:50]
+
+    with get_db_transaction() as cur:
+        # Hibiscus-Umsatz lesen
+        cur.execute(
+            """SELECT u.id, u.konto_id, u.datum, u.valuta, u.betrag,
+                      u.empfaenger_name, u.empfaenger_konto, u.empfaenger_blz,
+                      u.zweck, u.zweck2, u.zweck3,
+                      k.iban AS konto_iban, k.bezeichnung AS konto_bez
+                 FROM umsatz u
+                 JOIN konto k ON k.id = u.konto_id
+                WHERE u.id = %s""",
+            (umsatz_id,)
+        )
+        u = cur.fetchone()
+        if not u:
+            raise LookupError(f'Hibiscus-Umsatz {umsatz_id} nicht gefunden')
+
+        # FIBU_KTO ermitteln (umgekehrtes Mapping zu _fibu_kto_zu_hibiscus_konto)
+        cur.execute(
+            r"""SELECT fk.KONTO FROM FIBU_KONTEN fk
+                 WHERE fk.KONTORAHMEN = (
+                       SELECT IFNULL(VAL_CHAR, 'SKR03') FROM REGISTRY
+                        WHERE MAINKEY='MAIN\\BELEGE' AND NAME='KONTORAHMEN' LIMIT 1)
+                   AND fk.IBAN = %s
+                 LIMIT 1""",
+            (u['konto_iban'],)
+        )
+        fk_row = cur.fetchone()
+        fibu_kto = int(fk_row['KONTO']) if fk_row else 0
+
+        # JOURNAL-Header
+        cur.execute(
+            "SELECT QUELLE, STADIUM, BSUMME, ADDR_ID, GEGENKONTO, VRENUM "
+            "  FROM JOURNAL WHERE REC_ID=%s",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            raise LookupError(f'Beleg {rec_id} nicht gefunden')
+        if int(kopf.get('QUELLE') or 0) != 5:
+            raise PermissionError('Kein gebuchter EK-Beleg')
+        st_alt = int(kopf.get('STADIUM') or 0)
+        if st_alt in (8, 9, 125, 126, 127):
+            raise PermissionError(
+                f'Beleg STADIUM={st_alt} — Zahlung nicht uebernehmbar'
+            )
+        addr_id = int(kopf.get('ADDR_ID') or -1)
+        fibu_gegenkto = int(kopf.get('GEGENKONTO') or 0)
+        bsumme = float(kopf.get('BSUMME') or 0)
+
+        # Vorzeichen & Beträge: Hibiscus-Betrag ist schon negativ bei EK
+        # (Geld-Aus). Wir uebernehmen 1:1.
+        u_betrag = float(u['betrag'] or 0)
+        verw_zweck = ((u['zweck'] or '') + ' '
+                       + (u['zweck2'] or '') + ' '
+                       + (u['zweck3'] or '')).strip()[:1000]
+        belegnum = (kopf.get('VRENUM') or '').strip()
+
+        # Stadium-Vorhersage (mit ABS-Logik fuer Gutschriften)
+        cur.execute(
+            "SELECT COALESCE(SUM(ABS(BETRAG))+SUM(ABS(SKONTO_BETRAG)),0) AS s "
+            "  FROM ZAHLUNGEN "
+            " WHERE JOURNAL_ID=%s AND QUELLE=5 AND STORNO=0 AND GEBUCHT='Y'",
+            (rec_id,)
+        )
+        s_alt = float((cur.fetchone() or {}).get('s') or 0)
+        s_neu = s_alt + abs(u_betrag)
+        if s_neu >= abs(bsumme) - 0.01:
+            neues_stadium = 9
+        else:
+            neues_stadium = 7
+        cur.execute(
+            "UPDATE JOURNAL SET STADIUM=%s, BEZAHLT_KASSE='N' "
+            "WHERE REC_ID=%s",
+            (neues_stadium, rec_id)
+        )
+
+        # ZAHLUNGEN-Insert: ART='UB' (= Ueberweisung aus Banking),
+        # UW_NUM=umsatz_id (= Verlinkung)
+        cur.execute(
+            """INSERT INTO ZAHLUNGEN
+               (FIBU_KTO, FIBU_GEGENKTO, MA_ID, ADDR_ID,
+                QUELLE, JOURNAL_ID, KASSEN_ID, KA_ID,
+                ZAHLART, ART, AUSZUG, UW_NUM,
+                DATUM, VALUTA, BELEGNUM,
+                BETRAG, SKONTO_PROZ, SKONTO_BETRAG, WAEHRUNG,
+                TEXTSCHLUESSEL, VERW_ZWECK,
+                GEBUCHT, STORNO, LFD_NUMMMER,
+                ERSTELLT_AM, ERSTELLT_NAME,
+                ZAHLART_NAME, SIG_AUSGEFALLEN, Z_ID, BEREINIGT,
+                REFERENZ_ID, SUB_QUELLE, MWST)
+               VALUES (%s, %s, %s, %s,
+                       5, %s, -1, -2,
+                       -1, 'UB', 0, %s,
+                       %s, %s, %s,
+                       %s, 0, 0, '€',
+                       0, %s,
+                       'Y', 0, -1,
+                       NOW(), %s,
+                       'Überweisung Bank', 'N', -1, 'N',
+                       -1, -1, 0)""",
+            (
+                fibu_kto, fibu_gegenkto, int(ma_id or 0), addr_id,
+                rec_id, umsatz_id,
+                u['datum'], u['valuta'] or u['datum'], belegnum[:100],
+                u_betrag,
+                verw_zweck,
+                ma_name_safe,
+            )
+        )
+        new_zahlung_id = int(cur.lastrowid)
+
+        # Hibiscus-Umsatz als geprueft markieren — Bit 0 setzen
+        cur.execute(
+            "UPDATE umsatz SET flags = IFNULL(flags,0) | 1 WHERE id = %s",
+            (umsatz_id,)
+        )
+
+        # JOURNAL_OP rebuild
+        _journal_op_rebuild_qu5(cur)
+
+    return {'ok': True, 'zahlung_id': new_zahlung_id,
+            'stadium': neues_stadium}
+
+
 def einkauf_zahlung_stornieren(zahlung_rec_id: int, *,
                                  grund: str,
                                  ma_id: int | None = None,

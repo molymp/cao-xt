@@ -298,6 +298,10 @@
         <button type="button" class="btn-primary" onclick="edZahlungErfassen()">💶 Zahlung erfassen …</button>
     </div>
     {% endif %}
+    <div id="ed-bank-vorschlag" style="display:none; margin-top:14px;
+         padding:10px 14px; background:rgba(60,120,200,0.07);
+         border-left:3px solid #2a4a8a;
+         border-radius:var(--radius-klein);"></div>
 </div>
 
 <div class="ed-card">
@@ -1074,6 +1078,114 @@ async function _edZahlungenLaden() {
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
+    // Bankumsatz-Vorschlaege aus Hibiscus laden — nur wenn Beleg
+    // ueberhaupt offen ist.
+    _edBankVorschlaegeLaden();
+}
+
+async function _edBankVorschlaegeLaden() {
+    const wrap = document.getElementById('ed-bank-vorschlag');
+    if (!wrap) return;
+    if ([8, 9, 125, 126, 127].includes(ED_STADIUM)) {
+        wrap.style.display = 'none';
+        return;
+    }
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/bankumsatz-kandidaten`);
+        res = await r.json();
+    } catch (e) {
+        wrap.style.display = 'none';
+        return;
+    }
+    if (!res.ok || !res.kandidaten || !res.kandidaten.length) {
+        wrap.style.display = 'none';
+        return;
+    }
+    const kk = res.kandidaten;
+    const rows = kk.map(k => {
+        const datum = k.datum ? k.datum.split('T')[0].split('-').reverse().join('.') : '–';
+        const score_color = k.score >= 80 ? '#1a4010'
+            : k.score >= 60 ? '#a05010'
+            : '#888';
+        const score_bg = k.score >= 80 ? 'rgba(46,122,46,0.18)'
+            : k.score >= 60 ? 'rgba(220,140,40,0.18)'
+            : 'rgba(180,180,180,0.30)';
+        const auto_btn = k.score >= 80
+            ? `<button class="btn-primary" style="font-size:0.85rem; padding:4px 10px;"
+                       onclick="_edBankVorschlagUebernehmen(${k.umsatz_id})">
+                 ✓ als Zahlung übernehmen
+               </button>`
+            : `<button class="btn-aktion" style="font-size:0.85rem; padding:4px 10px;"
+                       onclick="_edBankVorschlagUebernehmen(${k.umsatz_id})"
+                       title="Vorsicht: Score nur ${k.score}/100">
+                 ⚠ trotzdem übernehmen
+               </button>`;
+        return `
+            <tr>
+              <td style="padding:4px 8px;">${datum}</td>
+              <td style="padding:4px 8px; text-align:right; font-weight:700; font-family:'Nunito Mono',Consolas,monospace;">
+                  ${_eur(Math.abs(k.betrag))}
+              </td>
+              <td style="padding:4px 8px;">${_esc(k.empfaenger_name || '–')}</td>
+              <td style="padding:4px 8px; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                  title="${_esc(k.zweck || '')}">
+                  <span style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);">${_esc((k.zweck || '').slice(0, 60))}</span>
+              </td>
+              <td style="padding:4px 8px;">
+                  <span style="display:inline-block; padding:1px 8px; border-radius:999px;
+                               background:${score_bg}; color:${score_color};
+                               font-size:0.74rem; font-weight:700;">
+                      ${k.score}/100
+                  </span>
+                  <span style="font-size:0.74rem; color:var(--text-dim,#5a7a3a); margin-left:6px;">
+                      ${k.gruende.join(' · ')}
+                  </span>
+              </td>
+              <td style="padding:4px 8px;">${auto_btn}</td>
+            </tr>`;
+    }).join('');
+    wrap.style.display = 'block';
+    wrap.innerHTML = `
+        <div style="font-weight:700; color:#2a4a8a; margin-bottom:6px;">
+            🏦 Mögliche Zahlungseingänge aus Hibiscus (${kk.length})
+        </div>
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="font-size:0.74rem; text-transform:uppercase;
+                       color:var(--text-dim,#5a7a3a); letter-spacing:0.05em;">
+              <th style="text-align:left; padding:4px 8px;">Datum</th>
+              <th style="text-align:right; padding:4px 8px;">Betrag €</th>
+              <th style="text-align:left; padding:4px 8px;">Empfänger</th>
+              <th style="text-align:left; padding:4px 8px;">Verwendungszweck</th>
+              <th style="text-align:left; padding:4px 8px;">Score / Begründung</th>
+              <th style="padding:4px 8px;"></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+}
+
+async function _edBankVorschlagUebernehmen(umsatz_id) {
+    if (!confirm('Diesen Hibiscus-Bankumsatz als Zahlung übernehmen?\n\n' +
+                 'Der Umsatz wird in Hibiscus als „geprüft" markiert und ' +
+                 'als ZAHLUNGEN-Eintrag (ART=UB) zum Beleg verlinkt.')) {
+        return;
+    }
+    cxLadenZeigen('Übernehme Bankumsatz …');
+    const res = await _post(`${ED_API}/bankumsatz-uebernehmen`,
+                              {umsatz_id: umsatz_id});
+    cxLadenAusblenden();
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    // Bei voll bezahlt → Reload (Buttons verschwinden)
+    if ([8, 9].includes(res.stadium)) {
+        location.reload();
+    } else {
+        _edZahlungenLaden();
+    }
 }
 
 function edZahlungErfassen() {
