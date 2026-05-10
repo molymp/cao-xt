@@ -2269,8 +2269,9 @@ def _stadium_aus_zahlungen(cur, rec_id: int,
     s_betrag, s_skonto = _zahlungssumme_und_skonto(cur, rec_id)
     if s_betrag + s_skonto <= 0.0001:
         return 2
-    # 1 Cent Toleranz fuer Rundungsdifferenzen
-    if s_betrag + s_skonto >= bsumme - 0.01:
+    # 1 Cent Toleranz; ABS(bsumme) fuer Gutschriften (BSUMME<0)
+    soll = abs(float(bsumme))
+    if s_betrag + s_skonto >= soll - 0.01:
         return 8 if s_skonto > 0.0001 else 9
     return 7
 
@@ -2380,9 +2381,13 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
     """
     rec_id = int(rec_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:50]
-    if betrag is None or float(betrag) <= 0:
-        raise ValueError('Betrag muss > 0 sein')
-    # CAO-Konvention: EK-Zahlungen sind negativ (Geld geht raus).
+    if betrag is None or abs(float(betrag)) < 0.005:
+        raise ValueError('Betrag darf nicht 0 sein')
+    # CAO-Konvention: BETRAG hat das UMGEKEHRTE Vorzeichen von BSUMME.
+    # - Normale EK-Rechnung (BSUMME>0): User gibt +480 ein → BETRAG=-480
+    # - Gutschrift     (BSUMME<0): User gibt -3,41 ein → BETRAG=+3,41
+    # Wir flippen also einfach das Vorzeichen — der User uebergibt den
+    # Wert mit demselben Vorzeichen wie BSUMME.
     betrag = round(float(betrag), 2)
     skonto_proz = round(float(skonto_proz or 0), 3)
     skonto_betrag = round(float(skonto_betrag or 0), 2)
@@ -2469,7 +2474,8 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
         # JOURNAL: STADIUM vorab + BEZAHLT_KASSE='N' (CAO-Trace-Mimik)
         # Wir berechnen das STADIUM-Vorhersagewert, Header dann updaten.
         bsumme = float(kopf.get('BSUMME') or 0)
-        # Pruefen ob die neue Zahlung den Beleg voll bezahlt
+        # Pruefen ob die neue Zahlung den Beleg voll bezahlt.
+        # Mit ABS-Logik damit Gutschriften (BSUMME<0) sauber funktionieren.
         cur.execute(
             "SELECT COALESCE(SUM(ABS(BETRAG))+SUM(ABS(SKONTO_BETRAG)),0) AS s "
             "  FROM ZAHLUNGEN "
@@ -2477,9 +2483,9 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
             (rec_id,)
         )
         s_alt = float((cur.fetchone() or {}).get('s') or 0)
-        s_neu = s_alt + betrag + skonto_betrag
-        if s_neu >= bsumme - 0.01:
-            neues_stadium = 8 if skonto_betrag > 0.0001 else 9
+        s_neu = s_alt + abs(betrag) + abs(skonto_betrag)
+        if s_neu >= abs(bsumme) - 0.01:
+            neues_stadium = 8 if abs(skonto_betrag) > 0.0001 else 9
         else:
             neues_stadium = 7
         cur.execute(

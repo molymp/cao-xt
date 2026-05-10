@@ -1016,8 +1016,12 @@ async function _edZahlungenLaden() {
     // Fuer die Anzeige zeigen wir Absolut-Betraege.
     const sumBetrag = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.BETRAG || 0)), 0);
     const sumSkonto = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.SKONTO_BETRAG || 0)), 0);
-    const offen = ED_BSUMME - sumBetrag - sumSkonto;
-    _edOffenerBetrag = Math.max(0, Math.round(offen * 100) / 100);
+    // Offener Betrag = BSUMME minus bisherige Zahlungen, sign-erhaltend.
+    // Bei Gutschriften (BSUMME<0): offen ist negativ → User gibt
+    // ebenfalls negativen Wert ein.
+    const sign = ED_BSUMME >= 0 ? 1 : -1;
+    const offen = sign * Math.max(0, Math.abs(ED_BSUMME) - sumBetrag - sumSkonto);
+    _edOffenerBetrag = Math.round(offen * 100) / 100;
     info.innerHTML =
         `<strong>${aktive.length}</strong> aktive Zahlung(en) · ` +
         `Brutto-Soll <strong>${_eur(ED_BSUMME)}</strong> · ` +
@@ -1090,8 +1094,11 @@ function edZahlungErfassen() {
     document.getElementById('ed-zerf-datum').value =
         `${dd}.${mm}.${heute.getFullYear()}`;
 
-    // Skonto initial deaktiviert. Default-Betrag = offen
+    // Skonto initial deaktiviert. Default-Betrag = offen.
+    // Bei Gutschriften (BSUMME<0) Skonto-Card komplett sperren —
+    // semantisch unsinnig (man koennte Skonto auf Skonto bekommen, no).
     document.getElementById('ed-zerf-skonto-an').checked = false;
+    document.getElementById('ed-zerf-skonto-an').disabled = (ED_BSUMME < 0);
     _edSkontoCardSync();
     document.getElementById('ed-zerf-skonto-proz').value = '0,00';
     document.getElementById('ed-zerf-skonto').value = '0,00';
@@ -1168,7 +1175,9 @@ function _edSkontoCardSync() {
     card.classList.toggle('inaktiv', !an);
     // Hint im Card-Header
     const hint = document.getElementById('ed-zerf-skonto-hint');
-    if (_edZielInfo && _edZielInfo.skonto_proz > 0.001 && _edZielInfo.skonto_datum) {
+    if (ED_BSUMME < 0) {
+        hint.textContent = 'Bei Gutschrift kein Skonto';
+    } else if (_edZielInfo && _edZielInfo.skonto_proz > 0.001 && _edZielInfo.skonto_datum) {
         const sd = _edZielInfo.skonto_datum.split('-').reverse().join('.');
         hint.textContent = `${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % bis ${sd}`;
     } else {
@@ -1271,7 +1280,24 @@ async function edZahlungErfassenSenden() {
         return;
     }
     const betrag = parseFloat(_deToNum(document.getElementById('ed-zerf-betrag').value));
-    if (!(betrag > 0)) { alert('Betrag muss > 0 sein'); return; }
+    if (!betrag || Math.abs(betrag) < 0.005) {
+        alert('Betrag darf nicht 0 sein');
+        return;
+    }
+    // Bei Gutschriften (BSUMME<0) erwarten wir einen negativen Betrag,
+    // bei Rechnungen (BSUMME>0) einen positiven. Vorzeichen-Mismatch
+    // klar melden — sonst würde CAO das Geld in die falsche Richtung
+    // buchen.
+    if (ED_BSUMME > 0 && betrag < 0) {
+        if (!confirm('Negativer Betrag bei einer Forderungs-Rechnung — ' +
+                     'bist du sicher? (entspricht Geld-Eingang vom ' +
+                     'Lieferanten)')) return;
+    }
+    if (ED_BSUMME < 0 && betrag > 0) {
+        if (!confirm('Positiver Betrag bei einer Gutschrift — ' +
+                     'bist du sicher? (entspricht Geld-Ausgang an den ' +
+                     'Lieferanten)')) return;
+    }
     const skontoAn = document.getElementById('ed-zerf-skonto-an').checked;
     const skonto = skontoAn
         ? (parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0)
