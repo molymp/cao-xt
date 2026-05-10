@@ -553,12 +553,13 @@ def api_ek_zahlungen(rec_id: int) -> Any:
     fuer das Erfassungs-Modal."""
     _login_check()
     try:
-        zahlungen = ek.zahlungen_zu_einkauf(rec_id)
+        d = ek.zahlungen_zu_einkauf(rec_id)
     except LookupError as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 404
     return jsonify({
         'ok': True,
-        'zahlungen': zahlungen,
+        'zahlungen':     d['zahlungen'],
+        'ziel_info':     d['ziel_info'],
         'zahlungsarten': ek.zahlungsarten_aktiv(),
     })
 

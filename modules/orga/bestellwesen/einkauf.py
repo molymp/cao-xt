@@ -2076,7 +2076,16 @@ def _zahlung_aus_cao_sepa(z: dict) -> bool:
     return False
 
 
-def zahlungsarten_aktiv() -> list[dict[str, Any]]:
+# Kassen-relevante Zahlarten (KassenSichV §146a / TSE-Pflicht): Bar, EC,
+# Scheck, Kreditkarte duerfen in der Orga-App NICHT erfasst werden —
+# das gehoert in die Kasse (Phase Kasse-Zahlungsuebernahme, Backlog
+# project_kasse_zahlungsuebernahme.md). Wir filtern sie aus dem
+# Erfassungs-Dropdown.
+_KASSEN_ZAHLART_REC_IDS = {1, 5, 6, 7, -6}
+
+
+def zahlungsarten_aktiv(*, ohne_kassen_relevant: bool = True
+                          ) -> list[dict[str, Any]]:
     """Aktive ZAHLUNGSARTEN + die zur Auswahl stehenden FIBU-Konten,
     damit das Erfassungs-Modal direkt die richtige Bank-/Kasse-Konto-
     Auswahl anbieten kann.
@@ -2085,6 +2094,10 @@ def zahlungsarten_aktiv() -> list[dict[str, Any]]:
     Konto-Nummern. Wir loesen sie via FIBU_KONTEN-Tabelle (KONTORAHMEN
     aus REGISTRY ``MAIN\\BELEGE / KONTORAHMEN``) zu vollstaendigen
     Konto-Eintraegen auf.
+
+    ``ohne_kassen_relevant`` (default True) blendet Bar/EC/Scheck/
+    Kreditkarte aus — diese sind TSE-pflichtig und werden ueber die
+    Kasse abgewickelt, nicht ueber die Orga-App.
     """
     with get_db() as cur:
         cur.execute(
@@ -2102,6 +2115,9 @@ def zahlungsarten_aktiv() -> list[dict[str, Any]]:
             " ORDER BY REC_ID"
         )
         rows = list(cur.fetchall() or [])
+        if ohne_kassen_relevant:
+            rows = [r for r in rows
+                     if int(r['REC_ID']) not in _KASSEN_ZAHLART_REC_IDS]
 
         # Alle in den FIBU_KONTEN-Listen vorkommenden Konten in einer
         # Bulk-Query nachschlagen
@@ -2147,11 +2163,23 @@ def zahlungsarten_aktiv() -> list[dict[str, Any]]:
         return rows
 
 
-def zahlungen_zu_einkauf(rec_id: int) -> list[dict[str, Any]]:
-    """Liefert alle Zahlungen zu einer EK-Rechnung (QUELLE=5).
-    Sortiert nach DATUM, alte zuerst."""
+def zahlungen_zu_einkauf(rec_id: int) -> dict[str, Any]:
+    """Liefert alle Zahlungen zu einer EK-Rechnung (QUELLE=5) plus
+    Zahlungsziel-Info aus dem JOURNAL-Header (RDATUM/SOLL_NTAGE/
+    SOLL_STAGE/SOLL_SKONTO) — wird vom Erfassungs-Modal als
+    Stammdaten-Hinweis angezeigt.
+
+    Returns: ``{'zahlungen': [...], 'ziel_info': {...}}``
+    """
     rec_id = int(rec_id)
     with get_db() as cur:
+        cur.execute(
+            """SELECT RDATUM, SOLL_NTAGE, SOLL_STAGE, SOLL_SKONTO,
+                      BSUMME
+                 FROM JOURNAL WHERE REC_ID=%s""",
+            (rec_id,)
+        )
+        kopf = cur.fetchone() or {}
         cur.execute(
             """SELECT z.REC_ID, z.DATUM, z.VALUTA, z.BETRAG,
                       z.SKONTO_PROZ, z.SKONTO_BETRAG,
@@ -2166,14 +2194,44 @@ def zahlungen_zu_einkauf(rec_id: int) -> list[dict[str, Any]]:
                 ORDER BY z.DATUM, z.REC_ID""",
             (rec_id,)
         )
-        rows = cur.fetchall()
-    for r in rows:
+        zeilen = list(cur.fetchall() or [])
+    for r in zeilen:
         r['ist_storniert'] = (int(r.get('STORNO') or 0) > 0
                               or (r.get('GEBUCHT') or '') == 'S')
         r['ist_aktiv']     = (not r['ist_storniert']
                               and (r.get('GEBUCHT') or '') == 'Y')
         r['aus_cao_sepa']  = _zahlung_aus_cao_sepa(r)
-    return rows
+
+    # Zahlungsziel-Berechnung (RDATUM + Tage)
+    rdatum = kopf.get('RDATUM')
+    soll_ntage = int(kopf.get('SOLL_NTAGE') or 0)
+    soll_stage = int(kopf.get('SOLL_STAGE') or 0)
+    soll_skonto = float(kopf.get('SOLL_SKONTO') or 0)
+    bsumme = float(kopf.get('BSUMME') or 0)
+    netto_datum = None
+    skonto_datum = None
+    if rdatum:
+        from datetime import timedelta
+        rdate = rdatum.date() if hasattr(rdatum, 'date') else rdatum
+        netto_datum = rdate + timedelta(days=soll_ntage) if soll_ntage else None
+        if soll_stage > 0 and soll_skonto > 0.001:
+            skonto_datum = rdate + timedelta(days=soll_stage)
+    skonto_max_betrag = (round(bsumme * soll_skonto / 100.0, 2)
+                          if soll_skonto > 0.001 else 0.0)
+
+    return {
+        'zahlungen': zeilen,
+        'ziel_info': {
+            'rdatum':            rdatum.isoformat() if rdatum else None,
+            'netto_tage':        soll_ntage,
+            'skonto_tage':       soll_stage,
+            'skonto_proz':       soll_skonto,
+            'netto_datum':       netto_datum.isoformat() if netto_datum else None,
+            'skonto_datum':      skonto_datum.isoformat() if skonto_datum else None,
+            'skonto_max_betrag': skonto_max_betrag,
+            'bsumme':            bsumme,
+        },
+    }
 
 
 def _zahlungssumme_und_skonto(cur, rec_id: int

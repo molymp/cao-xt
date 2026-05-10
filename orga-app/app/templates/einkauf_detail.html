@@ -324,45 +324,94 @@
       <button class="ed-modal-close" onclick="edZahlungErfassenSchliessen()">✕</button>
     </div>
     <div class="ed-modal-info" id="ed-zerf-summary">…</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-      <label style="display:flex; flex-direction:column; gap:4px;">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Datum</span>
-        <input id="ed-zerf-datum" type="text" class="date-touch" placeholder="TT.MM.JJJJ" autocomplete="off"
-               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein);">
+    <div id="ed-zerf-ziel-info" style="display:none;
+         background:rgba(60,120,200,0.10); color:#2a4a8a;
+         padding:8px 12px; border-radius:var(--radius-klein);
+         margin-bottom:12px; font-size:0.86rem; line-height:1.45;"></div>
+    <style>
+      .zerf-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
+      .zerf-grid label { display:flex; flex-direction:column; gap:4px; }
+      .zerf-grid label.span2 { grid-column:span 2; }
+      .zerf-grid .lbl {
+        font-size:0.78rem; font-weight:700;
+        color:var(--text-dim,#5a7a3a); text-transform:uppercase;
+        letter-spacing:0.04em;
+      }
+      .zerf-grid input, .zerf-grid select {
+        padding:8px 10px; border:1px solid var(--creme-dunkel);
+        border-radius:var(--radius-klein);
+        font-family:'Nunito',sans-serif; font-size:0.95rem;
+        background:white;
+      }
+      .zerf-grid input.num, .zerf-grid input.zahl {
+        text-align:right; font-family:'Nunito Mono',Consolas,monospace;
+      }
+      .zerf-skonto-card {
+        grid-column:span 2;
+        border:1px solid var(--creme-dunkel);
+        border-radius:var(--radius-klein);
+        padding:10px 12px;
+        background:#fafaf3;
+      }
+      .zerf-skonto-card.aktiv { background:rgba(46,122,46,0.06); }
+      .zerf-skonto-card .titel {
+        display:flex; align-items:center; gap:10px;
+        font-weight:700; cursor:pointer;
+      }
+      .zerf-skonto-card .felder {
+        display:grid; grid-template-columns:1fr 1fr; gap:10px 14px;
+        margin-top:8px;
+      }
+      .zerf-skonto-card.inaktiv .felder { opacity:0.5; pointer-events:none; }
+    </style>
+    <div class="zerf-grid">
+      <label>
+        <span class="lbl">Datum</span>
+        <input id="ed-zerf-datum" type="text" class="date-touch" placeholder="TT.MM.JJJJ" autocomplete="off">
       </label>
-      <label style="display:flex; flex-direction:column; gap:4px;">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Betrag €</span>
-        <input id="ed-zerf-betrag" type="text" class="num-touch"
-               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); text-align:right; font-family:'Nunito Mono',Consolas,monospace;">
-      </label>
-      <label style="display:flex; flex-direction:column; gap:4px;">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Skonto-Betrag €</span>
-        <input id="ed-zerf-skonto" type="text" class="num-touch" value="0,00"
-               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); text-align:right; font-family:'Nunito Mono',Consolas,monospace;">
-      </label>
-      <label style="display:flex; flex-direction:column; gap:4px;">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Zahlart</span>
-        <select id="ed-zerf-zahlart" onchange="_edZahlartGewaehlt()"
-                style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); background:white;">
+      <label>
+        <span class="lbl">Zahlart</span>
+        <select id="ed-zerf-zahlart" onchange="_edZahlartGewaehlt()">
           <option value="">— wählen —</option>
         </select>
       </label>
-      <label style="display:flex; flex-direction:column; gap:4px;" id="ed-zerf-konto-wrap">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Bank-/Kasse-Konto</span>
-        <select id="ed-zerf-konto"
-                style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); background:white;">
-          <option value="">— erst Zahlart wählen —</option>
+      <label class="span2">
+        <span class="lbl">Bank-/Kasse-Konto</span>
+        <select id="ed-zerf-konto">
+          <option value="">— wählen —</option>
         </select>
       </label>
-      <label style="display:flex; flex-direction:column; gap:4px; grid-column:span 2;">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Beleg-Nr (optional)</span>
-        <input id="ed-zerf-belegnum" type="text" class="alpha-touch" autocomplete="off"
-               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein);">
+      <div class="zerf-skonto-card inaktiv" id="ed-zerf-skonto-card">
+        <label class="titel">
+          <input type="checkbox" id="ed-zerf-skonto-an" onchange="_edSkontoToggle()" style="width:18px; height:18px;">
+          <span>Skonto in Anspruch nehmen</span>
+          <span style="margin-left:auto; font-weight:400; font-size:0.84rem; color:var(--text-dim,#5a7a3a);" id="ed-zerf-skonto-hint"></span>
+        </label>
+        <div class="felder">
+          <label>
+            <span class="lbl">Skonto %</span>
+            <input id="ed-zerf-skonto-proz" type="text" class="num-touch num"
+                   value="0,00" oninput="_edSkontoFromProz()">
+          </label>
+          <label>
+            <span class="lbl">Skonto-Betrag €</span>
+            <input id="ed-zerf-skonto" type="text" class="num-touch num"
+                   value="0,00" oninput="_edSkontoFromBetrag()">
+          </label>
+        </div>
+      </div>
+      <label class="span2">
+        <span class="lbl">Zahlbetrag €</span>
+        <input id="ed-zerf-betrag" type="text" class="num-touch num"
+               oninput="_edBetragGeaendert()">
       </label>
-      <label style="display:flex; flex-direction:column; gap:4px; grid-column:span 2;">
-        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Verwendungszweck (optional)</span>
-        <input id="ed-zerf-vz" type="text" class="alpha-touch" autocomplete="off"
-               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein);">
+      <label class="span2">
+        <span class="lbl">Beleg-Nr (optional)</span>
+        <input id="ed-zerf-belegnum" type="text" class="alpha-touch" autocomplete="off">
+      </label>
+      <label class="span2">
+        <span class="lbl">Verwendungszweck (optional)</span>
+        <input id="ed-zerf-vz" type="text" class="alpha-touch" autocomplete="off">
       </label>
     </div>
     <div class="ed-modal-aktionen">
@@ -939,6 +988,9 @@ async function edBuchenAusfuehren() {
 const ED_BSUMME = {{ kopf.BSUMME or 0 }};
 const ED_STADIUM = {{ kopf.STADIUM or 0 }};
 let _edZahlungsarten = [];
+let _edZielInfo = null;
+// Aktueller offener Betrag (BSUMME minus aktive Zahlungen)
+let _edOffenerBetrag = ED_BSUMME;
 
 async function _edZahlungenLaden() {
     const wrap = document.getElementById('ed-zahlungen-tab-wrap');
@@ -957,6 +1009,7 @@ async function _edZahlungenLaden() {
         return;
     }
     _edZahlungsarten = res.zahlungsarten || [];
+    _edZielInfo      = res.ziel_info || null;
 
     const aktive = (res.zahlungen || []).filter(z => z.ist_aktiv);
     // ZAHLUNGEN.BETRAG/SKONTO_BETRAG sind bei EK negativ (Geld-Ausgang).
@@ -964,6 +1017,7 @@ async function _edZahlungenLaden() {
     const sumBetrag = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.BETRAG || 0)), 0);
     const sumSkonto = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.SKONTO_BETRAG || 0)), 0);
     const offen = ED_BSUMME - sumBetrag - sumSkonto;
+    _edOffenerBetrag = Math.max(0, Math.round(offen * 100) / 100);
     info.innerHTML =
         `<strong>${aktive.length}</strong> aktive Zahlung(en) · ` +
         `Brutto-Soll <strong>${_eur(ED_BSUMME)}</strong> · ` +
@@ -1018,73 +1072,189 @@ async function _edZahlungenLaden() {
 }
 
 function edZahlungErfassen() {
-    // Modal vorbereiten: Zahlart-Dropdown fuellen, Felder leer/sinnvoll setzen
+    // Modal vorbereiten
+    // Zahlart-Dropdown (kassen-relevante kommen vom Server schon nicht)
     const sel = document.getElementById('ed-zerf-zahlart');
     sel.innerHTML = '<option value="">— wählen —</option>'
         + _edZahlungsarten.map(za =>
             `<option value="${za.REC_ID}">${_esc(za.NAME)}</option>`).join('');
-    document.getElementById('ed-zerf-konto').innerHTML =
-        '<option value="">— erst Zahlart wählen —</option>';
+
+    // Bank-/Kasse-Konto-Dropdown direkt mit ALLEN unique Konten aus
+    // den verfuegbaren Zahlarten fuellen — damit der User auch ohne
+    // Zahlart-Vorauswahl ein Konto waehlen kann (User-Wunsch).
+    _edKontoDropdownFuellen();
+
     const heute = new Date();
     const dd = String(heute.getDate()).padStart(2, '0');
     const mm = String(heute.getMonth() + 1).padStart(2, '0');
-    document.getElementById('ed-zerf-datum').value = `${dd}.${mm}.${heute.getFullYear()}`;
-    document.getElementById('ed-zerf-betrag').value = _eur(ED_BSUMME);
+    document.getElementById('ed-zerf-datum').value =
+        `${dd}.${mm}.${heute.getFullYear()}`;
+
+    // Skonto initial deaktiviert. Default-Betrag = offen
+    document.getElementById('ed-zerf-skonto-an').checked = false;
+    _edSkontoCardSync();
+    document.getElementById('ed-zerf-skonto-proz').value = '0,00';
     document.getElementById('ed-zerf-skonto').value = '0,00';
-    // CAO-Defaults vorbelegen (Server schreibt sowieso die gleichen
-    // Werte wenn die Felder leer bleiben — wir zeigen sie aber gleich
-    // an, damit der User vor dem Speichern einen ueberblick hat).
+    document.getElementById('ed-zerf-betrag').value = _eur(_edOffenerBetrag);
+
+    // CAO-Defaults vorbelegen
     document.getElementById('ed-zerf-belegnum').value =
         {{ (kopf.VRENUM or '')|tojson }};
     {% set _lief = (kopf.lief_name or '')|trim %}
     document.getElementById('ed-zerf-vz').value =
         {{ ('ZA EK-RE ' + _lief if _lief else '')|tojson }};
-    // Summary
+
+    // Summary + Zahlungsziel-Info aus ADRESSEN-Stammdaten
     const sum = document.getElementById('ed-zerf-summary');
-    sum.innerHTML = `Beleg <strong>{{ kopf.VRENUM or kopf.REC_ID }}</strong> · Brutto <strong>${_eur(ED_BSUMME)}</strong>`;
+    sum.innerHTML = `Beleg <strong>{{ kopf.VRENUM or kopf.REC_ID }}</strong> · ` +
+        `Brutto <strong>${_eur(ED_BSUMME)}</strong>` +
+        (_edOffenerBetrag < ED_BSUMME - 0.01
+            ? ` · Offen <strong>${_eur(_edOffenerBetrag)}</strong>`
+            : '');
+    _edZielInfoRendern();
+
     document.getElementById('ed-zerf-overlay').style.display = 'flex';
-    // Touch-Widgets neu wiren fuer das Modal
     if (window.TouchInput && window.TouchInput.rewire) {
         window.TouchInput.rewire();
     }
 }
 
-function _edZahlartGewaehlt() {
-    // Wird bei Zahlart-Auswahl getriggert: Bank-/Kasse-Konto-Dropdown
-    // mit den passenden FIBU-Konten der gewaehlten Zahlart fuellen.
-    // Plus: Skonto-Default aus ZAHLUNGSARTEN.SKONTO_PROZ uebernehmen
-    // (wenn Skonto-Feld noch 0,00 ist).
-    const zaId = parseInt(document.getElementById('ed-zerf-zahlart').value, 10);
-    const za   = _edZahlungsarten.find(z => z.REC_ID === zaId);
-    const sel  = document.getElementById('ed-zerf-konto');
-    if (!za || !za.konten || !za.konten.length) {
+function _edKontoDropdownFuellen(filterZaId) {
+    // Sammelt alle Konten — entweder aus einer einzelnen Zahlart oder
+    // aus allen verfuegbaren (unique by konto-Nr).
+    const sel = document.getElementById('ed-zerf-konto');
+    const sammeln = filterZaId
+        ? (_edZahlungsarten.find(z => z.REC_ID === filterZaId)?.konten || [])
+        : _edZahlungsarten.flatMap(za => za.konten || []);
+    const seen = new Set();
+    const konten = [];
+    for (const k of sammeln) {
+        if (seen.has(k.konto)) continue;
+        seen.add(k.konto);
+        konten.push(k);
+    }
+    konten.sort((a, b) => a.konto - b.konto);
+    if (!konten.length) {
         sel.innerHTML = '<option value="">— keine Konten gepflegt —</option>';
         return;
     }
-    const opts = za.konten.map(k => {
+    const opts = konten.map(k => {
         const lbl = k.iban
             ? `${k.konto} – ${_esc(k.name)} (${_esc(k.iban)})`
             : `${k.konto} – ${_esc(k.name)}`;
         return `<option value="${k.konto}">${lbl}</option>`;
     });
-    // Wenn nur ein Konto: gleich vorausgewaehlt, Dropdown disabled-look
-    if (za.konten.length === 1) {
-        sel.innerHTML = opts.join('');
+    sel.innerHTML = (konten.length === 1
+        ? opts.join('')
+        : '<option value="">— wählen —</option>' + opts.join(''));
+}
+
+function _edZahlartGewaehlt() {
+    // Wenn die gewaehlte Zahlart eindeutige Konten hat, schraenken wir
+    // die Konto-Liste ein — sonst lassen wir den User frei waehlen.
+    const zaId = parseInt(document.getElementById('ed-zerf-zahlart').value, 10);
+    if (!zaId) {
+        _edKontoDropdownFuellen();
     } else {
-        sel.innerHTML = '<option value="">— wählen —</option>' + opts.join('');
+        _edKontoDropdownFuellen(zaId);
     }
-    // Skonto-Default aus Zahlart-Stamm uebernehmen, wenn das Feld noch 0,00 ist
-    const skontoFeld = document.getElementById('ed-zerf-skonto');
-    if ((skontoFeld.value || '').replace(/\D/g, '') === '000'
-        && za.SKONTO_PROZ && +za.SKONTO_PROZ > 0) {
-        // x % von BSUMME als Default-Skonto
-        const skonto = Math.round(ED_BSUMME * (+za.SKONTO_PROZ) / 100 * 100) / 100;
-        skontoFeld.value = _eur(skonto);
-        // Betrag entsprechend reduzieren
-        const betragFeld = document.getElementById('ed-zerf-betrag');
-        const restBetrag = Math.round((ED_BSUMME - skonto) * 100) / 100;
-        betragFeld.value = _eur(restBetrag);
+}
+
+// ── Skonto-Logik ────────────────────────────────────────────────
+function _edSkontoCardSync() {
+    const card = document.getElementById('ed-zerf-skonto-card');
+    const an   = document.getElementById('ed-zerf-skonto-an').checked;
+    card.classList.toggle('aktiv', an);
+    card.classList.toggle('inaktiv', !an);
+    // Hint im Card-Header
+    const hint = document.getElementById('ed-zerf-skonto-hint');
+    if (_edZielInfo && _edZielInfo.skonto_proz > 0.001 && _edZielInfo.skonto_datum) {
+        const sd = _edZielInfo.skonto_datum.split('-').reverse().join('.');
+        hint.textContent = `${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % bis ${sd}`;
+    } else {
+        hint.textContent = 'Kein Skonto laut Stammdaten';
     }
+}
+
+function _edSkontoToggle() {
+    const an = document.getElementById('ed-zerf-skonto-an').checked;
+    _edSkontoCardSync();
+    if (an) {
+        // Skonto-% aus Stammdaten als Default
+        const proz = (_edZielInfo && _edZielInfo.skonto_proz > 0.001)
+            ? _edZielInfo.skonto_proz
+            : 0;
+        document.getElementById('ed-zerf-skonto-proz').value = _eur(proz);
+        _edSkontoFromProz();
+    } else {
+        // Skonto raus → Skonto-Felder auf 0, Betrag = offen
+        document.getElementById('ed-zerf-skonto-proz').value = '0,00';
+        document.getElementById('ed-zerf-skonto').value = '0,00';
+        document.getElementById('ed-zerf-betrag').value = _eur(_edOffenerBetrag);
+    }
+}
+
+function _edSkontoFromProz() {
+    // %-Eingabe → Skonto-Betrag + Zahlbetrag berechnen, sodass der
+    // Beleg voll bezahlt wird (Skonto + Zahlung = Offen).
+    if (!document.getElementById('ed-zerf-skonto-an').checked) return;
+    const proz = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto-proz').value)) || 0;
+    const skontoBetrag = Math.round(_edOffenerBetrag * proz / 100 * 100) / 100;
+    document.getElementById('ed-zerf-skonto').value = _eur(skontoBetrag);
+    document.getElementById('ed-zerf-betrag').value =
+        _eur(Math.round((_edOffenerBetrag - skontoBetrag) * 100) / 100);
+}
+
+function _edSkontoFromBetrag() {
+    // Skonto-Betrag-Eingabe → %-Satz + Zahlbetrag berechnen.
+    if (!document.getElementById('ed-zerf-skonto-an').checked) return;
+    const skontoBetrag = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0;
+    if (_edOffenerBetrag > 0.0001) {
+        const proz = Math.round(skontoBetrag / _edOffenerBetrag * 10000) / 100;
+        document.getElementById('ed-zerf-skonto-proz').value = _eur(proz);
+    }
+    document.getElementById('ed-zerf-betrag').value =
+        _eur(Math.round((_edOffenerBetrag - skontoBetrag) * 100) / 100);
+}
+
+function _edBetragGeaendert() {
+    // Zahlbetrag-Eingabe → bei aktivem Skonto: Skonto-Betrag = Offen - Zahlbetrag,
+    // %-Satz nachziehen. Bei inaktivem Skonto: Teilzahlung (Skonto bleibt 0).
+    if (!document.getElementById('ed-zerf-skonto-an').checked) return;
+    const betrag = parseFloat(_deToNum(document.getElementById('ed-zerf-betrag').value)) || 0;
+    const skontoBetrag = Math.round((_edOffenerBetrag - betrag) * 100) / 100;
+    if (skontoBetrag < 0) return;   // Ueber-Zahlung — wir aktualisieren den Skonto nicht
+    document.getElementById('ed-zerf-skonto').value = _eur(skontoBetrag);
+    if (_edOffenerBetrag > 0.0001) {
+        const proz = Math.round(skontoBetrag / _edOffenerBetrag * 10000) / 100;
+        document.getElementById('ed-zerf-skonto-proz').value = _eur(proz);
+    }
+}
+
+function _edZielInfoRendern() {
+    // Zeigt die Zahlungsziel-Info aus ADRESSEN/JOURNAL als Stammdaten-
+    // Hinweis ueber dem Eingabe-Bereich (analog CAO Zahlungsausgang).
+    const wrap = document.getElementById('ed-zerf-ziel-info');
+    if (!_edZielInfo || (!_edZielInfo.netto_datum && !_edZielInfo.skonto_datum)) {
+        wrap.style.display = 'none';
+        return;
+    }
+    const fmt = iso => iso ? iso.split('-').reverse().join('.') : '–';
+    let html = '<strong>Zahlungsziel laut Stammdaten:</strong> ';
+    const teile = [];
+    if (_edZielInfo.skonto_datum) {
+        teile.push(`Mit Skonto bis <strong>${fmt(_edZielInfo.skonto_datum)}</strong> ` +
+            `(${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % = ` +
+            `${_eur(_edZielInfo.skonto_max_betrag)})`);
+    } else {
+        teile.push('Kein Skonto');
+    }
+    if (_edZielInfo.netto_datum) {
+        teile.push(`Netto bis <strong>${fmt(_edZielInfo.netto_datum)}</strong>`);
+    }
+    html += teile.join(' · ');
+    wrap.innerHTML = html;
+    wrap.style.display = 'block';
 }
 function edZahlungErfassenSchliessen() {
     document.getElementById('ed-zerf-overlay').style.display = 'none';
@@ -1102,16 +1272,17 @@ async function edZahlungErfassenSenden() {
     }
     const betrag = parseFloat(_deToNum(document.getElementById('ed-zerf-betrag').value));
     if (!(betrag > 0)) { alert('Betrag muss > 0 sein'); return; }
-    const skonto = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0;
+    const skontoAn = document.getElementById('ed-zerf-skonto-an').checked;
+    const skonto = skontoAn
+        ? (parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0)
+        : 0;
+    const skonto_proz = skontoAn
+        ? (parseFloat(_deToNum(document.getElementById('ed-zerf-skonto-proz').value)) || 0)
+        : 0;
     const zahlart = document.getElementById('ed-zerf-zahlart').value;
     if (!zahlart) { alert('Bitte Zahlart wählen'); return; }
     const fibu_kto = document.getElementById('ed-zerf-konto').value;
     if (!fibu_kto) { alert('Bitte Bank-/Kasse-Konto wählen'); return; }
-    // Skonto-Prozent aus Stamm-Zahlart als Beleg-Info mitschicken
-    const za_obj = _edZahlungsarten.find(z =>
-        z.REC_ID === parseInt(zahlart, 10));
-    const skonto_proz = (skonto > 0.001 && za_obj && za_obj.SKONTO_PROZ)
-        ? +za_obj.SKONTO_PROZ : 0;
     const body = {
         datum:         datum_iso,
         betrag:        betrag,
