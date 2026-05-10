@@ -1069,6 +1069,7 @@ async function _zuordnen(posId, body) {
 
 // ── Warengruppe-Picker (Phase 5b) ────────────────────────────────
 let _wgFlach = null;        // Cache der WGs (105 Eintraege)
+let _wgFlachIndex = null;   // id → {name, ...} fuer schnellen Lookup
 let _wgBaumRoots = null;
 let _wgPickerCtx = null;    // {posId, bestRecId} fuer aktiven Pick
 
@@ -1079,7 +1080,20 @@ async function _wgLaden() {
   if (d.ok) {
     _wgFlach = d.flach;
     _wgBaumRoots = d.baum;
+    _wgFlachIndex = {};
+    for (const w of (_wgFlach || [])) _wgFlachIndex[w.id] = w;
   }
+}
+
+// Liefert "Name [id]" wenn WG-Cache geladen ist, sonst nur "[id]".
+// Wird in der Match-Tabelle und im Picker-Status genutzt.
+function _wgLabel(id) {
+  if (id == null || id === '') return '';
+  const idn = (typeof id === 'number') ? id : parseInt(id, 10);
+  if (!_wgFlachIndex) return `[${idn}]`;
+  const w = _wgFlachIndex[idn];
+  if (!w || !w.name) return `[${idn}]`;
+  return `${w.name} [${idn}]`;
 }
 
 function _wgBaumRendern(roots, gewaehlt) {
@@ -1612,9 +1626,9 @@ async function caoMatch(recId) {
         const wgVorschlag = m.wg_vorschlag_id;
         const pilleClass = wgId ? 'wg-pille gesetzt' : 'wg-pille fehlt';
         const pilleTxt   = wgId
-          ? `WG: [${wgId}]`
+          ? `WG: ${_wgLabel(wgId)}`
           : (wgVorschlag
-              ? `⚠ WG wählen (Vorschlag: [${wgVorschlag}])`
+              ? `⚠ WG wählen (Vorschlag: ${_wgLabel(wgVorschlag)})`
               : '⚠ WG wählen');
         const bezForCtx = (m.bezeichnung_lief || '').replace(/'/g, "\\'");
         html += `<span class="${pilleClass}"
@@ -1662,6 +1676,11 @@ async function abrufen() {
 }
 
 // Init
+// WG-Cache eagerly laden — die Match-Tabelle braucht sie spaeter
+// fuer _wgLabel(id), und der WG-Picker im Hintergrund cached sie eh
+// beim ersten Klick. Vorabholen vermeidet "[123]"-Anzeige beim
+// ersten Render.
+_wgLaden().catch(() => {});
 laden();
 </script>
 {% endblock %}
