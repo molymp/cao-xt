@@ -127,6 +127,43 @@ def api_umsatz_kategorie(umsatz_id: int):
     return jsonify({'ok': True, 'umsatztyp_id': kat_id})
 
 
+@bp.get('/reconcile')
+def reconcile():
+    """Reconcile-Workflow-Seite: alle offenen EK-Belege mit ihrem
+    besten Hibiscus-Bankumsatz-Match. Bulk-Uebernahme fuer klare
+    Treffer (Score >= 80)."""
+    _login_check()
+    daten = m.reconcile_offene_ek_mit_matches()
+    return render_template('banking_reconcile.html', **daten)
+
+
+@bp.post('/reconcile/uebernehmen-bulk')
+def reconcile_uebernehmen_bulk():
+    """Mehrere Bankumsatz-Vorschlaege auf einmal uebernehmen.
+    Body: ``{paare: [{rec_id, umsatz_id}, ...]}``"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    paare = body.get('paare') or []
+    ma_id = session.get('ma_id')
+    ma_name = (session.get('login_name') or session.get('mitarbeiter')
+                or 'CAO-XT')
+    from modules.orga.bestellwesen.einkauf import bankumsatz_uebernehmen
+    erfolg, fehler = [], []
+    for p in paare:
+        try:
+            rec_id = int(p['rec_id'])
+            umsatz_id = int(p['umsatz_id'])
+            r = bankumsatz_uebernehmen(rec_id, umsatz_id,
+                                        ma_id=ma_id, ma_name=ma_name)
+            erfolg.append({'rec_id': rec_id, 'umsatz_id': umsatz_id,
+                            'stadium': r.get('stadium')})
+        except Exception as e:
+            fehler.append({'rec_id': p.get('rec_id'),
+                            'umsatz_id': p.get('umsatz_id'),
+                            'fehler': str(e)})
+    return jsonify({'ok': not fehler, 'erfolg': erfolg, 'fehler': fehler})
+
+
 @bp.get('/sepa-ueberweisungen')
 def sepa_ueb_liste():
     _login_check()

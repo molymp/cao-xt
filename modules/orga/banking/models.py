@@ -313,6 +313,74 @@ def zeitraum_presets() -> list[dict[str, Any]]:
     return out
 
 
+def reconcile_offene_ek_mit_matches(*, min_score: int = 50,
+                                      limit: int = 200
+                                      ) -> dict[str, Any]:
+    """Reconcile-Workflow: liefert alle offenen EK-Belege (JOURNAL.QUELLE=5,
+    STADIUM in 2/7/11) mit ihrem besten Hibiscus-Bankumsatz-Match.
+
+    Performance: pro Beleg wird ``bankumsatz_kandidaten_fuer_einkauf``
+    aufgerufen (= 1 SQL pro Beleg + Pool-Overhead). Bei ~50 offenen
+    Belegen ~3s. Akzeptabel fuer eine Seite, die der User bewusst
+    aufruft ("offene Belege durchgehen").
+
+    Returns:
+      {
+        'mit_top':     [{kopf, top_kandidat}, ...],   # Score >= 80
+        'mit_match':   [{kopf, top_kandidat}, ...],   # Score 50-79
+        'ohne_match':  [{kopf}, ...],                 # keine Kandidaten
+        'gesamt': int,
+      }
+    """
+    # Lazy-import um Zirkular-Imports zu vermeiden
+    from modules.orga.bestellwesen.einkauf import (
+        bankumsatz_kandidaten_fuer_einkauf,
+    )
+    with get_db() as cur:
+        cur.execute(
+            """SELECT j.REC_ID, j.VRENUM, j.ORGNUM, j.RDATUM, j.BSUMME,
+                      j.STADIUM, j.ADDR_ID,
+                      COALESCE(a.NAME1, j.KUN_NAME1, '–') AS lief_name,
+                      a.IBAN AS lief_iban,
+                      (SELECT COALESCE(SUM(ABS(BETRAG))+SUM(ABS(SKONTO_BETRAG)),0)
+                         FROM ZAHLUNGEN z
+                        WHERE z.JOURNAL_ID = j.REC_ID AND z.QUELLE=5
+                          AND z.STORNO=0 AND z.GEBUCHT='Y'
+                      ) AS bezahlt
+                 FROM JOURNAL j
+            LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
+                WHERE j.QUELLE = 5 AND j.STADIUM IN (2, 7, 11)
+                ORDER BY j.RDATUM DESC, j.REC_ID DESC
+                LIMIT %s""",
+            (int(limit),)
+        )
+        belege = list(cur.fetchall() or [])
+
+    mit_top: list[dict] = []
+    mit_match: list[dict] = []
+    ohne_match: list[dict] = []
+    for b in belege:
+        b['offen'] = abs(float(b['BSUMME'] or 0)) - float(b['bezahlt'] or 0)
+        try:
+            ks = bankumsatz_kandidaten_fuer_einkauf(int(b['REC_ID']))
+        except Exception:
+            ks = []
+        if ks and ks[0]['score'] >= 80:
+            mit_top.append({'kopf': b, 'top': ks[0],
+                             'weitere': ks[1:3]})
+        elif ks and ks[0]['score'] >= min_score:
+            mit_match.append({'kopf': b, 'top': ks[0],
+                               'weitere': ks[1:3]})
+        else:
+            ohne_match.append({'kopf': b})
+    return {
+        'mit_top':    mit_top,
+        'mit_match':  mit_match,
+        'ohne_match': ohne_match,
+        'gesamt':     len(belege),
+    }
+
+
 def sepa_ueberweisungen_liste(*, konto_id: int | None = None,
                                 limit: int = 50) -> list[dict[str, Any]]:
     """SEPA-Sammler-Übersicht: Header + aggregierte Buchungen."""
