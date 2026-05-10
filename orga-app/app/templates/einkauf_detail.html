@@ -153,6 +153,10 @@
             <span class="wert">{{ kopf.VRENUM or '–' }}</span>
         </div>
         <div>
+            <label title="Eingangsrechnungs-Nr (Lieferanten-eigene Beleg-Nr)">Eingangs-Nr.</label>
+            <span class="wert">{{ kopf.ORGNUM or '–' }}</span>
+        </div>
+        <div>
             <label>Datum</label>
             <span class="wert">{{ kopf.RDATUM.strftime('%d.%m.%Y') if kopf.RDATUM else '–' }}</span>
         </div>

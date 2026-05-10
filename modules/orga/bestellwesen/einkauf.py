@@ -125,6 +125,7 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
             j.REC_ID                            AS rec_id,
             j.QUELLE                            AS quelle,
             j.VRENUM                            AS vrenum,
+            j.ORGNUM                            AS orgnum,
             j.RDATUM                            AS rdatum,
             j.STADIUM                           AS stadium,
             j.ADDR_ID                           AS addr_id,
@@ -2580,14 +2581,39 @@ def _name_token_match(adress_name: str, empf_name: str) -> bool:
     return any(t.lower() in e for t in relevant)
 
 
+def _orgnum_im_zweck(orgnum: str, zweck: str) -> bool:
+    """True wenn die externe Rechnungs-Nr (ORGNUM) in irgendeiner Form
+    im Verwendungszweck auftaucht.
+
+    ORGNUM-Formate variieren stark:
+        UTZ:    "VR26-020729"   → Numerik-Kern "020729"
+        Trunk:  "2026/661439"   → "661439"
+        Schmid: "728261"        → "728261"
+        Andere: "RE 12345"      → "12345"
+
+    Wir extrahieren alle numerischen Sequenzen >= 5 Ziffern aus ORGNUM
+    und suchen sie wortweise im Zweck. Mind. eine Sequenz muss matchen.
+    """
+    if not orgnum or not zweck:
+        return False
+    import re
+    sequenzen = re.findall(r'\d{5,}', orgnum)
+    if not sequenzen:
+        return False
+    z = zweck or ''
+    return any(s in z for s in sequenzen)
+
+
 def bankumsatz_kandidaten_fuer_einkauf(rec_id: int) -> list[dict[str, Any]]:
     """Sucht moegliche Hibiscus-Bankumsaetze fuer eine offene EK-Rechnung.
 
-    Match-Score (max 100):
+    Match-Score (capped bei 100):
       - empfaenger_konto = ADRESSEN.IBAN          → +50
-      - |umsatz.betrag| = offener_Betrag (±1ct)   → +30
-      - umsatz.datum innerhalb RDATUM ±60 Tage    → +10
+      - ORGNUM (extern. Rechnungs-Nr) im zweck    → +30  (sehr eindeutig
+                                                          bei Lastschrift)
+      - |umsatz.betrag| = offener_Betrag (±1ct)   → +30  (Pflicht-Filter)
       - empfaenger_name enthaelt Lieferantenname  → +10
+      - umsatz.datum innerhalb RDATUM ±60 Tage    → +10
 
     Liefert sortierte Liste von Kandidaten ab Score>=50, max 5.
     """
@@ -2596,7 +2622,7 @@ def bankumsatz_kandidaten_fuer_einkauf(rec_id: int) -> list[dict[str, Any]]:
         # Beleg-Header + Lieferanten-Daten
         cur.execute(
             """SELECT j.REC_ID, j.QUELLE, j.STADIUM, j.RDATUM, j.BSUMME,
-                      j.ADDR_ID, j.VRENUM, j.STADIUM,
+                      j.ADDR_ID, j.VRENUM, j.ORGNUM, j.STADIUM,
                       a.NAME1 AS lief_name, a.IBAN AS lief_iban
                  FROM JOURNAL j
             LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
@@ -2615,6 +2641,7 @@ def bankumsatz_kandidaten_fuer_einkauf(rec_id: int) -> list[dict[str, Any]]:
         rdatum = kopf.get('RDATUM')
         lief_name = (kopf.get('lief_name') or '').strip()
         lief_iban = (kopf.get('lief_iban') or '').strip()
+        orgnum    = (kopf.get('ORGNUM') or '').strip()
 
         # Offener Betrag = BSUMME minus aktive Zahlungen
         cur.execute(
@@ -2676,10 +2703,20 @@ def bankumsatz_kandidaten_fuer_einkauf(rec_id: int) -> list[dict[str, Any]]:
         if lief_iban and empf_iban and lief_iban == empf_iban:
             score += 50
             gruende.append('Lieferanten-IBAN exakt')
+        # ORGNUM (externe Eingangsrechnungs-Nr) im zweck
+        zweck_kombiniert = ((u.get('zweck') or '') + ' '
+                            + (u.get('zweck2') or '') + ' '
+                            + (u.get('zweck3') or ''))
+        if orgnum and _orgnum_im_zweck(orgnum, zweck_kombiniert):
+            score += 30
+            gruende.append(f'Eingangsrechnung "{orgnum}" im Zweck')
         # Name-Token-Match
         if _name_token_match(lief_name, u.get('empfaenger_name') or ''):
             score += 10
             gruende.append('Name passt')
+        # Cap bei 100
+        if score > 100:
+            score = 100
         if score < 50:
             continue
         out.append({
@@ -2836,10 +2873,19 @@ def bankumsatz_uebernehmen(rec_id: int, umsatz_id: int, *,
         )
         new_zahlung_id = int(cur.lastrowid)
 
-        # Hibiscus-Umsatz als geprueft markieren — Bit 0 setzen
+        # Hibiscus-Umsatz: FLAG_GEPRUEFT setzen + Notiz mit VRENUM-Bezug.
+        # Notiz schreiben wir nur wenn noch leer (User-Notizen nicht
+        # ueberschreiben). Format: "Dorfkern EK <vrenum>"
+        kommentar_neu = f'Dorfkern EK {belegnum}' if belegnum else 'Dorfkern EK'
         cur.execute(
-            "UPDATE umsatz SET flags = IFNULL(flags,0) | 1 WHERE id = %s",
-            (umsatz_id,)
+            "UPDATE umsatz "
+            "SET flags = IFNULL(flags,0) | 1, "
+            "    kommentar = CASE "
+            "      WHEN kommentar IS NULL OR TRIM(kommentar) = '' THEN %s "
+            "      WHEN kommentar LIKE %s THEN kommentar "
+            "      ELSE CONCAT(kommentar, ' · ', %s) END "
+            "WHERE id = %s",
+            (kommentar_neu, f'%{kommentar_neu}%', kommentar_neu, umsatz_id)
         )
 
         # JOURNAL_OP rebuild

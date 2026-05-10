@@ -158,6 +158,7 @@ function ekNeu() {
     <thead>
         <tr>
             <th>Beleg-Nr.</th>
+            <th title="Eingangsrechnungs-Nr (Lieferanten-eigene Beleg-Nr)">Eingangs-Nr.</th>
             <th>Datum</th>
             <th>Lieferant</th>
             <th class="zahl-rechts">Pos.</th>
@@ -174,6 +175,7 @@ function ekNeu() {
             <strong>{{ e.vrenum or ('#' ~ e.rec_id) }}</strong>
             {% if e.ist_offen %}<span class="ek-bearb">✏️ in Bearbeitung</span>{% endif %}
         </td>
+        <td>{{ e.orgnum or '–' }}</td>
         <td>{{ e.rdatum.strftime('%d.%m.%Y') if e.rdatum else '–' }}</td>
         <td>{{ e.lief_name }}</td>
         <td class="zahl-rechts">{{ e.pos_anzahl }}</td>
