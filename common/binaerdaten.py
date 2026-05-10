@@ -154,6 +154,72 @@ def binaer_speichern_oder_ersetzen(
         return int(cur.fetchone()['id'])
 
 
+def binaer_primaer_ersetzen(
+    *,
+    modul_id: int,
+    referenz_id: int,
+    binaer_typ: int,
+    pfad: str,
+    datei: str,
+    daten: bytes,
+    kurztext: Optional[str] = None,
+    erst_name: str = 'CAO-XT',
+) -> int:
+    """Ersetzt das ``PRIMAER=1``-Bild fuer (MODUL_ID, REFERENZ_ID).
+
+    Mehrere Anhaenge pro Datensatz sind erlaubt — aber genau einer ist
+    das "Hauptbild" (PRIMAER=1). Diese Funktion loescht ein
+    eventuelles altes Hauptbild und legt das neue als PRIMAER=1 an.
+    Liefert die ``REC_ID`` der neuen Zeile.
+
+    Idempotent: bei Re-Aufruf mit identischem ``daten`` wird das alte
+    Hauptbild ersetzt — Re-Aufruf veraendert die DB also nicht
+    inhaltlich, nur die REC_ID rotiert.
+    """
+    bytegroesse = len(daten)
+    dateigroesse_str = _format_groesse(bytegroesse)
+    with get_db() as cur:
+        cur.execute("""
+            DELETE FROM BINAERDATEN
+            WHERE MODUL_ID = %s AND REFERENZ_ID = %s AND PRIMAER = 1
+        """, (modul_id, referenz_id))
+        cur.execute("""
+            INSERT INTO BINAERDATEN
+              (MODUL_ID, REFERENZ_ID, BINAER_TYP, KURZTEXT, PFAD, DATEI,
+               DATEIGROESSE, DATEN, PRIMAER, ERSTELLT, ERST_NAME, BYTEGROESSE)
+            VALUES
+              (%s, %s, %s, %s, %s, %s, %s, %s, 1, NOW(), %s, %s)
+        """, (modul_id, referenz_id, binaer_typ, kurztext, pfad, datei,
+              dateigroesse_str, daten, erst_name, bytegroesse))
+        cur.execute("SELECT LAST_INSERT_ID() AS id")
+        return int(cur.fetchone()['id'])
+
+
+def binaer_primaer_loeschen(modul_id: int, referenz_id: int) -> int:
+    """Loescht das Hauptbild fuer (MODUL_ID, REFERENZ_ID). Liefert die
+    Anzahl geloeschter Zeilen (0 oder 1)."""
+    with get_db() as cur:
+        cur.execute("""
+            DELETE FROM BINAERDATEN
+            WHERE MODUL_ID = %s AND REFERENZ_ID = %s AND PRIMAER = 1
+        """, (modul_id, referenz_id))
+        return cur.rowcount
+
+
+def binaer_primaer_holen(modul_id: int,
+                          referenz_id: int) -> Optional[dict]:
+    """Liefert das Hauptbild-Tupel oder None (REC_ID, DATEI, DATEN, ...).
+    """
+    with get_db() as cur:
+        cur.execute("""
+            SELECT REC_ID, DATEI, PFAD, DATEN, BYTEGROESSE, ERSTELLT
+            FROM BINAERDATEN
+            WHERE MODUL_ID = %s AND REFERENZ_ID = %s AND PRIMAER = 1
+            LIMIT 1
+        """, (modul_id, referenz_id))
+        return cur.fetchone()
+
+
 def binaer_holen(rec_id: int) -> Optional[dict]:
     """Liefert BLOB + Metadaten zu einem REC_ID, oder None.
 
