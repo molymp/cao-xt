@@ -104,12 +104,30 @@
     </div>
 </div>
 
-<form method="get" class="bk-filter">
+<form method="get" class="bk-filter" id="bk-form">
     <label>
         Suche
         <input type="text" name="q" class="alpha-touch"
                value="{{ suche or '' }}"
-               placeholder="Empfänger / Verwendungszweck" autocomplete="off">
+               placeholder="Empfänger / Verwendungszweck / Notiz" autocomplete="off">
+    </label>
+    <label style="min-width:0; align-self:flex-end; padding-bottom:8px;">
+        <input type="checkbox" name="regex" value="1" id="bk-regex"
+               {% if suche_regex %}checked{% endif %}
+               style="vertical-align:middle;">
+        <span style="text-transform:none; font-weight:500; font-size:0.85rem;">RegEx</span>
+    </label>
+    <label>
+        Kategorie
+        <select name="umsatztyp_id">
+            <option value="">– alle –</option>
+            {% for ut in umsatztypen %}
+                <option value="{{ ut.id }}"
+                  {% if umsatztyp_id == ut.id %}selected{% endif %}>
+                    {{ ut.name }}
+                </option>
+            {% endfor %}
+        </select>
     </label>
     <label>
         Art
@@ -123,6 +141,18 @@
         </select>
     </label>
     <label>
+        Zeitraum
+        <select name="preset" onchange="if(this.value){this.form.von.value='';this.form.bis.value='';}">
+            <option value="">– manuell –</option>
+            {% for p in zeitraum_presets %}
+                <option value="{{ p.key }}"
+                  {% if preset_key == p.key %}selected{% endif %}>
+                    {{ p.label }}
+                </option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>
         Von
         <input type="text" name="von" class="date-touch" placeholder="TT.MM.JJJJ"
                value="{{ von or '' }}" autocomplete="off">
@@ -131,6 +161,12 @@
         Bis
         <input type="text" name="bis" class="date-touch" placeholder="TT.MM.JJJJ"
                value="{{ bis or '' }}" autocomplete="off">
+    </label>
+    <label style="min-width:0; align-self:flex-end; padding-bottom:8px;">
+        <input type="checkbox" name="nur_ungeprueft" value="1"
+               {% if nur_ungeprueft %}checked{% endif %}
+               style="vertical-align:middle;">
+        <span style="text-transform:none; font-weight:500; font-size:0.85rem;">Nur ungeprüft</span>
     </label>
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset"
@@ -150,11 +186,16 @@
             <th>Art</th>
             <th class="zahl-rechts">Betrag €</th>
             <th class="zahl-rechts">Saldo €</th>
+            <th title="Geprüft (Hibiscus FLAG_GEPRUEFT)">✓</th>
+            <th>Kategorie</th>
+            <th>Notiz</th>
         </tr>
     </thead>
     <tbody>
     {% for u in umsaetze %}
-    <tr class="{% if (u.betrag or 0) < 0 %}minus{% else %}plus{% endif %}">
+    {% set geprueft = (u.flags or 0) % 2 == 1 %}
+    <tr class="{% if (u.betrag or 0) < 0 %}minus{% else %}plus{% endif %}{% if geprueft %} bk-geprueft{% endif %}"
+        id="bk-row-{{ u.id }}">
         <td>
             {{ u.datum.strftime('%d.%m.%Y') if u.datum else '–' }}
             {% if u.valuta and u.valuta != u.datum %}
@@ -187,6 +228,38 @@
                 –
             {% endif %}
         </td>
+        <td style="text-align:center;">
+            <input type="checkbox" class="bk-cb-geprueft"
+                   data-id="{{ u.id }}"
+                   {% if geprueft %}checked{% endif %}
+                   title="Geprüft / abgehakt">
+        </td>
+        <td>
+            <select class="bk-sel-kat" data-id="{{ u.id }}"
+                    style="min-width:110px; max-width:160px;
+                           padding:3px 6px; font-size:0.84rem;
+                           border:1px solid var(--creme-dunkel);
+                           border-radius:var(--radius-klein);
+                           background:white;">
+                <option value="">–</option>
+                {% for ut in umsatztypen %}
+                    <option value="{{ ut.id }}"
+                      {% if u.umsatztyp_id == ut.id %}selected{% endif %}>
+                      {{ ut.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </td>
+        <td>
+            <input type="text" class="bk-input-notiz alpha-touch"
+                   data-id="{{ u.id }}"
+                   value="{{ u.kommentar or '' }}"
+                   placeholder="…"
+                   style="min-width:160px; max-width:240px;
+                          padding:4px 6px; font-size:0.86rem;
+                          border:1px solid var(--creme-dunkel);
+                          border-radius:var(--radius-klein);">
+        </td>
     </tr>
     {% endfor %}
     </tbody>
@@ -196,6 +269,63 @@
     Keine Umsätze gefunden.
 </div>
 {% endif %}
+
+<style>
+tr.bk-geprueft td { color:#888; }
+tr.bk-geprueft .betrag { color:#888 !important; }
+</style>
+
+<script>
+// ── Inline-Edit-Handler fuer Umsatz-Zeilen ────────────────────────
+function _bkPost(url, body) {
+    return fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body || {}),
+    }).then(r => r.json()).catch(() => ({ok:false, fehler:'Verbindungsfehler'}));
+}
+document.querySelectorAll('.bk-cb-geprueft').forEach(cb => {
+    cb.addEventListener('change', async () => {
+        const id = cb.dataset.id;
+        const r = await _bkPost(`/orga/banking/umsatz/${id}/geprueft`,
+                                  {geprueft: cb.checked});
+        if (!r.ok) {
+            cb.checked = !cb.checked;   // Rollback im UI
+            alert('Fehler: ' + (r.fehler || 'unbekannt'));
+            return;
+        }
+        // Optisch ausgrauen
+        document.getElementById('bk-row-' + id)
+            ?.classList.toggle('bk-geprueft', cb.checked);
+    });
+});
+document.querySelectorAll('.bk-sel-kat').forEach(sel => {
+    sel.addEventListener('change', async () => {
+        const id = sel.dataset.id;
+        const r = await _bkPost(`/orga/banking/umsatz/${id}/kategorie`,
+                                  {umsatztyp_id: sel.value || null});
+        if (!r.ok) alert('Fehler: ' + (r.fehler || 'unbekannt'));
+    });
+});
+// Notiz: erst beim Blur speichern (debounce wuerde auch gehen, aber
+// blur ist ausreichend und macht keine Mehrfach-Roundtrips).
+document.querySelectorAll('.bk-input-notiz').forEach(inp => {
+    let _orig = inp.value;
+    inp.addEventListener('focus', () => { _orig = inp.value; });
+    inp.addEventListener('blur', async () => {
+        if (inp.value === _orig) return;
+        const id = inp.dataset.id;
+        const r = await _bkPost(`/orga/banking/umsatz/${id}/notiz`,
+                                  {notiz: inp.value});
+        if (!r.ok) {
+            inp.value = _orig;
+            alert('Fehler: ' + (r.fehler || 'unbekannt'));
+        } else {
+            _orig = inp.value;
+        }
+    });
+});
+</script>
 
 {% include 'touch/widgets.html' %}
 {% endblock %}
