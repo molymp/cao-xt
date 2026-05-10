@@ -2492,11 +2492,16 @@ def einkauf_zahlung_stornieren(zahlung_rec_id: int, *,
                 'Lauf (ART=UB / UW_NUM>0) — Storno bitte in CAO unter '
                 'Finanzen / Überweisungen.'
             )
+        # CAO-Mimik (Trace 2026-05-10): STORNO=1, STORNOGRUND, VERW_ZWECK
+        # bekommt '\n--STORNO--'-Suffix. GEBUCHT bleibt unveraendert
+        # ('Y'), nicht auf 'S' setzen — das macht CAO bei diesem Storno-
+        # Pfad nicht.
         cur.execute(
             """UPDATE ZAHLUNGEN
                   SET STORNO       = 1,
-                      GEBUCHT      = 'S',
-                      STORNOGRUND  = %s
+                      STORNOGRUND  = %s,
+                      VERW_ZWECK   = CONCAT(IFNULL(VERW_ZWECK,''),
+                                            '\n--STORNO--')
                 WHERE REC_ID = %s""",
             (grund, int(zahlung_rec_id))
         )
@@ -2504,6 +2509,19 @@ def einkauf_zahlung_stornieren(zahlung_rec_id: int, *,
         neues_stadium = None
         if rec_id > 0:
             neues_stadium = _stadium_neuberechnen(cur, rec_id)
+            # CAO setzt zusaetzlich JOURNAL.INFO=NULL, Z_ID=-1,
+            # PROJEKT_ID=-1 wenn der Beleg wieder komplett offen ist
+            # (STADIUM=2). Bei Teilzahlung (STADIUM=7) belassen wir die
+            # Felder.
+            if neues_stadium == 2:
+                cur.execute(
+                    """UPDATE JOURNAL
+                          SET INFO       = NULL,
+                              Z_ID       = -1,
+                              PROJEKT_ID = -1
+                        WHERE REC_ID = %s""",
+                    (rec_id,)
+                )
         # JOURNAL_OP fuer QUELLE=5 neu aufbauen (CAO-Mimik)
         _journal_op_rebuild_qu5(cur)
     return {'ok': True, 'rec_id': int(zahlung_rec_id),
