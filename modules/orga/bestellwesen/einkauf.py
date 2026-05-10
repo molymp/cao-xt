@@ -2054,3 +2054,300 @@ def einkauf_storno_und_kopieren(rec_id: int, *, ma_id: int | None = None,
         'storno': storno_res,
         'kopie': kopie_res,
     }
+
+
+# ── Phase D: Zahlungs-Erfassung manuell ─────────────────────────
+
+
+def _zahlung_aus_cao_sepa(z: dict) -> bool:
+    """True wenn die Zahlung aus einem CAO-SEPA-Lauf stammt — dann
+    blockiert XT den Storno und der User muss in CAO unter
+    Finanzen/Ueberweisungen ruecknehmen.
+
+    Erkennung: ART='UB' (Ueberweisung) UND/ODER UW_NUM > 0 (gehoert
+    zu einem Ueberweisungs-Lauf). Live-DB-Auswertung zeigt 1:1
+    Korrelation der beiden Felder, wir pruefen beide defensiv.
+    """
+    if (z.get('ART') or '').strip() == 'UB':
+        return True
+    if int(z.get('UW_NUM') or -1) > 0:
+        return True
+    return False
+
+
+def zahlungsarten_aktiv() -> list[dict[str, Any]]:
+    """Aktive ZAHLUNGSARTEN fuer das Erfassungs-Modal."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, NAME, TEXT_KURZ, NETTO_TAGE, "
+            "       SKONTO_TAGE, SKONTO_PROZ "
+            "  FROM ZAHLUNGSARTEN "
+            " WHERE AKTIV_FLAG = 'Y' "
+            " ORDER BY REC_ID"
+        )
+        return list(cur.fetchall() or [])
+
+
+def zahlungen_zu_einkauf(rec_id: int) -> list[dict[str, Any]]:
+    """Liefert alle Zahlungen zu einer EK-Rechnung (QUELLE=5).
+    Sortiert nach DATUM, alte zuerst."""
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        cur.execute(
+            """SELECT z.REC_ID, z.DATUM, z.VALUTA, z.BETRAG,
+                      z.SKONTO_PROZ, z.SKONTO_BETRAG,
+                      z.WAEHRUNG, z.ART, z.ZAHLART,
+                      z.ZAHLART_NAME, z.BELEGNUM, z.VERW_ZWECK,
+                      z.GEBUCHT, z.STORNO, z.STORNOGRUND,
+                      z.UW_NUM, z.ERSTELLT_AM, z.ERSTELLT_NAME,
+                      za.NAME AS zahlart_stamm
+                 FROM ZAHLUNGEN z
+            LEFT JOIN ZAHLUNGSARTEN za ON za.REC_ID = z.ZAHLART
+                WHERE z.JOURNAL_ID = %s AND z.QUELLE = 5
+                ORDER BY z.DATUM, z.REC_ID""",
+            (rec_id,)
+        )
+        rows = cur.fetchall()
+    for r in rows:
+        r['ist_storniert'] = (int(r.get('STORNO') or 0) > 0
+                              or (r.get('GEBUCHT') or '') == 'S')
+        r['ist_aktiv']     = (not r['ist_storniert']
+                              and (r.get('GEBUCHT') or '') == 'Y')
+        r['aus_cao_sepa']  = _zahlung_aus_cao_sepa(r)
+    return rows
+
+
+def _zahlungssumme_und_skonto(cur, rec_id: int
+                               ) -> tuple[float, float]:
+    """Aktive (= nicht stornierte, gebuchte) Zahlungen aufaddieren.
+    Liefert (summe_betrag, summe_skonto)."""
+    cur.execute(
+        """SELECT COALESCE(SUM(BETRAG), 0) AS s_betrag,
+                  COALESCE(SUM(SKONTO_BETRAG), 0) AS s_skonto
+             FROM ZAHLUNGEN
+            WHERE JOURNAL_ID = %s AND QUELLE = 5
+              AND STORNO = 0 AND GEBUCHT = 'Y'""",
+        (rec_id,)
+    )
+    r = cur.fetchone() or {}
+    return float(r.get('s_betrag') or 0), float(r.get('s_skonto') or 0)
+
+
+def _stadium_aus_zahlungen(cur, rec_id: int,
+                            bsumme: float) -> int | None:
+    """Berechnet den passenden ``JOURNAL.STADIUM`` aus dem
+    Zahlungs-Bestand. None bedeutet "keine Aenderung".
+
+    Logik:
+        keine aktive Zahlung      → STADIUM=2 (offen)
+        Summe(BETRAG)+Skonto >= BSUMME-0.01 mit Skonto>0 → 8 (bezahlt mit Skonto)
+        Summe(BETRAG)         >= BSUMME-0.01            → 9 (bezahlt)
+        sonst (Teilzahlung)                              → 7 (Teilzahlung)
+    """
+    s_betrag, s_skonto = _zahlungssumme_und_skonto(cur, rec_id)
+    if s_betrag + s_skonto <= 0.0001:
+        return 2
+    # 1 Cent Toleranz fuer Rundungsdifferenzen
+    if s_betrag + s_skonto >= bsumme - 0.01:
+        return 8 if s_skonto > 0.0001 else 9
+    return 7
+
+
+def _stadium_neuberechnen(cur, rec_id: int) -> int | None:
+    """Liest den Header, berechnet das STADIUM aus den Zahlungen und
+    schreibt es zurueck (nur wenn nicht storniert/gemahnt)."""
+    cur.execute(
+        "SELECT BSUMME, STADIUM FROM JOURNAL "
+        "WHERE REC_ID=%s AND QUELLE=5",
+        (rec_id,)
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    alt = int(row.get('STADIUM') or 0)
+    # Stornierte/Mahn-Stadien nicht ueberschreiben
+    if alt in (3, 4, 5, 6, 11, 125, 126, 127):
+        return alt
+    bsumme = float(row.get('BSUMME') or 0)
+    neu = _stadium_aus_zahlungen(cur, rec_id, bsumme)
+    if neu is not None and neu != alt:
+        cur.execute(
+            "UPDATE JOURNAL SET STADIUM=%s WHERE REC_ID=%s",
+            (neu, rec_id)
+        )
+    return neu if neu is not None else alt
+
+
+def einkauf_zahlung_erfassen(rec_id: int, *,
+                               betrag: float,
+                               datum: date | str | None = None,
+                               valuta: date | str | None = None,
+                               zahlart_id: int | None = None,
+                               zahlart_name: str = '',
+                               skonto_proz: float = 0.0,
+                               skonto_betrag: float = 0.0,
+                               belegnum: str = '',
+                               verw_zweck: str = '',
+                               ma_id: int | None = None,
+                               ma_name: str = '') -> dict[str, Any]:
+    """Erfasst eine Zahlung manuell. ``ART='?'``, ``GEBUCHT='Y'``,
+    ``UW_NUM=-1`` (= keine Ueberweisungs-Lauf-Kennung).
+
+    Validiert dass der Beleg nicht in einem End-Stadium ist (8/9 =
+    bezahlt, 125/126/127 = storniert), sonst PermissionError.
+
+    Aktualisiert nach dem Insert das ``JOURNAL.STADIUM`` automatisch
+    via ``_stadium_neuberechnen``.
+    """
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:50]
+    if betrag is None or float(betrag) <= 0:
+        raise ValueError('Betrag muss > 0 sein')
+    betrag = round(float(betrag), 2)
+    skonto_proz = round(float(skonto_proz or 0), 3)
+    skonto_betrag = round(float(skonto_betrag or 0), 2)
+
+    # Datum-Parsing: ISO-String oder date akzeptieren
+    def _parse_date(d):
+        if d is None or d == '':
+            return None
+        if isinstance(d, date):
+            return d
+        try:
+            return date.fromisoformat(str(d)[:10])
+        except (ValueError, TypeError):
+            return None
+    datum_d  = _parse_date(datum) or date.today()
+    valuta_d = _parse_date(valuta) or datum_d
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            "SELECT QUELLE, STADIUM, BSUMME, ADDR_ID FROM JOURNAL "
+            "WHERE REC_ID=%s",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            raise LookupError(f'Beleg {rec_id} nicht gefunden')
+        if int(kopf.get('QUELLE') or 0) != 5:
+            raise PermissionError(
+                f"QUELLE={kopf.get('QUELLE')} — kein gebuchter Einkauf"
+            )
+        st = int(kopf.get('STADIUM') or 0)
+        if st in (8, 9):
+            raise PermissionError(
+                'Beleg ist bereits voll bezahlt — keine weitere '
+                'Zahlung erfassbar'
+            )
+        if st in (125, 126, 127):
+            raise PermissionError('Beleg ist storniert')
+
+        addr_id = int(kopf.get('ADDR_ID') or -1)
+
+        # Zahlart-Name aus Stamm holen falls nicht uebergeben
+        if zahlart_id is not None and not zahlart_name:
+            cur.execute(
+                "SELECT NAME FROM ZAHLUNGSARTEN WHERE REC_ID=%s",
+                (int(zahlart_id),)
+            )
+            row = cur.fetchone()
+            if row:
+                zahlart_name = (row.get('NAME') or '')[:100]
+
+        cur.execute(
+            """INSERT INTO ZAHLUNGEN
+               (FIBU_KTO, FIBU_GEGENKTO, MA_ID, ADDR_ID,
+                QUELLE, JOURNAL_ID, KASSEN_ID, KA_ID,
+                ZAHLART, ART, AUSZUG, UW_NUM,
+                DATUM, VALUTA, BELEGNUM,
+                BETRAG, SKONTO_PROZ, SKONTO_BETRAG, WAEHRUNG,
+                TEXTSCHLUESSEL, VERW_ZWECK,
+                GEBUCHT, STORNO,
+                LFD_NUMMMER,
+                ERSTELLT_AM, ERSTELLT_NAME,
+                ZAHLART_NAME, SIG_AUSGEFALLEN, Z_ID, BEREINIGT,
+                REFERENZ_ID, SUB_QUELLE, MWST)
+               VALUES (0, -1, %s, %s,
+                       5, %s, -1, -1,
+                       %s, '?', 0, -1,
+                       %s, %s, %s,
+                       %s, %s, %s, 'EUR',
+                       0, %s,
+                       'Y', 0,
+                       -1,
+                       NOW(), %s,
+                       %s, 'N', -1, 'N',
+                       -1, -1, 0)""",
+            (
+                int(ma_id or 0), addr_id,
+                rec_id,
+                int(zahlart_id) if zahlart_id is not None else -1,
+                datum_d, valuta_d, belegnum[:100],
+                betrag, skonto_proz, skonto_betrag,
+                verw_zweck[:1000],
+                ma_name_safe,
+                zahlart_name[:100],
+            )
+        )
+        new_id = int(cur.lastrowid)
+
+        # STADIUM automatisch nachziehen
+        neues_stadium = _stadium_neuberechnen(cur, rec_id)
+
+    return {'ok': True, 'rec_id': new_id, 'stadium': neues_stadium}
+
+
+def einkauf_zahlung_stornieren(zahlung_rec_id: int, *,
+                                 grund: str,
+                                 ma_id: int | None = None,
+                                 ma_name: str = '') -> dict[str, Any]:
+    """Storniert eine Zahlung (XT-eigene, nicht aus CAO-SEPA-Lauf).
+
+    Pre-Check: Zahlungen mit ``ART='UB'`` oder ``UW_NUM > 0`` stammen
+    aus einem CAO-SEPA-Ueberweisungs-Lauf — die muss der User in CAO
+    unter Finanzen/Ueberweisungen ruecknehmen, weil dort die FIBU-
+    Konto-Auswirkung sauber rueckgaengig gemacht wird. PermissionError.
+
+    Effekt: STORNO=1, GEBUCHT='S', STORNOGRUND, plus
+    JOURNAL.STADIUM-Neuberechnung.
+    """
+    grund = (grund or '').strip()
+    if not grund:
+        raise ValueError('Storno-Grund ist Pflicht')
+    if len(grund) > 250:
+        grund = grund[:250]
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            """SELECT z.REC_ID, z.JOURNAL_ID, z.QUELLE, z.STORNO,
+                      z.GEBUCHT, z.ART, z.UW_NUM, z.BETRAG
+                 FROM ZAHLUNGEN z
+                WHERE z.REC_ID = %s""",
+            (int(zahlung_rec_id),)
+        )
+        z = cur.fetchone()
+        if not z:
+            raise LookupError(f'Zahlung {zahlung_rec_id} nicht gefunden')
+        if int(z.get('STORNO') or 0) > 0 or (z.get('GEBUCHT') or '') == 'S':
+            return {'ok': True, 'rec_id': int(zahlung_rec_id),
+                    'idempotent': True}
+        if _zahlung_aus_cao_sepa(z):
+            raise PermissionError(
+                'Diese Zahlung stammt aus einem CAO-SEPA-Überweisungs-'
+                'Lauf (ART=UB / UW_NUM>0) — Storno bitte in CAO unter '
+                'Finanzen / Überweisungen.'
+            )
+        cur.execute(
+            """UPDATE ZAHLUNGEN
+                  SET STORNO       = 1,
+                      GEBUCHT      = 'S',
+                      STORNOGRUND  = %s
+                WHERE REC_ID = %s""",
+            (grund, int(zahlung_rec_id))
+        )
+        rec_id = int(z.get('JOURNAL_ID') or 0)
+        neues_stadium = None
+        if rec_id > 0:
+            neues_stadium = _stadium_neuberechnen(cur, rec_id)
+    return {'ok': True, 'rec_id': int(zahlung_rec_id),
+            'journal_stadium': neues_stadium}

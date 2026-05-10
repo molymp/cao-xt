@@ -286,7 +286,18 @@
     </div>
 </div>
 {% elif kopf.STADIUM != 127 and kopf.STADIUM != 125 and kopf.STADIUM != 126 %}
-{# Gebuchter, nicht-stornierter EK-Beleg → Storno- und Kopier-Aktionen #}
+{# Gebuchter, nicht-stornierter EK-Beleg → Zahlungen + Aktionen #}
+<div class="ed-card">
+    <h2>Zahlungen</h2>
+    <div id="ed-zahlungen-info" class="ed-rdo">…</div>
+    <div id="ed-zahlungen-tab-wrap" style="margin-top:8px;"></div>
+    {% if kopf.STADIUM != 8 and kopf.STADIUM != 9 %}
+    <div style="margin-top:10px;">
+        <button type="button" class="btn-primary" onclick="edZahlungErfassen()">💶 Zahlung erfassen …</button>
+    </div>
+    {% endif %}
+</div>
+
 <div class="ed-card">
     <h2>Aktionen</h2>
     <p class="ed-rdo">
@@ -301,6 +312,56 @@
     </div>
 </div>
 {% endif %}
+
+{# ── Modal: Zahlung erfassen ────────────────────────────────────── #}
+<div class="ed-modal-overlay" id="ed-zerf-overlay" style="display:none;"
+     onclick="if(event.target===this)edZahlungErfassenSchliessen()">
+  <div class="ed-modal" style="max-width:560px;">
+    <div class="ed-modal-kopf">
+      <h2>Zahlung erfassen</h2>
+      <button class="ed-modal-close" onclick="edZahlungErfassenSchliessen()">✕</button>
+    </div>
+    <div class="ed-modal-info" id="ed-zerf-summary">…</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <label style="display:flex; flex-direction:column; gap:4px;">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Datum</span>
+        <input id="ed-zerf-datum" type="text" class="date-touch" placeholder="TT.MM.JJJJ" autocomplete="off"
+               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein);">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px;">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Betrag €</span>
+        <input id="ed-zerf-betrag" type="text" class="num-touch"
+               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); text-align:right; font-family:'Nunito Mono',Consolas,monospace;">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px;">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Skonto-Betrag €</span>
+        <input id="ed-zerf-skonto" type="text" class="num-touch" value="0,00"
+               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); text-align:right; font-family:'Nunito Mono',Consolas,monospace;">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px;">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Zahlart</span>
+        <select id="ed-zerf-zahlart"
+                style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); background:white;">
+          <option value="">— wählen —</option>
+        </select>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px; grid-column:span 2;">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Beleg-Nr (optional)</span>
+        <input id="ed-zerf-belegnum" type="text" class="alpha-touch" autocomplete="off"
+               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein);">
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px; grid-column:span 2;">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Verwendungszweck (optional)</span>
+        <input id="ed-zerf-vz" type="text" class="alpha-touch" autocomplete="off"
+               style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein);">
+      </label>
+    </div>
+    <div class="ed-modal-aktionen">
+      <button class="btn-aktion" onclick="edZahlungErfassenSchliessen()">Abbrechen</button>
+      <button class="btn-primary" onclick="edZahlungErfassenSenden()">Speichern ✓</button>
+    </div>
+  </div>
+</div>
 
 {# ── Modal: Buchen-Vorschau (Preisabweichungen, Warnungen) ──────── #}
 <div class="ed-modal-overlay" id="ed-buchen-overlay" style="display:none;"
@@ -865,9 +926,172 @@ async function edBuchenAusfuehren() {
     location.reload();
 }
 
+// ── Zahlungen (Phase D) ──────────────────────────────────────────
+const ED_BSUMME = {{ kopf.BSUMME or 0 }};
+const ED_STADIUM = {{ kopf.STADIUM or 0 }};
+let _edZahlungsarten = [];
+
+async function _edZahlungenLaden() {
+    const wrap = document.getElementById('ed-zahlungen-tab-wrap');
+    const info = document.getElementById('ed-zahlungen-info');
+    if (!wrap) return;   // gibt's nur bei gebuchten Belegen
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/zahlungen`);
+        res = await r.json();
+    } catch (e) {
+        info.textContent = 'Zahlungen konnten nicht geladen werden.';
+        return;
+    }
+    if (!res.ok) {
+        info.textContent = 'Fehler: ' + (res.fehler || 'unbekannt');
+        return;
+    }
+    _edZahlungsarten = res.zahlungsarten || [];
+
+    const aktive = (res.zahlungen || []).filter(z => z.ist_aktiv);
+    const sumBetrag = aktive.reduce((s, z) => s + parseFloat(z.BETRAG || 0), 0);
+    const sumSkonto = aktive.reduce((s, z) => s + parseFloat(z.SKONTO_BETRAG || 0), 0);
+    const offen = ED_BSUMME - sumBetrag - sumSkonto;
+    info.innerHTML =
+        `<strong>${aktive.length}</strong> aktive Zahlung(en) · ` +
+        `Brutto-Soll <strong>${_eur(ED_BSUMME)}</strong> · ` +
+        `Bezahlt <strong>${_eur(sumBetrag)}</strong>` +
+        (sumSkonto > 0.001 ? ` (+ Skonto ${_eur(sumSkonto)})` : '') +
+        ` · Offen <strong style="color:${offen > 0.01 ? '#a02810' : '#1a4010'};">${_eur(offen)}</strong>`;
+
+    if (!res.zahlungen || res.zahlungen.length === 0) {
+        wrap.innerHTML = '<p class="ed-rdo" style="margin-top:8px;">Noch keine Zahlung erfasst.</p>';
+        return;
+    }
+    const rows = res.zahlungen.map(z => {
+        const datum = z.DATUM ? z.DATUM.split('T')[0].split('-').reverse().join('.') : '–';
+        const ist_storniert = z.ist_storniert;
+        const aus_cao = z.aus_cao_sepa;
+        const stornoBtn = ist_storniert
+            ? '<span style="color:#888;">— storniert —</span>'
+            : (aus_cao
+                ? `<span class="ed-rdo" title="ART=UB / UW_NUM=${z.UW_NUM} — kommt aus CAO-SEPA-Lauf, Storno bitte in CAO unter Finanzen / Überweisungen">🔒 nur in CAO</span>`
+                : `<button class="ed-del" title="Zahlung stornieren" onclick="edZahlungStorno(${z.REC_ID})">🗑</button>`);
+        const zahlart = _esc(z.ZAHLART_NAME || z.zahlart_stamm || '–');
+        const tagSepa = aus_cao ? '<span style="display:inline-block; padding:1px 6px; border-radius:4px; background:rgba(60,120,200,0.18); color:#2a4a8a; font-size:0.72rem; font-weight:700; margin-left:4px;">SEPA aus CAO</span>' : '';
+        const stornoTxt = ist_storniert
+            ? `<span style="color:#888; text-decoration:line-through;">storniert</span> · ${_esc(z.STORNOGRUND || '?')}`
+            : '';
+        return `
+            <tr style="${ist_storniert ? 'background:rgba(180,180,180,0.10); color:#666;' : ''}">
+              <td>${datum}</td>
+              <td class="zahl-rechts">${_eur(parseFloat(z.BETRAG || 0))}</td>
+              <td class="zahl-rechts">${parseFloat(z.SKONTO_BETRAG || 0) > 0.001 ? _eur(parseFloat(z.SKONTO_BETRAG)) : '–'}</td>
+              <td>${zahlart}${tagSepa}</td>
+              <td>${_esc(z.BELEGNUM || '')}</td>
+              <td>${_esc((z.VERW_ZWECK || '').slice(0, 40))} ${stornoTxt}</td>
+              <td>${stornoBtn}</td>
+            </tr>`;
+    }).join('');
+    wrap.innerHTML = `
+        <table class="ed-tab" style="margin-top:6px;">
+          <thead><tr>
+            <th>Datum</th>
+            <th class="zahl-rechts">Betrag €</th>
+            <th class="zahl-rechts">Skonto €</th>
+            <th>Zahlart</th>
+            <th>Beleg</th>
+            <th>Verw.-Zweck / Storno-Grund</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+}
+
+function edZahlungErfassen() {
+    // Modal vorbereiten: Zahlart-Dropdown fuellen, Felder leer/sinnvoll setzen
+    const sel = document.getElementById('ed-zerf-zahlart');
+    sel.innerHTML = '<option value="">— wählen —</option>'
+        + _edZahlungsarten.map(za =>
+            `<option value="${za.REC_ID}">${_esc(za.NAME)}</option>`).join('');
+    const heute = new Date();
+    const dd = String(heute.getDate()).padStart(2, '0');
+    const mm = String(heute.getMonth() + 1).padStart(2, '0');
+    document.getElementById('ed-zerf-datum').value = `${dd}.${mm}.${heute.getFullYear()}`;
+    document.getElementById('ed-zerf-betrag').value = _eur(ED_BSUMME);
+    document.getElementById('ed-zerf-skonto').value = '0,00';
+    document.getElementById('ed-zerf-belegnum').value = '';
+    document.getElementById('ed-zerf-vz').value = '';
+    // Summary
+    const sum = document.getElementById('ed-zerf-summary');
+    sum.innerHTML = `Beleg <strong>{{ kopf.VRENUM or kopf.REC_ID }}</strong> · Brutto <strong>${_eur(ED_BSUMME)}</strong>`;
+    document.getElementById('ed-zerf-overlay').style.display = 'flex';
+    // Touch-Widgets neu wiren fuer das Modal
+    if (window.TouchInput && window.TouchInput.rewire) {
+        window.TouchInput.rewire();
+    }
+}
+function edZahlungErfassenSchliessen() {
+    document.getElementById('ed-zerf-overlay').style.display = 'none';
+}
+async function edZahlungErfassenSenden() {
+    const datum_de = document.getElementById('ed-zerf-datum').value.trim();
+    // TT.MM.JJJJ → JJJJ-MM-TT
+    let datum_iso = '';
+    const m = datum_de.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) {
+        datum_iso = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    } else {
+        alert('Datum bitte als TT.MM.JJJJ eingeben');
+        return;
+    }
+    const betrag = parseFloat(_deToNum(document.getElementById('ed-zerf-betrag').value));
+    if (!(betrag > 0)) { alert('Betrag muss > 0 sein'); return; }
+    const skonto = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0;
+    const zahlart = document.getElementById('ed-zerf-zahlart').value;
+    const body = {
+        datum:         datum_iso,
+        betrag:        betrag,
+        skonto_betrag: skonto,
+        zahlart_id:    zahlart || null,
+        belegnum:      document.getElementById('ed-zerf-belegnum').value,
+        verw_zweck:    document.getElementById('ed-zerf-vz').value,
+    };
+    cxLadenZeigen('Speichere Zahlung …');
+    const res = await _post(`${ED_API}/zahlungen`, body);
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    edZahlungErfassenSchliessen();
+    // Wenn STADIUM auf 8/9 wechselt → Reload, damit "Zahlung erfassen"-
+    // Button verschwindet. Sonst nur die Zahlungs-Tabelle aktualisieren.
+    if ([8, 9].includes(res.stadium)) {
+        location.reload();
+    } else {
+        _edZahlungenLaden();
+    }
+}
+
+async function edZahlungStorno(zid) {
+    const grund = prompt('Storno-Grund (Pflicht):', '');
+    if (grund === null) return;
+    if (!grund.trim()) {
+        alert('Bitte einen Grund angeben.');
+        return;
+    }
+    cxLadenZeigen('Storniere Zahlung …');
+    const res = await _post(`/orga/bestellwesen/einkauf/zahlungen/${zid}/storno`,
+                             { grund: grund.trim() });
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    // Bei STADIUM-Aenderung neu laden, sonst nur die Liste
+    if (res.journal_stadium && [2, 7].includes(res.journal_stadium) && [8, 9].includes(ED_STADIUM)) {
+        location.reload();
+    } else {
+        _edZahlungenLaden();
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const scan = document.getElementById('ed-scan');
     if (scan) scan.focus();
+    // Zahlungen automatisch laden (falls Beleg gebucht ist)
+    _edZahlungenLaden();
 });
 </script>
 

@@ -544,6 +544,71 @@ def api_ek_storno_und_kopieren(rec_id: int) -> Any:
     return jsonify(result)
 
 
+# ── Phase D: Zahlungs-Erfassung ─────────────────────────────────
+
+
+@bp.get('/einkauf/<int:rec_id>/api/zahlungen')
+def api_ek_zahlungen(rec_id: int) -> Any:
+    """Liste aller Zahlungen zur EK-Rechnung + Zahlungsarten-Stamm
+    fuer das Erfassungs-Modal."""
+    _login_check()
+    try:
+        zahlungen = ek.zahlungen_zu_einkauf(rec_id)
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
+    return jsonify({
+        'ok': True,
+        'zahlungen': zahlungen,
+        'zahlungsarten': ek.zahlungsarten_aktiv(),
+    })
+
+
+@bp.post('/einkauf/<int:rec_id>/api/zahlungen')
+def api_ek_zahlung_erfassen(rec_id: int) -> Any:
+    """Erfasst eine Zahlung manuell. Body:
+       {betrag, datum, valuta?, zahlart_id?, skonto_proz?, skonto_betrag?,
+        belegnum?, verw_zweck?}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_zahlung_erfassen(
+            rec_id,
+            betrag=float(body.get('betrag') or 0),
+            datum=body.get('datum'),
+            valuta=body.get('valuta'),
+            zahlart_id=int(body['zahlart_id'])
+                       if body.get('zahlart_id') not in (None, '') else None,
+            skonto_proz=float(body.get('skonto_proz') or 0),
+            skonto_betrag=float(body.get('skonto_betrag') or 0),
+            belegnum=str(body.get('belegnum') or ''),
+            verw_zweck=str(body.get('verw_zweck') or ''),
+            ma_id=ma_id, ma_name=ma_name,
+        )
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.post('/einkauf/zahlungen/<int:zahlung_id>/storno')
+def api_ek_zahlung_storno(zahlung_id: int) -> Any:
+    """Storniert eine Zahlung. Body: {grund: str (Pflicht)}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_zahlung_stornieren(
+            zahlung_id,
+            grund=str(body.get('grund') or ''),
+            ma_id=ma_id, ma_name=ma_name,
+        )
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
 # ── Einkauf Pos-Operationen (Phase C.2) ────────────────────────────
 
 
