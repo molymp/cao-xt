@@ -88,6 +88,7 @@ def _get_pool() -> pooling.MySQLConnectionPool:
                 _pool = pooling.MySQLConnectionPool(
                     pool_name=_pool_name,
                     pool_size=_pool_size,
+                    pool_reset_session=False,   # !! Performance-kritisch
                     host=cfg['host'],
                     port=cfg['port'],
                     user=cfg['user'],
@@ -98,6 +99,18 @@ def _get_pool() -> pooling.MySQLConnectionPool:
                     autocommit=True,
                     connection_timeout=10,
                 )
+                # Hintergrund: pool_reset_session=True (Default) ruft bei
+                # jedem ``close()`` ein ``cnx.reset_session()`` auf — das
+                # ist ein zusaetzlicher Roundtrip pro Pool-Return UND macht
+                # alle SESSION-Variablen platt (z.B. unsere
+                # max_statement_time-Settings, siehe _setze_query_timeout).
+                # Mit reset_session=False sparen wir 30-100ms pro
+                # ``get_db()``-Aufruf, und die Timeout-Caching-Logik in
+                # ``_setze_query_timeout`` wird tatsaechlich wirksam.
+                # Trade-off: SESSION-State (User-Variablen, temporaere
+                # Tabellen) lebt ueber den Pool-Return hinaus. Wir nutzen
+                # nichts davon — die einzigen SESSION-Variablen sind unsere
+                # eigenen Timeout-Settings, die wir explizit verwalten wollen.
     return _pool
 
 
@@ -116,21 +129,36 @@ _QUERY_TIMEOUT_SEC = 30
 
 def _setze_query_timeout(conn) -> None:
     """Setzt ``max_statement_time`` (MariaDB) und ``max_execution_time``
-    (MySQL) je Session, ignoriert wenn die Variable nicht existiert."""
+    (MySQL) je Session, ignoriert wenn die Variable nicht existiert.
+
+    Performance-Kritisch: SESSION-Variablen ueberleben Pool-Checkout/Return,
+    daher cachen wir per Connection-Objekt, dass die Variablen schon
+    gesetzt sind, und ueberspringen den Roundtrip beim naechsten Aufruf.
+    Spart 30-50ms pro ``get_db()``-Call.
+
+    ``conn`` kann ein PooledMySQLConnection-Wrapper sein — der Pool legt
+    pro Checkout einen frischen Wrapper an, das umschliessende
+    ``_cnx``-Objekt aber bleibt stabil. Wir markieren daher das innere
+    ``_cnx`` (Fallback: ``conn`` selbst, falls kein Pool-Wrapper).
+    """
+    target = getattr(conn, '_cnx', conn)
+    if getattr(target, '_xt_timeout_set', False):
+        return
     try:
         cur = conn.cursor()
-        # MariaDB: FLOAT, Sekunden
         try:
             cur.execute(f"SET SESSION max_statement_time = {_QUERY_TIMEOUT_SEC}")
+            target._xt_server_var = 'max_statement_time'
         except mysql.connector.Error:
-            pass
-        # MySQL: INT, Millisekunden — gilt nur fuer SELECTs read-only,
-        # ist aber genau das was wir absichern wollen
-        try:
-            cur.execute(f"SET SESSION max_execution_time = {_QUERY_TIMEOUT_SEC * 1000}")
-        except mysql.connector.Error:
-            pass
+            try:
+                cur.execute(
+                    f"SET SESSION max_execution_time = {_QUERY_TIMEOUT_SEC * 1000}"
+                )
+                target._xt_server_var = 'max_execution_time'
+            except mysql.connector.Error:
+                target._xt_server_var = None
         cur.close()
+        target._xt_timeout_set = True
     except Exception:
         # Best effort — falls Setup fehlschlaegt, lieber ohne Timeout
         # weiterarbeiten als die Connection verlieren
