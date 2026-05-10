@@ -179,6 +179,37 @@ try:
                      ergebnis['geheilt'])
     except Exception as e:
         log.warning("EKBESTELL_POS-Migration uebersprungen: %s", e)
+
+    # Hintergrund: MyISAM key cache aufwaermen damit der erste echte
+    # User-Aufruf der Bestellwesen-Liste nicht 20 Sekunden braucht
+    # (Cold-Cache-Phaenomen, gemessen 2026-05-10). Wir feuern ein paar
+    # COUNT(*)/SELECT-Queries die genau die Indexe lesen, die spaeter
+    # die wichtigen Listen brauchen. Lauft im Background-Thread, blockt
+    # also den App-Start nicht.
+    def _bestellwesen_warmup():
+        try:
+            from common.db import get_db
+            with get_db() as cur:
+                cur.execute("SELECT COUNT(*) FROM EKBESTELL")
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM EKBESTELL_POS")
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM EKEINGANG")
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM EKEINGANG_POS")
+                cur.fetchall()
+                # Diese Index-Range-Reads warm-up den Index fuer
+                # bestellungen_liste's pos_anzahl-Subquery
+                cur.execute(
+                    "SELECT EKBESTELL_ID, COUNT(*) FROM EKBESTELL_POS "
+                    "GROUP BY EKBESTELL_ID")
+                cur.fetchall()
+            log.info("Bestellwesen-MyISAM-Warmup abgeschlossen.")
+        except Exception as e:
+            log.warning("Bestellwesen-Warmup fehlgeschlagen: %s", e)
+    import threading
+    threading.Thread(target=_bestellwesen_warmup, daemon=True,
+                     name='bw-warmup').start()
 except Exception as e:
     log.warning("Orga-Bestellwesen-Blueprint konnte nicht geladen werden: %s", e)
 
