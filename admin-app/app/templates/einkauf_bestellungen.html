@@ -617,8 +617,15 @@ async function detailZeigen(recId) {
       <div style="display:flex;align-items:center;gap:10px;margin:18px 0 4px;flex-wrap:wrap;">
         <h3 style="margin:0;font-size:15px;">Positionen</h3>
         <button class="btn btn-neutral btn-sm" id="btn-anreichern-${e.REC_ID}"
-                onclick="anreichern(${e.REC_ID})">
+                onclick="anreichern(${e.REC_ID}, event)"
+                title="Lieferanten-Stammdaten holen — neue/veraltete Pos werden geholt, frische uebersprungen.&#10;Shift+Klick = Force (Cache komplett verwerfen).">
           🌐 Stammdaten anreichern
+        </button>
+        <button class="btn btn-neutral btn-sm" id="btn-anreichern-force-${e.REC_ID}"
+                onclick="anreichern(${e.REC_ID}, event, true)"
+                title="Force-Refresh: alle Pos neu vom Lieferanten holen, auch wenn Cache frisch ist."
+                style="padding-left:8px; padding-right:8px;">
+          ↻ Force
         </button>
         <button class="btn btn-neutral btn-sm" id="btn-cao-match-${e.REC_ID}"
                 onclick="caoMatch(${e.REC_ID})">
@@ -1338,19 +1345,29 @@ async function anreichernPos(posId, bestRecId) {
 }
 
 // ── Stammdaten-Anreicherung via Lieferanten-Web ──────────────────
-async function anreichern(recId) {
-  const btn  = document.getElementById('btn-anreichern-' + recId);
-  const hint = document.getElementById('cao-match-hint-' + recId);
+//
+// Force-Modus: ueberspringe_aktuelle=false. Heisst auch frische
+// Cache-Eintraege werden neu vom Lieferanten geholt.
+//
+// Aufruf-Wege fuer Force:
+//   - eigener "↻ Force"-Button (Touch + Maus)
+//   - Shift+Klick auf "🌐 Stammdaten anreichern" (Maus, Legacy)
+async function anreichern(recId, ev, forceFlag) {
+  const btn      = document.getElementById('btn-anreichern-' + recId);
+  const forceBtn = document.getElementById('btn-anreichern-force-' + recId);
+  const hint     = document.getElementById('cao-match-hint-' + recId);
   if (!btn) return;
+  // Force entweder explizit (Force-Button) oder via Shift+Klick auf Primary
+  const force = !!(forceFlag || (ev && ev.shiftKey));
   btn.disabled = true;
+  if (forceBtn) forceBtn.disabled = true;
   const altText = btn.textContent;
   btn.textContent = '⏳ Frage Lieferanten ab …';
-  hint.textContent = 'das kann einige Zehn-Sekunden dauern · Shift+Klick = Force (Cache verwerfen)';
+  hint.textContent = force
+    ? 'FORCE-Refresh: Cache wird komplett neu …'
+    : 'das kann einige Zehn-Sekunden dauern · ↻ Force = Cache verwerfen';
   let d;
   try {
-    // Bei Shift-Klick: Cache komplett neu aufbauen (Force-Refresh)
-    const force = (window.event && window.event.shiftKey) || false;
-    if (force) hint.textContent = 'FORCE-Refresh: Cache wird komplett neu …';
     const r = await fetch(`/api/einkauf/bestellungen/${recId}/anreichern`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1359,11 +1376,13 @@ async function anreichern(recId) {
     d = await r.json();
   } catch (e) {
     btn.disabled = false;
+    if (forceBtn) forceBtn.disabled = false;
     btn.textContent = altText;
     hint.textContent = 'Fehler: ' + e.message;
     return;
   }
   btn.disabled = false;
+  if (forceBtn) forceBtn.disabled = false;
   btn.textContent = altText;
   if (!d.ok) {
     hint.textContent = 'Fehler: ' + (d.msg || '');
