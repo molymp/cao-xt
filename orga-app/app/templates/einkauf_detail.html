@@ -340,9 +340,16 @@
       </label>
       <label style="display:flex; flex-direction:column; gap:4px;">
         <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Zahlart</span>
-        <select id="ed-zerf-zahlart"
+        <select id="ed-zerf-zahlart" onchange="_edZahlartGewaehlt()"
                 style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); background:white;">
           <option value="">— wählen —</option>
+        </select>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px;" id="ed-zerf-konto-wrap">
+        <span style="font-size:0.78rem; font-weight:700; color:var(--text-dim,#5a7a3a); text-transform:uppercase;">Bank-/Kasse-Konto</span>
+        <select id="ed-zerf-konto"
+                style="padding:8px 10px; border:1px solid var(--creme-dunkel); border-radius:var(--radius-klein); background:white;">
+          <option value="">— erst Zahlart wählen —</option>
         </select>
       </label>
       <label style="display:flex; flex-direction:column; gap:4px; grid-column:span 2;">
@@ -950,8 +957,10 @@ async function _edZahlungenLaden() {
     _edZahlungsarten = res.zahlungsarten || [];
 
     const aktive = (res.zahlungen || []).filter(z => z.ist_aktiv);
-    const sumBetrag = aktive.reduce((s, z) => s + parseFloat(z.BETRAG || 0), 0);
-    const sumSkonto = aktive.reduce((s, z) => s + parseFloat(z.SKONTO_BETRAG || 0), 0);
+    // ZAHLUNGEN.BETRAG/SKONTO_BETRAG sind bei EK negativ (Geld-Ausgang).
+    // Fuer die Anzeige zeigen wir Absolut-Betraege.
+    const sumBetrag = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.BETRAG || 0)), 0);
+    const sumSkonto = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.SKONTO_BETRAG || 0)), 0);
     const offen = ED_BSUMME - sumBetrag - sumSkonto;
     info.innerHTML =
         `<strong>${aktive.length}</strong> aktive Zahlung(en) · ` +
@@ -978,11 +987,13 @@ async function _edZahlungenLaden() {
         const stornoTxt = ist_storniert
             ? `<span style="color:#888; text-decoration:line-through;">storniert</span> · ${_esc(z.STORNOGRUND || '?')}`
             : '';
+        const betragAbs = Math.abs(parseFloat(z.BETRAG || 0));
+        const skontoAbs = Math.abs(parseFloat(z.SKONTO_BETRAG || 0));
         return `
             <tr style="${ist_storniert ? 'background:rgba(180,180,180,0.10); color:#666;' : ''}">
               <td>${datum}</td>
-              <td class="zahl-rechts">${_eur(parseFloat(z.BETRAG || 0))}</td>
-              <td class="zahl-rechts">${parseFloat(z.SKONTO_BETRAG || 0) > 0.001 ? _eur(parseFloat(z.SKONTO_BETRAG)) : '–'}</td>
+              <td class="zahl-rechts">${_eur(betragAbs)}</td>
+              <td class="zahl-rechts">${skontoAbs > 0.001 ? _eur(skontoAbs) : '–'}</td>
               <td>${zahlart}${tagSepa}</td>
               <td>${_esc(z.BELEGNUM || '')}</td>
               <td>${_esc((z.VERW_ZWECK || '').slice(0, 40))} ${stornoTxt}</td>
@@ -1010,6 +1021,8 @@ function edZahlungErfassen() {
     sel.innerHTML = '<option value="">— wählen —</option>'
         + _edZahlungsarten.map(za =>
             `<option value="${za.REC_ID}">${_esc(za.NAME)}</option>`).join('');
+    document.getElementById('ed-zerf-konto').innerHTML =
+        '<option value="">— erst Zahlart wählen —</option>';
     const heute = new Date();
     const dd = String(heute.getDate()).padStart(2, '0');
     const mm = String(heute.getMonth() + 1).padStart(2, '0');
@@ -1025,6 +1038,44 @@ function edZahlungErfassen() {
     // Touch-Widgets neu wiren fuer das Modal
     if (window.TouchInput && window.TouchInput.rewire) {
         window.TouchInput.rewire();
+    }
+}
+
+function _edZahlartGewaehlt() {
+    // Wird bei Zahlart-Auswahl getriggert: Bank-/Kasse-Konto-Dropdown
+    // mit den passenden FIBU-Konten der gewaehlten Zahlart fuellen.
+    // Plus: Skonto-Default aus ZAHLUNGSARTEN.SKONTO_PROZ uebernehmen
+    // (wenn Skonto-Feld noch 0,00 ist).
+    const zaId = parseInt(document.getElementById('ed-zerf-zahlart').value, 10);
+    const za   = _edZahlungsarten.find(z => z.REC_ID === zaId);
+    const sel  = document.getElementById('ed-zerf-konto');
+    if (!za || !za.konten || !za.konten.length) {
+        sel.innerHTML = '<option value="">— keine Konten gepflegt —</option>';
+        return;
+    }
+    const opts = za.konten.map(k => {
+        const lbl = k.iban
+            ? `${k.konto} – ${_esc(k.name)} (${_esc(k.iban)})`
+            : `${k.konto} – ${_esc(k.name)}`;
+        return `<option value="${k.konto}">${lbl}</option>`;
+    });
+    // Wenn nur ein Konto: gleich vorausgewaehlt, Dropdown disabled-look
+    if (za.konten.length === 1) {
+        sel.innerHTML = opts.join('');
+    } else {
+        sel.innerHTML = '<option value="">— wählen —</option>' + opts.join('');
+    }
+    // Skonto-Default aus Zahlart-Stamm uebernehmen, wenn das Feld noch 0,00 ist
+    const skontoFeld = document.getElementById('ed-zerf-skonto');
+    if ((skontoFeld.value || '').replace(/\D/g, '') === '000'
+        && za.SKONTO_PROZ && +za.SKONTO_PROZ > 0) {
+        // x % von BSUMME als Default-Skonto
+        const skonto = Math.round(ED_BSUMME * (+za.SKONTO_PROZ) / 100 * 100) / 100;
+        skontoFeld.value = _eur(skonto);
+        // Betrag entsprechend reduzieren
+        const betragFeld = document.getElementById('ed-zerf-betrag');
+        const restBetrag = Math.round((ED_BSUMME - skonto) * 100) / 100;
+        betragFeld.value = _eur(restBetrag);
     }
 }
 function edZahlungErfassenSchliessen() {
@@ -1045,11 +1096,21 @@ async function edZahlungErfassenSenden() {
     if (!(betrag > 0)) { alert('Betrag muss > 0 sein'); return; }
     const skonto = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0;
     const zahlart = document.getElementById('ed-zerf-zahlart').value;
+    if (!zahlart) { alert('Bitte Zahlart wählen'); return; }
+    const fibu_kto = document.getElementById('ed-zerf-konto').value;
+    if (!fibu_kto) { alert('Bitte Bank-/Kasse-Konto wählen'); return; }
+    // Skonto-Prozent aus Stamm-Zahlart als Beleg-Info mitschicken
+    const za_obj = _edZahlungsarten.find(z =>
+        z.REC_ID === parseInt(zahlart, 10));
+    const skonto_proz = (skonto > 0.001 && za_obj && za_obj.SKONTO_PROZ)
+        ? +za_obj.SKONTO_PROZ : 0;
     const body = {
         datum:         datum_iso,
         betrag:        betrag,
         skonto_betrag: skonto,
+        skonto_proz:   skonto_proz,
         zahlart_id:    zahlart || null,
+        fibu_kto:      fibu_kto || null,
         belegnum:      document.getElementById('ed-zerf-belegnum').value,
         verw_zweck:    document.getElementById('ed-zerf-vz').value,
     };

@@ -580,6 +580,8 @@ def api_ek_zahlung_erfassen(rec_id: int) -> Any:
             valuta=body.get('valuta'),
             zahlart_id=int(body['zahlart_id'])
                        if body.get('zahlart_id') not in (None, '') else None,
+            fibu_kto=int(body['fibu_kto'])
+                     if body.get('fibu_kto') not in (None, '') else None,
             skonto_proz=float(body.get('skonto_proz') or 0),
             skonto_betrag=float(body.get('skonto_betrag') or 0),
             belegnum=str(body.get('belegnum') or ''),

@@ -2076,16 +2076,74 @@ def _zahlung_aus_cao_sepa(z: dict) -> bool:
 
 
 def zahlungsarten_aktiv() -> list[dict[str, Any]]:
-    """Aktive ZAHLUNGSARTEN fuer das Erfassungs-Modal."""
+    """Aktive ZAHLUNGSARTEN + die zur Auswahl stehenden FIBU-Konten,
+    damit das Erfassungs-Modal direkt die richtige Bank-/Kasse-Konto-
+    Auswahl anbieten kann.
+
+    ``FIBU_KONTEN`` in ZAHLUNGSARTEN ist eine kommagetrennte Liste von
+    Konto-Nummern. Wir loesen sie via FIBU_KONTEN-Tabelle (KONTORAHMEN
+    aus REGISTRY ``MAIN\\BELEGE / KONTORAHMEN``) zu vollstaendigen
+    Konto-Eintraegen auf.
+    """
     with get_db() as cur:
         cur.execute(
+            r"SELECT VAL_CHAR FROM REGISTRY "
+            r"WHERE MAINKEY='MAIN\\BELEGE' AND NAME='KONTORAHMEN'"
+        )
+        row = cur.fetchone()
+        kontorahmen = (row.get('VAL_CHAR') if row else '') or 'SKR03'
+
+        cur.execute(
             "SELECT REC_ID, NAME, TEXT_KURZ, NETTO_TAGE, "
-            "       SKONTO_TAGE, SKONTO_PROZ "
+            "       SKONTO_TAGE, SKONTO_PROZ, FIBU_KONTEN "
             "  FROM ZAHLUNGSARTEN "
             " WHERE AKTIV_FLAG = 'Y' "
             " ORDER BY REC_ID"
         )
-        return list(cur.fetchall() or [])
+        rows = list(cur.fetchall() or [])
+
+        # Alle in den FIBU_KONTEN-Listen vorkommenden Konten in einer
+        # Bulk-Query nachschlagen
+        alle_kontonr: set[int] = set()
+        for r in rows:
+            for tok in (r.get('FIBU_KONTEN') or '').split(','):
+                tok = tok.strip()
+                if tok.isdigit():
+                    alle_kontonr.add(int(tok))
+        konten_map: dict[int, dict] = {}
+        if alle_kontonr:
+            ph = ','.join(['%s'] * len(alle_kontonr))
+            # Nur echte Geldkonten: KONTOART=20 (Bank) bzw. KONTOART=3
+            # (Kasse). Alles andere fliegt aus der Auswahl raus, sodass
+            # der User nicht versehentlich auf ein Verbindlichkeits-
+            # oder Anlagen-Konto bucht.
+            cur.execute(
+                f"SELECT KONTO, KONTONAME, IBAN, BANK_NAME, KONTOART "
+                f"  FROM FIBU_KONTEN "
+                f" WHERE KONTORAHMEN=%s "
+                f"   AND KONTO IN ({ph}) "
+                f"   AND KONTOART IN (3, 20)",
+                (kontorahmen, *alle_kontonr)
+            )
+            for k in cur.fetchall():
+                konten_map[int(k['KONTO'])] = k
+
+        for r in rows:
+            konten: list[dict] = []
+            for tok in (r.get('FIBU_KONTEN') or '').split(','):
+                tok = tok.strip()
+                if not tok.isdigit():
+                    continue
+                k = konten_map.get(int(tok))
+                if k:
+                    konten.append({
+                        'konto':     int(k['KONTO']),
+                        'name':      (k.get('KONTONAME') or '').strip(),
+                        'iban':      (k.get('IBAN') or '').strip(),
+                        'kontoart':  int(k.get('KONTOART') or 0),
+                    })
+            r['konten'] = konten
+        return rows
 
 
 def zahlungen_zu_einkauf(rec_id: int) -> list[dict[str, Any]]:
@@ -2120,10 +2178,15 @@ def zahlungen_zu_einkauf(rec_id: int) -> list[dict[str, Any]]:
 def _zahlungssumme_und_skonto(cur, rec_id: int
                                ) -> tuple[float, float]:
     """Aktive (= nicht stornierte, gebuchte) Zahlungen aufaddieren.
-    Liefert (summe_betrag, summe_skonto)."""
+
+    WICHTIG: ZAHLUNGEN.BETRAG/SKONTO_BETRAG sind bei QUELLE=5 (EK)
+    NEGATIV (Geldfluss aus Sicht der Firma = Geld geht raus).
+    Wir liefern hier die ABSOLUTBETRAEGE (positiv) zurueck — das macht
+    die STADIUM-Berechnung gegen BSUMME (positiv) lesbar.
+    """
     cur.execute(
-        """SELECT COALESCE(SUM(BETRAG), 0) AS s_betrag,
-                  COALESCE(SUM(SKONTO_BETRAG), 0) AS s_skonto
+        """SELECT COALESCE(SUM(ABS(BETRAG)), 0) AS s_betrag,
+                  COALESCE(SUM(ABS(SKONTO_BETRAG)), 0) AS s_skonto
              FROM ZAHLUNGEN
             WHERE JOURNAL_ID = %s AND QUELLE = 5
               AND STORNO = 0 AND GEBUCHT = 'Y'""",
@@ -2138,11 +2201,11 @@ def _stadium_aus_zahlungen(cur, rec_id: int,
     """Berechnet den passenden ``JOURNAL.STADIUM`` aus dem
     Zahlungs-Bestand. None bedeutet "keine Aenderung".
 
-    Logik:
-        keine aktive Zahlung      → STADIUM=2 (offen)
-        Summe(BETRAG)+Skonto >= BSUMME-0.01 mit Skonto>0 → 8 (bezahlt mit Skonto)
-        Summe(BETRAG)         >= BSUMME-0.01            → 9 (bezahlt)
-        sonst (Teilzahlung)                              → 7 (Teilzahlung)
+    Logik (alle Werte als Absolut-Betraege):
+        keine aktive Zahlung           → STADIUM=2 (offen)
+        |Betrag|+|Skonto| >= BSUMME-1ct, Skonto>0 → 8 (bezahlt mit Skonto)
+        |Betrag|+|Skonto| >= BSUMME-1ct           → 9 (bezahlt)
+        sonst (Teilzahlung)                       → 7 (Teilzahlung)
     """
     s_betrag, s_skonto = _zahlungssumme_und_skonto(cur, rec_id)
     if s_betrag + s_skonto <= 0.0001:
@@ -2151,6 +2214,51 @@ def _stadium_aus_zahlungen(cur, rec_id: int,
     if s_betrag + s_skonto >= bsumme - 0.01:
         return 8 if s_skonto > 0.0001 else 9
     return 7
+
+
+def _journal_op_rebuild_qu5(cur) -> None:
+    """Baut die JOURNAL_OP-Hilfstabelle fuer QUELLE=5 (EK-Rechnungen)
+    komplett neu. Folgt dem CAO-Faktura-Pattern (siehe SQL-Trace
+    2026-05-10): zwei INSERTs, einer fuer BSUMME>0 (normale Rechnungen)
+    und einer fuer BSUMME<0 (Stornorechnungen mit umgedrehtem
+    Vorzeichen).
+
+    Wird nach jedem ZAHLUNGEN-INSERT/UPDATE aufgerufen, damit die
+    "offene Posten"-Liste in CAO-UI aktuell ist.
+    """
+    cur.execute("DELETE FROM JOURNAL_OP WHERE QUELLE = 5")
+    cur.execute(
+        """INSERT INTO JOURNAL_OP
+           SELECT J.QUELLE, J.ADDR_ID, J.REC_ID,
+                  J.BSUMME * -1 AS BSUMME_NEG,
+                  COUNT(ZA.REC_ID),
+                  IFNULL(SUM(ZA.BETRAG + ZA.SKONTO_BETRAG), 0),
+                  J.WAEHRUNG
+             FROM JOURNAL J
+        LEFT JOIN ZAHLUNGEN ZA ON ZA.JOURNAL_ID = J.REC_ID
+                              AND ZA.GEBUCHT != 'S' AND ZA.STORNO = 0
+            WHERE J.QUELLE = 5 AND J.BSUMME > 0 AND J.ADDR_ID > 0
+              AND YEAR(J.RDATUM) > 2000
+              AND J.STADIUM IN (2, 3, 4, 5, 6, 7, 11)
+            GROUP BY J.REC_ID
+           HAVING IFNULL(SUM(ZA.BETRAG + ZA.SKONTO_BETRAG), 0) > BSUMME_NEG"""
+    )
+    cur.execute(
+        """INSERT INTO JOURNAL_OP
+           SELECT J.QUELLE, J.ADDR_ID, J.REC_ID,
+                  J.BSUMME * -1 AS BSUMME_NEG,
+                  COUNT(ZA.REC_ID),
+                  IFNULL(SUM(ZA.BETRAG + ZA.SKONTO_BETRAG), 0),
+                  J.WAEHRUNG
+             FROM JOURNAL J
+        LEFT JOIN ZAHLUNGEN ZA ON ZA.JOURNAL_ID = J.REC_ID
+                              AND ZA.GEBUCHT != 'S' AND ZA.STORNO = 0
+            WHERE J.QUELLE = 5 AND J.BSUMME < 0 AND J.ADDR_ID > 0
+              AND YEAR(J.RDATUM) > 2000
+              AND J.STADIUM IN (2, 3, 4, 5, 6, 7, 11)
+            GROUP BY J.REC_ID
+           HAVING IFNULL(SUM(ZA.BETRAG + ZA.SKONTO_BETRAG), 0) < BSUMME_NEG"""
+    )
 
 
 def _stadium_neuberechnen(cur, rec_id: int) -> int | None:
@@ -2186,28 +2294,42 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
                                zahlart_name: str = '',
                                skonto_proz: float = 0.0,
                                skonto_betrag: float = 0.0,
+                               fibu_kto: int | None = None,
                                belegnum: str = '',
                                verw_zweck: str = '',
                                ma_id: int | None = None,
                                ma_name: str = '') -> dict[str, Any]:
-    """Erfasst eine Zahlung manuell. ``ART='?'``, ``GEBUCHT='Y'``,
-    ``UW_NUM=-1`` (= keine Ueberweisungs-Lauf-Kennung).
+    """Erfasst eine EK-Zahlung manuell (CAO-Mimik, Trace 2026-05-10).
 
-    Validiert dass der Beleg nicht in einem End-Stadium ist (8/9 =
-    bezahlt, 125/126/127 = storniert), sonst PermissionError.
+    Wichtige Konventionen:
+      - BETRAG/SKONTO_BETRAG werden NEGATIV gespeichert (EK = Geld-
+        Ausgang). User uebergibt positive Betraege, wir flippen das
+        Vorzeichen.
+      - WAEHRUNG = '€' (varchar(3), nicht 'EUR').
+      - FIBU_KTO = User-Wahl (Bank-/Kasse-Konto aus
+        ZAHLUNGSARTEN.FIBU_KONTEN). Bei nur einem Kandidaten nehmen
+        wir automatisch den.
+      - FIBU_GEGENKTO = JOURNAL.GEGENKONTO (= Lieferanten-/Kreditor-
+        Konto aus dem JOURNAL-Header).
+      - JOURNAL.BEZAHLT_KASSE='N' wird gesetzt (CAO-Marker).
+      - KA_ID=-2 (laut Trace).
+      - ART='?', UW_NUM=-1 (= XT-eigene Erfassung, kein SEPA-Lauf).
 
-    Aktualisiert nach dem Insert das ``JOURNAL.STADIUM`` automatisch
-    via ``_stadium_neuberechnen``.
+    Nach dem Insert:
+      - STADIUM-Update ueber _stadium_neuberechnen
+      - JOURNAL_OP-Rebuild fuer QUELLE=5 (CAO-Sync)
     """
     rec_id = int(rec_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:50]
     if betrag is None or float(betrag) <= 0:
         raise ValueError('Betrag muss > 0 sein')
+    # CAO-Konvention: EK-Zahlungen sind negativ (Geld geht raus).
     betrag = round(float(betrag), 2)
     skonto_proz = round(float(skonto_proz or 0), 3)
     skonto_betrag = round(float(skonto_betrag or 0), 2)
+    betrag_neg = -betrag
+    skonto_neg = -skonto_betrag
 
-    # Datum-Parsing: ISO-String oder date akzeptieren
     def _parse_date(d):
         if d is None or d == '':
             return None
@@ -2222,8 +2344,8 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
 
     with get_db_transaction() as cur:
         cur.execute(
-            "SELECT QUELLE, STADIUM, BSUMME, ADDR_ID FROM JOURNAL "
-            "WHERE REC_ID=%s",
+            "SELECT QUELLE, STADIUM, BSUMME, ADDR_ID, GEGENKONTO "
+            "  FROM JOURNAL WHERE REC_ID=%s",
             (rec_id,)
         )
         kopf = cur.fetchone()
@@ -2243,16 +2365,48 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
             raise PermissionError('Beleg ist storniert')
 
         addr_id = int(kopf.get('ADDR_ID') or -1)
+        fibu_gegenkto = int(kopf.get('GEGENKONTO') or 0)
 
-        # Zahlart-Name aus Stamm holen falls nicht uebergeben
-        if zahlart_id is not None and not zahlart_name:
+        # Zahlart-Name + FIBU_KTO-Default aus ZAHLUNGSARTEN.FIBU_KONTEN
+        if zahlart_id is not None:
             cur.execute(
-                "SELECT NAME FROM ZAHLUNGSARTEN WHERE REC_ID=%s",
+                "SELECT NAME, FIBU_KONTEN FROM ZAHLUNGSARTEN "
+                "WHERE REC_ID=%s",
                 (int(zahlart_id),)
             )
             row = cur.fetchone()
             if row:
-                zahlart_name = (row.get('NAME') or '')[:100]
+                if not zahlart_name:
+                    zahlart_name = (row.get('NAME') or '')[:100]
+                if fibu_kto is None:
+                    konten_liste = [int(t.strip())
+                                     for t in (row.get('FIBU_KONTEN') or '').split(',')
+                                     if t.strip().isdigit()]
+                    # Bei genau einem Konto automatisch nehmen (z.B. Bar→1000)
+                    if len(konten_liste) == 1:
+                        fibu_kto = konten_liste[0]
+
+        # JOURNAL: STADIUM vorab + BEZAHLT_KASSE='N' (CAO-Trace-Mimik)
+        # Wir berechnen das STADIUM-Vorhersagewert, Header dann updaten.
+        bsumme = float(kopf.get('BSUMME') or 0)
+        # Pruefen ob die neue Zahlung den Beleg voll bezahlt
+        cur.execute(
+            "SELECT COALESCE(SUM(ABS(BETRAG))+SUM(ABS(SKONTO_BETRAG)),0) AS s "
+            "  FROM ZAHLUNGEN "
+            " WHERE JOURNAL_ID=%s AND QUELLE=5 AND STORNO=0 AND GEBUCHT='Y'",
+            (rec_id,)
+        )
+        s_alt = float((cur.fetchone() or {}).get('s') or 0)
+        s_neu = s_alt + betrag + skonto_betrag
+        if s_neu >= bsumme - 0.01:
+            neues_stadium = 8 if skonto_betrag > 0.0001 else 9
+        else:
+            neues_stadium = 7
+        cur.execute(
+            "UPDATE JOURNAL SET STADIUM=%s, BEZAHLT_KASSE='N' "
+            "WHERE REC_ID=%s",
+            (neues_stadium, rec_id)
+        )
 
         cur.execute(
             """INSERT INTO ZAHLUNGEN
@@ -2267,11 +2421,11 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
                 ERSTELLT_AM, ERSTELLT_NAME,
                 ZAHLART_NAME, SIG_AUSGEFALLEN, Z_ID, BEREINIGT,
                 REFERENZ_ID, SUB_QUELLE, MWST)
-               VALUES (0, -1, %s, %s,
-                       5, %s, -1, -1,
+               VALUES (%s, %s, %s, %s,
+                       5, %s, -1, -2,
                        %s, '?', 0, -1,
                        %s, %s, %s,
-                       %s, %s, %s, 'EUR',
+                       %s, %s, %s, '€',
                        0, %s,
                        'Y', 0,
                        -1,
@@ -2279,11 +2433,12 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
                        %s, 'N', -1, 'N',
                        -1, -1, 0)""",
             (
+                int(fibu_kto or 0), fibu_gegenkto,
                 int(ma_id or 0), addr_id,
                 rec_id,
                 int(zahlart_id) if zahlart_id is not None else -1,
                 datum_d, valuta_d, belegnum[:100],
-                betrag, skonto_proz, skonto_betrag,
+                betrag_neg, skonto_proz, skonto_neg,
                 verw_zweck[:1000],
                 ma_name_safe,
                 zahlart_name[:100],
@@ -2291,8 +2446,8 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
         )
         new_id = int(cur.lastrowid)
 
-        # STADIUM automatisch nachziehen
-        neues_stadium = _stadium_neuberechnen(cur, rec_id)
+        # JOURNAL_OP rebuild (CAO-Mimik nach jedem Schreiben)
+        _journal_op_rebuild_qu5(cur)
 
     return {'ok': True, 'rec_id': new_id, 'stadium': neues_stadium}
 
@@ -2349,5 +2504,7 @@ def einkauf_zahlung_stornieren(zahlung_rec_id: int, *,
         neues_stadium = None
         if rec_id > 0:
             neues_stadium = _stadium_neuberechnen(cur, rec_id)
+        # JOURNAL_OP fuer QUELLE=5 neu aufbauen (CAO-Mimik)
+        _journal_op_rebuild_qu5(cur)
     return {'ok': True, 'rec_id': int(zahlung_rec_id),
             'journal_stadium': neues_stadium}
