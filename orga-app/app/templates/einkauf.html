@@ -163,6 +163,7 @@ function ekNeu() {
             <th class="zahl-rechts">Pos.</th>
             <th class="zahl-rechts">Netto €</th>
             <th class="zahl-rechts">Brutto €</th>
+            <th>Zahlart</th>
             <th title="Zahlungs-Status — nur fuer gebuchte Belege relevant">Zahl-Stadium</th>
         </tr>
     </thead>
@@ -178,6 +179,7 @@ function ekNeu() {
         <td class="zahl-rechts">{{ e.pos_anzahl }}</td>
         <td class="zahl-rechts">{{ '{:,.2f}'.format(e.nsumme or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
         <td class="zahl-rechts">{{ '{:,.2f}'.format(e.bsumme or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+        <td>{{ e.zahlart_name or '–' }}</td>
         <td>
             {% if e.ist_offen %}
               <span style="color:#aaa;">–</span>

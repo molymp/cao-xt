@@ -291,7 +291,9 @@
     <h2>Zahlungen</h2>
     <div id="ed-zahlungen-info" class="ed-rdo">…</div>
     <div id="ed-zahlungen-tab-wrap" style="margin-top:8px;"></div>
-    {% if kopf.STADIUM != 8 and kopf.STADIUM != 9 %}
+    {% if kopf.STADIUM not in (8, 9, 11) %}
+    {# 8 = bezahlt mit Skonto, 9 = bezahlt, 11 = angewiesen (Ueberweisung
+       laeuft, eine weitere Zahlung waere unsinnig) #}
     <div style="margin-top:10px;">
         <button type="button" class="btn-primary" onclick="edZahlungErfassen()">💶 Zahlung erfassen …</button>
     </div>
@@ -1009,7 +1011,7 @@ async function _edZahlungenLaden() {
             <th>Zahlart</th>
             <th>Beleg</th>
             <th>Verw.-Zweck / Storno-Grund</th>
-            <th></th>
+            <th>Stornieren</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>`;

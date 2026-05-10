@@ -132,6 +132,7 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
             j.NSUMME                            AS nsumme,
             j.MSUMME                            AS msumme,
             j.BSUMME                            AS bsumme,
+            j.ZAHLART_NAME                      AS zahlart_name,
             (
                 SELECT COUNT(*) FROM JOURNALPOS p
                  WHERE p.JOURNAL_ID = j.REC_ID AND p.TOP_POS_ID = -1
@@ -2364,6 +2365,11 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
             raise PermissionError(
                 'Beleg ist bereits voll bezahlt — keine weitere '
                 'Zahlung erfassbar'
+            )
+        if st == 11:
+            raise PermissionError(
+                'Beleg ist angewiesen (Überweisung läuft) — '
+                'keine zusätzliche Zahlung möglich'
             )
         if st in (125, 126, 127):
             raise PermissionError('Beleg ist storniert')
