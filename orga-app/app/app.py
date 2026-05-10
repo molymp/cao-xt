@@ -496,6 +496,33 @@ def preispflege():
     return render_template('preispflege.html')
 
 
+@app.route('/binaer/<int:rec_id>')
+def binaerdaten_blob(rec_id: int):
+    """Liefert einen BLOB aus CAO ``BINAERDATEN`` (z.B. Produktbilder).
+
+    Honoriert ``If-None-Match`` (ETag) für Browser-Caching.
+    """
+    from flask import request as _req, Response, abort
+    from common import binaerdaten as _bd
+    etag = f'binaer-{rec_id}'
+    if (_req.headers.get('If-None-Match') or '') == etag:
+        return ('', 304, {'ETag': etag,
+                          'Cache-Control': 'public, max-age=86400'})
+    row = _bd.binaer_holen(rec_id)
+    if not row or not row.get('DATEN'):
+        abort(404)
+    mime = _bd.mime_aus_dateiname(row.get('DATEI') or '')
+    return Response(
+        bytes(row['DATEN']),
+        mimetype=mime,
+        headers={
+            'Content-Length': str(len(row['DATEN'])),
+            'ETag': etag,
+            'Cache-Control': 'public, max-age=86400',
+        },
+    )
+
+
 # ── Reporting ─────────────────────────────────────────────────
 
 def _mwst_monatlich(monate: int = 12) -> list[dict]:

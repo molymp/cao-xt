@@ -11,15 +11,15 @@
   overflow: hidden;
 }
 
-/* ── Warengruppenbaum (links) ───────────────────────────────── */
+/* ── Warengruppenbaum (links) — Picker-Style ─────────────────── */
 .pp-tree {
-  width: 230px;
-  min-width: 180px;
+  width: 280px;
+  min-width: 220px;
   flex-shrink: 0;
-  background: white;
+  background: var(--bg-hell, #ece3cc);
   border-right: 1px solid var(--creme-dunkel);
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 6px 0;
 }
 .pp-tree-title {
   font-size: 10px;
@@ -31,66 +31,94 @@
 }
 .pp-tree-item {
   display: flex;
-  flex-direction: column;
-  padding: 7px 12px 7px 14px;
-  border-radius: 0;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  text-align: left;
   cursor: pointer;
   transition: background 0.1s;
-  border-left: 3px solid transparent;
   user-select: none;
-  min-height: 44px; /* Touch-Target */
-}
-.pp-tree-item.child-item {
-  padding-left: 40px;
-  font-size: 12px;
-  border-left: 2px solid var(--creme-dunkel);
-  margin-left: 16px;
-}
-.pp-tree-item.child-item .wgr-name { font-size: 12px; }
-.pp-tree-toggle {
-  min-width: 32px;
-  min-height: 32px;
-  font-size: 13px;
-  border-radius: 4px;
-  background: var(--grau-hell);
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: var(--grau-mitte);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.pp-tree-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.pp-tree-item:hover { background: var(--grau-hell); }
-.pp-tree-item.aktiv {
-  background: var(--gruen-blass);
-  border-left-color: var(--gruen-mitte);
-  font-weight: 700;
-}
-.pp-tree-item .wgr-name {
-  font-size: 13px;
+  min-height: 38px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.88rem;
   color: var(--text-dunkel);
-  line-height: 1.3;
+}
+.pp-tree-item:hover { background: var(--creme-warm, #d8c8a4); }
+.pp-tree-item.aktiv {
+  background: white;
+  border-left-color: var(--gruen-dunkel);
+  font-weight: 700;
 }
 .pp-tree-item.aktiv .wgr-name { color: var(--gruen-dunkel); }
-.pp-tree-item .wgr-meta {
-  font-size: 11px;
-  color: var(--grau-mitte);
-  margin-top: 1px;
-  display: flex;
-  gap: 6px;
+.pp-tree-item.wurzel {
+  font-weight: 700;
+  border-top: 1px solid var(--creme-dunkel);
+}
+.pp-tree-item.wurzel:first-child { border-top: none; }
+.pp-tree-item.alle-btn {
+  font-style: italic;
+  color: var(--text-dim, #5a7a3a);
+  border-bottom: 1px solid var(--creme-dunkel);
+  margin-bottom: 4px;
+}
+.pp-tree-item.alle-btn.aktiv {
+  background: white;
+  border-left-color: var(--gruen-dunkel);
+  font-weight: 700;
+  font-style: normal;
+}
+.pp-tree-strich {
+  font-size: 0.75rem;
+  color: var(--text-dim, #5a7a3a);
+  flex: 0 0 auto;
+}
+.pp-tree-item .wgr-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-tree-item .wgr-badge {
+  flex: 0 0 auto;
+  background: rgba(26,64,16,0.10);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-dim, #5a7a3a);
 }
 .pp-tree-item .wgr-faktor {
-  font-weight: 700;
+  flex: 0 0 auto;
+  font-size: 11px;
   color: var(--text-hell);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
-.pp-tree-divider { border: none; border-top: 1px solid var(--creme-dunkel); margin: 4px 0; }
+.pp-tree-item.aktiv .wgr-faktor { color: var(--gruen-dunkel); }
+
+/* Hinweis: bitte Warengruppe waehlen */
+.pp-bitte-wg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--grau-mitte);
+  font-size: 14px;
+  padding: 24px;
+  line-height: 1.5;
+}
+.pp-bitte-wg .pfeil {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--gruen-dunkel);
+  font-weight: 700;
+}
 
 /* ── Tabellenbereich (rechts) ───────────────────────────────── */
 .pp-content {
@@ -267,6 +295,31 @@
 
 /* ── Zahlen rechts ─────────────────────────────────────────── */
 .td-right { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Bild-Thumbnail in der Tabelle ─────────────────────────── */
+.pp-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--grau-hell);
+  border: 1px solid var(--creme-dunkel);
+  display: block;
+}
+.pp-thumb-leer {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--grau-hell);
+  border: 1px dashed var(--creme-dunkel);
+  display: inline-block;
+}
+.pp-table th.col-bild,
+.pp-table td.col-bild {
+  width: 50px;
+  padding: 4px 6px;
+  text-align: center;
+}
 
 /* ── Faktor-Badge ──────────────────────────────────────────── */
 .faktor-badge {
@@ -626,12 +679,16 @@
     </div>
 
     <div class="pp-table-wrap" id="pp-table-wrap">
-      <div class="pp-lade-center" id="pp-ladehinweis">
+      <div class="pp-bitte-wg" id="pp-bitte-wg">
+        <span><span class="pfeil">←</span> Bitte links eine Warengruppe wählen, um die Artikel zu laden.</span>
+      </div>
+      <div class="pp-lade-center" id="pp-ladehinweis" style="display:none;">
         <span class="pp-spinner"></span> Lade Artikeldaten…
       </div>
       <table class="pp-table" id="pp-table" style="display:none;">
         <thead>
           <tr>
+            <th class="col-bild no-sort" title="Produktbild">📷</th>
             <th onclick="sortiere('artnr')" data-col="artnr">Art-Nr.<span class="sort-arrow">▲▼</span></th>
             <th onclick="sortiere('art_typ')" data-col="art_typ">Typ<span class="sort-arrow">▲▼</span></th>
             <th onclick="sortiere('bezeichnung')" data-col="bezeichnung">Bezeichnung<span class="sort-arrow">▲▼</span></th>
@@ -691,7 +748,11 @@
 let _daten = [];
 let _sortCol = 'faktor';
 let _sortAsc = true;       // Faktor aufsteigend = niedrigster zuerst
-let _aktWgrId = null;      // null = alle Warengruppen
+// _aktWgrId-Tristate:
+//   undefined → noch nichts gewaehlt → Tabelle bleibt leer (Hinweis).
+//   null      → "Alle Warengruppen" (User hat das explizit gewaehlt).
+//   number    → eine konkrete Warengruppe.
+let _aktWgrId; // undefined: initial
 let _nurKontrolle = false; // Filter "VK-Kontrolle ausstehend" aktiv?
 
 // ── XSS-Schutz ────────────────────────────────────────────────
@@ -736,133 +797,130 @@ async function ladeWarengruppenbaum() {
 }
 
 function _renderWarengruppenbaum(wgr) {
+  // Picker-Style: alle Warengruppen hierarchisch eingerueckt, ohne
+  // Collapse/Toggle. Klick auf einen Eintrag laedt die Tabelle.
   const tree = document.getElementById('pp-tree');
-  tree.innerHTML = '<div class="pp-tree-title">Warengruppen</div>';
+  tree.innerHTML = '';
 
-  // Eintrag "Alle"
-  const all = document.createElement('div');
-  all.className = 'pp-tree-item' + (_aktWgrId === null ? ' aktiv' : '');
-  all.dataset.wgrId = '';
-  all.innerHTML = `<div class="pp-tree-row"><span class="wgr-name">— Alle Warengruppen —</span></div>`;
-  all.addEventListener('click', () => _wgrWaehlen(null, '— Alle Warengruppen —', all));
-  tree.appendChild(all);
+  // Titel
+  const titel = document.createElement('div');
+  titel.className = 'pp-tree-title';
+  titel.textContent = 'Warengruppen';
+  tree.appendChild(titel);
 
-  if (wgr.length > 0) {
-    const div = document.createElement('hr');
-    div.className = 'pp-tree-divider';
-    tree.appendChild(div);
+  // "Alle anzeigen" als Reset
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.className = 'pp-tree-item alle-btn' +
+                      (_aktWgrId === null ? ' aktiv' : '');
+  allBtn.innerHTML = `<span class="wgr-name">(alle anzeigen)</span>`;
+  allBtn.addEventListener('click',
+    () => _wgrWaehlen(null, '— Alle Warengruppen —'));
+  tree.appendChild(allBtn);
+
+  if (!wgr.length) return;
+
+  // byParent-Map fuer hierarchischen Aufbau
+  const byParent = {};
+  wgr.forEach(w => {
+    const pid = (w.parent_id == null) ? '__r' : w.parent_id;
+    (byParent[pid] = byParent[pid] || []).push(w);
+  });
+
+  // Direkt + alle Nachkommen aggregieren — Badge-Zahl zeigt Summe
+  // (so signalisieren wir dem User, ob ein Eltern-Knoten "gross" ist).
+  const direkt = {};
+  for (const w of wgr) direkt[w.wgr_id] = w.anzahl_artikel || 0;
+  const summen = {};
+  for (const w of wgr) {
+    let s = 0;
+    const stack = [w.wgr_id];
+    const seen = new Set();
+    while (stack.length) {
+      const c = stack.pop();
+      if (seen.has(c)) continue;
+      seen.add(c);
+      s += direkt[c] || 0;
+      stack.push(...(byParent[c] || []).map(x => x.wgr_id));
+    }
+    summen[w.wgr_id] = s;
   }
 
-  // Hierarchischen Baum aufbauen
-  const byParent = {};   // parent_id → [wgr]
-  wgr.forEach(w => {
-    const pid = w.parent_id ?? null;
-    (byParent[pid] ??= []).push(w);
-  });
-
-  // Kollabier-Status (wgr_id → boolean collapsed) — Eltern starten zugeklappt
-  const collapsed = {};
-  Object.keys(byParent).filter(k => k !== 'null').forEach(k => {
-    collapsed[k] = true;
-  });
-
-  function _wgrItem(w, isChild) {
-    const el = document.createElement('div');
-    el.className = 'pp-tree-item' + (isChild ? ' child-item' : '') + (_aktWgrId === w.wgr_id ? ' aktiv' : '');
-    el.dataset.wgrId = w.wgr_id;
-
-    const kinder = byParent[w.wgr_id] || [];
-    const hatKinder = kinder.length > 0;
-
+  function _renderKnoten(w, tiefe) {
+    const aktiv  = (_aktWgrId === w.wgr_id);
+    const wurzel = tiefe === 0;
+    const pl     = 10 + tiefe * 14;
+    const sum    = summen[w.wgr_id] || 0;
     const faktorTxt = w.avg_faktor != null
       ? `Ø ${Number(w.avg_faktor).toFixed(2)}`
       : '';
-    const anzahlTxt = w.anzahl_artikel != null ? `${w.anzahl_artikel} Art.` : '';
 
-    el.innerHTML = `
-      <div class="pp-tree-row">
-        ${hatKinder ? `<button class="pp-tree-toggle" data-wgrid="${w.wgr_id}" title="Auf-/Zuklappen">▶</button>` : '<span style="width:14px;display:inline-block;"></span>'}
-        <span class="wgr-name">${_esc(w.name || 'WGR ' + w.wgr_id)}</span>
-      </div>
-      <span class="wgr-meta">
-        ${anzahlTxt ? `<span>${_esc(anzahlTxt)}</span>` : ''}
-        ${faktorTxt ? `<span class="wgr-faktor">${_esc(faktorTxt)}</span>` : ''}
-      </span>
-    `;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pp-tree-item' +
+                     (aktiv ? ' aktiv' : '') +
+                     (wurzel ? ' wurzel' : '');
+    btn.style.paddingLeft = pl + 'px';
+    btn.dataset.wgrId = w.wgr_id;
 
-    // Klick auf den Eintrag (nicht den Toggle-Button)
-    el.addEventListener('click', (e) => {
-      if (e.target.classList.contains('pp-tree-toggle')) return;
-      _wgrWaehlen(w.wgr_id, w.name, el);
-    });
+    let inner = '';
+    if (tiefe > 0) inner += `<span class="pp-tree-strich">└</span>`;
+    inner += `<span class="wgr-name">${_esc(w.name || 'WGR ' + w.wgr_id)}</span>`;
+    if (sum > 0) inner += `<span class="wgr-badge">${sum}</span>`;
+    if (faktorTxt) inner += `<span class="wgr-faktor">${_esc(faktorTxt)}</span>`;
+    btn.innerHTML = inner;
 
-    // Toggle-Button
-    if (hatKinder) {
-      const toggle = el.querySelector('.pp-tree-toggle');
-      toggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        collapsed[w.wgr_id] = !collapsed[w.wgr_id];
-        _toggleChildren(w.wgr_id, collapsed[w.wgr_id]);
-        toggle.textContent = collapsed[w.wgr_id] ? '▶' : '▼';
-      });
-    }
+    btn.addEventListener('click', () => _wgrWaehlen(w.wgr_id, w.name));
+    tree.appendChild(btn);
 
-    return el;
+    for (const k of byParent[w.wgr_id] || []) _renderKnoten(k, tiefe + 1);
   }
 
-  function _appendWgr(parentId, isChild) {
-    const gruppe = byParent[parentId] || [];
-    gruppe.forEach(w => {
-      const el = _wgrItem(w, isChild);
-      el.dataset.parentWgrid = parentId ?? '';
-      tree.appendChild(el);
-      // Kinder zunächst ausklappen
-      _appendWgr(w.wgr_id, true);
-    });
-  }
-
-  _appendWgr(null, false);
-
-  // Toggle: Kinder ein-/ausblenden
-  function _toggleChildren(wgrId, hide) {
-    tree.querySelectorAll(`[data-parent-wgrid="${wgrId}"]`).forEach(el => {
-      el.style.display = hide ? 'none' : '';
-      // Kinder der Kinder auch verstecken
-      if (hide) {
-        const childId = el.dataset.wgrId;
-        if (childId) _toggleChildren(childId, true);
-      }
-    });
-    // Toggle-Pfeil des Elternteils setzen
-    const parentEl = tree.querySelector(`[data-wgr-id="${wgrId}"] .pp-tree-toggle`)
-      || tree.querySelector(`.pp-tree-toggle[data-wgrid="${wgrId}"]`);
-    if (parentEl) parentEl.textContent = hide ? '▶' : '▼';
-  }
-
-  // Elemente mit Kindern initial zugeklappt (▶) — Kinder ausblenden
-  Object.keys(byParent).filter(k => k !== 'null').forEach(wgrId => {
-    _toggleChildren(wgrId, true);
-  });
+  for (const r of byParent['__r'] || []) _renderKnoten(r, 0);
 }
 
-function _wgrWaehlen(wgrId, name, el) {
-  document.querySelectorAll('.pp-tree-item').forEach(e => e.classList.remove('aktiv'));
-  el.classList.add('aktiv');
+function _wgrWaehlen(wgrId, name) {
   _aktWgrId = wgrId;
+  // aktiv-Klasse umsetzen
+  document.querySelectorAll('.pp-tree-item').forEach(e => {
+    e.classList.remove('aktiv');
+    const id = e.dataset.wgrId;
+    if (wgrId === null && e.classList.contains('alle-btn')) {
+      e.classList.add('aktiv');
+    } else if (id != null && id !== '' && String(wgrId) === String(id)) {
+      e.classList.add('aktiv');
+    }
+  });
   document.getElementById('pp-titel').textContent =
-    wgrId === null ? 'Preispflege' : `Preispflege – ${name}`;
+    wgrId === null ? 'Preispflege – Alle Warengruppen'
+                    : `Preispflege – ${name}`;
   ladeTabelle();
 }
 
 // ── Tabelle laden ─────────────────────────────────────────────
 async function ladeTabelle() {
+  // Initial-State (noch keine WG gewaehlt) UND kein VK-Kontroll-Filter:
+  // nichts laden, Hinweis zeigen, weiter. Schuetzt vor dem teuren
+  // SELECT ueber alle Artikel.
+  if (typeof _aktWgrId === 'undefined' && !_nurKontrolle) {
+    document.getElementById('pp-bitte-wg').style.display = '';
+    document.getElementById('pp-ladehinweis').style.display = 'none';
+    document.getElementById('pp-table').style.display = 'none';
+    document.getElementById('artikel-count').textContent = '';
+    ladeVkKontrolleCount();
+    return;
+  }
+
   const params = [];
-  if (_aktWgrId != null) params.push(`wgr_id=${_aktWgrId}`);
-  if (_nurKontrolle)     params.push('nur_kontrolle=1');
+  if (typeof _aktWgrId !== 'undefined' && _aktWgrId !== null) {
+    params.push(`wgr_id=${_aktWgrId}`);
+  }
+  if (_nurKontrolle) params.push('nur_kontrolle=1');
   const url = '/orga/api/preispflege'
     + (params.length ? '?' + params.join('&') : '');
 
-  document.getElementById('pp-ladehinweis').style.display = 'block';
+  document.getElementById('pp-bitte-wg').style.display = 'none';
+  document.getElementById('pp-ladehinweis').style.display = '';
   document.getElementById('pp-table').style.display = 'none';
   document.getElementById('reload-btn').disabled = true;
   statusSetzen('', '');
@@ -1119,7 +1177,7 @@ function renderTabelle() {
     const vpeEkTxt = art.vpe_ek !== 1 ? _eur(art.vpe_ek, 0) : '1';
     const vpeVkTxt = art.vpe_vk !== 1 ? _eur(art.vpe_vk, 0) : '1';
 
-    const typLabel = {'N':'Normal','F':'Frei','S':'Stückliste'}[art.art_typ] || art.art_typ || '–';
+    const typLabel = {'N':'Normal','F':'Frei','S':'Stückliste','L':'Lebensmittel'}[art.art_typ] || art.art_typ || '–';
 
     // VK-Kontrolle: ⚠-Icon bei Bezeichnung + „✓ ist OK"-Button vor Anpassen.
     const vkIcon = art.vk_kontrolle
@@ -1131,7 +1189,16 @@ function renderTabelle() {
                   onclick="vkKontrolleErledigen('${_esc(art.artnr)}')">✓</button>`
       : '';
 
+    // Thumbnail (BILD_PFAD aus XT_KIOSK_PRODUKTE: '/binaer/<id>',
+    // '/produktbilder/<datei>' oder NULL).
+    const thumbHtml = art.bild_pfad
+      ? `<img class="pp-thumb" loading="lazy"
+              src="${_esc(art.bild_pfad)}" alt=""
+              onerror="this.outerHTML='<span class=&quot;pp-thumb-leer&quot;></span>'">`
+      : `<span class="pp-thumb-leer" title="kein Bild"></span>`;
+
     tr.innerHTML = `
+      <td class="col-bild">${thumbHtml}</td>
       <td style="font-family:monospace;font-size:12px;">${_esc(art.artnr)}</td>
       <td style="font-size:11px;text-align:center;color:var(--text-hell);" title="${_esc(typLabel)}">${_esc(art.art_typ || '–')}</td>
       <td>${_esc(art.bezeichnung || '–')}${vkIcon}</td>
@@ -1157,6 +1224,7 @@ function renderTabelle() {
     tbody.appendChild(tr);
   });
 
+  document.getElementById('pp-bitte-wg').style.display = 'none';
   document.getElementById('pp-ladehinweis').style.display = 'none';
   document.getElementById('pp-table').style.display = '';
   document.getElementById('artikel-count').textContent = `${sortiert.length} Artikel`;
@@ -1269,7 +1337,7 @@ async function toggleLieferanten(btn, artnr) {
       `;
     }
 
-    expandTr.innerHTML = `<td colspan="12">${inhalt}</td>`;
+    expandTr.innerHTML = `<td colspan="13">${inhalt}</td>`;
     tr.after(expandTr);
     btn.textContent = '▼';
   } catch (e) {
@@ -1311,7 +1379,7 @@ function anpassenOeffnen(btn, artnr) {
              tabindex="-1" title="Touch-Numpad öffnen">🔢</button>`;
 
   anpTr.innerHTML = `
-    <td colspan="12">
+    <td colspan="13">
       <form class="anp-panel" id="anp-form-${_esc(artnr)}" onsubmit="return false;">
         <div class="anp-field">
           <label>EK (€)</label>
@@ -1678,7 +1746,10 @@ document.addEventListener('input', e => {
 
 // ── Init ──────────────────────────────────────────────────────
 (async function init() {
-  await Promise.all([ladeWarengruppenbaum(), ladeTabelle()]);
+  // Nur den Baum + die VK-Kontroll-Pille aufbauen — die Tabelle bleibt
+  // leer, bis der User eine Warengruppe (oder VK-Kontrolle) waehlt.
+  // Das spart das initiale SELECT ueber alle Artikel (mehrere Sekunden).
+  await Promise.all([ladeWarengruppenbaum(), ladeVkKontrolleCount()]);
 })();
 </script>
 {% endblock %}
