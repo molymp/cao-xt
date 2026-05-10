@@ -214,6 +214,33 @@ except Exception as e:
     log.warning("Orga-Bestellwesen-Blueprint konnte nicht geladen werden: %s", e)
 
 try:
+    from modules.orga.banking import create_blueprint as _bk_bp
+    app.register_blueprint(_bk_bp(), url_prefix='/orga/banking')
+    log.info("Orga-Banking-Blueprint registriert.")
+    # Hibiscus-Tabellen (InnoDB) im Background warm-uppen — sonst dauert
+    # der erste konten_liste-Aufruf ~20s (cold InnoDB Buffer Pool, plus
+    # 30-Tage-Statistik-Subquery auf umsatz mit 7000+ Zeilen).
+    def _banking_warmup():
+        try:
+            from common.db import get_db
+            from datetime import date, timedelta
+            seit = date.today() - timedelta(days=30)
+            with get_db() as cur:
+                cur.execute("SELECT COUNT(*) FROM konto"); cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM umsatz "
+                            "WHERE datum >= %s", (seit,))
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM sepasueb"); cur.fetchall()
+            log.info("Banking-Warmup abgeschlossen.")
+        except Exception as e:
+            log.warning("Banking-Warmup fehlgeschlagen: %s", e)
+    import threading
+    threading.Thread(target=_banking_warmup, daemon=True,
+                     name='bk-warmup').start()
+except Exception as e:
+    log.warning("Orga-Banking-Blueprint konnte nicht geladen werden: %s", e)
+
+try:
     from modules.haccp import create_blueprint as _haccp_bp
     app.register_blueprint(_haccp_bp(), url_prefix='/orga/haccp')
     log.info("HACCP-Blueprint registriert.")

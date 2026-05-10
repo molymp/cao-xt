@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Banking – Konten{% endblock %}
+
+{% block extra_style %}
+<style>
+.bk-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+.bk-kopf h1 { font-size:1.6rem; }
+
+.bk-konten { display:grid; gap:14px;
+  grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  margin-bottom:18px; }
+.bk-konto-card { background:white; padding:16px 20px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  cursor:pointer; transition:transform 0.1s, box-shadow 0.1s;
+  text-decoration:none; color:inherit; display:block;
+  border-left:4px solid var(--gruen-dunkel); }
+.bk-konto-card:hover { transform:translateY(-1px);
+  box-shadow:0 4px 12px rgba(0,0,0,0.10); }
+.bk-konto-card .name { font-size:1.05rem; font-weight:700;
+  color:var(--gruen-dunkel); margin-bottom:2px; }
+.bk-konto-card .iban { font-family:'Nunito Mono',Consolas,monospace;
+  font-size:0.82rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:10px; word-break:break-all; }
+.bk-konto-card .saldo {
+  font-size:1.6rem; font-weight:800;
+  font-variant-numeric:tabular-nums;
+  margin:6px 0 4px;
+}
+.bk-konto-card .saldo.minus { color:var(--rot,#b83030); }
+.bk-konto-card .saldo-datum { font-size:0.78rem;
+  color:var(--text-dim,#5a7a3a); margin-bottom:10px; }
+.bk-konto-card .stats {
+  display:flex; gap:14px; flex-wrap:wrap; font-size:0.84rem;
+  border-top:1px solid var(--creme-dunkel); padding-top:8px;
+}
+.bk-konto-card .stats .label {
+  color:var(--text-dim,#5a7a3a); margin-right:3px;
+}
+.bk-konto-card .stats .ein { color:#1a4010; font-weight:700; }
+.bk-konto-card .stats .aus { color:#a02810; font-weight:700; }
+
+.bk-leer { background:white; padding:28px; border-radius:var(--radius);
+  box-shadow:var(--schatten); text-align:center;
+  color:var(--text-dim,#5a7a3a); }
+
+.bk-aktionen { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+.bk-aktion-btn {
+  background:var(--creme); color:var(--gruen-dunkel);
+  border:1px solid var(--creme-dunkel);
+  padding:8px 14px; border-radius:var(--radius-klein);
+  font-family:'Nunito',sans-serif; font-size:0.92rem; font-weight:700;
+  text-decoration:none; display:inline-block;
+}
+.bk-aktion-btn:hover { background:var(--bg-hell,#ece3cc); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bk-kopf">
+    <h1>🏦 Banking – Konten</h1>
+    <span style="color:var(--text-dim,#5a7a3a); font-size:0.85rem;">
+        Daten aus Hibiscus (Jameica) — read-only
+    </span>
+</div>
+
+<div class="bk-aktionen">
+    <a href="{{ url_for('orga_banking.sepa_ueb_liste') }}" class="bk-aktion-btn">
+        📤 SEPA-Sammelüberweisungen
+    </a>
+</div>
+
+{% if not konten %}
+<div class="bk-leer">Keine Konten in Hibiscus konfiguriert.</div>
+{% else %}
+<div class="bk-konten">
+{% for k in konten %}
+    <a href="{{ url_for('orga_banking.konto_detail', konto_id=k.id) }}"
+       class="bk-konto-card">
+        <div class="name">{{ k.bezeichnung or k.name or '(ohne Bezeichnung)' }}</div>
+        <div class="iban">{{ k.iban or (k.kontonummer + ' · ' + k.blz) }}</div>
+        {% set saldo = k.saldo or 0 %}
+        <div class="saldo{% if saldo < 0 %} minus{% endif %}">
+            {{ '{:,.2f}'.format(saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }} {{ k.waehrung or '€' }}
+        </div>
+        {% if k.saldo_datum %}
+        <div class="saldo-datum">
+            Stand {{ k.saldo_datum.strftime('%d.%m.%Y %H:%M') }}
+        </div>
+        {% endif %}
+        <div class="stats">
+            <span><span class="label">30 T.:</span>{{ k.umsaetze_30t }} Umsätze</span>
+            {% if k.eingang_30t %}
+            <span><span class="label">+</span><span class="ein">{{ '{:,.2f}'.format(k.eingang_30t or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span></span>
+            {% endif %}
+            {% if k.ausgang_30t %}
+            <span><span class="label">−</span><span class="aus">{{ '{:,.2f}'.format(-(k.ausgang_30t or 0)).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span></span>
+            {% endif %}
+        </div>
+    </a>
+{% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
