@@ -1608,3 +1608,449 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
 
     return {'ok': True, 'rec_id': rec_id, 'vrenum': belegnum,
             'nummern_log_id': nl_id}
+
+
+# ── Storno + Kopieren von gebuchten EK-Rechnungen ─────────────────
+
+
+def einkauf_storno_pruefung(rec_id: int) -> dict:
+    """Pre-Check fuer EK-Storno: gibt es aktive Zahlungen?
+
+    Aktive Zahlung = ``ZAHLUNGEN.STORNO=0 AND GEBUCHT='Y'`` (siehe
+    reference_cao_zahlungen.md). XT storniert Zahlungen NICHT selbst —
+    der User muss das in CAO Faktura erledigen.
+    """
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, QUELLE, STADIUM, VRENUM FROM JOURNAL "
+            "WHERE REC_ID=%s",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            raise LookupError(f'Beleg {rec_id} nicht gefunden')
+
+        cur.execute(
+            "SELECT REC_ID, DATUM, BETRAG, ART, ZAHLART_NAME "
+            "  FROM ZAHLUNGEN "
+            " WHERE JOURNAL_ID=%s AND QUELLE=5 "
+            "   AND STORNO=0 AND GEBUCHT='Y' "
+            " ORDER BY DATUM DESC",
+            (rec_id,)
+        )
+        zahlungen = cur.fetchall()
+
+    return {
+        'ok': not zahlungen,
+        'aktive_zahlungen': zahlungen,
+        'kopf': {
+            'REC_ID': kopf['REC_ID'],
+            'QUELLE': kopf['QUELLE'],
+            'STADIUM': kopf['STADIUM'],
+            'VRENUM': kopf['VRENUM'],
+        },
+    }
+
+
+def einkauf_storno_gebucht(rec_id: int, *, ma_id: int | None = None,
+                             ma_name: str = '') -> dict[str, Any]:
+    """Storniert eine GEBUCHTE EK-Rechnung (QUELLE=5).
+
+    Pre-Check: keine aktiven Zahlungen. Bei Blockierung
+    PermissionError mit Hinweis "in CAO Faktura stornieren".
+
+    Effekte (idempotent — siehe feedback_myisam_idempotent.md):
+      - JOURNAL.STADIUM = 127, INFO mit Storno-Vermerk
+      - JOURNALPOS.STATUS_FLAG = 127 (CAO-Mimik fuer Pos-Storno-Marker)
+      - Lager-Korrektur fuer freie/Bestell-Pos (EKEINGANG='N'):
+        ARTIKEL.MENGE_AKT - MENGE, ARTIKEL_HISTORIE-Eintrag (Storno)
+      - EKEINGANG_POS.BERECHNET = 'N' (fuer Pos die aus WE kamen)
+      - EKEINGANG.STADIUM zurueck auf 2/3 (re-compute)
+      - EKBESTELL_POS / EKBESTELL Status zurueck (re-compute analog Buchen)
+      - ARTIKEL_PREIS bleibt unveraendert (Audit-Wert)
+      - NUMMERN_LOG bleibt (Audit-Pflicht — KEIN Loeschen!)
+
+    NICHT-storniert: in-Bearbeitung-Belege (QUELLE=15) → nutze
+    ``einkauf_storno()`` (DELETE).
+    """
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:50]
+
+    # Pre-Check
+    pruef = einkauf_storno_pruefung(rec_id)
+    kopf_pruef = pruef['kopf']
+    if int(kopf_pruef.get('QUELLE') or 0) != 5:
+        raise PermissionError(
+            f"QUELLE={kopf_pruef.get('QUELLE')} — kein gebuchter EK-Beleg "
+            "(QUELLE=5 erwartet)"
+        )
+    if int(kopf_pruef.get('STADIUM') or 0) == 127:
+        # idempotent: schon storniert
+        return {'ok': True, 'rec_id': rec_id, 'idempotent': True}
+    if not pruef['ok']:
+        n = len(pruef['aktive_zahlungen'])
+        raise PermissionError(
+            f'Storno blockiert — {n} aktive Zahlung(en) '
+            'bitte zuerst in CAO Faktura stornieren'
+        )
+
+    with get_db_transaction() as cur:
+        # Pos lesen (alle, aber Lager nur fuer noch-nicht-stornierte
+        # Pos zurueckrollen)
+        cur.execute(
+            "SELECT * FROM JOURNALPOS "
+            "WHERE JOURNAL_ID=%s AND TOP_POS_ID=-1 "
+            "ORDER BY POSITION",
+            (rec_id,)
+        )
+        positionen = cur.fetchall()
+
+        # Pos-Loop: Lager-Korrektur + EKEINGANG_POS-Reset
+        # Idempotenz: nur Pos die noch STATUS_FLAG != 127 sind anfassen.
+        for p in positionen:
+            if int(p.get('STATUS_FLAG') or 0) == 127:
+                continue   # Pos schon als storniert markiert
+            pos_id = int(p['REC_ID'])
+            artikel_id = int(p.get('ARTIKEL_ID') or 0)
+            menge = float(p.get('MENGE') or 0)
+            ekeingang_flag = (p.get('EKEINGANG') or 'N')
+            we_pos_id = int(p.get('QUELLE_WE') or 0)
+
+            # Lager-Korrektur: nur fuer Pos die ueberhaupt Lager bewegt
+            # haben (frei / direkt aus Bestellung).  Pos aus WE haben
+            # KEIN Lager bewegt (das war der WE-Buchen-Step).
+            if ekeingang_flag == 'N' and artikel_id > 0 and menge > 0:
+                cur.execute(
+                    "SELECT MENGE_AKT FROM ARTIKEL WHERE REC_ID=%s",
+                    (artikel_id,)
+                )
+                art = cur.fetchone() or {}
+                neu_lager = float(art.get('MENGE_AKT') or 0) - menge
+                cur.execute(
+                    "INSERT INTO ARTIKEL_HISTORIE "
+                    "(ARTIKEL_ID, QUELLE, QUELLE_STR, MENGE_LAGER, "
+                    " MENGE_GEBUCHT, JID, GEAND, GEAND_NAME, INFO) "
+                    "VALUES (%s, 5, %s, %s, %s, %s, NOW(), %s, %s)",
+                    (artikel_id,
+                     f'Storno EK-Rechnung {kopf_pruef.get("VRENUM") or rec_id}',
+                     neu_lager, -menge, rec_id, ma_name_safe,
+                     'EK-Rechnungs-Storno: Lager-Korrektur'),
+                )
+                cur.execute(
+                    "UPDATE ARTIKEL "
+                    "SET MENGE_AKT=COALESCE(MENGE_AKT,0)-%s, "
+                    "    SHOP_CHANGE_FLAG=1 "
+                    "WHERE REC_ID=%s",
+                    (menge, artikel_id)
+                )
+
+            # WE-Pos: Berechnet zurueck auf 'N'
+            if ekeingang_flag == 'Y' and we_pos_id > 0:
+                cur.execute(
+                    "UPDATE EKEINGANG_POS SET BERECHNET='N' "
+                    "WHERE REC_ID=%s AND BERECHNET='Y'",
+                    (we_pos_id,)
+                )
+
+            # Pos-Storno-Marker: STATUS_FLAG=127
+            cur.execute(
+                "UPDATE JOURNALPOS SET STATUS_FLAG=127 "
+                "WHERE REC_ID=%s AND COALESCE(STATUS_FLAG,0)!=127",
+                (pos_id,)
+            )
+
+        # Header: STADIUM=127 + INFO (Idempotenz: WHERE STADIUM!=127)
+        info_text = (f'Storniert am {date.today().strftime("%d.%m.%Y")} '
+                      f'durch {ma_name_safe}')
+        cur.execute(
+            "UPDATE JOURNAL "
+            "SET STADIUM=127, "
+            "    GEAEND=CURDATE(), GEAEND_NAME=%s, "
+            "    STORNO_INFO=%s "
+            "WHERE REC_ID=%s AND STADIUM!=127",
+            (ma_name_safe, info_text[:255], rec_id)
+        )
+
+        # EKBESTELL_POS-Status neu berechnen (Pos die jetzt durch das
+        # Storno wieder unbedient sind)
+        cur.execute(
+            "SELECT DISTINCT bp.EKBESTELL_ID, bp.REC_ID AS bp_id "
+            "  FROM JOURNALPOS jp "
+            "  JOIN EKBESTELL_POS bp ON bp.REC_ID = jp.QUELLE_SRC "
+            " WHERE jp.JOURNAL_ID=%s AND jp.QUELLE_SRC>0",
+            (rec_id,)
+        )
+        bp_ids = [(int(r['EKBESTELL_ID']), int(r['bp_id']))
+                   for r in cur.fetchall()]
+        for ek_id, bp_id in bp_ids:
+            # Re-compute: ist die Bestellpos nach dem Storno wieder offen?
+            cur.execute(
+                """UPDATE EKBESTELL_POS bp
+                      SET STADIUM = CASE
+                          WHEN COALESCE((
+                              SELECT SUM(jp.MENGE) FROM JOURNALPOS jp
+                              JOIN JOURNAL j ON j.REC_ID=jp.JOURNAL_ID
+                              WHERE jp.QUELLE_SRC=bp.REC_ID
+                                AND j.QUELLE=5
+                                AND j.STADIUM NOT IN (125,126,127)
+                                AND COALESCE(jp.STATUS_FLAG,0)!=127
+                          ), 0) <= 0.0001 THEN 2
+                          ELSE 3
+                      END
+                    WHERE bp.REC_ID=%s
+                      AND bp.STADIUM NOT IN (127)""",
+                (bp_id,)
+            )
+
+        # EKBESTELL-Header neu berechnen (analog buchen)
+        for ek_id, _ in bp_ids:
+            cur.execute(
+                """UPDATE EKBESTELL b
+                      SET STADIUM = CASE
+                          WHEN (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                 WHERE p.EKBESTELL_ID=b.REC_ID
+                                   AND p.STADIUM NOT IN (9,127)) = 0
+                                AND (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                      WHERE p.EKBESTELL_ID=b.REC_ID
+                                        AND p.STADIUM != 127) > 0 THEN 9
+                          WHEN (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                 WHERE p.EKBESTELL_ID=b.REC_ID
+                                   AND p.STADIUM IN (3,9)) > 0 THEN 3
+                          WHEN (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                 WHERE p.EKBESTELL_ID=b.REC_ID
+                                   AND p.STADIUM = 2) > 0 THEN 2
+                          ELSE b.STADIUM
+                      END
+                    WHERE b.REC_ID=%s""",
+                (ek_id,)
+            )
+
+        # EKEINGANG.STADIUM neu berechnen — wenn jetzt wieder unberechnete
+        # Pos existieren, zurueck auf STADIUM=2 (oder 3 bei Mix).
+        cur.execute(
+            "SELECT DISTINCT QUELLE_WE FROM JOURNALPOS "
+            "WHERE JOURNAL_ID=%s AND QUELLE_WE>0 AND EKEINGANG='Y'",
+            (rec_id,)
+        )
+        we_pos_ids = [int(r['QUELLE_WE']) for r in cur.fetchall()
+                       if int(r.get('QUELLE_WE') or 0) > 0]
+        if we_pos_ids:
+            placeholders = ','.join(['%s'] * len(we_pos_ids))
+            cur.execute(
+                f"SELECT DISTINCT EKEINGANG_ID FROM EKEINGANG_POS "
+                f"WHERE REC_ID IN ({placeholders})",
+                we_pos_ids
+            )
+            we_ids = [int(r['EKEINGANG_ID']) for r in cur.fetchall()]
+            for we_id in we_ids:
+                cur.execute(
+                    "UPDATE EKEINGANG SET STADIUM = CASE "
+                    "  WHEN EXISTS (SELECT 1 FROM EKEINGANG_POS "
+                    "               WHERE EKEINGANG_ID=%s AND BERECHNET='N') "
+                    "  AND EXISTS (SELECT 1 FROM EKEINGANG_POS "
+                    "              WHERE EKEINGANG_ID=%s AND BERECHNET='Y') "
+                    "  THEN 3 "
+                    "  WHEN EXISTS (SELECT 1 FROM EKEINGANG_POS "
+                    "               WHERE EKEINGANG_ID=%s AND BERECHNET='N') "
+                    "  THEN 2 "
+                    "  ELSE STADIUM END "
+                    "WHERE REC_ID=%s AND STADIUM IN (3,9)",
+                    (we_id, we_id, we_id, we_id)
+                )
+
+    return {'ok': True, 'rec_id': rec_id, 'storniert': True}
+
+
+def einkauf_kopieren(rec_id: int, *, ma_id: int | None = None,
+                      ma_name: str = '') -> dict[str, Any]:
+    """Kopiert eine EK-Rechnung als neuen Einkauf in Bearbeitung
+    (QUELLE=15, STADIUM=0, neue ``EDI-NNNNNN`` VRENUM).
+
+    Alle JOURNALPOS-Felder werden 1:1 uebernommen, **inklusive**
+    QUELLE_SRC, QUELLE_WE und EKEINGANG-Flag — damit beim erneuten
+    Buchen der Kopie der gleiche WE/Bestell-Bezug genutzt wird.
+    Voraussetzung: das Original muss vorher storniert sein, sonst
+    wuerden die WE-Pos doppelt referenziert sein. Wir lassen das
+    aber zu (User kann kopieren ohne zu stornieren) — er muss dann
+    selbst die Quellen anpassen oder das Original stornieren.
+
+    Returns: ``{'ok': True, 'neue_rec_id': N, 'neue_vrenum': 'EDI-...'}``
+    """
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:100]
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            "SELECT * FROM JOURNAL WHERE REC_ID=%s AND QUELLE IN (5, 15)",
+            (rec_id,)
+        )
+        original = cur.fetchone()
+        if not original:
+            raise LookupError(f'Beleg {rec_id} nicht gefunden')
+
+        # Neuer EDI-Counter
+        neue_vrenum = _next_edi_belegnum(cur)
+
+        # JOURNAL-Header kopieren mit den anlegen-Default-Werten
+        # (QUELLE=15, STADIUM=0, HASHSUM='$$', neue VRENUM, RDATUM=NOW)
+        cur.execute(
+            """INSERT INTO JOURNAL
+               (QUELLE, QUELLE_SUB, ADDR_ID, ASP_ID, PROJEKT_ID, SPRACH_ID,
+                VRENUM, RDATUM, WAEHRUNG, STADIUM, BRUTTO_FLAG, MWST_FREI_FLAG,
+                HASHSUM, FIRMA_ID, MWST_0, MWST_1, MWST_2, MWST_3, AT_MWST,
+                ER_DATUM, DEL_FLAG,
+                ZAHLART, ZAHLART_NAME, ZAHLART_KURZ, ZAHLART_LANG,
+                GEGENKONTO,
+                KUN_NAME1, KUN_NAME2, KUN_NAME3, KUNNUM1,
+                KUN_STRASSE, KUN_HAUSNR, KUN_LAND, KUN_PLZ, KUN_ORT,
+                ANREDE, MA_ID,
+                ERSTELLT, ERST_NAME, GEAEND, GEAEND_NAME)
+               VALUES (15, 0, %s, %s, %s, %s,
+                       %s, NOW(), %s, 0, %s, %s,
+                       '$$', %s, %s, %s, %s, %s, %s,
+                       NOW(), 'N',
+                       %s, %s, %s, %s,
+                       %s,
+                       %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s,
+                       %s, %s,
+                       CURDATE(), %s, CURDATE(), %s)""",
+            (
+                int(original.get('ADDR_ID') or -1),
+                int(original.get('ASP_ID') or -1),
+                int(original.get('PROJEKT_ID') or -1),
+                int(original.get('SPRACH_ID') or 2),
+                neue_vrenum,
+                (original.get('WAEHRUNG') or '€')[:3],
+                (original.get('BRUTTO_FLAG') or 'N')[:1],
+                (original.get('MWST_FREI_FLAG') or 'N')[:1],
+                int(original.get('FIRMA_ID') or 8),
+                float(original.get('MWST_0') or 0),
+                float(original.get('MWST_1') or 19),
+                float(original.get('MWST_2') or 7),
+                float(original.get('MWST_3') or 7.8),
+                float(original.get('AT_MWST') or 10),
+                int(original.get('ZAHLART') or -1),
+                (original.get('ZAHLART_NAME') or '')[:100],
+                (original.get('ZAHLART_KURZ') or '')[:30],
+                (original.get('ZAHLART_LANG') or '')[:255],
+                int(original.get('GEGENKONTO') or 0),
+                (original.get('KUN_NAME1') or '')[:80],
+                (original.get('KUN_NAME2') or '')[:80],
+                (original.get('KUN_NAME3') or '')[:80],
+                (original.get('KUNNUM1') or '')[:30],
+                (original.get('KUN_STRASSE') or '')[:60],
+                (original.get('KUN_HAUSNR') or '')[:10],
+                (original.get('KUN_LAND') or '')[:5],
+                (original.get('KUN_PLZ') or '')[:10],
+                (original.get('KUN_ORT') or '')[:60],
+                (original.get('ANREDE') or '')[:30],
+                int(original.get('MA_ID') or 0) if ma_id is None else int(ma_id),
+                ma_name_safe, ma_name_safe,
+            )
+        )
+        neue_rec_id = int(cur.lastrowid)
+
+        # Pos kopieren — alle Felder bis auf REC_ID/JOURNAL_ID/VRENUM/QUELLE
+        # Wir nutzen den dynamischen INSERT … SELECT-Trick:
+        cur.execute(
+            "SELECT * FROM JOURNALPOS "
+            "WHERE JOURNAL_ID=%s AND TOP_POS_ID=-1 "
+            "ORDER BY POSITION",
+            (rec_id,)
+        )
+        original_pos = cur.fetchall()
+        for p in original_pos:
+            # STATUS_FLAG=127 (storniert) ueberspringen — die wuerden
+            # in die Kopie kommen und dann durch die Buchen-Logik
+            # nochmal ueber den Pos-Loop gefuehrt werden.
+            if int(p.get('STATUS_FLAG') or 0) == 127:
+                continue
+            cur.execute(
+                """INSERT INTO JOURNALPOS SET
+                     JOURNAL_ID=%s, VRENUM=%s, QUELLE=15, QUELLE_SUB=0,
+                     QUELLE_SRC=%s, QUELLE_WE=%s, TOP_POS_ID=-1,
+                     EKEINGANG=%s,
+                     ADDR_ID=%s,
+                     ARTIKELTYP=%s, ARTIKEL_ID=%s,
+                     ARTNUM=%s, BARCODE=%s, MATCHCODE=%s,
+                     BEZEICHNUNG=%s, BEZEICHNUNG_LAND='',
+                     KURZBEZEICHNUNG=%s, KURZBEZEICHNUNG_LAND='',
+                     FREITEXT=%s, FREITEXT_LAND='',
+                     ME_EINHEIT=%s, ME_CODE=%s,
+                     PR_EINHEIT=%s, VPE=%s,
+                     MENGE=%s, MENGE_SOLL=0,
+                     EPREIS=%s, EK_PREIS=%s, GPREIS=%s,
+                     RABATT=0, RABATT2=0, RABATT3=0,
+                     E_RABATT_BETRAG=0, G_RABATT_BETRAG=0,
+                     GEWICHT=%s,
+                     STEUER_CODE=%s,
+                     ALTTEIL_PROZ=0, ALTTEIL_FLAG='N', ALTTEIL_STCODE=0,
+                     GEGENKTO=%s,
+                     BRUTTO_FLAG=%s,
+                     WARENGRUPPE=%s, WARENGRUPPENNAME=%s,
+                     SN_FLAG='N', SET_ID=-1, LAGER_ID=-2,
+                     POSITION=%s, VIEW_POS=%s,
+                     ERSTELLT=NOW(), ERST_NAME=%s""",
+                (
+                    neue_rec_id, neue_vrenum,
+                    int(p.get('QUELLE_SRC') or 0),
+                    int(p.get('QUELLE_WE') or 0),
+                    (p.get('EKEINGANG') or 'N')[:1],
+                    int(p.get('ADDR_ID') or -1),
+                    (p.get('ARTIKELTYP') or 'N')[:1],
+                    int(p.get('ARTIKEL_ID') or 0),
+                    (p.get('ARTNUM') or '')[:50],
+                    (p.get('BARCODE') or '')[:30],
+                    (p.get('MATCHCODE') or '')[:50],
+                    (p.get('BEZEICHNUNG') or '')[:200],
+                    (p.get('KURZBEZEICHNUNG') or '')[:50],
+                    (p.get('FREITEXT') or '')[:1000],
+                    (p.get('ME_EINHEIT') or '')[:20],
+                    (p.get('ME_CODE') or '')[:5],
+                    float(p.get('PR_EINHEIT') or 1),
+                    float(p.get('VPE') or 0),
+                    float(p.get('MENGE') or 0),
+                    float(p.get('EPREIS') or 0),
+                    float(p.get('EK_PREIS') or 0),
+                    float(p.get('GPREIS') or 0),
+                    float(p.get('GEWICHT') or 0),
+                    int(p.get('STEUER_CODE') or 0),
+                    int(p.get('GEGENKTO') or 0),
+                    (p.get('BRUTTO_FLAG') or 'N')[:1],
+                    int(p.get('WARENGRUPPE') or 0),
+                    (p.get('WARENGRUPPENNAME') or '')[:100],
+                    int(p.get('POSITION') or 0),
+                    str(p.get('VIEW_POS') or '')[:20],
+                    ma_name_safe,
+                )
+            )
+        # Header-Summen aus den kopierten Pos neu rechnen
+        _summen_aktualisieren(cur, neue_rec_id)
+
+    return {'ok': True, 'neue_rec_id': neue_rec_id,
+            'neue_vrenum': neue_vrenum}
+
+
+def einkauf_storno_und_kopieren(rec_id: int, *, ma_id: int | None = None,
+                                 ma_name: str = '') -> dict[str, Any]:
+    """Storniert die Original-Rechnung und legt eine Kopie in Bearbeitung an.
+
+    Reihenfolge: Pre-Check (keine Zahlungen) → Storno → Kopie. Wenn
+    Storno blockiert ist, wird auch keine Kopie angelegt.
+    """
+    pruef = einkauf_storno_pruefung(rec_id)
+    if not pruef['ok']:
+        n = len(pruef['aktive_zahlungen'])
+        raise PermissionError(
+            f'Storno blockiert — {n} aktive Zahlung(en) '
+            'bitte zuerst in CAO Faktura stornieren'
+        )
+    storno_res = einkauf_storno_gebucht(rec_id, ma_id=ma_id, ma_name=ma_name)
+    kopie_res = einkauf_kopieren(rec_id, ma_id=ma_id, ma_name=ma_name)
+    return {
+        'ok': True,
+        'storno': storno_res,
+        'kopie': kopie_res,
+    }

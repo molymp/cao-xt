@@ -815,12 +815,18 @@
                 onclick="bdRestNichtLieferbar()">⚠ Rest nicht lieferbar — Bestellung abschließen</button>
     </div>
 </div>
+{% endif %}
 
+{# Storno-Card auch fuer GEBUCHTE Bestellungen (STADIUM in 9, 95) erlauben.
+   Pre-Check (api/storno-pruefung) blockiert wenn WE/EK existieren. #}
+{% if kopf.STADIUM != 127 %}
 <div class="bd-card bd-storno-card">
     <h2>Bestellung stornieren</h2>
     <p class="bd-hinweis-rdo">
         Setzt EKBESTELL.STADIUM und alle Positionen auf 127 (= storniert).
-        Diese Aktion kann nur über CAO selbst rückgängig gemacht werden.
+        Vor dem Storno wird geprüft, ob nicht-stornierte Wareneingänge oder
+        EK-Rechnungen die Bestellung referenzieren — die müssten zuerst
+        storniert werden.
     </p>
     <button type="button" class="btn btn-danger" id="bd-storno-btn"
             onclick="bdStorno()">⛔ Komplette Bestellung stornieren</button>
@@ -1133,11 +1139,35 @@ async function bdRestNichtLieferbar() {
 }
 
 async function bdStorno() {
-    if (!confirm('Bestellung wirklich komplett stornieren? Diese Aktion ist über CAO-XT nicht reversibel.')) {
-        return;
-    }
     const btn = document.getElementById('bd-storno-btn');
     btn.disabled = true;
+    // Pre-Check: gibt es WE oder EK-Rechnungen, die diese Bestellung
+    // referenzieren?
+    let pruef;
+    try {
+        const r = await fetch(`${BD_DETAIL_URL}/api/storno-pruefung`);
+        pruef = await r.json();
+    } catch (e) {
+        alert('Verbindungsfehler');
+        btn.disabled = false;
+        return;
+    }
+    if (!pruef.ok) {
+        const wes = (pruef.wareneingaenge || []).map(w =>
+            `• WE ${w.BELEGNUM || '#'+w.we_id} (STADIUM ${w.STADIUM})`).join('\n');
+        const eks = (pruef.ek_rechnungen || []).map(e =>
+            `• EK-Rechnung ${e.VRENUM || '#'+e.ek_id} (STADIUM ${e.STADIUM})`).join('\n');
+        alert(
+            'Storno blockiert — bitte zuerst stornieren:\n\n' +
+            (wes ? wes + '\n' : '') + (eks ? eks : '')
+        );
+        btn.disabled = false;
+        return;
+    }
+    if (!confirm('Bestellung wirklich komplett stornieren? Diese Aktion ist über CAO-XT nicht reversibel.')) {
+        btn.disabled = false;
+        return;
+    }
     const res = await _post(`${BD_DETAIL_URL}/api/storno`, {});
     if (!res.ok) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));

@@ -285,6 +285,21 @@
         <button type="button" class="btn-danger" onclick="edStorno()">⛔ Einkauf verwerfen</button>
     </div>
 </div>
+{% elif kopf.STADIUM != 127 and kopf.STADIUM != 125 and kopf.STADIUM != 126 %}
+{# Gebuchter, nicht-stornierter EK-Beleg → Storno- und Kopier-Aktionen #}
+<div class="ed-card">
+    <h2>Aktionen</h2>
+    <p class="ed-rdo">
+        Diese gebuchte EK-Rechnung kann storniert oder kopiert werden.
+        Vor dem Storno wird geprüft, ob aktive Zahlungen existieren —
+        die müssen erst in CAO Faktura storniert werden.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn-aktion" onclick="edKopieren()">📋 Kopieren</button>
+        <button type="button" class="btn-danger" onclick="edStornoGebucht()">⛔ Stornieren</button>
+        <button type="button" class="btn-danger" onclick="edStornoUndKopieren()">⛔📋 Stornieren + Kopieren</button>
+    </div>
+</div>
 {% endif %}
 
 {# ── Modal: Buchen-Vorschau (Preisabweichungen, Warnungen) ──────── #}
@@ -391,6 +406,97 @@ async function edStorno() {
     const res = await _post(`${ED_API}/storno`, {});
     if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
     window.location = '/orga/bestellwesen/einkauf/';
+}
+
+// ── Storno/Kopieren fuer GEBUCHTE EK-Rechnungen ─────────────────
+async function _edStornoPruefen() {
+    cxLadenZeigen('Prüfe Zahlungen …');
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/storno-pruefung`);
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return null;
+    }
+    cxLadenAusblenden();
+    if (!res.ok) {
+        const z = res.aktive_zahlungen || [];
+        const liste = z.map(x =>
+            `• ${x.DATUM ? x.DATUM.split('T')[0].split('-').reverse().join('.') : '–'}` +
+            ` ${(+x.BETRAG).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} €` +
+            ` (${_esc(x.ZAHLART_NAME || x.ART || '?')})`
+        ).join('\n');
+        alert(
+            `Storno blockiert — ${z.length} aktive Zahlung(en):\n\n${liste}\n\n` +
+            'Bitte zuerst in CAO Faktura stornieren.'
+        );
+        return null;
+    }
+    return res;
+}
+
+async function edStornoGebucht() {
+    const pruef = await _edStornoPruefen();
+    if (!pruef) return;
+    if (!confirm(
+        `EK-Rechnung ${pruef.kopf.VRENUM} stornieren?\n\n` +
+        'Lager-Effekte werden zurückgerollt, EKEINGANG_POS-Pos werden ' +
+        'wieder als „nicht berechnet" markiert. ' +
+        'Die Belegnummer bleibt zur Audit-Spur erhalten.'
+    )) return;
+    cxLadenZeigen('Storno läuft …');
+    const res = await _post(`${ED_API}/storno`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    alert(`Beleg ${pruef.kopf.VRENUM} storniert.`);
+    location.reload();
+}
+
+async function edKopieren() {
+    if (!confirm(
+        'EK-Rechnung als neuen Einkauf in Bearbeitung kopieren?\n\n' +
+        'Die Pos werden 1:1 inkl. Quell-Verweise (WE/Bestellung) kopiert. ' +
+        'Wenn das Original NICHT vorher storniert wird, sind die WE-Pos ' +
+        'doppelt referenziert — beim erneuten Buchen kann es zu Konflikten kommen.'
+    )) return;
+    cxLadenZeigen('Kopiere …');
+    const res = await _post(`${ED_API}/kopieren`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    if (confirm(
+        `Kopie angelegt als ${res.neue_vrenum} (in Bearbeitung).\n\n` +
+        'Direkt zur Kopie wechseln?'
+    )) {
+        window.location = `/orga/bestellwesen/einkauf/${res.neue_rec_id}`;
+    } else {
+        location.reload();
+    }
+}
+
+async function edStornoUndKopieren() {
+    const pruef = await _edStornoPruefen();
+    if (!pruef) return;
+    if (!confirm(
+        `EK-Rechnung ${pruef.kopf.VRENUM} stornieren UND als ` +
+        'neuen Einkauf-In-Bearbeitung kopieren?\n\n' +
+        'Original wird storniert (Lager zurück, EKEINGANG_POS reset). ' +
+        'Kopie übernimmt die WE/Bestell-Bezüge — beim erneuten Buchen ' +
+        'wird der Lager-Effekt einmalig neu erzeugt.'
+    )) return;
+    cxLadenZeigen('Storno + Kopie …');
+    const res = await _post(`${ED_API}/storno-und-kopieren`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    if (confirm(
+        `Original storniert, Kopie als ${res.kopie.neue_vrenum} angelegt.\n\n` +
+        'Direkt zur Kopie wechseln?'
+    )) {
+        window.location = `/orga/bestellwesen/einkauf/${res.kopie.neue_rec_id}`;
+    } else {
+        location.reload();
+    }
 }
 
 // ── Pos-Inline-Edit ───────────────────────────────────────────────

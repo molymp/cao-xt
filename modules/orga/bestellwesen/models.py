@@ -485,16 +485,82 @@ def bestellung_rest_nicht_lieferbar(rec_id: int) -> dict[str, int]:
     return {'positionen_geaendert': n}
 
 
+def bestellung_storno_pruefung(rec_id: int) -> dict:
+    """Pre-Check fuer Bestellung-Storno: gibt es nicht-stornierte
+    Wareneingaenge oder EK-Rechnungen die diese Bestellung referenzieren?
+
+    Returns:
+        ``{'ok': bool, 'wareneingaenge': [...], 'ek_rechnungen': [...]}``
+        ``ok`` = True wenn keine Blocker, sonst False.
+    """
+    rec_id = int(rec_id)
+    with get_db() as cur:
+        # WE die (a) ueber EKEINGANG_POS.EKBESTELL_POS_ID verlinkt sind und
+        # (b) nicht storniert sind (STADIUM != 127)
+        cur.execute(
+            """SELECT DISTINCT we.REC_ID AS we_id, we.BELEGNUM, we.STADIUM,
+                      we.BELEGDATUM
+                 FROM EKEINGANG we
+                 JOIN EKEINGANG_POS wep ON wep.EKEINGANG_ID = we.REC_ID
+                 JOIN EKBESTELL_POS bp  ON bp.REC_ID         = wep.EKBESTELL_POS_ID
+                WHERE bp.EKBESTELL_ID = %s
+                  AND we.STADIUM != 127
+                ORDER BY we.REC_ID""",
+            (rec_id,),
+        )
+        wes = cur.fetchall()
+
+        # EK-Rechnungen (QUELLE=5) mit Pos die ueber QUELLE_SRC eine
+        # EKBESTELL_POS dieser Bestellung referenzieren — nicht-storniert
+        cur.execute(
+            """SELECT DISTINCT j.REC_ID AS ek_id, j.VRENUM, j.STADIUM,
+                      j.RDATUM
+                 FROM JOURNAL j
+                 JOIN JOURNALPOS jp ON jp.JOURNAL_ID = j.REC_ID
+                 JOIN EKBESTELL_POS bp ON bp.REC_ID = jp.QUELLE_SRC
+                WHERE bp.EKBESTELL_ID = %s
+                  AND j.QUELLE        = 5
+                  AND j.STADIUM       NOT IN (125, 126, 127)
+                ORDER BY j.REC_ID""",
+            (rec_id,),
+        )
+        eks = cur.fetchall()
+    return {
+        'ok': not wes and not eks,
+        'wareneingaenge': wes,
+        'ek_rechnungen': eks,
+    }
+
+
 def bestellung_stornieren(rec_id: int) -> dict[str, int]:
     """Storniert eine komplette Bestellung.
 
     Setzt EKBESTELL.STADIUM=127 sowie alle EKBESTELL_POS.STADIUM=127.
     Folgt der CAO-Mimik aus der Binary @0x0256dd30 / @0x0256ddb0.
 
+    Vor dem Storno wird geprueft, ob nicht-stornierte Wareneingaenge oder
+    EK-Rechnungen die Bestellung referenzieren — die muessten zuerst
+    storniert werden. PermissionError mit detailliertem Hinweis.
+
     Returns:
         Dict mit `kopf_geaendert`, `positionen_geaendert`.
     """
     rec_id = int(rec_id)
+    pruef = bestellung_storno_pruefung(rec_id)
+    if not pruef['ok']:
+        teile = []
+        if pruef['wareneingaenge']:
+            namen = [w.get('BELEGNUM') or f"#{w['we_id']}"
+                     for w in pruef['wareneingaenge']]
+            teile.append(f"Wareneingang: {', '.join(namen)}")
+        if pruef['ek_rechnungen']:
+            namen = [e.get('VRENUM') or f"#{e['ek_id']}"
+                     for e in pruef['ek_rechnungen']]
+            teile.append(f"EK-Rechnung: {', '.join(namen)}")
+        raise PermissionError(
+            'Storno blockiert — bitte zuerst stornieren: ' + ' / '.join(teile)
+        )
+
     with get_db() as cur:
         cur.execute(
             "SELECT REC_ID, STADIUM, BELEGNUM FROM EKBESTELL WHERE REC_ID = %s",
