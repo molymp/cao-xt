@@ -954,6 +954,34 @@ def produktbild(dateiname):
     return send_from_directory(PRODUKTBILDER_DIR, dateiname)
 
 
+@app.route('/binaer/<int:rec_id>')
+def binaerdaten_blob(rec_id: int):
+    """Liefert einen BLOB aus CAO ``BINAERDATEN`` (Bilder, PDFs, …).
+
+    Honoriert ``If-None-Match`` für Browser-Caching, damit das BLOB
+    nicht bei jedem Aufruf erneut über die Leitung geht.
+    """
+    from flask import request as _req, Response, abort
+    from common import binaerdaten as _bd
+    etag = f'binaer-{rec_id}'
+    if (_req.headers.get('If-None-Match') or '') == etag:
+        return ('', 304, {'ETag': etag,
+                          'Cache-Control': 'public, max-age=86400'})
+    row = _bd.binaer_holen(rec_id)
+    if not row or not row.get('DATEN'):
+        abort(404)
+    mime = _bd.mime_aus_dateiname(row.get('DATEI') or '')
+    return Response(
+        bytes(row['DATEN']),
+        mimetype=mime,
+        headers={
+            'Content-Length': str(len(row['DATEN'])),
+            'ETag': etag,
+            'Cache-Control': 'public, max-age=86400',
+        },
+    )
+
+
 # ── Phase F: Funktionen (Feature-Toggles) ─────────────────────────
 
 @app.route('/funktionen')
@@ -2862,18 +2890,34 @@ def api_einkauf_position_anreichern(pos_id):
               if diag.get('ok') else {}
     if diag.get('ok') and parsed:
         # Bild ggf. herunterladen
+        bild_info = None
         if parsed.get('bild_url'):
             try:
                 lief = _einkauf.holen(lief_rec_id) or {}
-                lokal = _einkauf._download_lief_bild(
+                bild_info = _einkauf._download_lief_bild(
                     parsed['bild_url'],
                     lief.get('KUERZEL') or '',
                     artnr)
-                if lokal:
-                    parsed['bild_lokal'] = lokal
+                if bild_info:
+                    parsed['bild_lokal'] = bild_info.get('rel_pfad') or ''
             except Exception:
                 pass
-        _einkauf.lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
+        lief_art_rec_id = _einkauf.lief_artikel_speichern(
+            lief_rec_id, artnr, parsed=parsed)
+        if bild_info and lief_art_rec_id:
+            try:
+                binaer_id = _einkauf._bild_in_binaerdaten_speichern(
+                    lief_art_rec_id, bild_info,
+                    erst_name='Einkauf-UI')
+                if binaer_id:
+                    from common.db import get_db_transaction as _tx
+                    with _tx() as cur:
+                        cur.execute(
+                            "UPDATE XT_EINKAUF_LIEF_ARTIKEL "
+                            "SET BILD_BINAER_ID = %s WHERE REC_ID = %s",
+                            (binaer_id, lief_art_rec_id))
+            except Exception:
+                pass
     elif not diag.get('ok'):
         _einkauf.lief_artikel_speichern(
             lief_rec_id, artnr, parsed=None,

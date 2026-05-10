@@ -138,6 +138,23 @@ def run_migration() -> None:
                             "ADD COLUMN BILD_LOKAL VARCHAR(255) NULL "
                             "AFTER BILD_URL")
 
+            # Bild-Cache jetzt in CAO BINAERDATEN (BLOB) statt im
+            # Filesystem. BILD_BINAER_ID = REC_ID in BINAERDATEN. Bei
+            # Stammdaten-Match wird der Eintrag auf MODUL_ID=1020
+            # (Artikel) umgetaggt — siehe common.binaerdaten. BILD_LOKAL
+            # bleibt vorerst als Fallback bestehen.
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = 'XT_EINKAUF_LIEF_ARTIKEL'
+                  AND COLUMN_NAME  = 'BILD_BINAER_ID'
+            """)
+            if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                cur.execute("ALTER TABLE XT_EINKAUF_LIEF_ARTIKEL "
+                            "ADD COLUMN BILD_BINAER_ID INT UNSIGNED NULL "
+                            "AFTER BILD_LOKAL, "
+                            "ADD INDEX idx_bild_binaer (BILD_BINAER_ID)")
+
             # Phase 5b-Verbesserung: EK_BEZUG-Override pro Lief-Artikel.
             # NULL = nimm Lieferanten-Default (XT_EINKAUF_LIEFERANT.
             # EK_BEZUG_DEFAULT). Erlaubt Artikel-spezifische Abweichungen,
@@ -385,6 +402,14 @@ def run_migration() -> None:
         log.info("Migration: XT_EINKAUF_LIEFERANT/BESTELLUNG/BESTELLPOS geprueft.")
     except Exception as exc:
         log.warning("XT_EINKAUF_*-Migration fehlgeschlagen: %s", exc)
+
+    # CAO-Bilder-Tabelle: Standard-BINAER_TYP "Produktbild" anlegen,
+    # damit Lieferanten-Bilder kategorisiert werden koennen.
+    try:
+        from . import binaerdaten as _bd
+        _bd.run_migration()
+    except Exception as exc:
+        log.warning("BINAER_TYPEN-Init fehlgeschlagen: %s", exc)
 
 
 def seed_defaults() -> int:
@@ -1454,12 +1479,20 @@ _LIEF_BILD_DIR = os.path.join(_PRODUKTBILDER_BASE, 'lieferanten')
 
 
 def _download_lief_bild(url: str, lief_kuerzel: str,
-                        artnr: str) -> Optional[str]:
-    """Laedt das Produktbild von ``url`` herunter und speichert es
-    lokal. Liefert den relativen Pfad (zur Verwendung am
-    ``/produktbilder/<path>``-Endpoint), oder ``None`` bei Fehler.
+                        artnr: str) -> Optional[dict]:
+    """Laedt das Produktbild von ``url`` und liefert die Bytes plus
+    Metadaten (oder None bei Fehler).
 
-    Pfadschema: ``lieferanten/<KUERZEL>/<artnr>.<ext>``.
+    Rueckgabe-Dict::
+
+        {'rel_pfad': 'lieferanten/<KUERZEL>/<artnr>.<ext>',
+         'datei':    '<artnr>.<ext>',
+         'daten':    <bytes>,
+         'url':      <urspruengliche URL>}
+
+    Schreibt das Bild ZUSAETZLICH ins Filesystem (Legacy-Cache),
+    damit bestehende Filesystem-Konsumenten weiterlaufen, solange wir
+    noch nicht alle Templates auf BINAERDATEN umgestellt haben.
     """
     if not (url and lief_kuerzel and artnr):
         return None
@@ -1471,8 +1504,6 @@ def _download_lief_bild(url: str, lief_kuerzel: str,
 
     kuerzel = re.sub(r'[^A-Za-z0-9_-]', '_', lief_kuerzel)[:20]
     artnr_safe = re.sub(r'[^A-Za-z0-9_-]', '_', artnr)[:40]
-    zielordner = os.path.join(_LIEF_BILD_DIR, kuerzel)
-    os.makedirs(zielordner, exist_ok=True)
 
     try:
         r = _req.get(url, timeout=15, allow_redirects=True)
@@ -1503,15 +1534,58 @@ def _download_lief_bild(url: str, lief_kuerzel: str,
                     ext = 'jpg'
 
     dateiname = f'{artnr_safe}.{ext}'
-    pfad = os.path.join(zielordner, dateiname)
+
+    # Filesystem-Cache (Legacy) — best effort, Fehler tolerieren.
+    rel_pfad = f'lieferanten/{kuerzel}/{dateiname}'
     try:
+        zielordner = os.path.join(_LIEF_BILD_DIR, kuerzel)
+        os.makedirs(zielordner, exist_ok=True)
+        pfad = os.path.join(zielordner, dateiname)
         with open(pfad, 'wb') as f:
             f.write(r.content)
     except Exception as exc:
-        log.warning('Bild-Save %s: %s', pfad, exc)
-        return None
+        log.warning('Bild-FS-Save best-effort fehlgeschlagen %s: %s',
+                    rel_pfad, exc)
 
-    return f'lieferanten/{kuerzel}/{dateiname}'
+    return {
+        'rel_pfad': rel_pfad,
+        'datei':    dateiname,
+        'daten':    r.content,
+        'url':      url,
+    }
+
+
+def _bild_in_binaerdaten_speichern(lief_art_rec_id: int,
+                                    bild_info: dict,
+                                    erst_name: str = 'Einkauf-Poller'
+                                    ) -> Optional[int]:
+    """Speichert ein Lieferanten-Bild als BLOB in CAO ``BINAERDATEN``.
+
+    Verwendet die XT-Sonder-MODUL_ID 91020 (Lieferantenartikel-Cache).
+    Sobald der Lief-Artikel auf einen CAO-``ARTIKEL.REC_ID`` gemappt
+    wird, kann ``binaerdaten.binaer_umtaggen`` den Eintrag auf
+    MODUL_ID=1020 verschieben. Liefert die ``BINAERDATEN.REC_ID``
+    oder ``None`` bei Fehler.
+    """
+    if not bild_info or not bild_info.get('daten'):
+        return None
+    try:
+        from . import binaerdaten as _bd
+        typ_id = _bd.typ_id_holen(_bd.TYP_NAME_PRODUKTBILD)
+        return _bd.binaer_speichern_oder_ersetzen(
+            modul_id=_bd.MODUL_ID_XT_LIEF_ARTIKEL_CACHE,
+            referenz_id=int(lief_art_rec_id),
+            binaer_typ=typ_id,
+            pfad=bild_info.get('url') or bild_info.get('rel_pfad') or '',
+            datei=bild_info.get('datei') or '',
+            daten=bild_info.get('daten') or b'',
+            primaer=True,
+            erst_name=erst_name,
+        )
+    except Exception as exc:
+        log.warning("BINAERDATEN-Save fuer LIEF_ART %s fehlgeschlagen: %s",
+                    lief_art_rec_id, exc)
+        return None
 
 
 def lief_artikel_speichern(lief_rec_id: int, artnr: str,
@@ -1571,7 +1645,18 @@ def lief_artikel_speichern(lief_rec_id: int, artnr: str,
             (p.get('verfuegbarkeit') or '')[:80] or None,
             (fehler or '')[:500] or None,
         ))
-        return int(cur.lastrowid)
+        # ON DUPLICATE KEY UPDATE liefert lastrowid=0, wenn ein
+        # bestehender Datensatz aktualisiert wurde — dann den
+        # vorhandenen REC_ID per UNIQUE-Schluessel nachschlagen.
+        rec_id = int(cur.lastrowid or 0)
+        if not rec_id:
+            cur.execute("""
+                SELECT REC_ID FROM XT_EINKAUF_LIEF_ARTIKEL
+                WHERE LIEF_REC_ID = %s AND ARTIKEL_NR_LIEF = %s
+            """, (int(lief_rec_id), (artnr or '')[:40]))
+            row = cur.fetchone()
+            rec_id = int((row or {}).get('REC_ID') or 0)
+        return rec_id
 
 
 def lief_artikel_ek_bezug_setzen(lief_rec_id: int, artnr: str,
@@ -1642,22 +1727,42 @@ def lief_artikel_anreichern_position(lief_rec_id: int, artnr: str) -> dict:
     parsed = (res.get('probe') or {}).get('parsed') or {}
 
     # Bild herunterladen, wenn noch nicht im lokalen Cache.
+    bild_info: Optional[dict] = None
     if parsed.get('bild_url'):
         cached = lief_artikel_holen(lief_rec_id, artnr) or {}
-        if not (cached.get('BILD_LOKAL') or '').strip():
+        if not cached.get('BILD_BINAER_ID') and \
+                not (cached.get('BILD_LOKAL') or '').strip():
             kuerzel = ''
             try:
                 lief = holen(lief_rec_id) or {}
                 kuerzel = lief.get('KUERZEL') or ''
             except Exception:
                 pass
-            lokal = _download_lief_bild(parsed['bild_url'], kuerzel, artnr)
-            if lokal:
-                parsed['bild_lokal'] = lokal
+            bild_info = _download_lief_bild(parsed['bild_url'],
+                                            kuerzel, artnr)
+            if bild_info:
+                parsed['bild_lokal'] = bild_info.get('rel_pfad') or ''
         else:
             parsed['bild_lokal'] = cached.get('BILD_LOKAL') or ''
 
-    lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
+    lief_art_rec_id = lief_artikel_speichern(lief_rec_id, artnr,
+                                              parsed=parsed)
+    # Bild in BINAERDATEN ablegen (XT-Cache MODUL_ID 91020) und die
+    # ID am Cache-Eintrag persistieren.
+    if bild_info and lief_art_rec_id:
+        binaer_id = _bild_in_binaerdaten_speichern(lief_art_rec_id,
+                                                     bild_info)
+        if binaer_id:
+            try:
+                with get_db_transaction() as cur:
+                    cur.execute(
+                        "UPDATE XT_EINKAUF_LIEF_ARTIKEL "
+                        "SET BILD_BINAER_ID = %s WHERE REC_ID = %s",
+                        (binaer_id, lief_art_rec_id))
+            except Exception as exc:
+                log.warning(
+                    "BILD_BINAER_ID-Update fuer LIEF_ART %s: %s",
+                    lief_art_rec_id, exc)
     return {'ok': True, 'parsed': parsed, 'msg': None}
 
 
@@ -2883,14 +2988,20 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         vpe_lief = None
         if lief_cache:
             bild_lokal = lief_cache.get('BILD_LOKAL') or ''
+            bild_binaer_id = lief_cache.get('BILD_BINAER_ID') or 0
+            # Bild-URL-Prio: BINAERDATEN-BLOB > Filesystem-Cache > externe URL.
+            if bild_binaer_id:
+                bild_url_eff = f'/binaer/{int(bild_binaer_id)}'
+            elif bild_lokal:
+                bild_url_eff = f'/produktbilder/{bild_lokal}'
+            else:
+                bild_url_eff = lief_cache.get('BILD_URL') or ''
             lief_block = {
                 'bezeichnung':     lief_cache.get('BEZEICHNUNG'),
                 'barcode_stueck':  lief_cache.get('BARCODE_STUECK'),
                 'barcode_kt':      lief_cache.get('BARCODE_KT'),
-                'bild_url':        (f'/produktbilder/{bild_lokal}'
-                                     if bild_lokal else
-                                     (lief_cache.get('BILD_URL') or '')),
-                'bild_lokal':      bool(bild_lokal),
+                'bild_url':        bild_url_eff,
+                'bild_lokal':      bool(bild_lokal or bild_binaer_id),
                 'verfuegbarkeit':  lief_cache.get('VERFUEGBARKEIT'),
                 'vpe_ek':          lief_cache.get('VPE_EK'),
             }
