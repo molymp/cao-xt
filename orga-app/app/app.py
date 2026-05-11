@@ -894,6 +894,150 @@ def umsatz_heatmap_export():
                      download_name=f'umsatz_heatmap_{von}_{bis}.csv')
 
 
+# ── Backwaren-Bedarf (Reporting) ───────────────────────────────
+
+@app.get('/orga/berichte/backwaren')
+def berichte_backwaren_seite():
+    """Visualisierung Wetter/Ferien/Feiertage-Effekte auf den
+    Backwaren-Umsatz um einen Stichtag herum."""
+    stichtag = _parse_datum(request.args.get('stichtag'),
+                             date.today() - timedelta(days=7))
+    return render_template('berichte_backwaren.html', stichtag=stichtag)
+
+
+@app.get('/orga/berichte/backwaren/daten')
+def berichte_backwaren_daten():
+    """JSON-Daten fuer den Backwaren-Bericht.
+
+    Query:
+      stichtag     YYYY-MM-DD (Pflicht)
+      fenster      ±N Tage um den Stichtag (Default 14)
+      lookback     Tage rueckwaerts fuer Scatter/Korrelation (Default 1095 = 3 J)
+      wochentag    0..6 optional (filtert Lookback auf einen Wochentag)
+    """
+    from modules.orga.bestellvorschlag import models as _bvm
+    try:
+        sti_str = request.args.get('stichtag')
+        if not sti_str:
+            return jsonify({'ok': False, 'msg': 'stichtag fehlt'}), 400
+        stichtag = date.fromisoformat(sti_str)
+        fenster  = max(3, min(int(request.args.get('fenster') or 14), 90))
+        lookback = max(30, min(int(request.args.get('lookback') or 1095),
+                                3650))
+        wt_filt  = request.args.get('wochentag')
+        wt_filt  = int(wt_filt) if wt_filt not in (None, '') else None
+    except ValueError:
+        return jsonify({'ok': False, 'msg': 'ungueltige Parameter'}), 400
+
+    # Timeline um den Stichtag (±fenster Tage)
+    tl_von = stichtag - timedelta(days=fenster)
+    tl_bis = stichtag + timedelta(days=fenster)
+    timeline = list(reversed(_bvm.tagesdaten(tl_von, tl_bis)))
+
+    # Lookback-Range (fuer Scatter + Korrelation + Vergleich)
+    lb_von = stichtag - timedelta(days=lookback)
+    lb_bis = stichtag
+    lookback_zeilen = _bvm.tagesdaten(lb_von, lb_bis)
+    if wt_filt is not None:
+        lookback_zeilen = [r for r in lookback_zeilen
+                            if r['wochentag'] == wt_filt]
+
+    # Stichtag-Zeile (falls im Timeline-Set)
+    sti_row = next((r for r in timeline if r['datum'] == stichtag), None)
+
+    # Vergleichs-Buckets
+    def _avg(zeilen, key='umsatz_brutto'):
+        zeilen_aktiv = [z for z in zeilen if z['n_bons'] > 0]
+        if not zeilen_aktiv:
+            return {'avg': 0, 'n': 0}
+        return {
+            'avg': sum(float(z[key]) for z in zeilen_aktiv)
+                    / len(zeilen_aktiv),
+            'n':   len(zeilen_aktiv),
+        }
+    vergleich: dict = {}
+    # Vor/Nach im Timeline-Fenster
+    vor  = [z for z in timeline if z['datum'] < stichtag]
+    nach = [z for z in timeline if z['datum'] > stichtag]
+    if vor:
+        a = _avg(vor)
+        vergleich['vor'] = {**a, 'von': vor[0]['datum'].isoformat(),
+                            'bis': vor[-1]['datum'].isoformat()}
+    if nach:
+        a = _avg(nach)
+        vergleich['nach'] = {**a, 'von': nach[0]['datum'].isoformat(),
+                             'bis': nach[-1]['datum'].isoformat()}
+    # Ferien vs. Schulzeit im Lookback (Wochentag-Filter beruecksichtigt)
+    ferien_z    = [z for z in lookback_zeilen if z['ist_ferien']]
+    schulzeit_z = [z for z in lookback_zeilen if not z['ist_ferien']]
+    if ferien_z:    vergleich['ferien']    = _avg(ferien_z)
+    if schulzeit_z: vergleich['schulzeit'] = _avg(schulzeit_z)
+    # Tag vor/nach Feiertag im Lookback
+    ft_set = {z['datum'] for z in lookback_zeilen if z['feiertag']}
+    vortag = [z for z in lookback_zeilen
+               if (z['datum'] + timedelta(days=1)) in ft_set]
+    nachtag = [z for z in lookback_zeilen
+                if (z['datum'] - timedelta(days=1)) in ft_set]
+    vergleich['feiertag'] = {
+        'vortag':    _avg(vortag)['avg']   if vortag  else None,
+        'vortag_n':  len(vortag),
+        'nachtag':   _avg(nachtag)['avg']  if nachtag else None,
+        'nachtag_n': len(nachtag),
+    }
+    # Warm vs. Kalt (Tmax-Quartile)
+    tmax_werte = sorted(z['tmax_c'] for z in lookback_zeilen
+                         if z['tmax_c'] is not None and z['n_bons'] > 0)
+    if len(tmax_werte) >= 12:
+        q_warm = tmax_werte[int(len(tmax_werte) * 0.75)]
+        q_kalt = tmax_werte[int(len(tmax_werte) * 0.25)]
+        warm = [z for z in lookback_zeilen
+                 if z['tmax_c'] is not None and z['tmax_c'] >= q_warm
+                 and z['n_bons'] > 0]
+        kalt = [z for z in lookback_zeilen
+                 if z['tmax_c'] is not None and z['tmax_c'] <= q_kalt
+                 and z['n_bons'] > 0]
+        vergleich['warm'] = {**_avg(warm), 'schwelle': round(q_warm, 1)}
+        vergleich['kalt'] = {**_avg(kalt), 'schwelle': round(q_kalt, 1)}
+    # Regnerisch vs. Trocken
+    regn = [z for z in lookback_zeilen
+             if z['niederschlag_mm'] is not None
+             and z['niederschlag_mm'] >= 5 and z['n_bons'] > 0]
+    trk  = [z for z in lookback_zeilen
+             if z['niederschlag_mm'] is not None
+             and z['niederschlag_mm'] < 1 and z['n_bons'] > 0]
+    if regn: vergleich['regnerisch'] = _avg(regn)
+    if trk:  vergleich['trocken']    = _avg(trk)
+    # Gesamt-Avg fuer Delta-Bezug bei Feiertags-Vergleichen
+    vergleich['alle'] = _avg(lookback_zeilen)
+
+    def _row_json(r: dict) -> dict:
+        out = dict(r)
+        out['datum'] = r['datum'].isoformat()
+        return out
+
+    return jsonify({
+        'ok': True,
+        'stichtag': {
+            'datum':         stichtag.isoformat(),
+            'wochentag':     stichtag.weekday(),
+            'n_bons':        (sti_row or {}).get('n_bons') or 0,
+            'menge':         (sti_row or {}).get('menge') or 0,
+            'umsatz_brutto': (sti_row or {}).get('umsatz_brutto') or 0,
+            'tmax_c':        (sti_row or {}).get('tmax_c'),
+            'feiertag':      (sti_row or {}).get('feiertag'),
+            'ist_ferien':    (sti_row or {}).get('ist_ferien') or False,
+        },
+        'timeline': [_row_json(r) for r in timeline],
+        'lookback': {
+            'von':      lb_von.isoformat(),
+            'bis':      lb_bis.isoformat(),
+            'wt_filt':  wt_filt,
+            'zeilen':   [_row_json(r) for r in lookback_zeilen],
+        },
+        'vergleich': vergleich,
+    })
+
+
 # ── Koppelkauf-Analyse ─────────────────────────────────────────
 
 try:

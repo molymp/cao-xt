@@ -90,6 +90,7 @@
   <a href="{{ url_for('umsatz_heatmap_seite') }}"
      class="{% if bericht == 'umsatz_heatmap' %}aktiv{% endif %}">🌡️ Umsatz-Heatmap</a>
   <a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf</a>
+  <a href="{{ url_for('berichte_backwaren_seite') }}">🥨 Backwaren-Bedarf</a>
 </div>
 
 {# ════════════════════════════════════════════════════════════════
@@ -138,6 +139,11 @@
         <td><a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf-Analyse</a></td>
         <td>Aktionszeitraum</td><td>–</td>
         <td class="text-dim">Koppelkäufe bei Aktionsprodukten, Periodenvergleich, Aktionseffekt</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('berichte_backwaren_seite') }}">🥨 Backwaren-Bedarf</a></td>
+        <td>Stichtag + ±Fenster</td><td>–</td>
+        <td class="text-dim">Wetter/Ferien/Feiertag-Effekte auf den Backwaren-Umsatz, Timeline + Scatter + Korrelationen</td>
       </tr>
     </tbody>
   </table>
