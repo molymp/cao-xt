@@ -91,6 +91,20 @@ KATEGORIEN: list[dict] = [
         ],
     },
     {
+        'slug':         'mittagstisch',
+        'name':         'Mittagstisch',
+        'icon':         '🍽',
+        'beschreibung': 'Tagesmenü Mo–Fr — Artikel „Essen to go" (seit 2020) '
+                        'und „Essen groß to go" (seit April 2024). '
+                        'Quiche/Pizza/Flammkuchen NICHT enthalten — '
+                        'gehören in die „Essen"-Kategorie.',
+        'wg_ids':       [],
+        'artikel_ids': [
+            5314,  # Essen to go
+            6195,  # Essen groß to go
+        ],
+    },
+    {
         'slug':         'semmel_sandwich',
         'name':         'Semmel & Sandwich (mit Quiche, Butterkringel)',
         'icon':         '🥪',
@@ -143,7 +157,7 @@ def gesamtumsatz_tagesdaten(von: _dt.date, bis: _dt.date) -> list[dict]:
                    COUNT(*) AS n_bons,
                    SUM(j.BSUMME) AS umsatz_brutto
             FROM JOURNAL j
-            WHERE j.QUELLE = 3 AND j.STADIUM = 9
+            WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
               AND j.RDATUM >= %s AND j.RDATUM < %s + INTERVAL 1 DAY
             GROUP BY DATE(j.RDATUM)
         """, (von, bis))
@@ -275,6 +289,108 @@ def _wettereffekt(zeilen: list[dict], schwellen: dict) -> dict:
     }
 
 
+def _wochentag_avgs(rows: list[dict]) -> dict[int, dict]:
+    aktiv = [r for r in rows if r['n_bons'] > 0]
+    nach: dict[int, list[float]] = {}
+    for r in aktiv:
+        nach.setdefault(r['wochentag'], []).append(r['umsatz_brutto'])
+    out: dict[int, dict] = {}
+    for wd, vals in nach.items():
+        out[wd] = {'avg': sum(vals) / len(vals), 'n': len(vals)}
+    return out
+
+
+def _monat_avgs(rows: list[dict]) -> dict[int, dict]:
+    aktiv = [r for r in rows if r['n_bons'] > 0]
+    nach: dict[int, list[float]] = {}
+    for r in aktiv:
+        nach.setdefault(r['datum'].month, []).append(r['umsatz_brutto'])
+    out: dict[int, dict] = {}
+    for m, vals in nach.items():
+        out[m] = {'avg': sum(vals) / len(vals), 'n': len(vals)}
+    return out
+
+
+def _faktoren_lifts(rows: list[dict],
+                    feiertage_im_zeitraum: set) -> dict:
+    """Liefert Lift-Werte für die wichtigsten NICHT-Wetter-Faktoren."""
+    aktiv = [r for r in rows if r['n_bons'] > 0]
+    if not aktiv:
+        return {'n': 0}
+    avg_alle = sum(r['umsatz_brutto'] for r in aktiv) / len(aktiv)
+
+    def sub_lift(filt) -> dict:
+        sub = [r for r in aktiv if filt(r)]
+        if not sub:
+            return {'lift': None, 'n': 0, 'avg': None}
+        a = sum(r['umsatz_brutto'] for r in sub) / len(sub)
+        return {'lift': (a - avg_alle) / avg_alle * 100 if avg_alle else None,
+                'n': len(sub), 'avg': a}
+
+    return {
+        'n':                       len(aktiv),
+        'avg_alle':                avg_alle,
+        # Vor-/Nach-Feiertag (Hamsterkauf-Cluster)
+        'tag_vor_ft':              sub_lift(
+            lambda r: (r['datum'] + _dt.timedelta(days=1)) in feiertage_im_zeitraum),
+        'zwei_tage_vor_ft':        sub_lift(
+            lambda r: (r['datum'] + _dt.timedelta(days=2)) in feiertage_im_zeitraum),
+        'tag_nach_ft':             sub_lift(
+            lambda r: (r['datum'] - _dt.timedelta(days=1)) in feiertage_im_zeitraum),
+        'zwei_tage_nach_ft':       sub_lift(
+            lambda r: (r['datum'] - _dt.timedelta(days=2)) in feiertage_im_zeitraum),
+        # Schulferien
+        'ferien':                  sub_lift(lambda r: r['ist_ferien']),
+        'schulzeit':               sub_lift(lambda r: not r['ist_ferien']),
+        # Saison
+        'advent':                  sub_lift(
+            lambda r: r['datum'].month == 12 and r['datum'].day <= 24),
+        'hochsommer':              sub_lift(
+            lambda r: r['datum'].month in (7, 8)),
+        'nachweihnachten':         sub_lift(
+            lambda r: r['datum'].month in (1, 2)),
+        # Wochentage
+        'wochentag':               _wochentag_avgs(aktiv),
+        'monat':                   _monat_avgs(aktiv),
+    }
+
+
+def faktoren_vergleich(von: _dt.date, bis: _dt.date,
+                        wochentag: Optional[int] = None) -> dict:
+    """Sammelt fuer Gesamtumsatz + alle Kategorien alle nicht-Wetter-
+    Lift-Werte (Wochentag, Monat, Saison, Feiertags-Cluster, Ferien).
+    """
+    feiertage_im_zeitraum = set(_ft.alle_im_zeitraum(von, bis).keys())
+
+    def _filter_wt(rows):
+        if wochentag is None: return rows
+        return [r for r in rows if r['wochentag'] == wochentag]
+
+    ergebnisse = []
+    # Gesamtumsatz
+    rows = _filter_wt(gesamtumsatz_tagesdaten(von, bis))
+    ergebnisse.append({
+        'slug':    GESAMT_KATEGORIE['slug'],
+        'name':    GESAMT_KATEGORIE['name'],
+        'icon':    GESAMT_KATEGORIE['icon'],
+        'faktoren': _faktoren_lifts(rows, feiertage_im_zeitraum),
+    })
+    for k in KATEGORIEN:
+        rows = _filter_wt(tagesdaten_kategorie(k, von, bis))
+        ergebnisse.append({
+            'slug':    k['slug'],
+            'name':    k['name'],
+            'icon':    k['icon'],
+            'faktoren': _faktoren_lifts(rows, feiertage_im_zeitraum),
+        })
+    return {
+        'von':         von,
+        'bis':         bis,
+        'wochentag':   wochentag,
+        'kategorien':  ergebnisse,
+    }
+
+
 def wettereffekt_vergleich(von: _dt.date, bis: _dt.date,
                             wochentag: Optional[int] = None,
                             schwellen: Optional[dict] = None) -> dict:
@@ -368,7 +484,7 @@ def tagesdaten_kategorie(kategorie: dict,
             SUM(jp.GPREIS)           AS umsatz_brutto
         FROM JOURNAL j
         JOIN JOURNALPOS jp ON jp.JOURNAL_ID = j.REC_ID
-        WHERE j.QUELLE = 3 AND j.STADIUM = 9
+        WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
           AND ({where_pos})
           AND j.RDATUM >= %s AND j.RDATUM < %s + INTERVAL 1 DAY
         GROUP BY DATE(j.RDATUM)

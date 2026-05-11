@@ -91,6 +91,7 @@
      class="{% if bericht == 'umsatz_heatmap' %}aktiv{% endif %}">🌡️ Umsatz-Heatmap</a>
   <a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf</a>
   <a href="{{ url_for('berichte_wettereffekt_seite') }}">🌦 Wettereffekt-Vergleich</a>
+  <a href="{{ url_for('berichte_faktoren_seite') }}">🔥 Faktoren-Heatmap</a>
   {% for k in (bericht_kategorien or []) %}
   <a href="{{ url_for('berichte_kategorie_seite', slug=k.slug) }}">{{ k.icon }} {{ k.name }}</a>
   {% endfor %}
@@ -147,6 +148,11 @@
         <td><a href="{{ url_for('berichte_wettereffekt_seite') }}">🌦 Wettereffekt-Vergleich</a></td>
         <td>2 J Lookback</td><td>–</td>
         <td class="text-dim">Wie stark wirkt das Wetter pro Kategorie? Tabelle + Bar-Charts mit Schönwetter-Lift über alle Kategorien gleichzeitig.</td>
+      </tr>
+      <tr>
+        <td><a href="{{ url_for('berichte_faktoren_seite') }}">🔥 Faktoren-Heatmap</a></td>
+        <td>2 J Lookback</td><td>–</td>
+        <td class="text-dim">Lift in % für Wochentag / Monat / Saison / Feiertags-Cluster / Schulferien je Kategorie. Inkl. Mittagstisch-Wochentag- und Monatsverlauf.</td>
       </tr>
       {% for k in (bericht_kategorien or []) %}
       <tr>

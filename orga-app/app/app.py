@@ -1087,6 +1087,33 @@ def berichte_wettereffekt_seite():
                            von=von, bis=bis)
 
 
+@app.get('/orga/berichte/faktoren')
+def berichte_faktoren_seite():
+    """Faktoren-Heatmap: alle nicht-Wetter-Faktoren x alle Kategorien."""
+    heute = date.today()
+    von = _parse_datum(request.args.get('von'),
+                        heute - timedelta(days=730))
+    bis = _parse_datum(request.args.get('bis'), heute)
+    return render_template('berichte_faktoren.html',
+                           von=von, bis=bis)
+
+
+@app.get('/orga/berichte/faktoren/daten')
+def berichte_faktoren_daten():
+    from modules.orga.bestellvorschlag import kategorie as _kat
+    heute = date.today()
+    try:
+        von = date.fromisoformat(request.args.get('von')
+                                  or (heute - timedelta(days=730)).isoformat())
+        bis = date.fromisoformat(request.args.get('bis') or heute.isoformat())
+    except ValueError:
+        return jsonify({'ok': False, 'msg': 'ungueltige Parameter'}), 400
+    r = _kat.faktoren_vergleich(von, bis)
+    r['von'] = r['von'].isoformat()
+    r['bis'] = r['bis'].isoformat()
+    return jsonify({'ok': True, **r})
+
+
 @app.get('/orga/berichte/wettereffekt/daten')
 def berichte_wettereffekt_daten():
     """JSON-Daten fuer den Wettereffekt-Vergleich.
