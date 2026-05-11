@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+{% block title %}Bericht – Backwaren-Bedarf{% endblock %}
+
+{% block extra_style %}
+<style>
+.br-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+.br-kopf h1 { font-size:1.5rem; }
+.br-nav { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; }
+.br-nav a { padding:6px 12px; border-radius:14px; background:white;
+  border:1px solid var(--creme-dunkel); color:var(--gruen-dunkel);
+  font-size:0.88rem; text-decoration:none; }
+.br-nav a.aktiv { background:var(--gruen-dunkel); color:white;
+  border-color:var(--gruen-dunkel); }
+
+.br-toolbar { background:white; padding:14px 18px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  margin-bottom:18px; display:flex; gap:14px; align-items:center;
+  flex-wrap:wrap; }
+.br-toolbar label { font-size:0.85rem; font-weight:700;
+  color:var(--text-dim,#5a7a3a); }
+.br-toolbar input[type=date], .br-toolbar input[type=number],
+.br-toolbar select {
+  padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.9rem; min-width:90px; }
+.br-toolbar .br-btn { padding:7px 16px; background:var(--gruen-mitte);
+  color:white; border:none; border-radius:var(--radius-klein);
+  font-weight:700; cursor:pointer; }
+.br-toolbar .br-btn:hover { background:var(--gruen-dunkel); }
+
+.br-grid { display:grid; gap:18px;
+  grid-template-columns:repeat(auto-fit,minmax(440px,1fr)); }
+.br-card { background:white; padding:16px 20px; border-radius:var(--radius);
+  box-shadow:var(--schatten); }
+.br-card h2 { font-size:1.05rem; margin-bottom:10px; color:var(--gruen-dunkel); }
+.br-card .sub { font-size:0.82rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:8px; }
+.br-card canvas { max-width:100%; height:300px !important; }
+
+.br-vergleich { display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:12px; margin-top:6px; }
+.br-vergleich .cell { background:var(--bg-hell,#ece3cc); padding:10px 12px;
+  border-radius:8px; border-left:4px solid var(--creme-dunkel); }
+.br-vergleich .cell.warm { border-left-color:#c8780a; }
+.br-vergleich .cell.kalt { border-left-color:#3a78a0; }
+.br-vergleich .cell.sonne { border-left-color:#e8d260; }
+.br-vergleich .cell.regen { border-left-color:#5078b0; }
+.br-vergleich .cell.ferien { border-left-color:#1a5a8a; }
+.br-vergleich .cell.feiertag { border-left-color:#a02020; }
+.br-vergleich .cell .lbl { font-size:0.74rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--text-dim,#5a7a3a); }
+.br-vergleich .cell .val { font-size:1.4rem; font-weight:800;
+  color:var(--gruen-dunkel); font-variant-numeric:tabular-nums;
+  line-height:1.1; }
+.br-vergleich .cell .delta { font-size:0.8rem;
+  font-variant-numeric:tabular-nums; }
+.br-vergleich .cell .delta.up   { color:#1a7a1a; }
+.br-vergleich .cell .delta.down { color:#a02020; }
+.br-vergleich .cell .n { font-size:0.72rem; color:var(--text-dim,#5a7a3a); }
+
+.br-hinweis { font-size:0.82rem; color:var(--text-dim,#5a7a3a);
+  margin-top:8px; line-height:1.5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="br-kopf">
+  <h1>🥨 Bericht: Backwaren-Bedarf</h1>
+  <span style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
+    Datenbasis: WG=1 (Backwaren) · Wetter Habach · Feiertage/Schulferien Bayern
+  </span>
+</div>
+
+<div class="br-nav">
+  <a href="{{ url_for('berichte_seite') }}">🏠 Übersicht</a>
+  <a href="{{ url_for('tagesumsatz_seite') }}">💰 Tagesumsatz</a>
+  <a href="{{ url_for('monatsuebersicht_seite') }}">📅 Monatsübersicht</a>
+  <a href="{{ url_for('umsatz_heatmap_seite') }}">🌡️ Umsatz-Heatmap</a>
+  <a class="aktiv" href="#">🥨 Backwaren-Bedarf</a>
+</div>
+
+<div class="br-toolbar">
+  <label>Stichtag</label>
+  <input type="date" id="br-stichtag" value="{{ stichtag.isoformat() }}">
+  <label>Fenster ±</label>
+  <input type="number" id="br-fenster" min="3" max="90" value="14" step="1">
+  <label>Wochentag-Filter</label>
+  <select id="br-wt">
+    <option value="">alle</option>
+    <option value="0">Mo</option><option value="1">Di</option>
+    <option value="2">Mi</option><option value="3">Do</option>
+    <option value="4">Fr</option><option value="5" selected>Sa</option>
+  </select>
+  <label>Lookback (für Streuung)</label>
+  <select id="br-lookback">
+    <option value="365">1 Jahr</option>
+    <option value="730">2 Jahre</option>
+    <option value="1095" selected>3 Jahre</option>
+    <option value="1825">5 Jahre</option>
+    <option value="3000">alles</option>
+  </select>
+  <button class="br-btn" onclick="brLaden()">↻ Aktualisieren</button>
+</div>
+
+<!-- ── Vergleich: vor/nach + Ferien + Feiertag ──────────────── -->
+<div class="br-card" style="margin-bottom:18px;">
+  <h2>Vergleich um den Stichtag</h2>
+  <div class="sub" id="br-stichtag-info">Lade…</div>
+  <div class="br-vergleich" id="br-vergleich"></div>
+</div>
+
+<div class="br-grid">
+  <!-- ── Timeline ─────────────────────────────────────────── -->
+  <div class="br-card" style="grid-column:1/-1;">
+    <h2>Tagesumsatz um den Stichtag</h2>
+    <div class="sub">Linie: Umsatz brutto (€). Schraffierte Bereiche: Schulferien Bayern. Senkrechte Linien: Feiertage. Punkte: Wetter — Größe ∝ Temperatur, Farbe ∝ Niederschlag.</div>
+    <canvas id="br-timeline"></canvas>
+  </div>
+
+  <!-- ── Scatter Wetter ──────────────────────────────────── -->
+  <div class="br-card">
+    <h2>Umsatz ~ Temperatur</h2>
+    <div class="sub">Streudiagramm: jeder Punkt ein Tag im Lookback. Stichtag rot markiert.</div>
+    <canvas id="br-sc-temp"></canvas>
+  </div>
+  <div class="br-card">
+    <h2>Umsatz ~ Niederschlag</h2>
+    <div class="sub">x = mm/Tag. Stichtag rot markiert.</div>
+    <canvas id="br-sc-regen"></canvas>
+  </div>
+  <div class="br-card">
+    <h2>Umsatz ~ Sonnenstunden</h2>
+    <div class="sub">x = Stunden/Tag. Stichtag rot markiert.</div>
+    <canvas id="br-sc-sonne"></canvas>
+  </div>
+  <div class="br-card">
+    <h2>Korrelations-Übersicht</h2>
+    <div class="sub">Pearson-Korrelation Umsatz ↔ Variable (gefiltertes Lookback, Wochentag-Filter beachtet).</div>
+    <div id="br-korrel" style="font-family:'JetBrains Mono',monospace;
+        font-size:0.9rem; line-height:1.7;"></div>
+  </div>
+</div>
+
+<div class="br-hinweis" style="margin-top:14px;">
+  ⓘ MAE und Korrelationen beziehen sich auf die WG „Backwaren (Bäcker)" insgesamt
+  (Sammelartikel). Sortendetail kommt mit dem CSV-Import historischer Bestellzettel.
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+const WT = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+let _charts = {};
+
+function _eur(v, dp) { dp = (dp==null) ? 2 : dp;
+  return Number(v || 0).toLocaleString('de-DE',
+    {minimumFractionDigits: dp, maximumFractionDigits: dp}); }
+
+function _toRows(json) { return json.zeilen || []; }
+
+function _pearson(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return null;
+  const mx = xs.reduce((a,b)=>a+b,0)/n;
+  const my = ys.reduce((a,b)=>a+b,0)/n;
+  let sxy = 0, sx2 = 0, sy2 = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx, dy = ys[i] - my;
+    sxy += dx * dy; sx2 += dx * dx; sy2 += dy * dy;
+  }
+  if (sx2 === 0 || sy2 === 0) return null;
+  return sxy / Math.sqrt(sx2 * sy2);
+}
+
+function _avg(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((a,b) => a+b, 0) / arr.length;
+}
+
+function _farbeReg(mm) {
+  // 0 mm = hellgrau → 20 mm = sattes blau
+  const t = Math.min(1, (mm || 0) / 20);
+  const r = Math.round(180 + (50 - 180) * t);
+  const g = Math.round(180 + (120 - 180) * t);
+  const b = Math.round(180 + (200 - 180) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function _zerstoere() {
+  Object.values(_charts).forEach(c => { try { c.destroy(); } catch(e){} });
+  _charts = {};
+}
+
+async function brLaden() {
+  const stichtag = document.getElementById('br-stichtag').value;
+  const fenster  = document.getElementById('br-fenster').value;
+  const wt       = document.getElementById('br-wt').value;
+  const lookback = document.getElementById('br-lookback').value;
+  if (!stichtag) return;
+  document.getElementById('br-stichtag-info').textContent = '⏳ lädt…';
+  const r = await fetch(`/orga/berichte/backwaren/daten`
+    + `?stichtag=${stichtag}&fenster=${fenster}&lookback=${lookback}`
+    + (wt !== '' ? `&wochentag=${wt}` : ''));
+  const j = await r.json();
+  if (!j.ok) {
+    document.getElementById('br-stichtag-info').textContent = j.msg || 'Fehler';
+    return;
+  }
+  _zerstoere();
+  renderVergleich(j);
+  renderTimeline(j);
+  renderScatter(j);
+  renderKorrel(j);
+  document.getElementById('br-stichtag-info').textContent =
+    `Stichtag ${stichtag}, ±${fenster} Tage. Lookback: ${j.lookback.zeilen.length} Tage`
+    + (wt !== '' ? ` (nur ${WT[parseInt(wt,10)]})` : '') + '.';
+}
+
+function renderVergleich(j) {
+  const v = j.vergleich;
+  const root = document.getElementById('br-vergleich');
+  function delta(a, b) {
+    if (b == 0) return '';
+    const p = (a - b) / b * 100;
+    const cls = p >= 0 ? 'up' : 'down';
+    const sym = p >= 0 ? '▲' : '▼';
+    return `<span class="delta ${cls}">${sym} ${p.toFixed(1)} %</span>`;
+  }
+  function cell(label, val, sub, n, cls) {
+    return `<div class="cell ${cls||''}">
+      <div class="lbl">${label}</div>
+      <div class="val">${_eur(val, 0)} €</div>
+      ${sub ? `<div class="delta">${sub}</div>` : ''}
+      ${n != null ? `<div class="n">n=${n} Tage</div>` : ''}
+    </div>`;
+  }
+  let html = '';
+  html += cell(`Stichtag ${j.stichtag.datum}`,
+               j.stichtag.umsatz_brutto, '', null, '');
+  if (v.vor && v.nach) {
+    html += cell(`Vor (${v.vor.von}…${v.vor.bis})`,
+                 v.vor.avg, delta(j.stichtag.umsatz_brutto, v.vor.avg),
+                 v.vor.n, '');
+    html += cell(`Nach (${v.nach.von}…${v.nach.bis})`,
+                 v.nach.avg, delta(j.stichtag.umsatz_brutto, v.nach.avg),
+                 v.nach.n, '');
+  }
+  if (v.ferien && v.schulzeit) {
+    html += cell('Ø Schulferien',
+                 v.ferien.avg,
+                 delta(v.ferien.avg, v.schulzeit.avg),
+                 v.ferien.n, 'ferien');
+    html += cell('Ø Schulzeit',
+                 v.schulzeit.avg, '', v.schulzeit.n, '');
+  }
+  if (v.feiertag) {
+    if (v.feiertag.vortag != null) {
+      html += cell('Tag VOR Feiertag', v.feiertag.vortag,
+                   delta(v.feiertag.vortag, v.alle.avg),
+                   v.feiertag.vortag_n, 'feiertag');
+    }
+    if (v.feiertag.nachtag != null) {
+      html += cell('Tag NACH Feiertag', v.feiertag.nachtag,
+                   delta(v.feiertag.nachtag, v.alle.avg),
+                   v.feiertag.nachtag_n, 'feiertag');
+    }
+  }
+  if (v.warm && v.kalt) {
+    html += cell(`Warm (tmax ≥ ${v.warm.schwelle} °C)`,
+                 v.warm.avg, delta(v.warm.avg, v.kalt.avg),
+                 v.warm.n, 'warm');
+    html += cell(`Kalt (tmax ≤ ${v.kalt.schwelle} °C)`,
+                 v.kalt.avg, '', v.kalt.n, 'kalt');
+  }
+  if (v.regnerisch && v.trocken) {
+    html += cell('Regentag (≥ 5 mm)', v.regnerisch.avg,
+                 delta(v.regnerisch.avg, v.trocken.avg),
+                 v.regnerisch.n, 'regen');
+    html += cell('Trocken (< 1 mm)', v.trocken.avg, '',
+                 v.trocken.n, '');
+  }
+  root.innerHTML = html;
+}
+
+function renderTimeline(j) {
+  const ctx = document.getElementById('br-timeline');
+  const rows = j.timeline;
+  const stichtag = j.stichtag.datum;
+  // Punkte
+  const labels = rows.map(r => r.datum);
+  const data_eur = rows.map(r => r.umsatz_brutto);
+  // Annotationen: Ferien-Streifen + Feiertage als senkrechte Linien
+  const datasets = [{
+    label: 'Umsatz (€)',
+    data: data_eur,
+    borderColor: '#1a4010',
+    backgroundColor: 'rgba(26,64,16,0.10)',
+    fill: true,
+    tension: 0.2,
+    yAxisID: 'y',
+  }];
+  // Temperatur als 2. Achse
+  if (rows.some(r => r.tmax_c != null)) {
+    datasets.push({
+      label: 'tmax (°C)',
+      data: rows.map(r => r.tmax_c),
+      borderColor: '#c8780a',
+      backgroundColor: 'rgba(200,120,10,0.10)',
+      borderDash: [4, 3],
+      fill: false,
+      tension: 0.3,
+      yAxisID: 'y2',
+      pointRadius: 0,
+    });
+  }
+  if (rows.some(r => r.niederschlag_mm != null)) {
+    datasets.push({
+      label: 'Regen (mm)',
+      data: rows.map(r => r.niederschlag_mm),
+      borderColor: '#3a78a0',
+      backgroundColor: 'rgba(58,120,160,0.20)',
+      fill: false,
+      tension: 0.3,
+      yAxisID: 'y3',
+      pointRadius: 0,
+    });
+  }
+  _charts.timeline = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            afterTitle: function(items) {
+              const i = items[0].dataIndex;
+              const r = rows[i];
+              const ctx = [];
+              ctx.push(WT[new Date(r.datum + 'T12:00').getDay() === 0 ? 6
+                            : new Date(r.datum + 'T12:00').getDay() - 1]);
+              if (r.feiertag)  ctx.push('🎉 ' + r.feiertag);
+              if (r.ist_ferien) ctx.push('🏝 Ferien');
+              if (r.datum === stichtag) ctx.push('⭐ Stichtag');
+              return ctx.join(' · ');
+            },
+          },
+        },
+      },
+      scales: {
+        y:  { position: 'left',  title: { display:true, text:'Umsatz €' } },
+        y2: { position: 'right', title: { display:true, text:'tmax °C' },
+              grid: { drawOnChartArea:false } },
+        y3: { display:false },
+      },
+    },
+    plugins: [{
+      id: 'feiertage-und-ferien',
+      beforeDraw(chart) {
+        const {ctx, chartArea, scales} = chart;
+        if (!chartArea) return;
+        ctx.save();
+        // Ferien-Streifen
+        rows.forEach((r, i) => {
+          if (r.ist_ferien) {
+            const x = scales.x.getPixelForValue(i);
+            const xw = scales.x.getPixelForValue(i + 1) - x;
+            ctx.fillStyle = 'rgba(80,140,200,0.10)';
+            ctx.fillRect(x - xw/2, chartArea.top, xw,
+                         chartArea.bottom - chartArea.top);
+          }
+        });
+        // Feiertage als Linie
+        rows.forEach((r, i) => {
+          if (r.feiertag) {
+            const x = scales.x.getPixelForValue(i);
+            ctx.strokeStyle = 'rgba(160,32,32,0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#a02020';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillText(r.feiertag, x + 3, chartArea.top + 12);
+          }
+        });
+        // Stichtag dick
+        const iSti = rows.findIndex(r => r.datum === stichtag);
+        if (iSti >= 0) {
+          const x = scales.x.getPixelForValue(iSti);
+          ctx.strokeStyle = '#c8780a';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(x, chartArea.top);
+          ctx.lineTo(x, chartArea.bottom);
+          ctx.stroke();
+        }
+        ctx.restore();
+      },
+    }],
+  });
+}
+
+function _scatter(elId, rows, key, label, sti) {
+  const points = rows
+    .filter(r => r[key] != null && r.umsatz_brutto != null && r.n_bons > 0)
+    .map(r => ({x: r[key], y: r.umsatz_brutto,
+                _datum: r.datum,
+                _isSti: r.datum === sti}));
+  const stiPt = points.filter(p => p._isSti);
+  const normal = points.filter(p => !p._isSti);
+  _charts['sc_' + key] = new Chart(document.getElementById(elId), {
+    type: 'scatter',
+    data: { datasets: [
+      { label: label,
+        data: normal,
+        backgroundColor: 'rgba(26,64,16,0.50)',
+        pointRadius: 3 },
+      { label: 'Stichtag',
+        data: stiPt,
+        backgroundColor: '#c8780a',
+        pointRadius: 8, pointStyle: 'star' },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: {
+                   callbacks: {
+                     label: c => `${c.raw._datum}: ${label}=${c.raw.x.toFixed(1)} · Umsatz=${_eur(c.raw.y,2)} €`
+                   } } },
+      scales: {
+        x: { title: { display: true, text: label } },
+        y: { title: { display: true, text: 'Umsatz €' } },
+      },
+    },
+  });
+}
+
+function renderScatter(j) {
+  const rows = j.lookback.zeilen;
+  _scatter('br-sc-temp',  rows, 'tmax_c',          'tmax °C', j.stichtag.datum);
+  _scatter('br-sc-regen', rows, 'niederschlag_mm', 'Regen mm', j.stichtag.datum);
+  _scatter('br-sc-sonne', rows, 'sonnenstunden',   'Sonne h',  j.stichtag.datum);
+}
+
+function renderKorrel(j) {
+  const rows = j.lookback.zeilen.filter(r => r.n_bons > 0 && r.umsatz_brutto > 0);
+  const y = rows.map(r => r.umsatz_brutto);
+  function corr(k) {
+    const xs = rows.filter(r => r[k] != null).map(r => r[k]);
+    const ys = rows.filter(r => r[k] != null).map(r => r.umsatz_brutto);
+    const c = _pearson(xs, ys);
+    return c == null ? '–' : c.toFixed(3);
+  }
+  function farbe(v) {
+    const x = parseFloat(v);
+    if (isNaN(x)) return '#777';
+    if (Math.abs(x) < 0.1) return '#777';
+    if (Math.abs(x) < 0.25) return '#999';
+    if (Math.abs(x) < 0.4) return x > 0 ? '#1a7a1a' : '#a02020';
+    return x > 0 ? '#0a5a0a' : '#700000';
+  }
+  function row(name, val, hinweis) {
+    return `<div><span style="display:inline-block;min-width:130px;">${name}</span>`
+      + `<span style="display:inline-block;min-width:80px;color:${farbe(val)};font-weight:700;">${val}</span>`
+      + `<span style="color:var(--text-dim,#5a7a3a);">${hinweis||''}</span></div>`;
+  }
+  let html = '';
+  html += row('tmax (°C)',         corr('tmax_c'),          '');
+  html += row('tmin (°C)',         corr('tmin_c'),          '');
+  html += row('Niederschlag (mm)', corr('niederschlag_mm'), '');
+  html += row('Sonnenstunden',     corr('sonnenstunden'),   '');
+  html += `<div style="margin-top:8px;font-size:0.78rem;color:var(--text-dim,#5a7a3a);">
+    Pearson-Korrelation auf ${rows.length} Tagen. |r| < 0.1 vernachlaessigbar,
+    0.1-0.25 schwach, 0.25-0.4 mittel, > 0.4 stark.</div>`;
+  document.getElementById('br-korrel').innerHTML = html;
+}
+
+// Init
+brLaden();
+</script>
+{% endblock %}
