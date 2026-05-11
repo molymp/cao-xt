@@ -90,7 +90,9 @@
   <a href="{{ url_for('umsatz_heatmap_seite') }}"
      class="{% if bericht == 'umsatz_heatmap' %}aktiv{% endif %}">🌡️ Umsatz-Heatmap</a>
   <a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf</a>
-  <a href="{{ url_for('berichte_backwaren_seite') }}">🥨 Backwaren-Bedarf</a>
+  {% for k in (bericht_kategorien or []) %}
+  <a href="{{ url_for('berichte_kategorie_seite', slug=k.slug) }}">{{ k.icon }} {{ k.name }}</a>
+  {% endfor %}
 </div>
 
 {# ════════════════════════════════════════════════════════════════
@@ -140,11 +142,13 @@
         <td>Aktionszeitraum</td><td>–</td>
         <td class="text-dim">Koppelkäufe bei Aktionsprodukten, Periodenvergleich, Aktionseffekt</td>
       </tr>
+      {% for k in (bericht_kategorien or []) %}
       <tr>
-        <td><a href="{{ url_for('berichte_backwaren_seite') }}">🥨 Backwaren-Bedarf</a></td>
+        <td><a href="{{ url_for('berichte_kategorie_seite', slug=k.slug) }}">{{ k.icon }} {{ k.name }}</a></td>
         <td>Stichtag + ±Fenster</td><td>–</td>
-        <td class="text-dim">Wetter/Ferien/Feiertag-Effekte auf den Backwaren-Umsatz, Timeline + Scatter + Korrelationen</td>
+        <td class="text-dim">{{ k.beschreibung }}</td>
       </tr>
+      {% endfor %}
     </tbody>
   </table>
 </div>
