@@ -508,20 +508,13 @@ def ean_sonder_erkennen(barcode: str) -> dict | None:
     """
     Erkennt und dekodiert Sonder-EAN-Codes anhand der XT_KASSE_EAN_REGELN.
 
-    Inhouse-Preis-Format (13-stellig, TYP=PREIS — seit HAB-320 / April 2026):
-      XX AAAA PPPPPP Z
-      XX     = Bereichs-ID  (EAN_PRAEFIX)
-      AAAA   = 4-stellige CAO-ARTNUM  (Stellen 3–6, 0-basiert: [2:6])
-      PPPPPP = 6-stelliger Preis in Cent  [6:12]  z.B. 000800 = 8,00 EUR
-               (max. 999999 = 9999,99 EUR; vorher 5-stellig + Artikelteil-PZ)
-      Z      = EAN-13-Prüfziffer
-
-    Inhouse-Gewichts-Format (13-stellig, TYP=GEWICHT — Legacy CAO-Format):
+    Inhouse-Format (13-stellig, CAO-konform, TYP=PREIS oder GEWICHT):
       XX AAAA Z PPPPP Z
       XX    = Bereichs-ID  (EAN_PRAEFIX)
-      AAAA  = 4-stellige CAO-ARTNUM
+      AAAA  = 4-stellige CAO-ARTNUM  (Stellen 3–6, 0-basiert: [2:6])
       Z     = interne Artikelteil-Prüfziffer (Stelle 7)
-      PPPPP = 5-stelliges Gewicht in Gramm  [7:12]
+      PPPPP = 5-stelliger Wert [7:12]: Preis in Cent (TYP=PREIS,
+              max. 99999 = 999,99 EUR) oder Gramm (TYP=GEWICHT)
       Z     = EAN-13-Prüfziffer
 
     Presse-EAN / VDZ-Format (TYP=PRESSE):
@@ -597,30 +590,19 @@ def ean_sonder_erkennen(barcode: str) -> dict | None:
                 'gewicht_g':    None,
             }
 
-        # ── Preis- / Gewichts-EAN: 13-stellig ─────────────────────
+        # ── Preis- / Gewichts-EAN: 13-stellig + Artikelteil-Prüfziffer ─
         if len(barcode) != 13:
             log.warning('Inhouse-EAN muss 13-stellig sein: %s', barcode)
             continue
 
-        # Wert-Extraktion + ggf. Artikelteil-Pruefziffer je nach Typ:
-        # PREIS  (seit HAB-320): 6-stellig in [6:12], keine Pos-7-PZ
-        # GEWICHT (Legacy):      5-stellig in [7:12] + Pos-7-PZ-Pruefung
-        if typ == 'PREIS':
-            try:
-                wert = int(barcode[6:12])    # 6 Stellen, Cent
-            except ValueError:
-                continue
-        elif typ == 'GEWICHT':
-            if not _inhouse_artikelteil_pruefen(barcode):
-                log.warning('Gewichts-EAN Artikelteil-Prüfziffer ungültig: %s',
-                            barcode)
-                continue
-            try:
-                wert = int(barcode[7:12])    # 5 Stellen, Gramm
-            except ValueError:
-                continue
-        else:
-            # Unbekannter TYP — nicht weiter behandeln
+        if not _inhouse_artikelteil_pruefen(barcode):
+            log.warning('Inhouse-EAN Artikelteil-Prüfziffer ungültig: %s', barcode)
+            continue
+
+        # Wert aus Stellen 8–12 (0-basiert [7:12])
+        try:
+            wert = int(barcode[7:12])
+        except ValueError:
             continue
 
         # Artikel nachschlagen (Name + Steuer aus ARTIKEL-Tabelle)
@@ -640,7 +622,7 @@ def ean_sonder_erkennen(barcode: str) -> dict | None:
                 'mwst_satz':    mwst,
                 'wg_id':        wg_id,
                 'artikel_id':   artikel_id,
-                'preis_cent':   wert,       # 6-stellig: 000800 = 8,00 EUR
+                'preis_cent':   wert,       # 5-stellig: 02560 = 25,60 EUR
                 'preis_dialog': False,
                 'gewicht_g':    None,
             }
