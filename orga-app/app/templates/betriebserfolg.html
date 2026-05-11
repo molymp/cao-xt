@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+{% block title %}Bericht – Betriebserfolg{% endblock %}
+
+{% block extra_style %}
+<style>
+.be-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+.be-kopf h1 { font-size:1.5rem; }
+.be-nav { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; }
+.be-nav a { padding:6px 12px; border-radius:14px; background:white;
+  border:1px solid var(--creme-dunkel); color:var(--gruen-dunkel);
+  font-size:0.88rem; text-decoration:none; }
+.be-nav a.aktiv { background:var(--gruen-dunkel); color:white; }
+
+.be-toolbar { background:white; padding:14px 18px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  margin-bottom:18px; display:flex; gap:14px; align-items:center;
+  flex-wrap:wrap; }
+.be-toolbar label { font-size:0.85rem; font-weight:700;
+  color:var(--text-dim,#5a7a3a); }
+.be-toolbar select, .be-toolbar input {
+  padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.92rem; }
+.be-btn { padding:7px 14px; background:var(--gruen-mitte); color:white;
+  border:none; border-radius:var(--radius-klein); font-weight:700;
+  cursor:pointer; }
+.be-btn:hover { background:var(--gruen-dunkel); }
+.be-btn-ghost { background:transparent; color:var(--gruen-dunkel);
+  border:1px solid var(--creme-dunkel); }
+
+.be-grid { display:grid; gap:14px;
+  grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
+  margin-bottom:14px; }
+.be-card { background:white; padding:14px 18px;
+  border-radius:var(--radius); box-shadow:var(--schatten); }
+.be-card h2 { font-size:1.0rem; margin-bottom:6px;
+  color:var(--gruen-dunkel); }
+.be-card .sub { font-size:0.78rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:8px; }
+.be-card table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+.be-card th, .be-card td { padding:5px 8px;
+  border-bottom:1px solid var(--creme-dunkel);
+  font-variant-numeric:tabular-nums; }
+.be-card th { text-align:left; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--text-dim,#5a7a3a); background:var(--grau-hell); }
+.be-card td.right { text-align:right; }
+.be-card td.lbl { color:var(--text-mitte,#2e4a1a); }
+.be-card td.val { font-weight:700; }
+.be-card td.delta-pos { color:#0a5a0a; font-weight:700; }
+.be-card td.delta-neg { color:#a02020; font-weight:700; }
+
+.be-grosse-zahl { font-size:1.7rem; font-weight:800;
+  color:var(--gruen-dunkel); line-height:1.1;
+  font-variant-numeric:tabular-nums; }
+.be-zwei-spalten { display:grid;
+  grid-template-columns:1fr 1fr; gap:14px; }
+
+.be-edit-row { display:grid;
+  grid-template-columns:1fr 130px; align-items:center;
+  margin-bottom:6px; gap:8px; }
+.be-edit-row input { width:100%; text-align:right;
+  padding:4px 8px; border:1px solid var(--creme-dunkel);
+  border-radius:6px; font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums; }
+.be-edit-card { background:var(--bg-hell,#ece3cc);
+  border-left:4px solid var(--gold,#c8780a);
+  padding:14px 18px; border-radius:var(--radius);
+  margin-bottom:18px; }
+.be-edit-card h2 { color:var(--gold,#c8780a); }
+.be-edit-card .be-edit-grid { display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px;
+  margin-top:8px; }
+
+.be-headline { background:linear-gradient(180deg,#f4ecd1 0%,#ece3cc 100%);
+  border-radius:var(--radius); padding:14px 20px; margin-bottom:14px;
+  border-left:5px solid var(--gruen-dunkel); }
+.be-headline .titel { font-weight:800; font-size:1.05rem;
+  color:var(--gruen-dunkel); }
+.be-headline .sub { font-size:0.82rem; color:var(--text-mitte,#2e4a1a);
+  margin-top:4px; }
+.be-wt-tabelle { width:100%; border-collapse:collapse;
+  font-size:0.88rem; }
+.be-wt-tabelle th, .be-wt-tabelle td { padding:5px 8px;
+  border-bottom:1px solid var(--creme-dunkel);
+  font-variant-numeric:tabular-nums; }
+.be-wt-tabelle td.right { text-align:right; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="be-kopf">
+  <h1>📊 Bericht: Betriebserfolg (Monat)</h1>
+  <span style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
+    Kassenumsatz · Personal · Kosten · Hochrechnung
+  </span>
+</div>
+
+<div class="be-nav">
+  <a href="{{ url_for('berichte_seite') }}">🏠 Übersicht</a>
+  <a href="{{ url_for('berichte_wettereffekt_seite') }}">🌦 Wettereffekt</a>
+  <a href="{{ url_for('berichte_faktoren_seite') }}">🔥 Faktoren-Heatmap</a>
+  <a class="aktiv" href="#">📊 Betriebserfolg</a>
+</div>
+
+<div class="be-toolbar">
+  <label>Monat</label>
+  <select id="be-jahr"></select>
+  <select id="be-monat">
+    <option value="1">Januar</option>   <option value="2">Februar</option>
+    <option value="3">März</option>     <option value="4">April</option>
+    <option value="5">Mai</option>      <option value="6">Juni</option>
+    <option value="7">Juli</option>     <option value="8">August</option>
+    <option value="9">September</option><option value="10">Oktober</option>
+    <option value="11">November</option><option value="12">Dezember</option>
+  </select>
+  <button class="be-btn" onclick="beLaden()">↻ Laden</button>
+  <span id="be-info" style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);"></span>
+</div>
+
+<div id="be-content" style="display:none;">
+
+<!-- Headline -->
+<div class="be-headline">
+  <div class="titel" id="be-headline-titel">–</div>
+  <div class="sub" id="be-headline-sub">–</div>
+</div>
+
+<!-- Tageswerte (Mittelwert) -->
+<div class="be-card">
+  <h2>Tageswerte (Mittelwert über den Monat)</h2>
+  <table><thead><tr>
+    <th>Öffnungs-Std</th><th>Kunden / Tag</th>
+    <th>Umsatz/geöffnete Std</th><th>MAI</th>
+    <th>Std/Besetzzeit</th><th>Umsatz/Kunde</th>
+  </tr></thead><tbody><tr id="be-tw-row"></tr></tbody></table>
+</div>
+
+<!-- Monatswerte -->
+<div class="be-grid">
+  <div class="be-card">
+    <h2>Monats-Übersicht</h2>
+    <table><tbody id="be-mw-tbody"></tbody></table>
+  </div>
+  <div class="be-card">
+    <h2>Blitz-Ertragsrechnung — aktuell</h2>
+    <table><tbody id="be-bl-tbody"></tbody></table>
+  </div>
+  <div class="be-card">
+    <h2>Blitz-Ertragsrechnung — Hochrechnung Jahr</h2>
+    <table><tbody id="be-hr-tbody"></tbody></table>
+  </div>
+</div>
+
+<!-- Wochentag-Tabelle -->
+<div class="be-card">
+  <h2>Wochentag-Tabelle (im Monat)</h2>
+  <table class="be-wt-tabelle"><thead><tr>
+    <th>Wt</th><th class="right">n Tage</th>
+    <th class="right">Ø Umsatz</th><th class="right">Min</th><th class="right">Max</th>
+    <th class="right">% am Umsatz</th>
+    <th class="right">Ø MAI</th><th class="right">Min MAI</th><th class="right">Max MAI</th>
+  </tr></thead><tbody id="be-wt-tbody"></tbody></table>
+</div>
+
+<!-- Potenzial -->
+<div class="be-grid">
+  <div class="be-card">
+    <h2>Potenzial / Optimierungsvolumen</h2>
+    <table><tbody id="be-pot-tbody"></tbody></table>
+  </div>
+  <div class="be-card">
+    <h2>MAI-Block</h2>
+    <table><tbody id="be-mai-tbody"></tbody></table>
+  </div>
+</div>
+
+<!-- Editor: Monatswerte -->
+<div class="be-edit-card">
+  <h2>✏️ Monatswerte erfassen</h2>
+  <div class="sub">Verderb, Mitarbeiter-Einsatz-Stunden, Krankstunden und
+    Fixkosten werden manuell pro Monat gepflegt. Defaults werden für die
+    automatische Ertragsrechnung verwendet, wenn hier 0 steht.</div>
+  <div class="be-edit-grid">
+    <div>
+      <div class="be-edit-row"><label>Verderb (€)</label>
+        <input type="number" step="0.01" id="be-eg-verderb"></div>
+      <div class="be-edit-row"><label>MA-Einsatz-Stunden</label>
+        <input type="number" step="0.5" id="be-eg-ma"></div>
+    </div>
+    <div>
+      <div class="be-edit-row"><label>Krankstunden</label>
+        <input type="number" step="0.5" id="be-eg-krank"></div>
+      <div class="be-edit-row"><label>Fixkosten (€)</label>
+        <input type="number" step="0.01" id="be-eg-fix"></div>
+    </div>
+    <div>
+      <button class="be-btn" onclick="beEingabenSpeichern()">💾 Speichern</button>
+      <span id="be-eg-info" style="font-size:0.82rem; margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Editor: Konfig -->
+<div class="be-edit-card" style="border-left-color:var(--gruen-mitte);">
+  <h2 style="color:var(--gruen-mitte);">⚙️ Konfiguration (gilt für alle Monate)</h2>
+  <div class="sub">Standard-Quoten und Soll-Werte. Können jederzeit
+    angepasst werden — wirken sofort auf alle Berichte.</div>
+  <div class="be-edit-grid">
+    <div>
+      <div class="be-edit-row"><label>Rohertrag (%)</label>
+        <input type="number" step="0.01" id="be-cf-rohertrag"></div>
+      <div class="be-edit-row"><label>Personalkosten (%)</label>
+        <input type="number" step="0.01" id="be-cf-personalkosten"></div>
+      <div class="be-edit-row"><label>Sonstige Kosten (%)</label>
+        <input type="number" step="0.01" id="be-cf-sonst"></div>
+    </div>
+    <div>
+      <div class="be-edit-row"><label>Ideal-MAI (€/Std)</label>
+        <input type="number" step="0.01" id="be-cf-ideal-mai"></div>
+      <div class="be-edit-row"><label>Max-MAI Betrieb (€/Std)</label>
+        <input type="number" step="0.01" id="be-cf-max-mai"></div>
+      <div class="be-edit-row"><label>Stundensatz Netto (€/Std)</label>
+        <input type="number" step="0.01" id="be-cf-std-netto"></div>
+    </div>
+    <div>
+      <button class="be-btn" onclick="beKonfigSpeichern()">💾 Konfig speichern</button>
+      <span id="be-cf-info" style="font-size:0.82rem; margin-left:8px;"></span>
+    </div>
+  </div>
+</div>
+
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+'use strict';
+const MN = ['Januar','Februar','März','April','Mai','Juni','Juli',
+            'August','September','Oktober','November','Dezember'];
+const WT_NAME = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+function _eur(v, dp) { dp = (dp==null) ? 2 : dp;
+  return v == null ? '–' : Number(v).toLocaleString('de-DE',
+    {minimumFractionDigits: dp, maximumFractionDigits: dp}); }
+function _pct(v, dp) { dp = (dp==null) ? 1 : dp;
+  return v == null ? '–' : (v >= 0 ? '+' : '') + v.toFixed(dp) + ' %'; }
+function _num(v, dp) { dp = (dp==null) ? 1 : dp;
+  return v == null ? '–' : Number(v).toFixed(dp); }
+
+function _row(label, val, cls) {
+  return `<tr><td class="lbl">${label}</td><td class="right val${cls?' '+cls:''}">${val}</td></tr>`;
+}
+function _row2(label, v1, v2, cls) {
+  return `<tr><td class="lbl">${label}</td><td class="right val">${v1}</td>`
+    + `<td class="right val${cls?' '+cls:''}">${v2}</td></tr>`;
+}
+
+function jahrSelectFill(currentYear) {
+  const sel = document.getElementById('be-jahr');
+  sel.innerHTML = '';
+  for (let y = currentYear + 1; y >= 2018; y--) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    sel.appendChild(o);
+  }
+}
+
+async function beLaden() {
+  const jahr  = parseInt(document.getElementById('be-jahr').value, 10);
+  const monat = parseInt(document.getElementById('be-monat').value, 10);
+  if (!jahr || !monat) return;
+  document.getElementById('be-info').textContent = '⏳ lädt…';
+  document.getElementById('be-content').style.display = 'none';
+  // URL pushen
+  const url = new URL(window.location.href);
+  url.searchParams.set('jahr', jahr);
+  url.searchParams.set('monat', monat);
+  history.replaceState({jahr,monat}, '', url.pathname + url.search);
+
+  const r = await fetch(`/orga/berichte/betriebserfolg/api/daten?jahr=${jahr}&monat=${monat}`);
+  const j = await r.json();
+  if (!j.ok) {
+    document.getElementById('be-info').textContent = j.msg || 'Fehler';
+    return;
+  }
+  document.getElementById('be-info').textContent =
+    `${MN[monat-1]} ${jahr} · ${j.periode.n_aktive_tage} Verkaufstage von ${j.periode.n_offene_tage} planmaessig offenen.`;
+  document.getElementById('be-content').style.display = '';
+  renderHeadline(j);
+  renderTageswerte(j);
+  renderMonatswerte(j);
+  renderBlitz(j);
+  renderHochrechnung(j);
+  renderWochentag(j);
+  renderPotenzial(j);
+  renderMAI(j);
+  renderEditoren(j);
+}
+
+function renderHeadline(j) {
+  const mw = j.monatswerte;
+  const ertragCls = mw.ertrag >= 0 ? 'be-pos' : 'be-neg';
+  document.getElementById('be-headline-titel').innerHTML =
+    `${MN[j.monat-1]} ${j.jahr}: Umsatz <strong>${_eur(mw.umsatz)} €</strong> · `
+    + `Ertrag <strong style="color:${mw.ertrag>=0?'#0a5a0a':'#a02020'};">`
+    + `${_eur(mw.ertrag)} €</strong> (${_pct(mw.ertrag_pct, 1)})`;
+  const hr = j.hochrechnung;
+  document.getElementById('be-headline-sub').innerHTML =
+    `Hochrechnung Jahresumsatz: <strong>${_eur(hr.umsatz, 0)} €</strong> `
+    + `(YTD ${_eur(hr.ytd_umsatz, 0)} € auf ${hr.ytd_offene_tage} Tagen)`;
+}
+
+function renderTageswerte(j) {
+  const t = j.tageswerte;
+  document.getElementById('be-tw-row').innerHTML =
+    `<td class="right val">${_num(t.oeffnungs_std, 2)} h</td>`
+    + `<td class="right val">${_num(t.kunden_pro_tag, 1)}</td>`
+    + `<td class="right val">${_eur(t.umsatz_je_std)} €</td>`
+    + `<td class="right val">${t.mai_ist == null ? '–' : _eur(t.mai_ist) + ' €'}</td>`
+    + `<td class="right val">${t.std_je_besetz == null ? '–' : _num(t.std_je_besetz, 2)}</td>`
+    + `<td class="right val">${_eur(t.umsatz_je_kd)} €</td>`;
+}
+
+function renderMonatswerte(j) {
+  const mw = j.monatswerte;
+  let h = '';
+  h += _row('Monatsumsatz',     `${_eur(mw.umsatz)} €`);
+  h += _row('Verderb',          `${_eur(mw.verderb_eur)} € (${_pct(mw.verderb_pct,2)})`);
+  h += _row('Kunden / Bons',    `${mw.kunden.toLocaleString('de-DE')}`);
+  h += _row('Umsatz pro Kunde', `${_eur(mw.umsatz_je_kd)} €`);
+  h += _row('Öffnungs-Stunden', `${_num(mw.oeffnungs_std,1)} h`);
+  h += _row('Umsatz pro Std',   `${_eur(mw.umsatz_je_std)} €`);
+  h += _row('MA-Einsatz-Std',   `${_num(mw.ma_einsatz_std,1)} h`);
+  h += _row('Krankstunden',     `${_num(mw.krankstunden,1)} h (${mw.krank_quote_pct==null?'–':_pct(mw.krank_quote_pct)})`);
+  h += _row('MAI',              mw.mai==null ? '–' : `${_eur(mw.mai)} €/Std`);
+  h += _row('Std je Besetzzeit',mw.std_je_besetz==null ? '–' : _num(mw.std_je_besetz,2));
+  document.getElementById('be-mw-tbody').innerHTML = h;
+}
+
+function renderBlitz(j) {
+  const mw = j.monatswerte;
+  let h = '';
+  h += _row2('Gesamtumsatz',    `${_eur(mw.umsatz,0)} €`, '100,0 %');
+  h += _row2('Rohertrag',       `${_eur(mw.rohertrag,0)} €`, _pct(30.0,1));
+  h += _row2('Personalkosten',  `${_eur(mw.personalkosten,0)} €`,
+              _pct(mw.personalkosten_pct,2));
+  h += _row2('Sonstige Kosten', `${_eur(mw.sonstige_kosten,0)} €`,
+              _pct(mw.sonst_kosten_pct,2));
+  h += _row2('Fixkosten',       `${_eur(mw.fixkosten_eur,0)} €`,
+              _pct(mw.fix_kosten_pct,2));
+  const cls = mw.ertrag >= 0 ? 'delta-pos' : 'delta-neg';
+  h += _row2('Ertrag',          `${_eur(mw.ertrag,0)} €`,
+              _pct(mw.ertrag_pct,2), cls);
+  document.getElementById('be-bl-tbody').innerHTML = h;
+}
+
+function renderHochrechnung(j) {
+  const hr = j.hochrechnung;
+  let h = '';
+  h += _row2('Gesamtumsatz',    `${_eur(hr.umsatz,0)} €`, '100,0 %');
+  h += _row2('Rohertrag',       `${_eur(hr.rohertrag,0)} €`, '');
+  h += _row2('Personalkosten',  `${_eur(hr.personalkosten,0)} €`, '');
+  h += _row2('Sonstige Kosten', `${_eur(hr.sonstige_kosten,0)} €`, '');
+  h += _row2('Fixkosten (×12)', `${_eur(hr.fixkosten,0)} €`, '');
+  const cls = hr.ertrag >= 0 ? 'delta-pos' : 'delta-neg';
+  h += _row2('Ertrag',          `${_eur(hr.ertrag,0)} €`,
+              _pct(hr.ertrag_pct,2), cls);
+  document.getElementById('be-hr-tbody').innerHTML = h;
+}
+
+function renderWochentag(j) {
+  const wt = j.wochentag;
+  let h = '';
+  for (let wd = 0; wd < 7; wd++) {
+    const w = wt[wd];
+    if (!w) continue;
+    h += `<tr>
+      <td>${w.name}</td>
+      <td class="right">${w.n}</td>
+      <td class="right">${_eur(w.umsatz_avg)} €</td>
+      <td class="right">${_eur(w.umsatz_min)} €</td>
+      <td class="right">${_eur(w.umsatz_max)} €</td>
+      <td class="right">${_pct(w.umsatz_anteil_pct,1)}</td>
+      <td class="right">${w.mai_avg==null?'–':_eur(w.mai_avg)+' €'}</td>
+      <td class="right">${w.mai_min==null?'–':_eur(w.mai_min)+' €'}</td>
+      <td class="right">${w.mai_max==null?'–':_eur(w.mai_max)+' €'}</td>
+    </tr>`;
+  }
+  document.getElementById('be-wt-tbody').innerHTML = h;
+}
+
+function renderPotenzial(j) {
+  const p = j.potenzial;
+  let h = '';
+  h += _row('Verderbquote',        `${_eur(p.verderb_eur,2)} € (${_pct(p.verderb_pct,2)})`);
+  h += _row('Personal-Optimierung',`${_eur(p.gehalt_eur,2)} € (10 % Spielraum)`);
+  h += _row('Handelsspanne +0,5 pp',`${_eur(p.handelsspanne_eur,2)} €`);
+  h += _row('Potenzial gesamt',    `${_eur(p.gesamt_eur,2)} €`);
+  document.getElementById('be-pot-tbody').innerHTML = h;
+}
+
+function renderMAI(j) {
+  const m = j.mai_block;
+  const mw = j.monatswerte;
+  let h = '';
+  h += _row('Aktueller MAI',       mw.mai==null ? '–' : `${_eur(mw.mai)} €/Std`);
+  h += _row('Ideal-MAI',           `${_eur(m.ideal_mai)} €/Std`);
+  h += _row('Maximalwert MAI',     `${_eur(m.max_mai_betrieb)} €/Std`);
+  h += _row('Stundensatz Netto',   `${_eur(m.stundensatz_netto)} €/Std`);
+  if (m.reserve_std_monat != null) {
+    h += _row('Reserve Nettostunden / Monat',
+              `${_num(m.reserve_std_monat,1)} h`);
+  }
+  document.getElementById('be-mai-tbody').innerHTML = h;
+}
+
+function renderEditoren(j) {
+  const e = j.eingaben || {};
+  document.getElementById('be-eg-verderb').value = e.verderb_eur || '';
+  document.getElementById('be-eg-ma').value      = e.ma_einsatz_std || '';
+  document.getElementById('be-eg-krank').value   = e.krankstunden || '';
+  document.getElementById('be-eg-fix').value     = e.fixkosten_eur || '';
+  const k = j.konfig || {};
+  document.getElementById('be-cf-rohertrag').value      = k['betrieb.rohertrag_pct'] || '';
+  document.getElementById('be-cf-personalkosten').value = k['betrieb.personalkosten_pct'] || '';
+  document.getElementById('be-cf-sonst').value          = k['betrieb.sonst_kosten_pct'] || '';
+  document.getElementById('be-cf-ideal-mai').value      = k['betrieb.ideal_mai'] || '';
+  document.getElementById('be-cf-max-mai').value        = k['betrieb.max_mai'] || '';
+  document.getElementById('be-cf-std-netto').value      = k['betrieb.stundensatz_netto'] || '';
+}
+
+async function beEingabenSpeichern() {
+  const body = {
+    jahr:           parseInt(document.getElementById('be-jahr').value, 10),
+    monat:          parseInt(document.getElementById('be-monat').value, 10),
+    verderb_eur:    parseFloat(document.getElementById('be-eg-verderb').value) || 0,
+    ma_einsatz_std: parseFloat(document.getElementById('be-eg-ma').value) || 0,
+    krankstunden:   parseFloat(document.getElementById('be-eg-krank').value) || 0,
+    fixkosten_eur:  parseFloat(document.getElementById('be-eg-fix').value) || 0,
+  };
+  const r = await fetch('/orga/berichte/betriebserfolg/api/eingaben',
+    {method:'POST', headers:{'Content-Type':'application/json'},
+     body: JSON.stringify(body)});
+  const j = await r.json();
+  document.getElementById('be-eg-info').textContent = j.ok ? '✓ gespeichert' : (j.msg||'Fehler');
+  document.getElementById('be-eg-info').style.color = j.ok ? '#0a5a0a' : '#a02020';
+  if (j.ok) beLaden();   // neu berechnen
+}
+
+async function beKonfigSpeichern() {
+  const body = {
+    'betrieb.rohertrag_pct':      parseFloat(document.getElementById('be-cf-rohertrag').value),
+    'betrieb.personalkosten_pct': parseFloat(document.getElementById('be-cf-personalkosten').value),
+    'betrieb.sonst_kosten_pct':   parseFloat(document.getElementById('be-cf-sonst').value),
+    'betrieb.ideal_mai':          parseFloat(document.getElementById('be-cf-ideal-mai').value),
+    'betrieb.max_mai':            parseFloat(document.getElementById('be-cf-max-mai').value),
+    'betrieb.stundensatz_netto':  parseFloat(document.getElementById('be-cf-std-netto').value),
+  };
+  const r = await fetch('/orga/berichte/betriebserfolg/api/konfig',
+    {method:'POST', headers:{'Content-Type':'application/json'},
+     body: JSON.stringify(body)});
+  const j = await r.json();
+  document.getElementById('be-cf-info').textContent = j.ok ? '✓ gespeichert' : (j.msg||'Fehler');
+  document.getElementById('be-cf-info').style.color = j.ok ? '#0a5a0a' : '#a02020';
+  if (j.ok) beLaden();
+}
+
+// Init
+(function init() {
+  const now = new Date();
+  jahrSelectFill(now.getFullYear());
+  document.getElementById('be-jahr').value  = '{{ jahr }}';
+  document.getElementById('be-monat').value = '{{ monat }}';
+  beLaden();
+})();
+</script>
+{% endblock %}

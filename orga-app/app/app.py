@@ -256,6 +256,15 @@ except Exception as e:
     log.warning("Orga-Bestellvorschlag-Blueprint konnte nicht geladen "
                 "werden: %s", e)
 
+try:
+    from modules.orga.betriebserfolg import create_blueprint as _bef_bp
+    app.register_blueprint(_bef_bp(),
+                            url_prefix='/orga/berichte/betriebserfolg')
+    log.info("Orga-Betriebserfolg-Blueprint registriert.")
+except Exception as e:
+    log.warning("Orga-Betriebserfolg-Blueprint konnte nicht geladen "
+                "werden: %s", e)
+
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
 try:

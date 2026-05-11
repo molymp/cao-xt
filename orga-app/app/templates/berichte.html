@@ -92,6 +92,7 @@
   <a href="{{ url_for('koppelkauf_seite') }}">🛒 Koppelkauf</a>
   <a href="{{ url_for('berichte_wettereffekt_seite') }}">🌦 Wettereffekt-Vergleich</a>
   <a href="{{ url_for('berichte_faktoren_seite') }}">🔥 Faktoren-Heatmap</a>
+  <a href="/orga/berichte/betriebserfolg/">📊 Betriebserfolg</a>
   {% for k in (bericht_kategorien or []) %}
   <a href="{{ url_for('berichte_kategorie_seite', slug=k.slug) }}">{{ k.icon }} {{ k.name }}</a>
   {% endfor %}
@@ -153,6 +154,11 @@
         <td><a href="{{ url_for('berichte_faktoren_seite') }}">🔥 Faktoren-Heatmap</a></td>
         <td>2 J Lookback</td><td>–</td>
         <td class="text-dim">Lift in % für Wochentag / Monat / Saison / Feiertags-Cluster / Schulferien je Kategorie. Inkl. Mittagstisch-Wochentag- und Monatsverlauf.</td>
+      </tr>
+      <tr>
+        <td><a href="/orga/berichte/betriebserfolg/">📊 Betriebserfolg</a></td>
+        <td>monatlich</td><td>–</td>
+        <td class="text-dim">Komplette Monats-BWA: Umsatz, MAI, Personalkosten, Rohertrag, Blitz-Ertragsrechnung, Hochrechnung Jahresende. Editierbare Monatswerte (Verderb, Krank, Fixkosten) + Konfig (Quoten).</td>
       </tr>
       {% for k in (bericht_kategorien or []) %}
       <tr>
