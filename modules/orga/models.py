@@ -428,6 +428,42 @@ def warengruppen_liste() -> list:
         return cur.fetchall()
 
 
+def _wg_und_nachkommen(wgr_id: int) -> list[int]:
+    """Liefert ``wgr_id`` + alle Nachkommen-WG-IDs (rekursiv).
+
+    Eltern-Knoten haben oft 0 direkte Artikel — alle haengen an den
+    Unterkategorien. Klick auf einen Eltern-Knoten soll daher alle
+    Artikel der gesamten Sub-Hierarchie zeigen, nicht nur den Wurzel-
+    knoten selbst (gleiches Verhalten wie der CAO-Picker).
+    """
+    with get_db() as cur:
+        cur.execute("SELECT ID, TOP_ID FROM WARENGRUPPEN")
+        rows = cur.fetchall() or []
+    by_parent: dict[int, list[int]] = {}
+    for r in rows:
+        pid = r.get('TOP_ID')
+        try:
+            pid_i = int(pid) if pid is not None else None
+        except (TypeError, ValueError):
+            pid_i = None
+        if pid_i in (-1, 0):
+            pid_i = None  # CAO-Wurzel-Marker
+        wid = int(r['ID'])
+        if pid_i is not None and pid_i != wid:
+            by_parent.setdefault(pid_i, []).append(wid)
+    result: list[int] = []
+    stack: list[int] = [int(wgr_id)]
+    seen: set[int] = set()
+    while stack:
+        cur_id = stack.pop()
+        if cur_id in seen:
+            continue
+        seen.add(cur_id)
+        result.append(cur_id)
+        stack.extend(by_parent.get(cur_id, []))
+    return result
+
+
 def warengruppen_mit_faktor() -> list:
     """Warengruppen-Hierarchie mit Ø-Faktor aller aktiven Artikel.
 
@@ -539,8 +575,13 @@ def preispflege_liste(wgr_id: int | None = None,
     wgr_filter = ''
     params: list = []
     if wgr_id is not None:
-        wgr_filter = 'AND a.WARENGRUPPE = %s '
-        params.append(wgr_id)
+        # Klick auf einen Eltern-Knoten soll alle Artikel der gesamten
+        # Sub-Hierarchie zeigen (Eltern-WGs haben oft 0 direkte Artikel).
+        # Siehe _wg_und_nachkommen().
+        ids = _wg_und_nachkommen(int(wgr_id))
+        placeholders = ','.join(['%s'] * len(ids))
+        wgr_filter = f'AND a.WARENGRUPPE IN ({placeholders}) '
+        params.extend(ids)
     kontrolle_filter = (
         'AND vk.REC_ID IS NOT NULL ' if nur_kontrolle else ''
     )
