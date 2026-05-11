@@ -2312,6 +2312,36 @@ def position_zuordnen(pos_rec_id: int,
             """, (artrec, new_status, anmerkung, int(pos_rec_id)))
             if cur.rowcount == 0:
                 return {'ok': False, 'msg': 'Position nicht gefunden.'}
+
+            # Lief-Bild auf den verlinkten CAO-Artikel umtaggen
+            # (XT-Cache MODUL_ID=91020 -> CAO Artikel MODUL_ID=1020),
+            # damit es im CAO-Faktura-Reiter "Dateilinks" auftaucht.
+            if cao_artikel_rec_id is not None:
+                try:
+                    cur.execute("""
+                        SELECT ela.BILD_BINAER_ID
+                        FROM XT_EINKAUF_BESTELLPOS bp
+                        JOIN XT_EINKAUF_BESTELLUNG b
+                          ON b.REC_ID = bp.BEST_REC_ID
+                        JOIN XT_EINKAUF_LIEF_ARTIKEL ela
+                          ON ela.LIEF_REC_ID = b.LIEF_REC_ID
+                         AND ela.ARTIKEL_NR_LIEF = bp.ARTIKEL_NR_LIEF
+                        WHERE bp.REC_ID = %s
+                          AND ela.BILD_BINAER_ID IS NOT NULL
+                        LIMIT 1
+                    """, (int(pos_rec_id),))
+                    row = cur.fetchone() or {}
+                    bid = row.get('BILD_BINAER_ID')
+                    if bid:
+                        cur.execute("""
+                            UPDATE BINAERDATEN
+                               SET MODUL_ID = 1020, REFERENZ_ID = %s
+                             WHERE REC_ID = %s AND MODUL_ID = 91020
+                        """, (int(cao_artikel_rec_id), int(bid)))
+                except Exception as exc:
+                    log.warning(
+                        'Bild-Umtaggen (Pos %s -> Artikel %s): %s',
+                        pos_rec_id, cao_artikel_rec_id, exc)
         return {'ok': True, 'status': new_status,
                 'artikel_rec_id': artrec}
     except Exception as exc:
@@ -3004,6 +3034,11 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 'bild_lokal':      bool(bild_lokal or bild_binaer_id),
                 'verfuegbarkeit':  lief_cache.get('VERFUEGBARKEIT'),
                 'vpe_ek':          lief_cache.get('VPE_EK'),
+                # Fuer cao_sync_artikel: Bild beim Stammdaten-Match aus
+                # dem XT-Cache (MODUL_ID=91020) auf den neu angelegten
+                # ARTIKEL (MODUL_ID=1020) umtaggen.
+                'lief_art_rec_id': lief_cache.get('REC_ID'),
+                'bild_binaer_id':  bild_binaer_id or None,
             }
             try:
                 vpe_lief = (int(lief_cache['VPE_EK'])
@@ -3676,6 +3711,25 @@ def cao_sync_artikel(bestellung_rec_id: int,
                       f'{head.get("BESTELL_NR") or bestellung_rec_id} '
                       f'(Lief={head.get("LIEF_KUERZEL") or "?"}). '
                       f'VK5={vk5} (Faktor={vk5_faktor})'))
+
+                # 10. Lieferanten-Bild auf den neu angelegten Artikel
+                # umtaggen (XT-Cache 91020 -> CAO 1020). Damit ist das
+                # Bild ab sofort im CAO-Faktura-Artikelstamm-Reiter
+                # "Dateilinks" sichtbar.
+                bild_binaer_id = (lief_block or {}).get('bild_binaer_id')
+                if bild_binaer_id:
+                    try:
+                        cur.execute("""
+                            UPDATE BINAERDATEN
+                               SET MODUL_ID = 1020, REFERENZ_ID = %s
+                             WHERE REC_ID = %s
+                               AND MODUL_ID = 91020
+                        """, (int(artikel_id), int(bild_binaer_id)))
+                    except Exception as exc:
+                        log.warning(
+                            "Bild-Umtaggen (BINAERDATEN.REC_ID=%s -> "
+                            "Artikel %s) fehlgeschlagen: %s",
+                            bild_binaer_id, artikel_id, exc)
 
                 aktionen.append({
                     'pos_nr': pos_nr, 'art': 'INSERT',
