@@ -129,6 +129,207 @@ def holen(slug: str) -> Optional[dict]:
     return _BY_SLUG.get(slug)
 
 
+# ── Gesamtumsatz als virtuelle Kategorie ─────────────────────────
+
+
+def gesamtumsatz_tagesdaten(von: _dt.date, bis: _dt.date) -> list[dict]:
+    """Tageszeilen mit ALLEM (QUELLE=3 STADIUM=9) — auf JOURNAL-Ebene
+    aggregiert, nicht JOURNALPOS. Schneller und korrekt fuer
+    Gesamtumsatz-Vergleich.
+    """
+    with get_db() as cur:
+        cur.execute("""
+            SELECT DATE(j.RDATUM) AS datum,
+                   COUNT(*) AS n_bons,
+                   SUM(j.BSUMME) AS umsatz_brutto
+            FROM JOURNAL j
+            WHERE j.QUELLE = 3 AND j.STADIUM = 9
+              AND j.RDATUM >= %s AND j.RDATUM < %s + INTERVAL 1 DAY
+            GROUP BY DATE(j.RDATUM)
+        """, (von, bis))
+        rows_db = {r['datum']: r for r in (cur.fetchall() or [])}
+    wmap = _w.wetter_holen(von, bis)
+    ftmap = _ft.alle_im_zeitraum(von, bis)
+    fer = _fer.alle_im_zeitraum(von, bis)
+    wt_namen = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+    result: list[dict] = []
+    d = von
+    while d <= bis:
+        agg = rows_db.get(d) or {}
+        wett = wmap.get(d) or {}
+        result.append({
+            'datum':           d,
+            'wochentag':       d.weekday(),
+            'wochentag_name':  wt_namen[d.weekday()],
+            'n_bons':          int(agg.get('n_bons') or 0),
+            'menge':           0,  # auf JOURNAL-Ebene kein Mengen-Aggregat
+            'umsatz_brutto':   float(agg.get('umsatz_brutto') or 0),
+            'tmax_c':          (float(wett['tmax_c'])
+                                if wett.get('tmax_c') is not None else None),
+            'tmin_c':          (float(wett['tmin_c'])
+                                if wett.get('tmin_c') is not None else None),
+            'niederschlag_mm': (float(wett['niederschlag_mm'])
+                                if wett.get('niederschlag_mm') is not None
+                                else None),
+            'sonnenstunden':   (float(wett['sonnenstunden'])
+                                if wett.get('sonnenstunden') is not None
+                                else None),
+            'feiertag':        ftmap.get(d),
+            'ist_ferien':      d in fer,
+        })
+        d += _dt.timedelta(days=1)
+    result.sort(key=lambda r: r['datum'], reverse=True)
+    return result
+
+
+GESAMT_KATEGORIE = {
+    'slug':         'gesamt',
+    'name':         'Gesamtumsatz (alle Bons)',
+    'icon':         '📊',
+    'beschreibung': 'Alle Kassenbons (QUELLE=3, STADIUM=9) — Vergleichs-'
+                    'baseline für die einzelnen Kategorien.',
+    'wg_ids':       [],
+    'artikel_ids':  [],
+    '_gesamt':      True,
+}
+
+
+def alle_inkl_gesamt() -> list[dict]:
+    return [GESAMT_KATEGORIE] + KATEGORIEN
+
+
+# ── Wettereffekt-Analyse: Lift bei Top- vs. Bottom-Wetter ────────
+
+
+def _avg(zeilen: list[dict]) -> Optional[float]:
+    aktiv = [z for z in zeilen if z['n_bons'] > 0]
+    if not aktiv:
+        return None
+    return sum(float(z['umsatz_brutto']) for z in aktiv) / len(aktiv)
+
+
+def _lift(a: Optional[float], b: Optional[float]) -> Optional[float]:
+    if a is None or b is None or b == 0:
+        return None
+    return (a - b) / b * 100.0
+
+
+def _wettereffekt(zeilen: list[dict], schwellen: dict) -> dict:
+    """Berechnet Lift-Werte für eine Kategorie.
+
+    Lifts werden gegen das Vergleichs-Gegenstueck (gleich groß)
+    berechnet. Ein positiver Lift heißt: bei der „guten"-Bedingung
+    ist der Umsatz höher.
+    """
+    # Datenbasis: nur Verkaufstage mit Wetter-Daten
+    aktiv = [z for z in zeilen if z['n_bons'] > 0 and z['tmax_c'] is not None
+             and z['niederschlag_mm'] is not None
+             and z['sonnenstunden'] is not None]
+    if len(aktiv) < 20:
+        return {'n': len(aktiv), 'gesamt_n': len(aktiv)}
+
+    # Composite "Schoenwetter" (warm + sonnig + trocken)
+    schoen = [z for z in aktiv
+              if z['tmax_c']          >= schwellen['warm_tmax']
+              and z['niederschlag_mm'] < schwellen['trocken_mm']]
+    schlecht = [z for z in aktiv
+                 if z['tmax_c']          <= schwellen['kalt_tmax']
+                 or z['niederschlag_mm'] >= schwellen['regen_mm']]
+
+    # Einzeln pro Wetter-Variable
+    warm = [z for z in aktiv if z['tmax_c'] >= schwellen['warm_tmax']]
+    kalt = [z for z in aktiv if z['tmax_c'] <= schwellen['kalt_tmax']]
+    trocken = [z for z in aktiv if z['niederschlag_mm'] < schwellen['trocken_mm']]
+    regen   = [z for z in aktiv if z['niederschlag_mm'] >= schwellen['regen_mm']]
+    sonnig  = [z for z in aktiv if z['sonnenstunden'] >= schwellen['sonnig_h']]
+    bedeckt = [z for z in aktiv if z['sonnenstunden'] <  schwellen['bedeckt_h']]
+
+    avg_alle = _avg(aktiv)
+    return {
+        'n':               len(aktiv),
+        'avg_alle':        avg_alle,
+        # Composite
+        'avg_schoen':      _avg(schoen),
+        'avg_schlecht':    _avg(schlecht),
+        'n_schoen':        len(schoen),
+        'n_schlecht':      len(schlecht),
+        'lift_schoen_vs_schlecht': _lift(_avg(schoen), _avg(schlecht)),
+        # Tmax
+        'avg_warm':        _avg(warm),
+        'avg_kalt':        _avg(kalt),
+        'n_warm':          len(warm),
+        'n_kalt':          len(kalt),
+        'lift_warm_vs_kalt': _lift(_avg(warm), _avg(kalt)),
+        # Niederschlag
+        'avg_trocken':     _avg(trocken),
+        'avg_regen':       _avg(regen),
+        'n_trocken':       len(trocken),
+        'n_regen':         len(regen),
+        'lift_trocken_vs_regen': _lift(_avg(trocken), _avg(regen)),
+        # Sonne
+        'avg_sonnig':      _avg(sonnig),
+        'avg_bedeckt':     _avg(bedeckt),
+        'n_sonnig':        len(sonnig),
+        'n_bedeckt':       len(bedeckt),
+        'lift_sonnig_vs_bedeckt': _lift(_avg(sonnig), _avg(bedeckt)),
+    }
+
+
+def wettereffekt_vergleich(von: _dt.date, bis: _dt.date,
+                            wochentag: Optional[int] = None,
+                            schwellen: Optional[dict] = None) -> dict:
+    """Berechnet Wetter-Lift fuer Gesamtumsatz + alle Kategorien.
+
+    schwellen-Defaults:
+      warm_tmax    = 18  (Tmax ≥ 18 °C)
+      kalt_tmax    = 12  (Tmax ≤ 12 °C)
+      trocken_mm   = 1   (Niederschlag < 1 mm)
+      regen_mm     = 5   (Niederschlag ≥ 5 mm)
+      sonnig_h     = 8   (Sonnenstunden ≥ 8 h)
+      bedeckt_h    = 2   (Sonnenstunden < 2 h)
+    """
+    s = {
+        'warm_tmax':  18.0, 'kalt_tmax':  12.0,
+        'trocken_mm':  1.0, 'regen_mm':    5.0,
+        'sonnig_h':    8.0, 'bedeckt_h':   2.0,
+    }
+    if schwellen:
+        s.update(schwellen)
+
+    def _filter_wt(rows):
+        if wochentag is None:
+            return rows
+        return [r for r in rows if r['wochentag'] == wochentag]
+
+    ergebnisse = []
+    # Gesamtumsatz
+    rows = _filter_wt(gesamtumsatz_tagesdaten(von, bis))
+    eff = _wettereffekt(rows, s)
+    ergebnisse.append({
+        'slug':  GESAMT_KATEGORIE['slug'],
+        'name':  GESAMT_KATEGORIE['name'],
+        'icon':  GESAMT_KATEGORIE['icon'],
+        'effekt': eff,
+    })
+    # Pro Kategorie
+    for k in KATEGORIEN:
+        rows = _filter_wt(tagesdaten_kategorie(k, von, bis))
+        eff = _wettereffekt(rows, s)
+        ergebnisse.append({
+            'slug':  k['slug'],
+            'name':  k['name'],
+            'icon':  k['icon'],
+            'effekt': eff,
+        })
+    return {
+        'von':       von,
+        'bis':       bis,
+        'wochentag': wochentag,
+        'schwellen': s,
+        'kategorien': ergebnisse,
+    }
+
+
 # ── Aggregation mit Filter ───────────────────────────────────────
 
 

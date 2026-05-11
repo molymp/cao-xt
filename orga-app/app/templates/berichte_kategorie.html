@@ -76,9 +76,7 @@
 
 <div class="br-nav">
   <a href="{{ url_for('berichte_seite') }}">🏠 Übersicht</a>
-  <a href="{{ url_for('tagesumsatz_seite') }}">💰 Tagesumsatz</a>
-  <a href="{{ url_for('monatsuebersicht_seite') }}">📅 Monatsübersicht</a>
-  <a href="{{ url_for('umsatz_heatmap_seite') }}">🌡️ Umsatz-Heatmap</a>
+  <a href="{{ url_for('berichte_wettereffekt_seite') }}">🌦 Wettereffekt-Vergleich</a>
   {% for k in kategorien %}
   <a class="{% if k.slug == kategorie.slug %}aktiv{% endif %}"
      href="{{ url_for('berichte_kategorie_seite', slug=k.slug) }}">{{ k.icon }} {{ k.name }}</a>
