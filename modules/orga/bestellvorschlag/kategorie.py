@@ -324,25 +324,49 @@ def _wettereffekt(zeilen: list[dict], schwellen: dict,
 
 def _wochentag_avgs(rows: list[dict], pro_stunde: bool = False
                     ) -> dict[int, dict]:
+    """Pro Wochentag: Avg- und Summen-Werte fuer Umsatz und Menge.
+
+    'avg'         = Mittel pro geoeffnetem Tag (Lift-Basis)
+    'summe'       = Summe Umsatz ueber alle Tage dieses Wochentags
+    'menge_avg'   = Mittel Menge pro Tag
+    'menge_summe' = Summe Menge ueber alle Tage
+    'n'           = Anzahl geoeffneter Tage
+    """
     aktiv = [r for r in rows if r['n_bons'] > 0]
-    nach: dict[int, list[float]] = {}
-    for r in aktiv:
-        nach.setdefault(r['wochentag'], []).append(_wert(r, pro_stunde))
     out: dict[int, dict] = {}
-    for wd, vals in nach.items():
-        out[wd] = {'avg': sum(vals) / len(vals), 'n': len(vals)}
+    nach: dict[int, list[dict]] = {}
+    for r in aktiv:
+        nach.setdefault(r['wochentag'], []).append(r)
+    for wd, lst in nach.items():
+        umsaetze = [_wert(r, pro_stunde) for r in lst]
+        mengen   = [float(r.get('menge') or 0) for r in lst]
+        out[wd] = {
+            'avg':         sum(umsaetze) / len(umsaetze),
+            'summe':       sum(float(r['umsatz_brutto']) for r in lst),
+            'menge_avg':   sum(mengen) / len(mengen),
+            'menge_summe': sum(mengen),
+            'n':           len(lst),
+        }
     return out
 
 
 def _monat_avgs(rows: list[dict], pro_stunde: bool = False
                 ) -> dict[int, dict]:
     aktiv = [r for r in rows if r['n_bons'] > 0]
-    nach: dict[int, list[float]] = {}
-    for r in aktiv:
-        nach.setdefault(r['datum'].month, []).append(_wert(r, pro_stunde))
     out: dict[int, dict] = {}
-    for m, vals in nach.items():
-        out[m] = {'avg': sum(vals) / len(vals), 'n': len(vals)}
+    nach: dict[int, list[dict]] = {}
+    for r in aktiv:
+        nach.setdefault(r['datum'].month, []).append(r)
+    for m, lst in nach.items():
+        umsaetze = [_wert(r, pro_stunde) for r in lst]
+        mengen   = [float(r.get('menge') or 0) for r in lst]
+        out[m] = {
+            'avg':         sum(umsaetze) / len(umsaetze),
+            'summe':       sum(float(r['umsatz_brutto']) for r in lst),
+            'menge_avg':   sum(mengen) / len(mengen),
+            'menge_summe': sum(mengen),
+            'n':           len(lst),
+        }
     return out
 
 

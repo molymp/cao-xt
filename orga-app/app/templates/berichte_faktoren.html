@@ -142,12 +142,19 @@
 <div class="fk-charts">
   <div class="fk-chart-card">
     <h3>Mittagstisch nach Wochentag</h3>
-    <div class="sub">Ø-Umsatz pro geöffnetem Tag (€), 2 J.</div>
+    <div class="sub">
+      Bars = Summe verkaufter Portionen, Linie = Summe Umsatz im
+      ausgewählten Zeitraum. Tooltip zeigt zusätzlich den
+      Tages-Schnitt (Ø pro geöffnetem Tag).
+    </div>
     <canvas id="fk-mt-wt"></canvas>
   </div>
   <div class="fk-chart-card">
     <h3>Mittagstisch nach Monat</h3>
-    <div class="sub">Ø-Umsatz pro Verkaufstag (€), 2 J.</div>
+    <div class="sub">
+      Bars = Summe verkaufter Portionen, Linie = Summe Umsatz im
+      ausgewählten Zeitraum. Saisonalität auf einen Blick.
+    </div>
     <canvas id="fk-mt-mo"></canvas>
   </div>
 </div>
@@ -305,61 +312,87 @@ function renderMittagCharts(j) {
   const mt = j.kategorien.find(k => k.slug === 'mittagstisch');
   if (!mt || !mt.faktoren) return;
   const f = mt.faktoren;
-  const ps = !!j.pro_stunde;
-  const label = ps ? 'Ø Umsatz pro Std offen (€)' : 'Ø Umsatz pro Tag (€)';
-  const yLabel = ps ? '€ / Std offen' : '€ / Tag';
-  // Wochentag-Chart
-  const wt_data = [];
+
+  // Helper: Dual-Achse Chart (Bars = Σ Portionen, Linie = Σ Umsatz)
+  function dualChart(elId, labels, mengen, umsaetze, n_tage) {
+    return new Chart(document.getElementById(elId), {
+      data: {
+        labels,
+        datasets: [
+          { type: 'bar',
+            label: 'Σ Portionen',
+            data: mengen,
+            backgroundColor: 'rgba(200,120,10,0.75)',
+            borderColor: '#a06000', borderWidth: 1,
+            yAxisID: 'yMenge',
+            order: 2 },
+          { type: 'line',
+            label: 'Σ Umsatz (€)',
+            data: umsaetze,
+            borderColor: '#1a4010',
+            backgroundColor: 'rgba(26,64,16,0.10)',
+            borderWidth: 2,
+            tension: 0.25,
+            fill: false,
+            yAxisID: 'yEUR',
+            pointRadius: 4,
+            pointBackgroundColor: '#1a4010',
+            order: 1 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            callbacks: {
+              afterLabel: function(ctx) {
+                const i = ctx.dataIndex;
+                const n = n_tage[i];
+                if (ctx.datasetIndex === 0) {
+                  // Bar (Mengen-Dataset)
+                  const proTag = n ? (mengen[i] / n).toFixed(1) : '0';
+                  return `(Ø ${proTag} Portionen / Tag, n=${n} Tage)`;
+                }
+                const proTag = n ? (umsaetze[i] / n).toFixed(2) : '0';
+                return `(Ø ${proTag} € / Tag, n=${n} Tage)`;
+              },
+            },
+          },
+        },
+        scales: {
+          yMenge: { type: 'linear', position: 'left',
+                    title: { display: true, text: 'Σ Portionen' },
+                    beginAtZero: true },
+          yEUR:   { type: 'linear', position: 'right',
+                    title: { display: true, text: 'Σ Umsatz (€)' },
+                    beginAtZero: true,
+                    grid: { drawOnChartArea: false } },
+        },
+      },
+    });
+  }
+
+  // Wochentag
+  const wt_mengen = [], wt_umsatz = [], wt_n = [];
   for (let i = 0; i < 7; i++) {
-    const v = (f.wochentag || {})[i];
-    wt_data.push(v ? v.avg : 0);
+    const v = (f.wochentag || {})[i] || {};
+    wt_mengen.push(v.menge_summe || 0);
+    wt_umsatz.push(v.summe || 0);
+    wt_n.push(v.n || 0);
   }
-  _charts.wt = new Chart(document.getElementById('fk-mt-wt'), {
-    type: 'bar',
-    data: {
-      labels: WT,
-      datasets: [{
-        label,
-        data: wt_data,
-        backgroundColor: 'rgba(200,120,10,0.75)',
-        borderColor: '#a06000', borderWidth: 1,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false },
-                 tooltip: { callbacks: {
-                   label: c => `${c.raw.toFixed(2)} ${yLabel}` } } },
-      scales: { y: { title: { display: true, text: yLabel },
-                     beginAtZero: true } },
-    },
-  });
-  // Monat-Chart
-  const mo_data = [];
+  _charts.wt = dualChart('fk-mt-wt', WT, wt_mengen, wt_umsatz, wt_n);
+
+  // Monat
+  const mo_mengen = [], mo_umsatz = [], mo_n = [];
   for (let m = 1; m <= 12; m++) {
-    const v = (f.monat || {})[m];
-    mo_data.push(v ? v.avg : 0);
+    const v = (f.monat || {})[m] || {};
+    mo_mengen.push(v.menge_summe || 0);
+    mo_umsatz.push(v.summe || 0);
+    mo_n.push(v.n || 0);
   }
-  _charts.mo = new Chart(document.getElementById('fk-mt-mo'), {
-    type: 'bar',
-    data: {
-      labels: MON,
-      datasets: [{
-        label,
-        data: mo_data,
-        backgroundColor: 'rgba(46,122,46,0.75)',
-        borderColor: '#1a4010', borderWidth: 1,
-      }],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false },
-                 tooltip: { callbacks: {
-                   label: c => `${c.raw.toFixed(2)} ${yLabel}` } } },
-      scales: { y: { title: { display: true, text: yLabel },
-                     beginAtZero: true } },
-    },
-  });
+  _charts.mo = dualChart('fk-mt-mo', MON, mo_mengen, mo_umsatz, mo_n);
 }
 
 fkLaden();
