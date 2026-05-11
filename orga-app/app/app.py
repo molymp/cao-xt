@@ -1106,9 +1106,11 @@ def berichte_faktoren_daten():
         von = date.fromisoformat(request.args.get('von')
                                   or (heute - timedelta(days=730)).isoformat())
         bis = date.fromisoformat(request.args.get('bis') or heute.isoformat())
+        pro_stunde = request.args.get('pro_stunde', '').lower() in (
+            '1', 'true', 'yes', 'y')
     except ValueError:
         return jsonify({'ok': False, 'msg': 'ungueltige Parameter'}), 400
-    r = _kat.faktoren_vergleich(von, bis)
+    r = _kat.faktoren_vergleich(von, bis, pro_stunde=pro_stunde)
     r['von'] = r['von'].isoformat()
     r['bis'] = r['bis'].isoformat()
     return jsonify({'ok': True, **r})
@@ -1139,10 +1141,13 @@ def berichte_wettereffekt_daten():
             v = request.args.get(k)
             if v not in (None, ''):
                 schwellen[k] = float(v)
+        pro_stunde = request.args.get('pro_stunde', '').lower() in (
+            '1', 'true', 'yes', 'y')
     except ValueError:
         return jsonify({'ok': False, 'msg': 'ungueltige Parameter'}), 400
     r = _kat.wettereffekt_vergleich(von, bis, wochentag=wt,
-                                     schwellen=schwellen)
+                                     schwellen=schwellen,
+                                     pro_stunde=pro_stunde)
     r['von'] = r['von'].isoformat()
     r['bis'] = r['bis'].isoformat()
     return jsonify({'ok': True, **r})

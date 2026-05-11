@@ -135,6 +135,38 @@ KATEGORIEN: list[dict] = [
 _BY_SLUG = {k['slug']: k for k in KATEGORIEN}
 
 
+# ── Oeffnungszeiten ─────────────────────────────────────────────
+# Standard-Wochentag-Oeffnungsfenster (in Stunden) — wird fuer die
+# "pro Stunde offen"-Normalisierung der Umsatzwerte verwendet.
+# Pflege per User-Vorgabe: Mo-Fr 6:30-18:00 (11,5 h), Sa 7-12 (5 h),
+# So zu. Sonderoeffnungstage/Feiertage werden hier nicht modelliert —
+# die haben eh eigene Datenpunkte mit n_bons > 0.
+OEFFNUNGS_STUNDEN: dict[int, float] = {
+    0: 11.5,  # Mo
+    1: 11.5,  # Di
+    2: 11.5,  # Mi
+    3: 11.5,  # Do
+    4: 11.5,  # Fr
+    5:  5.0,  # Sa
+    6:  0.0,  # So (geschlossen)
+}
+
+
+def _stunden_fuer_zeile(r: dict) -> float:
+    """Liefert die Oeffnungs-Stunden fuer eine Tageszeile.
+
+    Standardwerte aus OEFFNUNGS_STUNDEN — bei Verkaufstagen, an denen
+    laut Plan eigentlich zu waere (z.B. Sonderoeffnung an einem
+    Sonntag), nehmen wir einen Fallback von 5 h, damit die Division
+    nicht ueber null geht.
+    """
+    h = OEFFNUNGS_STUNDEN.get(r['wochentag'], 0)
+    if h > 0:
+        return h
+    # n_bons > 0 trotz Standard-Schliesstag → Sonderoeffnung. Fallback.
+    return 5.0 if r['n_bons'] > 0 else 0.0
+
+
 def alle() -> list[dict]:
     return KATEGORIEN
 
@@ -171,12 +203,12 @@ def gesamtumsatz_tagesdaten(von: _dt.date, bis: _dt.date) -> list[dict]:
     while d <= bis:
         agg = rows_db.get(d) or {}
         wett = wmap.get(d) or {}
-        result.append({
+        row = {
             'datum':           d,
             'wochentag':       d.weekday(),
             'wochentag_name':  wt_namen[d.weekday()],
             'n_bons':          int(agg.get('n_bons') or 0),
-            'menge':           0,  # auf JOURNAL-Ebene kein Mengen-Aggregat
+            'menge':           0,
             'umsatz_brutto':   float(agg.get('umsatz_brutto') or 0),
             'tmax_c':          (float(wett['tmax_c'])
                                 if wett.get('tmax_c') is not None else None),
@@ -190,7 +222,9 @@ def gesamtumsatz_tagesdaten(von: _dt.date, bis: _dt.date) -> list[dict]:
                                 else None),
             'feiertag':        ftmap.get(d),
             'ist_ferien':      d in fer,
-        })
+        }
+        row['stunden_offen'] = _stunden_fuer_zeile(row)
+        result.append(row)
         d += _dt.timedelta(days=1)
     result.sort(key=lambda r: r['datum'], reverse=True)
     return result
@@ -215,11 +249,22 @@ def alle_inkl_gesamt() -> list[dict]:
 # ── Wettereffekt-Analyse: Lift bei Top- vs. Bottom-Wetter ────────
 
 
-def _avg(zeilen: list[dict]) -> Optional[float]:
+def _wert(z: dict, pro_stunde: bool) -> float:
+    """Umsatz-Wert einer Tageszeile — entweder als brutto pro Tag
+    oder pro Stunde offen."""
+    if not pro_stunde:
+        return float(z['umsatz_brutto'])
+    h = z.get('stunden_offen') or 0
+    if h <= 0:
+        return 0.0
+    return float(z['umsatz_brutto']) / h
+
+
+def _avg(zeilen: list[dict], pro_stunde: bool = False) -> Optional[float]:
     aktiv = [z for z in zeilen if z['n_bons'] > 0]
     if not aktiv:
         return None
-    return sum(float(z['umsatz_brutto']) for z in aktiv) / len(aktiv)
+    return sum(_wert(z, pro_stunde) for z in aktiv) / len(aktiv)
 
 
 def _lift(a: Optional[float], b: Optional[float]) -> Optional[float]:
@@ -228,83 +273,73 @@ def _lift(a: Optional[float], b: Optional[float]) -> Optional[float]:
     return (a - b) / b * 100.0
 
 
-def _wettereffekt(zeilen: list[dict], schwellen: dict) -> dict:
-    """Berechnet Lift-Werte für eine Kategorie.
-
-    Lifts werden gegen das Vergleichs-Gegenstueck (gleich groß)
-    berechnet. Ein positiver Lift heißt: bei der „guten"-Bedingung
-    ist der Umsatz höher.
-    """
-    # Datenbasis: nur Verkaufstage mit Wetter-Daten
+def _wettereffekt(zeilen: list[dict], schwellen: dict,
+                   pro_stunde: bool = False) -> dict:
+    """Berechnet Lift-Werte für eine Kategorie."""
     aktiv = [z for z in zeilen if z['n_bons'] > 0 and z['tmax_c'] is not None
              and z['niederschlag_mm'] is not None
              and z['sonnenstunden'] is not None]
     if len(aktiv) < 20:
         return {'n': len(aktiv), 'gesamt_n': len(aktiv)}
 
-    # Composite "Schoenwetter" (warm + sonnig + trocken)
     schoen = [z for z in aktiv
               if z['tmax_c']          >= schwellen['warm_tmax']
               and z['niederschlag_mm'] < schwellen['trocken_mm']]
     schlecht = [z for z in aktiv
                  if z['tmax_c']          <= schwellen['kalt_tmax']
                  or z['niederschlag_mm'] >= schwellen['regen_mm']]
-
-    # Einzeln pro Wetter-Variable
     warm = [z for z in aktiv if z['tmax_c'] >= schwellen['warm_tmax']]
     kalt = [z for z in aktiv if z['tmax_c'] <= schwellen['kalt_tmax']]
     trocken = [z for z in aktiv if z['niederschlag_mm'] < schwellen['trocken_mm']]
     regen   = [z for z in aktiv if z['niederschlag_mm'] >= schwellen['regen_mm']]
     sonnig  = [z for z in aktiv if z['sonnenstunden'] >= schwellen['sonnig_h']]
     bedeckt = [z for z in aktiv if z['sonnenstunden'] <  schwellen['bedeckt_h']]
-
-    avg_alle = _avg(aktiv)
+    p = pro_stunde
     return {
         'n':               len(aktiv),
-        'avg_alle':        avg_alle,
-        # Composite
-        'avg_schoen':      _avg(schoen),
-        'avg_schlecht':    _avg(schlecht),
+        'avg_alle':        _avg(aktiv, p),
+        'pro_stunde':      p,
+        'avg_schoen':      _avg(schoen, p),
+        'avg_schlecht':    _avg(schlecht, p),
         'n_schoen':        len(schoen),
         'n_schlecht':      len(schlecht),
-        'lift_schoen_vs_schlecht': _lift(_avg(schoen), _avg(schlecht)),
-        # Tmax
-        'avg_warm':        _avg(warm),
-        'avg_kalt':        _avg(kalt),
+        'lift_schoen_vs_schlecht': _lift(_avg(schoen, p), _avg(schlecht, p)),
+        'avg_warm':        _avg(warm, p),
+        'avg_kalt':        _avg(kalt, p),
         'n_warm':          len(warm),
         'n_kalt':          len(kalt),
-        'lift_warm_vs_kalt': _lift(_avg(warm), _avg(kalt)),
-        # Niederschlag
-        'avg_trocken':     _avg(trocken),
-        'avg_regen':       _avg(regen),
+        'lift_warm_vs_kalt': _lift(_avg(warm, p), _avg(kalt, p)),
+        'avg_trocken':     _avg(trocken, p),
+        'avg_regen':       _avg(regen, p),
         'n_trocken':       len(trocken),
         'n_regen':         len(regen),
-        'lift_trocken_vs_regen': _lift(_avg(trocken), _avg(regen)),
-        # Sonne
-        'avg_sonnig':      _avg(sonnig),
-        'avg_bedeckt':     _avg(bedeckt),
+        'lift_trocken_vs_regen': _lift(_avg(trocken, p), _avg(regen, p)),
+        'avg_sonnig':      _avg(sonnig, p),
+        'avg_bedeckt':     _avg(bedeckt, p),
         'n_sonnig':        len(sonnig),
         'n_bedeckt':       len(bedeckt),
-        'lift_sonnig_vs_bedeckt': _lift(_avg(sonnig), _avg(bedeckt)),
+        'lift_sonnig_vs_bedeckt': _lift(_avg(sonnig, p), _avg(bedeckt, p)),
     }
 
 
-def _wochentag_avgs(rows: list[dict]) -> dict[int, dict]:
+def _wochentag_avgs(rows: list[dict], pro_stunde: bool = False
+                    ) -> dict[int, dict]:
     aktiv = [r for r in rows if r['n_bons'] > 0]
     nach: dict[int, list[float]] = {}
     for r in aktiv:
-        nach.setdefault(r['wochentag'], []).append(r['umsatz_brutto'])
+        nach.setdefault(r['wochentag'], []).append(_wert(r, pro_stunde))
     out: dict[int, dict] = {}
     for wd, vals in nach.items():
         out[wd] = {'avg': sum(vals) / len(vals), 'n': len(vals)}
     return out
 
 
-def _monat_avgs(rows: list[dict]) -> dict[int, dict]:
+def _monat_avgs(rows: list[dict], pro_stunde: bool = False
+                ) -> dict[int, dict]:
     aktiv = [r for r in rows if r['n_bons'] > 0]
     nach: dict[int, list[float]] = {}
     for r in aktiv:
-        nach.setdefault(r['datum'].month, []).append(r['umsatz_brutto'])
+        nach.setdefault(r['datum'].month, []).append(_wert(r, pro_stunde))
     out: dict[int, dict] = {}
     for m, vals in nach.items():
         out[m] = {'avg': sum(vals) / len(vals), 'n': len(vals)}
@@ -312,25 +347,26 @@ def _monat_avgs(rows: list[dict]) -> dict[int, dict]:
 
 
 def _faktoren_lifts(rows: list[dict],
-                    feiertage_im_zeitraum: set) -> dict:
+                    feiertage_im_zeitraum: set,
+                    pro_stunde: bool = False) -> dict:
     """Liefert Lift-Werte für die wichtigsten NICHT-Wetter-Faktoren."""
     aktiv = [r for r in rows if r['n_bons'] > 0]
     if not aktiv:
         return {'n': 0}
-    avg_alle = sum(r['umsatz_brutto'] for r in aktiv) / len(aktiv)
+    avg_alle = sum(_wert(r, pro_stunde) for r in aktiv) / len(aktiv)
 
     def sub_lift(filt) -> dict:
         sub = [r for r in aktiv if filt(r)]
         if not sub:
             return {'lift': None, 'n': 0, 'avg': None}
-        a = sum(r['umsatz_brutto'] for r in sub) / len(sub)
+        a = sum(_wert(r, pro_stunde) for r in sub) / len(sub)
         return {'lift': (a - avg_alle) / avg_alle * 100 if avg_alle else None,
                 'n': len(sub), 'avg': a}
 
     return {
         'n':                       len(aktiv),
         'avg_alle':                avg_alle,
-        # Vor-/Nach-Feiertag (Hamsterkauf-Cluster)
+        'pro_stunde':              pro_stunde,
         'tag_vor_ft':              sub_lift(
             lambda r: (r['datum'] + _dt.timedelta(days=1)) in feiertage_im_zeitraum),
         'zwei_tage_vor_ft':        sub_lift(
@@ -339,24 +375,22 @@ def _faktoren_lifts(rows: list[dict],
             lambda r: (r['datum'] - _dt.timedelta(days=1)) in feiertage_im_zeitraum),
         'zwei_tage_nach_ft':       sub_lift(
             lambda r: (r['datum'] - _dt.timedelta(days=2)) in feiertage_im_zeitraum),
-        # Schulferien
         'ferien':                  sub_lift(lambda r: r['ist_ferien']),
         'schulzeit':               sub_lift(lambda r: not r['ist_ferien']),
-        # Saison
         'advent':                  sub_lift(
             lambda r: r['datum'].month == 12 and r['datum'].day <= 24),
         'hochsommer':              sub_lift(
             lambda r: r['datum'].month in (7, 8)),
         'nachweihnachten':         sub_lift(
             lambda r: r['datum'].month in (1, 2)),
-        # Wochentage
-        'wochentag':               _wochentag_avgs(aktiv),
-        'monat':                   _monat_avgs(aktiv),
+        'wochentag':               _wochentag_avgs(aktiv, pro_stunde),
+        'monat':                   _monat_avgs(aktiv, pro_stunde),
     }
 
 
 def faktoren_vergleich(von: _dt.date, bis: _dt.date,
-                        wochentag: Optional[int] = None) -> dict:
+                        wochentag: Optional[int] = None,
+                        pro_stunde: bool = False) -> dict:
     """Sammelt fuer Gesamtumsatz + alle Kategorien alle nicht-Wetter-
     Lift-Werte (Wochentag, Monat, Saison, Feiertags-Cluster, Ferien).
     """
@@ -367,13 +401,12 @@ def faktoren_vergleich(von: _dt.date, bis: _dt.date,
         return [r for r in rows if r['wochentag'] == wochentag]
 
     ergebnisse = []
-    # Gesamtumsatz
     rows = _filter_wt(gesamtumsatz_tagesdaten(von, bis))
     ergebnisse.append({
         'slug':    GESAMT_KATEGORIE['slug'],
         'name':    GESAMT_KATEGORIE['name'],
         'icon':    GESAMT_KATEGORIE['icon'],
-        'faktoren': _faktoren_lifts(rows, feiertage_im_zeitraum),
+        'faktoren': _faktoren_lifts(rows, feiertage_im_zeitraum, pro_stunde),
     })
     for k in KATEGORIEN:
         rows = _filter_wt(tagesdaten_kategorie(k, von, bis))
@@ -381,19 +414,22 @@ def faktoren_vergleich(von: _dt.date, bis: _dt.date,
             'slug':    k['slug'],
             'name':    k['name'],
             'icon':    k['icon'],
-            'faktoren': _faktoren_lifts(rows, feiertage_im_zeitraum),
+            'faktoren': _faktoren_lifts(rows, feiertage_im_zeitraum,
+                                          pro_stunde),
         })
     return {
         'von':         von,
         'bis':         bis,
         'wochentag':   wochentag,
+        'pro_stunde':  pro_stunde,
         'kategorien':  ergebnisse,
     }
 
 
 def wettereffekt_vergleich(von: _dt.date, bis: _dt.date,
                             wochentag: Optional[int] = None,
-                            schwellen: Optional[dict] = None) -> dict:
+                            schwellen: Optional[dict] = None,
+                            pro_stunde: bool = False) -> dict:
     """Berechnet Wetter-Lift fuer Gesamtumsatz + alle Kategorien.
 
     schwellen-Defaults:
@@ -418,29 +454,26 @@ def wettereffekt_vergleich(von: _dt.date, bis: _dt.date,
         return [r for r in rows if r['wochentag'] == wochentag]
 
     ergebnisse = []
-    # Gesamtumsatz
     rows = _filter_wt(gesamtumsatz_tagesdaten(von, bis))
-    eff = _wettereffekt(rows, s)
     ergebnisse.append({
         'slug':  GESAMT_KATEGORIE['slug'],
         'name':  GESAMT_KATEGORIE['name'],
         'icon':  GESAMT_KATEGORIE['icon'],
-        'effekt': eff,
+        'effekt': _wettereffekt(rows, s, pro_stunde),
     })
-    # Pro Kategorie
     for k in KATEGORIEN:
         rows = _filter_wt(tagesdaten_kategorie(k, von, bis))
-        eff = _wettereffekt(rows, s)
         ergebnisse.append({
             'slug':  k['slug'],
             'name':  k['name'],
             'icon':  k['icon'],
-            'effekt': eff,
+            'effekt': _wettereffekt(rows, s, pro_stunde),
         })
     return {
         'von':       von,
         'bis':       bis,
         'wochentag': wochentag,
+        'pro_stunde': pro_stunde,
         'schwellen': s,
         'kategorien': ergebnisse,
     }
@@ -505,7 +538,7 @@ def tagesdaten_kategorie(kategorie: dict,
         agg = rows_db.get(d) or {}
         wett = wmap.get(d) or {}
         ft_name = ftmap.get(d)
-        result.append({
+        row = {
             'datum':           d,
             'wochentag':       d.weekday(),
             'wochentag_name':  wt_namen[d.weekday()],
@@ -524,7 +557,9 @@ def tagesdaten_kategorie(kategorie: dict,
                                 else None),
             'feiertag':        ft_name,
             'ist_ferien':      d in ferien_set,
-        })
+        }
+        row['stunden_offen'] = _stunden_fuer_zeile(row)
+        result.append(row)
         d += _dt.timedelta(days=1)
     result.sort(key=lambda r: r['datum'], reverse=True)
     return result
