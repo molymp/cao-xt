@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block title %}Bestellvorschlag Luidl{% endblock %}
+
+{% block extra_style %}
+<style>
+.bv-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+.bv-kopf h1 { font-size:1.6rem; }
+.bv-grid { display:grid; gap:18px;
+  grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); }
+.bv-card { background:white; padding:18px 22px; border-radius:var(--radius);
+  box-shadow:var(--schatten); }
+.bv-card h2 { font-size:1.15rem; margin-bottom:10px; color:var(--gruen-dunkel); }
+.bv-row { display:flex; gap:14px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+.bv-row label { font-size:0.85rem; font-weight:700; color:var(--text-dim,#5a7a3a);
+  min-width:110px; }
+.bv-input, .bv-row input[type=date], .bv-row input[type=number] {
+  padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.95rem; background:white; min-width:120px;
+  font-variant-numeric:tabular-nums;
+}
+.bv-btn { padding:7px 14px; background:var(--gruen-mitte); color:white;
+  border:none; border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.92rem; font-weight:700; cursor:pointer; }
+.bv-btn:hover { background:var(--gruen-dunkel); }
+.bv-btn-ghost { background:transparent; color:var(--gruen-dunkel);
+  border:1px solid var(--creme-dunkel); }
+.bv-result {
+  background:linear-gradient(180deg, #f4ecd1 0%, #ece3cc 100%);
+  border-radius:var(--radius); padding:18px 22px; margin-top:10px;
+  border-left:4px solid var(--gruen-dunkel);
+}
+.bv-result .menge { font-size:2.8rem; font-weight:800;
+  color:var(--gruen-dunkel); line-height:1.0;
+  font-variant-numeric:tabular-nums; }
+.bv-result .eur   { font-size:1.05rem; color:var(--text-mitte,#2e4a1a);
+  font-variant-numeric:tabular-nums; margin-top:2px; }
+.bv-result .mae   { font-size:0.82rem; color:var(--text-dim,#5a7a3a); }
+.bv-context { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+.bv-pille { display:inline-flex; align-items:center; gap:5px;
+  background:white; padding:4px 10px; border-radius:14px;
+  font-size:0.84rem; border:1px solid var(--creme-dunkel); }
+.bv-pille.warm { background:#fdebd0; border-color:#f0c890; }
+.bv-pille.kalt { background:#dde8f2; border-color:#a3c2db; }
+.bv-pille.regen { background:#e8eff8; border-color:#b4cae0; }
+.bv-pille.sonne { background:#fff9d8; border-color:#e8d260; }
+.bv-pille.feiertag { background:#fde8e8; border-color:#e8a0a0;
+  color:#a02020; font-weight:700; }
+.bv-pille.ferien { background:#e8f6ff; border-color:#80c0e8;
+  color:#1a5a8a; font-weight:700; }
+
+.bv-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+.bv-table th, .bv-table td { padding:6px 8px; border-bottom:1px solid var(--creme-dunkel);
+  font-variant-numeric:tabular-nums; }
+.bv-table th { background:var(--grau-hell); text-align:left; font-size:0.78rem;
+  font-weight:800; text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--text-dim,#5a7a3a); }
+.bv-table td.right { text-align:right; }
+.bv-table tr.sa { background:rgba(46,122,46,0.06); font-weight:700; }
+.bv-table tr.feiertag { background:#fff5f5; }
+.bv-table tr.kein-verkauf td { color:var(--grau-mitte); font-style:italic; }
+
+.bv-modell-stats { display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(80px,1fr));
+  gap:8px; margin-top:8px; }
+.bv-modell-stats .wt { background:var(--bg-hell,#ece3cc); padding:8px;
+  border-radius:6px; text-align:center; }
+.bv-modell-stats .wt .name { font-weight:800; font-size:0.85rem; color:var(--gruen-dunkel); }
+.bv-modell-stats .wt .val { font-size:1.1rem; font-weight:800;
+  font-variant-numeric:tabular-nums; }
+.bv-modell-stats .wt .sub { font-size:0.72rem; color:var(--text-dim,#5a7a3a); }
+
+.bv-hinweis { font-size:0.85rem; color:var(--text-dim,#5a7a3a);
+  margin-top:6px; line-height:1.4; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bv-kopf">
+  <h1>🥨 Bestellvorschlag Luidl (Backwaren)</h1>
+  <span style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
+    Datenbasis: WG=1 „Backwaren (Bäcker)" + Open-Meteo (Habach) + Feiertage/Schulferien Bayern
+  </span>
+</div>
+
+<div class="bv-grid">
+
+  <!-- ── Vorhersage ───────────────────────────────────────── -->
+  <div class="bv-card">
+    <h2>Vorhersage für ein Zieldatum</h2>
+    <div class="bv-row">
+      <label>Zieldatum</label>
+      <input type="date" id="bv-datum" value="{{ ziel_datum.isoformat() }}">
+      <button class="bv-btn" onclick="bvVorhersage()">Berechnen</button>
+      <button class="bv-btn bv-btn-ghost" onclick="bvForecastNeu()"
+              title="Open-Meteo-Forecast für die nächsten 7 Tage holen">
+        🌦 Forecast aktualisieren
+      </button>
+    </div>
+    <div class="bv-row" style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
+      <span id="bv-wetter-info">Wetter wird automatisch aus dem Cache gezogen.</span>
+    </div>
+    <div class="bv-row">
+      <label>tmax (°C)</label>
+      <input type="number" step="0.5" id="bv-tmax" placeholder="auto">
+      <label>Regen (mm)</label>
+      <input type="number" step="0.5" min="0" id="bv-regen" placeholder="auto">
+      <label>Sonne (h)</label>
+      <input type="number" step="0.5" min="0" max="16" id="bv-sonne" placeholder="auto">
+    </div>
+    <div class="bv-result" id="bv-result" style="display:none;">
+      <div class="menge"><span id="bv-menge">–</span> Stück</div>
+      <div class="eur"><span id="bv-eur">–</span> € Umsatz brutto erwartet</div>
+      <div class="mae" id="bv-mae"></div>
+      <div class="bv-context" id="bv-context"></div>
+      <div class="bv-hinweis" id="bv-hinweis"></div>
+    </div>
+  </div>
+
+  <!-- ── Modell-Status ────────────────────────────────────── -->
+  <div class="bv-card">
+    <h2>Modell-Status</h2>
+    <div class="bv-row">
+      <button class="bv-btn bv-btn-ghost" onclick="bvKoefAnzeigen()">Koeffizienten</button>
+      <button class="bv-btn bv-btn-ghost" onclick="bvModellTrainieren()">↻ Neu trainieren</button>
+      <span id="bv-modell-version" style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);"></span>
+    </div>
+    <div class="bv-modell-stats" id="bv-modell-stats"></div>
+    <pre id="bv-koef-out"
+         style="display:none; font-size:0.78rem; background:#1a4010;
+                color:#ece3cc; padding:10px; border-radius:6px;
+                overflow:auto; max-height:340px; margin-top:10px;
+                white-space:pre-wrap;"></pre>
+  </div>
+</div>
+
+<!-- ── Historie / Reporting ──────────────────────────────── -->
+<div class="bv-card" style="margin-top:18px;">
+  <h2>Historie & Korrelation</h2>
+  <div class="bv-row">
+    <label>Zeitraum</label>
+    <input type="date" id="bv-h-von">
+    <input type="date" id="bv-h-bis" value="{{ heute.isoformat() }}">
+    <button class="bv-btn" onclick="bvHistorieLaden()">Anzeigen</button>
+    <span id="bv-h-info" style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);"></span>
+  </div>
+  <div style="max-height:520px; overflow:auto;">
+    <table class="bv-table" id="bv-historie">
+      <thead>
+        <tr>
+          <th>Datum</th><th>Wt</th>
+          <th class="right">Bons</th><th class="right">Menge</th>
+          <th class="right">€</th>
+          <th class="right">tmax</th>
+          <th class="right">mm</th>
+          <th class="right">Sonne</th>
+          <th>Kontext</th>
+        </tr>
+      </thead>
+      <tbody id="bv-h-tbody"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+'use strict';
+
+const _wdName = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+function _eur(v, dp) { dp = (dp==null) ? 2 : dp;
+  return Number(v || 0).toLocaleString('de-DE',
+    {minimumFractionDigits: dp, maximumFractionDigits: dp}); }
+function _esc(s) { return String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Modell-Status beim Laden ziehen
+async function bvModellStatusLaden() {
+  const r = await fetch('/orga/bestellvorschlag/api/luidl/modell/koeffizienten');
+  const d = await r.json();
+  if (!d.ok) return;
+  document.getElementById('bv-modell-version').textContent =
+    `Version ${d.modell.version}, trainiert ${d.modell.trainiert_am || '–'}`;
+  const stats = document.getElementById('bv-modell-stats');
+  stats.innerHTML = '';
+  d.koeffizienten.sort((a,b) => a.wochentag - b.wochentag).forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'wt';
+    div.innerHTML = `
+      <div class="name">${_wdName[c.wochentag]}</div>
+      <div class="val">${Math.round(c.avg_menge)}</div>
+      <div class="sub">±${Math.round(c.mae_menge)} (n=${c.n})</div>
+    `;
+    stats.appendChild(div);
+  });
+}
+
+async function bvKoefAnzeigen() {
+  const r = await fetch('/orga/bestellvorschlag/api/luidl/modell/koeffizienten');
+  const d = await r.json();
+  const out = document.getElementById('bv-koef-out');
+  out.style.display = '';
+  const lines = [];
+  d.koeffizienten.forEach(c => {
+    lines.push(`── ${_wdName[c.wochentag]}  (n=${c.n}, MAE Menge ±${c.mae_menge.toFixed(1)} Stück, MAE EUR ±${c.mae_umsatz.toFixed(1)} €)`);
+    lines.push('   Menge :  ' + Object.entries(c.coef_menge)
+      .map(([k,v]) => `${k}=${v.toFixed(2)}`).join('  '));
+    lines.push('   Umsatz:  ' + Object.entries(c.coef_umsatz)
+      .map(([k,v]) => `${k}=${v.toFixed(2)}`).join('  '));
+    lines.push('');
+  });
+  out.textContent = lines.join('\n');
+}
+
+async function bvModellTrainieren() {
+  const r = await fetch('/orga/bestellvorschlag/api/luidl/modell/neu-trainieren',
+    {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    await bvModellStatusLaden();
+    alert('Modell trainiert.');
+  } else {
+    alert('Fehler: ' + (d.msg || 'unbekannt'));
+  }
+}
+
+async function bvForecastNeu() {
+  const r = await fetch('/orga/bestellvorschlag/api/luidl/wetter/aktualisieren',
+    {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    alert(`Forecast geladen (${d.n} Tage). Wetter-Cache: ${d.cache.frueh} … ${d.cache.spaet}`);
+    bvVorhersage();
+  } else {
+    alert('Fehler: ' + (d.msg || 'unbekannt'));
+  }
+}
+
+async function bvVorhersage() {
+  const datum = document.getElementById('bv-datum').value;
+  if (!datum) return;
+  const params = new URLSearchParams({datum});
+  const tmax  = document.getElementById('bv-tmax').value;
+  const regen = document.getElementById('bv-regen').value;
+  const sonne = document.getElementById('bv-sonne').value;
+  if (tmax !== '')  params.set('tmax', tmax);
+  if (regen !== '') params.set('niederschlag', regen);
+  if (sonne !== '') params.set('sonnenstunden', sonne);
+  const r = await fetch('/orga/bestellvorschlag/api/luidl/vorhersage?' + params);
+  const d = await r.json();
+  const box = document.getElementById('bv-result');
+  box.style.display = '';
+  if (!d.ok) {
+    document.getElementById('bv-menge').textContent = '–';
+    document.getElementById('bv-eur').textContent = '–';
+    document.getElementById('bv-mae').textContent = d.msg || 'Fehler';
+    document.getElementById('bv-context').innerHTML = '';
+    return;
+  }
+  const v = d.vorhersage;
+  if (v.menge == null) {
+    document.getElementById('bv-menge').textContent = '–';
+    document.getElementById('bv-eur').textContent = '–';
+    document.getElementById('bv-mae').textContent = v.msg || 'Kein Modell für diesen Wochentag.';
+    document.getElementById('bv-context').innerHTML = '';
+    document.getElementById('bv-hinweis').textContent = '';
+    return;
+  }
+  document.getElementById('bv-menge').textContent = Math.round(v.menge).toLocaleString('de-DE');
+  document.getElementById('bv-eur').textContent   = _eur(v.umsatz, 2);
+  document.getElementById('bv-mae').textContent =
+    `± ${Math.round(v.mae_menge)} Stück (MAE) | ± ${_eur(v.mae_umsatz, 0)} € | n=${v.n_training} Tage Training | Ø Wochentag: ${Math.round(v.avg_menge)} Stück / ${_eur(v.avg_umsatz, 0)} €`;
+  // Kontext-Pillen
+  const ctx = document.getElementById('bv-context');
+  ctx.innerHTML = '';
+  const w = d.wetter || {};
+  if (w.tmax_c != null) {
+    const cls = w.tmax_c >= 25 ? 'warm' : (w.tmax_c <= 5 ? 'kalt' : '');
+    ctx.innerHTML += `<span class="bv-pille ${cls}">🌡 ${Number(w.tmax_c).toFixed(1)} °C</span>`;
+  }
+  if (w.niederschlag_mm != null) {
+    const cls = w.niederschlag_mm >= 5 ? 'regen' : '';
+    ctx.innerHTML += `<span class="bv-pille ${cls}">☔ ${Number(w.niederschlag_mm).toFixed(1)} mm</span>`;
+  }
+  if (w.sonnenstunden != null) {
+    const cls = w.sonnenstunden >= 8 ? 'sonne' : '';
+    ctx.innerHTML += `<span class="bv-pille ${cls}">☀ ${Number(w.sonnenstunden).toFixed(1)} h</span>`;
+  }
+  if (d.feiertag) {
+    ctx.innerHTML += `<span class="bv-pille feiertag">🎉 ${_esc(d.feiertag)}</span>`;
+  }
+  if (d.ist_ferien) {
+    ctx.innerHTML += `<span class="bv-pille ferien">🏝 Schulferien</span>`;
+  }
+  // Wetter-Info-Zeile
+  let info = '';
+  if (w.tmax_c == null && w.niederschlag_mm == null) {
+    info = 'Kein Wetter im Cache für dieses Datum — Defaults (mild, trocken) benutzt.';
+  } else {
+    info = 'Wetter aus Cache.';
+  }
+  document.getElementById('bv-wetter-info').textContent = info;
+  document.getElementById('bv-hinweis').textContent =
+    'Hinweis: Vorhersage basiert auf der gesamten WG „Backwaren" (Sammelartikel). ' +
+    'Splits pro Sorte folgen, sobald historische Bestellzettel als CSV importiert sind.';
+}
+
+async function bvHistorieLaden() {
+  const von = document.getElementById('bv-h-von').value;
+  const bis = document.getElementById('bv-h-bis').value;
+  if (!von || !bis) return;
+  document.getElementById('bv-h-info').textContent = '⏳ lädt…';
+  const r = await fetch(`/orga/bestellvorschlag/api/luidl/tagesdaten?von=${von}&bis=${bis}`);
+  const d = await r.json();
+  if (!d.ok) {
+    document.getElementById('bv-h-info').textContent = d.msg;
+    return;
+  }
+  const tbody = document.getElementById('bv-h-tbody');
+  tbody.innerHTML = '';
+  d.zeilen.forEach(z => {
+    const tr = document.createElement('tr');
+    const klassen = [];
+    if (z.wochentag === 5) klassen.push('sa');
+    if (z.feiertag)        klassen.push('feiertag');
+    if (z.n_bons === 0)    klassen.push('kein-verkauf');
+    tr.className = klassen.join(' ');
+    const ctx = [];
+    if (z.feiertag)    ctx.push(`🎉 ${_esc(z.feiertag)}`);
+    if (z.ist_ferien)  ctx.push(`🏝 Ferien`);
+    tr.innerHTML = `
+      <td>${z.datum.split('-').reverse().join('.')}</td>
+      <td>${_wdName[z.wochentag]}</td>
+      <td class="right">${z.n_bons}</td>
+      <td class="right">${z.menge ? Math.round(z.menge).toLocaleString('de-DE') : '–'}</td>
+      <td class="right">${z.umsatz_brutto ? _eur(z.umsatz_brutto, 2) : '–'}</td>
+      <td class="right">${z.tmax_c != null ? z.tmax_c.toFixed(1) : '–'}</td>
+      <td class="right">${z.niederschlag_mm != null ? z.niederschlag_mm.toFixed(1) : '–'}</td>
+      <td class="right">${z.sonnenstunden != null ? z.sonnenstunden.toFixed(1) : '–'}</td>
+      <td>${ctx.join(' · ')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('bv-h-info').textContent = `${d.zeilen.length} Tage`;
+}
+
+// Init: Historie-Default = letzte 90 Tage, Vorhersage automatisch laden
+(function init() {
+  const heute = new Date();
+  const vor90 = new Date(heute); vor90.setDate(heute.getDate() - 90);
+  document.getElementById('bv-h-von').value = vor90.toISOString().slice(0,10);
+  bvModellStatusLaden();
+  bvVorhersage();
+  bvHistorieLaden();
+})();
+</script>
+{% endblock %}

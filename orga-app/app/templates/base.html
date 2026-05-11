@@ -479,9 +479,21 @@ a { text-decoration: none; color: inherit; }
                class="sidebar-sub-item {% if request.path == '/orga/bestellwesen/' or (request.path.startswith('/orga/bestellwesen/') and not request.path.startswith('/orga/bestellwesen/wareneingang') and not request.path.startswith('/orga/bestellwesen/einkauf')) %}aktiv{% endif %}">
               <span class="sub-icon">📋</span> Bestellungen
             </a>
-            <a href="/coming-soon?modul=Bestellvorschläge" class="sidebar-sub-item">
-              <span class="sub-icon">💡</span> Bestellvorschläge
-            </a>
+            <div class="sidebar-group {% if request.path.startswith('/orga/bestellvorschlag') %}open{% endif %}"
+                 id="grp-bestellvorschlag" style="margin-left:0;">
+              <button class="sidebar-group-toggle" onclick="toggleGrp('grp-bestellvorschlag')"
+                      style="padding-left:22px;font-size:13px;">
+                <span class="icon">💡</span> Bestellvorschläge
+                <span class="toggle-arrow">▶</span>
+              </button>
+              <div class="sidebar-group-items">
+                <a href="/orga/bestellvorschlag/luidl"
+                   class="sidebar-sub-item {% if request.path.startswith('/orga/bestellvorschlag/luidl') %}aktiv{% endif %}"
+                   style="padding-left:40px;">
+                  <span class="sub-icon">🥨</span> Luidl (Backwaren)
+                </a>
+              </div>
+            </div>
             <a href="/orga/bestellwesen/wareneingang/"
                class="sidebar-sub-item {% if request.path.startswith('/orga/bestellwesen/wareneingang') %}aktiv{% endif %}">
               <span class="sub-icon">📥</span> Wareneingänge
