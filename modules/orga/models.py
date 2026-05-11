@@ -606,7 +606,21 @@ def preispflege_liste(wgr_id: int | None = None,
             COALESCE(a.VPE_EK, 1)                        AS VPE_EK,
             a.DEFAULT_LIEF_ID,
             aek.EK_BEZUG       AS EK_BEZUG,
-            kp.bild_pfad       AS BILD_PFAD,
+            COALESCE(
+              kp.bild_pfad,
+              (SELECT CONCAT('/binaer/', ela.BILD_BINAER_ID)
+                 FROM XT_EINKAUF_LIEF_ARTIKEL ela
+                WHERE ela.BILD_BINAER_ID IS NOT NULL
+                  AND (
+                    ela.BARCODE_STUECK = a.BARCODE
+                 OR ela.BARCODE_STUECK = a.BARCODE2
+                 OR ela.BARCODE_STUECK = a.BARCODE3
+                 OR ela.BARCODE_KT     = a.BARCODE
+                 OR ela.BARCODE_KT     = a.BARCODE2
+                 OR ela.BARCODE_KT     = a.BARCODE3
+                  )
+                LIMIT 1)
+            )                   AS BILD_PFAD,
             vk.REC_ID         AS VK_REC_ID,
             vk.GRUND          AS VK_GRUND,
             vk.ALT_EK         AS VK_ALT_EK,
