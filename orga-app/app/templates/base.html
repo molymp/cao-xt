@@ -583,6 +583,10 @@ a { text-decoration: none; color: inherit; }
           </div>
         </div>
 
+        <a href="/orga/banking" class="sidebar-item {% if request.path.startswith('/orga/banking') %}aktiv{% endif %}">
+          <span class="icon">🏦</span> Banking
+          <span class="sub">Konten · Umsätze · SEPA-Sammler (Hibiscus)</span>
+        </a>
         <a href="/coming-soon?modul=Lohnbuchhaltung" class="sidebar-item">
           <span class="icon">💼</span> Lohnbuchhaltung
         </a>

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}SEPA-Sammler {{ kopf.bezeichnung }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.bk-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+.bk-kopf h1 { font-size:1.4rem; }
+.bk-kopf a.zurueck { color:var(--text-dim,#5a7a3a);
+  text-decoration:none; font-size:0.9rem; font-weight:700; }
+
+.bk-card { background:white; padding:16px 20px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  margin-bottom:14px; }
+.bk-meta { display:grid; gap:10px;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
+.bk-meta label { font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--text-dim,#5a7a3a); display:block; }
+.bk-meta .wert { font-weight:600; }
+.bk-mono { font-family:'Nunito Mono',Consolas,monospace; }
+
+.bk-tab { width:100%; border-collapse:collapse; background:white;
+  border-radius:var(--radius); overflow:hidden; box-shadow:var(--schatten); }
+.bk-tab th { background:var(--gruen-dunkel); color:var(--creme);
+  padding:9px 12px; text-align:left; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.06em; }
+.bk-tab td { padding:7px 12px; border-bottom:1px solid var(--creme-dunkel);
+  font-size:0.88rem; }
+.bk-tab tfoot td { font-weight:800; background:var(--bg-hell,#ece3cc);
+  border-top:2px solid var(--gruen-dunkel); }
+.zahl-rechts { text-align:right; font-variant-numeric:tabular-nums; }
+
+.bk-pille { display:inline-block; padding:1px 8px; border-radius:999px;
+  font-size:0.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.04em; }
+.bk-pille.gruen { background:rgba(46,122,46,0.18); color:#1a4010; }
+.bk-pille.gelb  { background:rgba(220,140,40,0.18); color:#a05010; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bk-kopf">
+    <h1>📤 {{ kopf.bezeichnung }}</h1>
+    <a href="{{ url_for('orga_banking.sepa_ueb_liste') }}" class="zurueck">← zurück zur Liste</a>
+</div>
+
+<div class="bk-card">
+    <div class="bk-meta">
+        <div>
+            <label>Konto</label>
+            <div class="wert">{{ kopf.konto_bez or '–' }}</div>
+            <div class="bk-mono" style="font-size:0.78rem; color:var(--text-dim,#5a7a3a);">{{ kopf.konto_iban or '' }}</div>
+        </div>
+        <div>
+            <label>Termin</label>
+            <div class="wert">{{ kopf.termin.strftime('%d.%m.%Y') if kopf.termin else '–' }}</div>
+        </div>
+        <div>
+            <label>Status</label>
+            <div class="wert">
+                {% if kopf.ausgefuehrt %}
+                    <span class="bk-pille gruen">✓ ausgeführt</span>
+                    {% if kopf.ausgefuehrt_am %}<br><span style="font-size:0.78rem;">{{ kopf.ausgefuehrt_am.strftime('%d.%m.%Y %H:%M') }}</span>{% endif %}
+                {% else %}
+                    <span class="bk-pille gelb">⏳ offen</span>
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            <label>Buchungen</label>
+            <div class="wert">{{ kopf.buchungen|length }}</div>
+        </div>
+        <div>
+            <label>Summe</label>
+            <div class="wert">{{ '{:,.2f}'.format(kopf.summe).replace(',', 'X').replace('.', ',').replace('X', '.') }} €</div>
+        </div>
+        {% if kopf.pmtinfid %}
+        <div>
+            <label>PmtInfId</label>
+            <div class="wert bk-mono" style="font-size:0.85rem;">{{ kopf.pmtinfid }}</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<table class="bk-tab">
+    <thead>
+        <tr>
+            <th>Empfänger</th>
+            <th>IBAN</th>
+            <th>BIC</th>
+            <th>Verwendungszweck</th>
+            <th class="zahl-rechts">Betrag €</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for b in kopf.buchungen %}
+    <tr>
+        <td><strong>{{ b.empfaenger_name }}</strong></td>
+        <td class="bk-mono" style="font-size:0.82rem;">{{ b.empfaenger_konto }}</td>
+        <td class="bk-mono" style="font-size:0.82rem;">{{ b.empfaenger_bic or '–' }}</td>
+        <td>{{ b.zweck or '' }}</td>
+        <td class="zahl-rechts" style="font-weight:700;">
+            {{ '{:,.2f}'.format(b.betrag or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="4">Summe</td>
+            <td class="zahl-rechts">
+                {{ '{:,.2f}'.format(kopf.summe).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+        </tr>
+    </tfoot>
+</table>
+
+{% endblock %}

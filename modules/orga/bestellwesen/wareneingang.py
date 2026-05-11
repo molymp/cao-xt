@@ -1609,32 +1609,181 @@ def lieferschein_setzen(eingang_id: int, *,
     return {'ok': True}
 
 
-def storno(rec_id: int) -> dict[str, int]:
-    """Storniert einen offenen Wareneingang (CAO-Mimik @0x01f8e6a4):
-    EKEINGANG.STADIUM=127 + BELEGNUM mit '- STORNO -' suffix.
-
-    Nur STADIUM=0 (offen) ist stornierbar. Bereits gebuchte/berechnete
-    (2/3/4/9) muessen via CAO storniert werden.
+def storno_pruefung(rec_id: int) -> dict:
+    """Pre-Check fuer WE-Storno: gibt es nicht-stornierte EK-Rechnungen
+    mit Pos die aus diesem WE kommen (JOURNALPOS.QUELLE_WE -> EKEINGANG_POS,
+    EKEINGANG=Y)?
     """
     rec_id = int(rec_id)
     with get_db() as cur:
-        cur.execute("SELECT STADIUM FROM EKEINGANG WHERE REC_ID = %s", (rec_id,))
-        row = cur.fetchone()
-        if not row:
-            raise LookupError(f'Wareneingang {rec_id} nicht gefunden')
-        st = int(row['STADIUM'])
-        if st == 127:
-            return {'ok': 0}
-        if st != 0:
-            raise PermissionError(
-                f'Wareneingang STADIUM={st} (nicht 0/offen) — '
-                f'Storno bitte in CAO Faktura'
-            )
         cur.execute(
-            "UPDATE EKEINGANG "
-            "   SET STADIUM = 127, "
-            "       BELEGNUM = CONCAT(BELEGNUM, '- STORNO -') "
-            " WHERE REC_ID = %s",
+            """SELECT DISTINCT j.REC_ID AS ek_id, j.VRENUM, j.STADIUM,
+                      j.RDATUM
+                 FROM JOURNAL j
+                 JOIN JOURNALPOS jp ON jp.JOURNAL_ID = j.REC_ID
+                 JOIN EKEINGANG_POS wep ON wep.REC_ID = jp.QUELLE_WE
+                WHERE wep.EKEINGANG_ID = %s
+                  AND j.QUELLE   = 5
+                  AND j.STADIUM  NOT IN (125, 126, 127)
+                  AND jp.EKEINGANG = 'Y'
+                ORDER BY j.REC_ID""",
             (rec_id,),
         )
-    return {'ok': 1}
+        eks = cur.fetchall()
+    return {'ok': not eks, 'ek_rechnungen': eks}
+
+
+def storno(rec_id: int, *, ma_name: str = 'CAO-XT') -> dict[str, int]:
+    """Storniert einen Wareneingang (offen ODER gebucht).
+
+    - STADIUM=0 (offen, nie gebucht): nur Header umstellen, keine Lager-
+      Korrektur (Lager wurde nie bewegt).
+    - STADIUM in (2,3,4,9) (gebucht): Pre-Check ob EK-Rechnungen die
+      Pos referenzieren — wenn ja, blockiert. Sonst: pro Pos das Lager
+      zurueckrollen + ARTIKEL_HISTORIE-Storno-Eintrag, EKBESTELL_POS-
+      Status zurueck (sofern keine andere WE-Pos diese EKBESTELL_POS
+      bedient), dann EKEINGANG.STADIUM=127.
+    - STADIUM=127: idempotent No-Op.
+
+    MyISAM-Konsequenz (siehe feedback_myisam_idempotent.md): die Funktion
+    verarbeitet nur Pos die noch nicht "storniert markiert" sind. Da es
+    auf EKEINGANG_POS keinen klaren "storniert"-Marker gibt, nutzen wir
+    das Header-STADIUM=127 als Eingangs-Filter — bei Re-Run greift das
+    nicht mehr und der Pos-Loop wird komplett uebersprungen.
+    """
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:50]
+
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, STADIUM, BELEGNUM FROM EKEINGANG WHERE REC_ID=%s",
+            (rec_id,)
+        )
+        we = cur.fetchone()
+        if not we:
+            raise LookupError(f'Wareneingang {rec_id} nicht gefunden')
+        st = int(we['STADIUM'])
+        if st == 127:
+            return {'ok': 0, 'pos_lager_korrigiert': 0}
+
+    # Pre-Check fuer gebuchte WE
+    if st != 0:
+        pruef = storno_pruefung(rec_id)
+        if not pruef['ok']:
+            namen = [e.get('VRENUM') or f"#{e['ek_id']}"
+                     for e in pruef['ek_rechnungen']]
+            raise PermissionError(
+                f"Storno blockiert — bitte zuerst stornieren: "
+                f"EK-Rechnung: {', '.join(namen)}"
+            )
+
+    pos_korrigiert = 0
+    with get_db() as cur:
+        if st in (2, 3, 4, 9):
+            # Lager zurueckrollen: pro WE-Pos die noch BERECHNET='N' ist
+            # (bei Y waere die Pos in einer aktiven EK-Rechnung — wuerde
+            # Pre-Check schon abgewiesen haben, aber zur Sicherheit).
+            cur.execute(
+                """SELECT REC_ID, ARTIKEL_ID, MENGE, BERECHNET,
+                          EKBESTELL_POS_ID
+                     FROM EKEINGANG_POS
+                    WHERE EKEINGANG_ID = %s AND GEBUCHT_FLAG = 'Y'""",
+                (rec_id,)
+            )
+            we_positionen = cur.fetchall()
+            for p in we_positionen:
+                artikel_id = int(p.get('ARTIKEL_ID') or 0)
+                menge = float(p.get('MENGE') or 0)
+                if artikel_id <= 0 or menge <= 0:
+                    continue
+                if p.get('BERECHNET') == 'Y':
+                    # Defensive: sollte vom Pre-Check abgefangen sein
+                    continue
+
+                # MENGE_AKT zurueck (= -menge); SHOP_CHANGE_FLAG anstossen
+                cur.execute(
+                    "SELECT MENGE_AKT FROM ARTIKEL WHERE REC_ID=%s",
+                    (artikel_id,)
+                )
+                art = cur.fetchone() or {}
+                neu_lager = float(art.get('MENGE_AKT') or 0) - menge
+                cur.execute(
+                    "INSERT INTO ARTIKEL_HISTORIE "
+                    "(ARTIKEL_ID, QUELLE, QUELLE_STR, MENGE_LAGER, "
+                    " MENGE_GEBUCHT, JID, GEAND, GEAND_NAME, INFO) "
+                    "VALUES (%s, 31, %s, %s, %s, %s, NOW(), %s, %s)",
+                    (artikel_id,
+                     f'Storno WE {we.get("BELEGNUM") or rec_id}',
+                     neu_lager, -menge, rec_id, ma_name_safe,
+                     'WE-Storno: Lager-Korrektur'),
+                )
+                cur.execute(
+                    "UPDATE ARTIKEL "
+                    "SET MENGE_AKT = COALESCE(MENGE_AKT,0) - %s, "
+                    "    SHOP_CHANGE_FLAG = 1 "
+                    "WHERE REC_ID = %s",
+                    (menge, artikel_id)
+                )
+                pos_korrigiert += 1
+
+                # EKBESTELL_POS-Status zuruecknehmen (nur wenn keine
+                # andere WE-Pos diese Bestellpos noch bedient).
+                bp_id = int(p.get('EKBESTELL_POS_ID') or 0)
+                if bp_id > 0:
+                    cur.execute(
+                        """SELECT COUNT(*) AS n FROM EKEINGANG_POS wep
+                            JOIN EKEINGANG we2 ON we2.REC_ID = wep.EKEINGANG_ID
+                           WHERE wep.EKBESTELL_POS_ID = %s
+                             AND we2.STADIUM != 127
+                             AND wep.EKEINGANG_ID != %s
+                             AND wep.GEBUCHT_FLAG = 'Y'""",
+                        (bp_id, rec_id)
+                    )
+                    n_andere = int((cur.fetchone() or {}).get('n') or 0)
+                    if n_andere == 0:
+                        # Niemand bedient mehr → zurueck auf 'offen'
+                        cur.execute(
+                            "UPDATE EKBESTELL_POS SET STADIUM=2 "
+                            "WHERE REC_ID=%s "
+                            "  AND STADIUM IN (3, 93, 95)",
+                            (bp_id,)
+                        )
+
+        # Header-Update + BELEGNUM-Suffix (nur einmal)
+        cur.execute(
+            "UPDATE EKEINGANG "
+            "SET STADIUM = 127, "
+            "    BELEGNUM = CASE "
+            "      WHEN BELEGNUM LIKE '%- STORNO -%' THEN BELEGNUM "
+            "      ELSE CONCAT(IFNULL(BELEGNUM,''), '- STORNO -') END "
+            "WHERE REC_ID=%s AND STADIUM != 127",
+            (rec_id,)
+        )
+
+        # EKBESTELL-Header-Status nochmal nachziehen (falls Bestellungen
+        # jetzt wieder rein "offen" sind, sollte der Header das spiegeln)
+        cur.execute(
+            """SELECT DISTINCT bp.EKBESTELL_ID
+                 FROM EKEINGANG_POS wep
+                 JOIN EKBESTELL_POS bp ON bp.REC_ID = wep.EKBESTELL_POS_ID
+                WHERE wep.EKEINGANG_ID = %s AND bp.EKBESTELL_ID > 0""",
+            (rec_id,)
+        )
+        for r in cur.fetchall():
+            bid = int(r['EKBESTELL_ID'])
+            cur.execute(
+                """UPDATE EKBESTELL b
+                      SET STADIUM = CASE
+                          WHEN (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                 WHERE p.EKBESTELL_ID=b.REC_ID
+                                   AND p.STADIUM IN (3,9,93,95)) = 0
+                               AND (SELECT COUNT(*) FROM EKBESTELL_POS p
+                                     WHERE p.EKBESTELL_ID=b.REC_ID
+                                       AND p.STADIUM = 2) > 0 THEN 2
+                          ELSE b.STADIUM
+                      END
+                    WHERE b.REC_ID=%s AND b.STADIUM IN (3,9)""",
+                (bid,)
+            )
+
+    return {'ok': 1, 'pos_lager_korrigiert': pos_korrigiert}

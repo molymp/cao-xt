@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %}Banking – Reconcile{% endblock %}
+
+{% block extra_style %}
+<style>
+.bk-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+.bk-kopf h1 { font-size:1.5rem; }
+.bk-kopf a.zurueck { color:var(--text-dim,#5a7a3a);
+  text-decoration:none; font-size:0.9rem; font-weight:700; }
+
+.rc-summary { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+.rc-chip { background:white; padding:10px 16px; border-radius:var(--radius);
+  box-shadow:var(--schatten); font-size:0.92rem; }
+.rc-chip .zahl { font-size:1.5rem; font-weight:800; display:block; }
+.rc-chip.gruen .zahl { color:#1a4010; }
+.rc-chip.gelb  .zahl { color:#a05010; }
+.rc-chip.grau  .zahl { color:#888; }
+
+.rc-section { background:white; padding:14px 18px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  margin-bottom:18px; }
+.rc-section h2 { font-size:1.05rem; margin-bottom:8px; color:var(--gruen-dunkel); }
+.rc-section p.muted { color:var(--text-dim,#5a7a3a); font-size:0.9rem;
+  margin-bottom:10px; }
+
+.rc-tab { width:100%; border-collapse:collapse; }
+.rc-tab th { background:var(--gruen-dunkel); color:var(--creme);
+  padding:8px 10px; text-align:left; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap; }
+.rc-tab td { padding:8px 10px; border-bottom:1px solid var(--creme-dunkel);
+  font-size:0.9rem; vertical-align:top; }
+.rc-tab tr:last-child td { border-bottom:none; }
+.zahl-rechts { text-align:right; font-variant-numeric:tabular-nums;
+  white-space:nowrap; }
+
+.rc-score { display:inline-block; padding:1px 8px; border-radius:999px;
+  font-size:0.74rem; font-weight:800; white-space:nowrap; }
+.rc-score.s100 { background:rgba(46,122,46,0.25); color:#1a4010; }
+.rc-score.s80  { background:rgba(46,122,46,0.18); color:#1a4010; }
+.rc-score.s50  { background:rgba(220,140,40,0.18); color:#a05010; }
+
+.rc-mono { font-family:'Nunito Mono',Consolas,monospace; font-size:0.82rem; }
+.rc-aktion { background:var(--gruen-dunkel); color:white; border:none;
+  padding:6px 12px; border-radius:var(--radius-klein);
+  font-family:'Nunito',sans-serif; font-size:0.86rem; font-weight:700;
+  cursor:pointer; }
+.rc-aktion:hover { background:var(--akzent-hell,#2e6e1a); }
+.rc-aktion:disabled { opacity:0.5; cursor:not-allowed; }
+.rc-aktion.warn { background:#a05010; }
+
+.rc-bulk-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  background:var(--bg-hell,#ece3cc); padding:10px 14px;
+  border-radius:var(--radius-klein); margin-bottom:10px; }
+.rc-bulk-bar button { font-size:0.92rem; padding:6px 14px; }
+
+tr.rc-zeile.gewaehlt { background:rgba(46,122,46,0.06); }
+
+.rc-leer { color:var(--text-dim,#5a7a3a); padding:14px 4px;
+  font-style:italic; }
+
+.rc-zweck { max-width:340px; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-size:0.82rem; color:var(--text-dim,#5a7a3a); }
+.rc-zweck:hover { white-space:normal; word-break:break-word; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bk-kopf">
+    <h1>🔁 Reconcile – offene Belege ↔ Bankumsätze</h1>
+    <a href="{{ url_for('orga_banking.uebersicht') }}" class="zurueck">← zurück zur Konten-Übersicht</a>
+</div>
+
+<div class="rc-summary">
+    <div class="rc-chip">
+        <span class="zahl">{{ gesamt }}</span>
+        Offene EK-Belege gesamt
+    </div>
+    <div class="rc-chip gruen">
+        <span class="zahl">{{ mit_top|length }}</span>
+        ★ klare Match-Treffer (Score ≥ 80)
+    </div>
+    <div class="rc-chip gelb">
+        <span class="zahl">{{ mit_match|length }}</span>
+        ⚠ unsichere Match-Vorschläge
+    </div>
+    <div class="rc-chip grau">
+        <span class="zahl">{{ ohne_match|length }}</span>
+        Belege ohne Bankumsatz-Match
+    </div>
+</div>
+
+{# ── Klare Treffer (Score ≥ 80) — Bulk-Übernahme ──────────────── #}
+{% if mit_top %}
+<div class="rc-section">
+    <h2>★ Klare Match-Treffer ({{ mit_top|length }})</h2>
+    <p class="muted">
+        Score ≥ 80: Eingangsrechnungs-Nr im Zweck oder Lieferanten-IBAN exakt.
+        Markierte Zeilen können in einem Schritt übernommen werden — pro Beleg
+        wird ein <code>ZAHLUNGEN</code>-Eintrag mit <code>ART='UB'</code> angelegt
+        und in Hibiscus die VRENUM eingetragen.
+    </p>
+
+    <div class="rc-bulk-bar">
+        <label style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="rc-cb-alle" onchange="rcAlleToggle()" checked
+                   style="width:16px; height:16px;">
+            Alle markieren
+        </label>
+        <span style="color:var(--text-dim,#5a7a3a);">·</span>
+        <span id="rc-bulk-zaehler">{{ mit_top|length }} Belege markiert</span>
+        <button class="rc-aktion" id="rc-bulk-btn" onclick="rcBulkUebernehmen()">
+            ✓ Markierte übernehmen
+        </button>
+    </div>
+
+    <table class="rc-tab" id="rc-tab-top">
+        <thead>
+            <tr>
+                <th style="width:32px;"></th>
+                <th>Beleg-Nr.</th>
+                <th>Eingangs-Nr.</th>
+                <th>Lieferant</th>
+                <th>RDatum</th>
+                <th class="zahl-rechts">Offen €</th>
+                <th>Bank-Datum</th>
+                <th class="zahl-rechts">Bank-Betrag</th>
+                <th>Empfänger</th>
+                <th>Score</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in mit_top %}
+        <tr class="rc-zeile gewaehlt"
+            data-rec-id="{{ r.kopf.REC_ID }}"
+            data-umsatz-id="{{ r.top.umsatz_id }}">
+            <td><input type="checkbox" class="rc-cb-zeile" checked onchange="rcCbAktualisieren()"></td>
+            <td>
+                <a href="{{ url_for('orga_bestellwesen.einkauf_detail', rec_id=r.kopf.REC_ID) }}"
+                   target="_blank"
+                   style="color:var(--gruen-dunkel); font-weight:700; text-decoration:none;">
+                    {{ r.kopf.VRENUM }}
+                </a>
+            </td>
+            <td class="rc-mono">{{ r.kopf.ORGNUM or '–' }}</td>
+            <td>{{ r.kopf.lief_name }}</td>
+            <td>{{ r.kopf.RDATUM.strftime('%d.%m.%Y') if r.kopf.RDATUM else '–' }}</td>
+            <td class="zahl-rechts" style="font-weight:700;">
+                {{ '{:,.2f}'.format(r.kopf.offen).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td>{{ r.top.datum.strftime('%d.%m.%Y') if r.top.datum else '–' }}</td>
+            <td class="zahl-rechts">
+                {{ '{:,.2f}'.format(r.top.betrag|abs).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td>{{ r.top.empfaenger_name[:30] }}</td>
+            <td>
+                <span class="rc-score s{% if r.top.score >= 100 %}100{% else %}80{% endif %}">
+                    {{ r.top.score }}/100
+                </span>
+                <br><span style="font-size:0.72rem; color:var(--text-dim,#5a7a3a);">
+                    {{ r.top.gruende|join(' · ') }}
+                </span>
+            </td>
+            <td>
+                <button class="rc-aktion"
+                        onclick="rcEinzeln({{ r.kopf.REC_ID }}, {{ r.top.umsatz_id }}, this)">
+                    ✓
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{# ── Unsichere Vorschläge (Score 50-79) — manuell prüfen ─────── #}
+{% if mit_match %}
+<div class="rc-section">
+    <h2>⚠ Unsichere Match-Vorschläge ({{ mit_match|length }})</h2>
+    <p class="muted">
+        Score 50–79: nur Betrag/Datum/Name passen. Bitte prüfen, der Treffer kann
+        falsch sein. „⚠ Übernehmen"-Knopf legt trotzdem die Zahlung an.
+    </p>
+    <table class="rc-tab">
+        <thead>
+            <tr>
+                <th>Beleg-Nr.</th>
+                <th>Lieferant</th>
+                <th class="zahl-rechts">Offen €</th>
+                <th>Bank-Datum</th>
+                <th class="zahl-rechts">Bank-Betrag</th>
+                <th>Empfänger</th>
+                <th>Verwendungszweck</th>
+                <th>Score / Begründung</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in mit_match %}
+        <tr>
+            <td>
+                <a href="{{ url_for('orga_bestellwesen.einkauf_detail', rec_id=r.kopf.REC_ID) }}"
+                   target="_blank"
+                   style="color:var(--gruen-dunkel); font-weight:700; text-decoration:none;">
+                    {{ r.kopf.VRENUM }}
+                </a>
+                {% if r.kopf.ORGNUM %}<br><span class="rc-mono" style="font-size:0.74rem;">{{ r.kopf.ORGNUM }}</span>{% endif %}
+            </td>
+            <td>{{ r.kopf.lief_name }}</td>
+            <td class="zahl-rechts" style="font-weight:700;">
+                {{ '{:,.2f}'.format(r.kopf.offen).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td>{{ r.top.datum.strftime('%d.%m.%Y') if r.top.datum else '–' }}</td>
+            <td class="zahl-rechts">
+                {{ '{:,.2f}'.format(r.top.betrag|abs).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td>{{ r.top.empfaenger_name[:30] }}</td>
+            <td class="rc-zweck" title="{{ r.top.zweck }}">{{ r.top.zweck[:60] }}</td>
+            <td>
+                <span class="rc-score s50">{{ r.top.score }}/100</span>
+                <br><span style="font-size:0.72rem; color:var(--text-dim,#5a7a3a);">
+                    {{ r.top.gruende|join(' · ') }}
+                </span>
+            </td>
+            <td>
+                <button class="rc-aktion warn"
+                        onclick="rcEinzeln({{ r.kopf.REC_ID }}, {{ r.top.umsatz_id }}, this)">
+                    ⚠ Übernehmen
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{# ── Belege ohne Match — manuell zu prüfen ───────────────────── #}
+{% if ohne_match %}
+<div class="rc-section">
+    <h2>Belege ohne Bankumsatz-Match ({{ ohne_match|length }})</h2>
+    <p class="muted">
+        Diese Belege haben aktuell keinen passenden Hibiscus-Umsatz im
+        ±60-Tage-Fenster mit gleichem Betrag. Möglich: noch nicht überwiesen,
+        Kontoauszug noch nicht abgerufen, Teilzahlung mit anderem Betrag.
+    </p>
+    <table class="rc-tab">
+        <thead>
+            <tr>
+                <th>Beleg-Nr.</th>
+                <th>Eingangs-Nr.</th>
+                <th>Lieferant</th>
+                <th>RDatum</th>
+                <th>Stadium</th>
+                <th class="zahl-rechts">Brutto €</th>
+                <th class="zahl-rechts">Offen €</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in ohne_match %}
+        <tr>
+            <td>
+                <a href="{{ url_for('orga_bestellwesen.einkauf_detail', rec_id=r.kopf.REC_ID) }}"
+                   target="_blank"
+                   style="color:var(--gruen-dunkel); font-weight:700; text-decoration:none;">
+                    {{ r.kopf.VRENUM }}
+                </a>
+            </td>
+            <td class="rc-mono">{{ r.kopf.ORGNUM or '–' }}</td>
+            <td>{{ r.kopf.lief_name }}</td>
+            <td>{{ r.kopf.RDATUM.strftime('%d.%m.%Y') if r.kopf.RDATUM else '–' }}</td>
+            <td>
+                {% if r.kopf.STADIUM == 2 %}offen
+                {% elif r.kopf.STADIUM == 7 %}Teilzahlung
+                {% elif r.kopf.STADIUM == 11 %}angewiesen
+                {% endif %}
+            </td>
+            <td class="zahl-rechts">
+                {{ '{:,.2f}'.format(r.kopf.BSUMME).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+            <td class="zahl-rechts" style="font-weight:700;">
+                {{ '{:,.2f}'.format(r.kopf.offen).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if not mit_top and not mit_match and not ohne_match %}
+<div class="rc-section">
+    <p class="rc-leer">🎉 Keine offenen EK-Belege — alles bezahlt.</p>
+</div>
+{% endif %}
+
+<script>
+function rcAlleToggle() {
+    const an = document.getElementById('rc-cb-alle').checked;
+    document.querySelectorAll('.rc-cb-zeile').forEach(cb => {
+        cb.checked = an;
+        cb.closest('tr').classList.toggle('gewaehlt', an);
+    });
+    rcCbAktualisieren();
+}
+function rcCbAktualisieren() {
+    let n = 0;
+    document.querySelectorAll('.rc-cb-zeile').forEach(cb => {
+        cb.closest('tr').classList.toggle('gewaehlt', cb.checked);
+        if (cb.checked) n++;
+    });
+    document.getElementById('rc-bulk-zaehler').textContent =
+        n + ' Belege markiert';
+    const btn = document.getElementById('rc-bulk-btn');
+    btn.disabled = (n === 0);
+}
+
+async function rcEinzeln(rec_id, umsatz_id, btn) {
+    if (!confirm('Bankumsatz als Zahlung übernehmen?\n\n' +
+                 'ZAHLUNGEN-Eintrag wird angelegt, Hibiscus-Umsatz als ' +
+                 'geprüft markiert + VRENUM in Notiz eingetragen.')) return;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    try {
+        const r = await fetch(
+            `/orga/bestellwesen/einkauf/${rec_id}/api/bankumsatz-uebernehmen`,
+            {method: 'POST',
+             headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({umsatz_id: umsatz_id})});
+        const d = await r.json();
+        if (!d.ok) {
+            alert('Fehler: ' + (d.fehler || 'unbekannt'));
+            btn.disabled = false;
+            btn.textContent = '✓';
+            return;
+        }
+        // Zeile ausblenden
+        btn.closest('tr').style.opacity = '0.4';
+        btn.textContent = '✓ erledigt';
+    } catch (e) {
+        alert('Verbindungsfehler');
+        btn.disabled = false;
+        btn.textContent = '✓';
+    }
+}
+
+async function rcBulkUebernehmen() {
+    const paare = [];
+    document.querySelectorAll('.rc-cb-zeile').forEach(cb => {
+        if (!cb.checked) return;
+        const tr = cb.closest('tr');
+        paare.push({rec_id: parseInt(tr.dataset.recId),
+                     umsatz_id: parseInt(tr.dataset.umsatzId)});
+    });
+    if (!paare.length) return;
+    if (!confirm(`${paare.length} Bankumsätze als Zahlung übernehmen?\n\n` +
+                 'Pro Beleg wird ein ZAHLUNGEN-Eintrag mit ART=UB angelegt.')) {
+        return;
+    }
+    const btn = document.getElementById('rc-bulk-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Verarbeite ' + paare.length + ' …';
+    try {
+        const r = await fetch('/orga/banking/reconcile/uebernehmen-bulk',
+            {method: 'POST',
+             headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({paare: paare})});
+        const d = await r.json();
+        const ok_n = (d.erfolg || []).length;
+        const fail_n = (d.fehler || []).length;
+        let msg = `${ok_n} übernommen`;
+        if (fail_n) msg += `, ${fail_n} Fehler:\n` +
+            d.fehler.map(f => `  Beleg #${f.rec_id}: ${f.fehler}`).join('\n');
+        alert(msg);
+        location.reload();
+    } catch (e) {
+        alert('Verbindungsfehler');
+        btn.disabled = false;
+        btn.textContent = '✓ Markierte übernehmen';
+    }
+}
+</script>
+
+{% endblock %}

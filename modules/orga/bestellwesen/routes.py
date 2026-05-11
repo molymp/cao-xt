@@ -488,12 +488,161 @@ def api_ek_neu() -> Any:
 
 @bp.post('/einkauf/<int:rec_id>/api/storno')
 def api_ek_storno(rec_id: int) -> Any:
+    """Storno fuer in-Bearbeitung-Beleg (DELETE) ODER fuer gebuchten
+    Beleg (STADIUM=127, undo side-effects). Wird automatisch je nach
+    QUELLE-Wert gewaehlt.
+    """
     _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
     try:
-        result = ek.einkauf_storno(rec_id)
+        # Erst pruefen ob in-Bearbeitung oder gebucht
+        pruef = ek.einkauf_storno_pruefung(rec_id)
+        kopf = pruef['kopf']
+        if int(kopf.get('QUELLE') or 0) == 15:
+            result = ek.einkauf_storno(rec_id)
+        else:
+            result = ek.einkauf_storno_gebucht(
+                rec_id, ma_id=ma_id, ma_name=ma_name)
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
+
+
+@bp.get('/einkauf/<int:rec_id>/api/storno-pruefung')
+def api_ek_storno_pruefung(rec_id: int) -> Any:
+    _login_check()
+    try:
+        result = ek.einkauf_storno_pruefung(rec_id)
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
+    return jsonify(result)
+
+
+@bp.post('/einkauf/<int:rec_id>/api/kopieren')
+def api_ek_kopieren(rec_id: int) -> Any:
+    _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_kopieren(rec_id, ma_id=ma_id, ma_name=ma_name)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.post('/einkauf/<int:rec_id>/api/storno-und-kopieren')
+def api_ek_storno_und_kopieren(rec_id: int) -> Any:
+    _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_storno_und_kopieren(
+            rec_id, ma_id=ma_id, ma_name=ma_name)
+    except (LookupError, PermissionError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+# ── Phase D: Zahlungs-Erfassung ─────────────────────────────────
+
+
+@bp.get('/einkauf/<int:rec_id>/api/zahlungen')
+def api_ek_zahlungen(rec_id: int) -> Any:
+    """Liste aller Zahlungen zur EK-Rechnung + Zahlungsarten-Stamm
+    fuer das Erfassungs-Modal."""
+    _login_check()
+    try:
+        d = ek.zahlungen_zu_einkauf(rec_id)
+    except LookupError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
+    return jsonify({
+        'ok': True,
+        'zahlungen':     d['zahlungen'],
+        'ziel_info':     d['ziel_info'],
+        'zahlungsarten': ek.zahlungsarten_aktiv(),
+    })
+
+
+@bp.post('/einkauf/<int:rec_id>/api/zahlungen')
+def api_ek_zahlung_erfassen(rec_id: int) -> Any:
+    """Erfasst eine Zahlung manuell. Body:
+       {betrag, datum, valuta?, zahlart_id?, skonto_proz?, skonto_betrag?,
+        belegnum?, verw_zweck?}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_zahlung_erfassen(
+            rec_id,
+            betrag=float(body.get('betrag') or 0),
+            datum=body.get('datum'),
+            valuta=body.get('valuta'),
+            zahlart_id=int(body['zahlart_id'])
+                       if body.get('zahlart_id') not in (None, '') else None,
+            fibu_kto=int(body['fibu_kto'])
+                     if body.get('fibu_kto') not in (None, '') else None,
+            skonto_proz=float(body.get('skonto_proz') or 0),
+            skonto_betrag=float(body.get('skonto_betrag') or 0),
+            belegnum=str(body.get('belegnum') or ''),
+            verw_zweck=str(body.get('verw_zweck') or ''),
+            ma_id=ma_id, ma_name=ma_name,
+        )
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.get('/einkauf/<int:rec_id>/api/bankumsatz-kandidaten')
+def api_ek_bankumsatz_kandidaten(rec_id: int) -> Any:
+    """Hibiscus-Bankumsatz-Match-Kandidaten fuer offenen EK-Beleg."""
+    _login_check()
+    try:
+        kandidaten = ek.bankumsatz_kandidaten_fuer_einkauf(rec_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, 'kandidaten': kandidaten})
+
+
+@bp.post('/einkauf/<int:rec_id>/api/bankumsatz-uebernehmen')
+def api_ek_bankumsatz_uebernehmen(rec_id: int) -> Any:
+    """Uebernimmt einen Hibiscus-Umsatz als ZAHLUNGEN-Eintrag.
+    Body: ``{umsatz_id: int}``"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        umsatz_id = int(body.get('umsatz_id') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'fehler': 'umsatz_id muss int sein'}), 400
+    if umsatz_id <= 0:
+        return jsonify({'ok': False, 'fehler': 'umsatz_id fehlt'}), 400
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.bankumsatz_uebernehmen(
+            rec_id, umsatz_id, ma_id=ma_id, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.post('/einkauf/zahlungen/<int:zahlung_id>/storno')
+def api_ek_zahlung_storno(zahlung_id: int) -> Any:
+    """Storniert eine Zahlung. Body: {grund: str (Pflicht)}"""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_zahlung_stornieren(
+            zahlung_id,
+            grund=str(body.get('grund') or ''),
+            ma_id=ma_id, ma_name=ma_name,
+        )
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
 
 
 # ── Einkauf Pos-Operationen (Phase C.2) ────────────────────────────
@@ -663,6 +812,40 @@ def api_ek_pos_entfernen(rec_id: int, pos_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+@bp.get('/einkauf/<int:rec_id>/api/buchen-vorschau')
+def api_ek_buchen_vorschau(rec_id: int) -> Any:
+    """Read-only-Pruefung: Preisabweichungen + Warnungen vor dem Buchen."""
+    _login_check()
+    try:
+        result = ek.buchen_vorschau(rec_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
+@bp.post('/einkauf/<int:rec_id>/api/buchen')
+def api_ek_buchen(rec_id: int) -> Any:
+    """Verbucht den Einkauf endgueltig.
+
+    Body: ``{"preis_uebernahmen": {"<pos_id>": "uebernehmen"|"behalten"}}``
+    """
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    preis_uebernahmen = body.get('preis_uebernahmen') or {}
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.einkauf_buchen(
+            rec_id,
+            ma_id=ma_id,
+            ma_name=ma_name,
+            preis_uebernahmen=preis_uebernahmen,
+        )
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify(result)
+
+
 # ── Common-Picker-Endpunkte (Artikel + Adresse) ──────────────────────
 
 
@@ -829,13 +1012,34 @@ def api_we_artikel_anhaengen(rec_id: int) -> Any:
     return jsonify({'ok': True, **result})
 
 
+@bp.get('/wareneingang/<int:rec_id>/api/storno-pruefung')
+def api_we_storno_pruefung(rec_id: int) -> Any:
+    _login_check()
+    try:
+        result = we.storno_pruefung(rec_id)
+    except (LookupError,) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
+    return jsonify({'ok': True, **result})
+
+
 @bp.post('/wareneingang/<int:rec_id>/api/storno')
 def api_we_storno(rec_id: int) -> Any:
     _login_check()
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
     try:
-        result = we.storno(rec_id)
+        result = we.storno(rec_id, ma_name=ma_name)
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@bp.get('/<int:rec_id>/api/storno-pruefung')
+def api_bestellung_storno_pruefung(rec_id: int) -> Any:
+    _login_check()
+    try:
+        result = m.bestellung_storno_pruefung(rec_id)
+    except (LookupError,) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 404
     return jsonify({'ok': True, **result})
 
 

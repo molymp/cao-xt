@@ -153,6 +153,10 @@
             <span class="wert">{{ kopf.VRENUM or '–' }}</span>
         </div>
         <div>
+            <label title="Eingangsrechnungs-Nr (Lieferanten-eigene Beleg-Nr)">Eingangs-Nr.</label>
+            <span class="wert">{{ kopf.ORGNUM or '–' }}</span>
+        </div>
+        <div>
             <label>Datum</label>
             <span class="wert">{{ kopf.RDATUM.strftime('%d.%m.%Y') if kopf.RDATUM else '–' }}</span>
         </div>
@@ -220,15 +224,15 @@
             <td class="zahl-rechts">
                 {% if kopf.ist_offen %}
                 <input type="text" class="num-touch"
-                       value="{{ '{:g}'.format(p.MENGE or 0) }}"
+                       value="{{ '{:.3f}'.format(p.MENGE or 0).replace('.', ',') }}"
                        data-pos-id="{{ p.REC_ID }}" onchange="edPosMenge(this)"
-                       style="width:90px; padding:5px 8px; text-align:right;
+                       style="width:140px; padding:5px 8px; text-align:right;
                               border:1px solid var(--creme-dunkel);
                               border-radius:var(--radius-klein);
                               font-family:'Nunito Mono',Consolas,monospace;
                               font-size:0.92rem;">
                 {% else %}
-                {{ '{:g}'.format(p.MENGE) if p.MENGE is not none else '–' }}
+                {{ '{:.3f}'.format(p.MENGE).replace('.', ',') if p.MENGE is not none else '–' }}
                 {% endif %}
             </td>
             <td>{{ p.ME_EINHEIT or '–' }}</td>
@@ -237,13 +241,13 @@
                 <input type="text" class="num-touch"
                        value="{{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}"
                        data-pos-id="{{ p.REC_ID }}" onchange="edPosEpreis(this)"
-                       style="width:90px; padding:5px 8px; text-align:right;
+                       style="width:150px; padding:5px 8px; text-align:right;
                               border:1px solid var(--creme-dunkel);
                               border-radius:var(--radius-klein);
                               font-family:'Nunito Mono',Consolas,monospace;
                               font-size:0.92rem;">
                 {% else %}
-                {{ '{:,.4f}'.format(p.EPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                {{ '{:.4f}'.format(p.EPREIS or 0).replace('.', ',') }}
                 {% endif %}
             </td>
             <td class="zahl-rechts" id="ed-gpreis-{{ p.REC_ID }}">{{ '{:,.2f}'.format(p.GPREIS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
@@ -277,13 +281,193 @@
     <p class="ed-rdo">
         Solange der Beleg „in Bearbeitung" ist (QUELLE=15, STADIUM=0),
         kann er noch ohne Spuren in der Buchhaltung gelöscht werden.
-        „Buchen" folgt in Phase C.3 (mit Preisprüfung + VK-Kontrolle).
+        Beim Buchen werden EK-Preisabweichungen geprüft und können
+        in den Lieferantenpreis (PREIS_TYP=5) übernommen werden.
     </p>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn-primary" onclick="edBuchenVorschau()">✓ Beleg buchen …</button>
         <button type="button" class="btn-danger" onclick="edStorno()">⛔ Einkauf verwerfen</button>
     </div>
 </div>
+{% elif kopf.STADIUM != 127 and kopf.STADIUM != 125 and kopf.STADIUM != 126 %}
+{# Gebuchter, nicht-stornierter EK-Beleg → Zahlungen + Aktionen #}
+<div class="ed-card">
+    <h2>Zahlungen</h2>
+    <div id="ed-zahlungen-info" class="ed-rdo">…</div>
+    <div id="ed-zahlungen-tab-wrap" style="margin-top:8px;"></div>
+    {% if kopf.STADIUM not in (8, 9, 11) %}
+    {# 8 = bezahlt mit Skonto, 9 = bezahlt, 11 = angewiesen (Ueberweisung
+       laeuft, eine weitere Zahlung waere unsinnig) #}
+    <div style="margin-top:10px;">
+        <button type="button" class="btn-primary" onclick="edZahlungErfassen()">💶 Zahlung erfassen …</button>
+    </div>
+    {% endif %}
+    <div id="ed-bank-vorschlag" style="margin-top:14px;
+         padding:10px 14px; background:rgba(60,120,200,0.07);
+         border-left:3px solid #2a4a8a;
+         border-radius:var(--radius-klein); font-size:0.92rem;
+         color:var(--text-dim,#5a7a3a);">
+        🏦 Hibiscus-Bankumsatz-Vorschläge werden geladen …
+    </div>
+</div>
+
+<div class="ed-card">
+    <h2>Aktionen</h2>
+    <p class="ed-rdo">
+        Diese gebuchte EK-Rechnung kann storniert oder kopiert werden.
+        Vor dem Storno wird geprüft, ob aktive Zahlungen existieren —
+        die müssen erst storniert werden.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn-aktion" onclick="edKopieren()">📋 Kopieren</button>
+        <button type="button" class="btn-danger" onclick="edStornoGebucht()">⛔ Stornieren</button>
+        <button type="button" class="btn-danger" onclick="edStornoUndKopieren()">⛔📋 Stornieren + Kopieren</button>
+    </div>
+</div>
 {% endif %}
+
+{# ── Modal: Zahlung erfassen ────────────────────────────────────── #}
+<div class="ed-modal-overlay" id="ed-zerf-overlay" style="display:none;"
+     onclick="if(event.target===this)edZahlungErfassenSchliessen()">
+  <div class="ed-modal" style="max-width:560px;">
+    <div class="ed-modal-kopf">
+      <h2>Zahlung erfassen</h2>
+      <button class="ed-modal-close" onclick="edZahlungErfassenSchliessen()">✕</button>
+    </div>
+    <div class="ed-modal-info" id="ed-zerf-summary">…</div>
+    <div id="ed-zerf-ziel-info" style="display:none;
+         background:rgba(60,120,200,0.10); color:#2a4a8a;
+         padding:8px 12px; border-radius:var(--radius-klein);
+         margin-bottom:12px; font-size:0.86rem; line-height:1.45;"></div>
+    <style>
+      .zerf-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
+      .zerf-grid label { display:flex; flex-direction:column; gap:4px; }
+      .zerf-grid label.span2 { grid-column:span 2; }
+      .zerf-grid .lbl {
+        font-size:0.78rem; font-weight:700;
+        color:var(--text-dim,#5a7a3a); text-transform:uppercase;
+        letter-spacing:0.04em;
+      }
+      .zerf-grid input, .zerf-grid select {
+        padding:8px 10px; border:1px solid var(--creme-dunkel);
+        border-radius:var(--radius-klein);
+        font-family:'Nunito',sans-serif; font-size:0.95rem;
+        background:white;
+      }
+      .zerf-grid input.num, .zerf-grid input.zahl {
+        text-align:right; font-family:'Nunito Mono',Consolas,monospace;
+      }
+      .zerf-skonto-card {
+        grid-column:span 2;
+        border:1px solid var(--creme-dunkel);
+        border-radius:var(--radius-klein);
+        padding:10px 12px;
+        background:#fafaf3;
+      }
+      .zerf-skonto-card.aktiv { background:rgba(46,122,46,0.06); }
+      .zerf-skonto-card .titel {
+        display:flex; align-items:center; gap:10px;
+        font-weight:700; cursor:pointer;
+      }
+      .zerf-skonto-card .felder {
+        display:grid; grid-template-columns:1fr 1fr; gap:10px 14px;
+        margin-top:8px;
+      }
+      .zerf-skonto-card.inaktiv .felder { opacity:0.5; pointer-events:none; }
+    </style>
+    <div class="zerf-grid">
+      <label>
+        <span class="lbl">Datum</span>
+        <input id="ed-zerf-datum" type="text" class="date-touch" placeholder="TT.MM.JJJJ" autocomplete="off"
+               onchange="_edSkontoCardSync()">
+      </label>
+      <label>
+        <span class="lbl">Zahlart</span>
+        <select id="ed-zerf-zahlart" onchange="_edZahlartGewaehlt()">
+          <option value="">— wählen —</option>
+        </select>
+      </label>
+      <label class="span2">
+        <span class="lbl">Bank-/Kasse-Konto</span>
+        <select id="ed-zerf-konto">
+          <option value="">— wählen —</option>
+        </select>
+      </label>
+      <div class="zerf-skonto-card inaktiv" id="ed-zerf-skonto-card">
+        <label class="titel">
+          <input type="checkbox" id="ed-zerf-skonto-an" onchange="_edSkontoToggle()" style="width:18px; height:18px;">
+          <span>Skonto in Anspruch nehmen</span>
+          <span style="margin-left:auto; font-weight:400; font-size:0.84rem; color:var(--text-dim,#5a7a3a);" id="ed-zerf-skonto-hint"></span>
+        </label>
+        <div class="felder">
+          <label>
+            <span class="lbl">Skonto %</span>
+            <input id="ed-zerf-skonto-proz" type="text" class="num-touch num"
+                   value="0,00" oninput="_edSkontoFromProz()">
+          </label>
+          <label>
+            <span class="lbl">Skonto-Betrag €</span>
+            <input id="ed-zerf-skonto" type="text" class="num-touch num"
+                   value="0,00" oninput="_edSkontoFromBetrag()">
+          </label>
+        </div>
+      </div>
+      <label class="span2">
+        <span class="lbl">Zahlbetrag €</span>
+        <input id="ed-zerf-betrag" type="text" class="num-touch num"
+               oninput="_edBetragGeaendert()">
+      </label>
+      <label class="span2">
+        <span class="lbl">Beleg-Nr (optional)</span>
+        <input id="ed-zerf-belegnum" type="text" class="alpha-touch" autocomplete="off">
+      </label>
+      <label class="span2">
+        <span class="lbl">Verwendungszweck (optional)</span>
+        <input id="ed-zerf-vz" type="text" class="alpha-touch" autocomplete="off">
+      </label>
+    </div>
+    <div class="ed-modal-aktionen">
+      <button class="btn-aktion" onclick="edZahlungErfassenSchliessen()">Abbrechen</button>
+      <button class="btn-primary" onclick="edZahlungErfassenSenden()">Speichern ✓</button>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Buchen-Vorschau (Preisabweichungen, Warnungen) ──────── #}
+<div class="ed-modal-overlay" id="ed-buchen-overlay" style="display:none;"
+     onclick="if(event.target===this)edBuchenSchliessen()">
+  <div class="ed-modal">
+    <div class="ed-modal-kopf">
+      <h2>Beleg buchen — Preisprüfung</h2>
+      <button class="ed-modal-close" onclick="edBuchenSchliessen()">✕</button>
+    </div>
+    <div class="ed-modal-info" id="ed-buchen-info">…</div>
+    <div id="ed-buchen-warn" style="display:none;
+         background:rgba(220,140,40,0.18); color:#a05010;
+         padding:10px 14px; border-radius:var(--radius-klein);
+         margin-bottom:12px; font-size:0.92rem;"></div>
+    <div class="ed-modal-tabelle-wrap" id="ed-buchen-tab-wrap">
+      <table class="ed-modal-tabelle" id="ed-buchen-tab">
+        <thead>
+          <tr>
+            <th>Art-Nr.</th>
+            <th>Bezeichnung</th>
+            <th class="zahl-rechts">Stamm-EK €</th>
+            <th class="zahl-rechts">neuer EK €</th>
+            <th class="zahl-rechts">Δ %</th>
+            <th>Übernahme</th>
+          </tr>
+        </thead>
+        <tbody id="ed-buchen-tbody"></tbody>
+      </table>
+    </div>
+    <div class="ed-modal-aktionen">
+      <button class="btn-aktion" onclick="edBuchenSchliessen()">Abbrechen</button>
+      <button class="btn-primary" id="ed-buchen-ok"
+              onclick="edBuchenAusfuehren()">Buchen ✓</button>
+    </div>
+  </div>
+</div>
 
 {# ── Modal für „Aus Wareneingang" / „Aus Bestellung" ──────────── #}
 <div class="ed-modal-overlay" id="ed-quelle-overlay" style="display:none;"
@@ -317,6 +501,19 @@ function _eur(x, dp = 2) {
     return (Number(x) || 0).toLocaleString('de-DE',
         { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
+// DE-Zahl ("1.234,567" oder "1,5") -> JS-Number-String "1234.567".
+// Toleriert auch reine en-Eingaben ("1.5") solange es nur EINEN Punkt
+// gibt und keinen Komma.
+function _deToNum(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!s) return '0';
+    // Wenn Komma vorhanden -> de-Format: Punkte sind Tausender, Komma ist Dezimal
+    if (s.indexOf(',') >= 0) {
+        return s.replace(/\./g, '').replace(',', '.');
+    }
+    // Sonst: rohes en-Format (z.B. vom Nutzer "1.5" eingetippt)
+    return s;
+}
 function _esc(s) {
     return String(s == null ? '' : s)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -342,19 +539,114 @@ async function edStorno() {
     window.location = '/orga/bestellwesen/einkauf/';
 }
 
+// ── Storno/Kopieren fuer GEBUCHTE EK-Rechnungen ─────────────────
+async function _edStornoPruefen() {
+    cxLadenZeigen('Prüfe Zahlungen …');
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/storno-pruefung`);
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return null;
+    }
+    cxLadenAusblenden();
+    if (!res.ok) {
+        const z = res.aktive_zahlungen || [];
+        const liste = z.map(x =>
+            `• ${x.DATUM ? x.DATUM.split('T')[0].split('-').reverse().join('.') : '–'}` +
+            ` ${(+x.BETRAG).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} €` +
+            ` (${_esc(x.ZAHLART_NAME || x.ART || '?')})`
+        ).join('\n');
+        alert(
+            `Storno blockiert — ${z.length} aktive Zahlung(en):\n\n${liste}\n\n` +
+            'Bitte zuerst in CAO Faktura stornieren.'
+        );
+        return null;
+    }
+    return res;
+}
+
+async function edStornoGebucht() {
+    const pruef = await _edStornoPruefen();
+    if (!pruef) return;
+    if (!confirm(
+        `EK-Rechnung ${pruef.kopf.VRENUM} stornieren?\n\n` +
+        'Lager-Effekte werden zurückgerollt, EKEINGANG_POS-Pos werden ' +
+        'wieder als „nicht berechnet" markiert. ' +
+        'Die Belegnummer bleibt zur Audit-Spur erhalten.'
+    )) return;
+    cxLadenZeigen('Storno läuft …');
+    const res = await _post(`${ED_API}/storno`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    alert(`Beleg ${pruef.kopf.VRENUM} storniert.`);
+    location.reload();
+}
+
+async function edKopieren() {
+    if (!confirm(
+        'EK-Rechnung als neuen Einkauf in Bearbeitung kopieren?\n\n' +
+        'Die Pos werden 1:1 inkl. Quell-Verweise (WE/Bestellung) kopiert. ' +
+        'Wenn das Original NICHT vorher storniert wird, sind die WE-Pos ' +
+        'doppelt referenziert — beim erneuten Buchen kann es zu Konflikten kommen.'
+    )) return;
+    cxLadenZeigen('Kopiere …');
+    const res = await _post(`${ED_API}/kopieren`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    if (confirm(
+        `Kopie angelegt als ${res.neue_vrenum} (in Bearbeitung).\n\n` +
+        'Direkt zur Kopie wechseln?'
+    )) {
+        window.location = `/orga/bestellwesen/einkauf/${res.neue_rec_id}`;
+    } else {
+        location.reload();
+    }
+}
+
+async function edStornoUndKopieren() {
+    const pruef = await _edStornoPruefen();
+    if (!pruef) return;
+    if (!confirm(
+        `EK-Rechnung ${pruef.kopf.VRENUM} stornieren UND als ` +
+        'neuen Einkauf-In-Bearbeitung kopieren?\n\n' +
+        'Original wird storniert (Lager zurück, EKEINGANG_POS reset). ' +
+        'Kopie übernimmt die WE/Bestell-Bezüge — beim erneuten Buchen ' +
+        'wird der Lager-Effekt einmalig neu erzeugt.'
+    )) return;
+    cxLadenZeigen('Storno + Kopie …');
+    const res = await _post(`${ED_API}/storno-und-kopieren`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    if (confirm(
+        `Original storniert, Kopie als ${res.kopie.neue_vrenum} angelegt.\n\n` +
+        'Direkt zur Kopie wechseln?'
+    )) {
+        window.location = `/orga/bestellwesen/einkauf/${res.kopie.neue_rec_id}`;
+    } else {
+        location.reload();
+    }
+}
+
 // ── Pos-Inline-Edit ───────────────────────────────────────────────
 async function edPosMenge(input) {
     const posId = input.dataset.posId;
-    const menge = input.value.replace(',', '.');
+    const menge = _deToNum(input.value);
     const res = await _post(`${ED_API}/pos/${posId}/menge`, { menge });
     if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    // Eingabe nach Server-Antwort einheitlich nachformatieren (3 NK)
+    input.value = _eur(parseFloat(menge) || 0, 3);
     document.getElementById('ed-gpreis-' + posId).textContent = _eur(res.gpreis);
 }
 async function edPosEpreis(input) {
     const posId = input.dataset.posId;
-    const epreis = input.value.replace(',', '.');
+    const epreis = _deToNum(input.value);
     const res = await _post(`${ED_API}/pos/${posId}/epreis`, { epreis });
     if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    // EK einheitlich auf 4 NK formatieren
+    input.value = _eur(parseFloat(epreis) || 0, 4);
     document.getElementById('ed-gpreis-' + posId).textContent = _eur(res.gpreis);
 }
 async function edPosEntfernen(posId) {
@@ -444,14 +736,14 @@ function _edQuelleZeigen(modus, zeilen) {
                   <td>${z.position}</td>
                   <td><code>${_esc(z.artnum || '–')}</code></td>
                   <td>${_esc(z.bezeichnung || '–').slice(0, 40)}</td>
-                  <td class="zahl-rechts"><strong>${(+z.menge_offen).toLocaleString('de-DE')}</strong></td>
+                  <td class="zahl-rechts"><strong>${_eur(z.menge_offen, 3)}</strong></td>
                   <td>${_esc(z.me || '')}</td>
                   <td class="zahl-rechts">
                     <input type="text" class="ed-mod-menge num-touch"
                            data-pos-id="${z.pos_id}"
-                           value="${(+z.menge_offen).toString().replace('.', ',')}"
+                           value="${_eur(z.menge_offen, 3)}"
                            onclick="event.stopPropagation();"
-                           style="width:80px; padding:4px 6px; text-align:right;
+                           style="width:130px; padding:4px 6px; text-align:right;
                                   font-family:'Nunito Mono',Consolas,monospace;
                                   border:1px solid var(--creme-dunkel);
                                   border-radius:var(--radius-klein);">
@@ -516,7 +808,7 @@ async function edQuelleUebernehmen() {
             const pid = parseInt(r.dataset.id);
             const inp = document.querySelector(
                 `.ed-mod-menge[data-pos-id="${pid}"]`);
-            const m = inp ? parseFloat((inp.value || '').replace(',', '.')) : 0;
+            const m = inp ? parseFloat(_deToNum(inp.value)) : 0;
             return { pos_id: pid, menge: m };
         }).filter(x => x.menge > 0);
         if (!items.length) { alert('Keine gültigen Mengen erfasst'); return; }
@@ -601,9 +893,612 @@ async function edScan() {
     location.reload();
 }
 
+// ── Buchen: Vorschau + Ausfuehren ─────────────────────────────────
+async function edBuchenVorschau() {
+    cxLadenZeigen('Beleg wird geprüft …');
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/buchen-vorschau`);
+        res = await r.json();
+    } catch (e) {
+        cxLadenAusblenden();
+        alert('Verbindungsfehler');
+        return;
+    }
+    cxLadenAusblenden();
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    _edBuchenZeigen(res);
+}
+
+function _edBuchenZeigen(vor) {
+    const info = document.getElementById('ed-buchen-info');
+    const warn = document.getElementById('ed-buchen-warn');
+    const tbody = document.getElementById('ed-buchen-tbody');
+    const tabWrap = document.getElementById('ed-buchen-tab-wrap');
+    const okBtn = document.getElementById('ed-buchen-ok');
+
+    info.innerHTML = `Nächste Belegnummer: <strong>${_esc(vor.naechste_belegnum)}</strong>. ` +
+        `Beim Buchen wird die Belegnummer aus REGISTRY 'EK-RECH' gezogen und der ` +
+        `Beleg in den Status „offen/unbezahlt" überführt.`;
+
+    if (vor.warnungen && vor.warnungen.length) {
+        warn.style.display = 'block';
+        warn.innerHTML = '⚠️ ' + vor.warnungen.map(w => _esc(w.text)).join(' · ');
+    } else {
+        warn.style.display = 'none';
+    }
+
+    if (!vor.preisabweichungen || !vor.preisabweichungen.length) {
+        tabWrap.style.display = 'none';
+        tbody.innerHTML = '';
+    } else {
+        tabWrap.style.display = '';
+        tbody.innerHTML = vor.preisabweichungen.map(a => {
+            const altTxt = (a.alt_ek == null) ? '<em>(neu)</em>' : _eur(a.alt_ek, 4);
+            const diffTxt = (a.diff_proz == null) ? '–'
+                : (a.diff_proz > 0 ? '+' : '') + a.diff_proz.toFixed(1).replace('.', ',') + ' %';
+            const diffColor = (a.diff_proz == null) ? '#888'
+                : (a.diff_proz >= 0 ? '#a02810' : '#1a4010');
+            return `
+                <tr data-pos-id="${a.pos_id}">
+                  <td><code>${_esc(a.artnum || '–')}</code></td>
+                  <td>${_esc((a.bezeichnung || '–').slice(0, 50))}</td>
+                  <td class="zahl-rechts">${altTxt}</td>
+                  <td class="zahl-rechts"><strong>${_eur(a.neu_ek, 4)}</strong></td>
+                  <td class="zahl-rechts" style="color:${diffColor};">${diffTxt}</td>
+                  <td>
+                    <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="radio" name="upd-${a.pos_id}" value="uebernehmen" checked>
+                      übernehmen
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; margin-left:14px; cursor:pointer;">
+                      <input type="radio" name="upd-${a.pos_id}" value="behalten">
+                      behalten
+                    </label>
+                  </td>
+                </tr>`;
+        }).join('');
+    }
+
+    okBtn.disabled = !vor.kann_buchen;
+    okBtn.style.opacity = vor.kann_buchen ? '1' : '0.5';
+    okBtn.style.cursor = vor.kann_buchen ? 'pointer' : 'not-allowed';
+    okBtn.textContent = vor.kann_buchen
+        ? `Buchen als ${vor.naechste_belegnum} ✓`
+        : 'Buchen nicht möglich';
+
+    document.getElementById('ed-buchen-overlay').style.display = 'flex';
+}
+
+function edBuchenSchliessen() {
+    document.getElementById('ed-buchen-overlay').style.display = 'none';
+}
+
+async function edBuchenAusfuehren() {
+    // Per Pos die radio-Auswahl einsammeln
+    const preis = {};
+    document.querySelectorAll('#ed-buchen-tbody tr').forEach(tr => {
+        const pid = tr.dataset.posId;
+        const sel = tr.querySelector(`input[name="upd-${pid}"]:checked`);
+        if (sel) preis[pid] = sel.value;
+    });
+    cxLadenZeigen('Buchung läuft …');
+    const res = await _post(`${ED_API}/buchen`, {preis_uebernahmen: preis});
+    cxLadenAusblenden();
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    alert(`Beleg gebucht als ${res.vrenum}.`);
+    location.reload();
+}
+
+// ── Zahlungen (Phase D) ──────────────────────────────────────────
+const ED_BSUMME = {{ kopf.BSUMME or 0 }};
+const ED_STADIUM = {{ kopf.STADIUM or 0 }};
+let _edZahlungsarten = [];
+let _edZielInfo = null;
+// Aktueller offener Betrag (BSUMME minus aktive Zahlungen)
+let _edOffenerBetrag = ED_BSUMME;
+
+async function _edZahlungenLaden() {
+    const wrap = document.getElementById('ed-zahlungen-tab-wrap');
+    const info = document.getElementById('ed-zahlungen-info');
+    if (!wrap) return;   // gibt's nur bei gebuchten Belegen
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/zahlungen`);
+        res = await r.json();
+    } catch (e) {
+        info.textContent = 'Zahlungen konnten nicht geladen werden.';
+        return;
+    }
+    if (!res.ok) {
+        info.textContent = 'Fehler: ' + (res.fehler || 'unbekannt');
+        return;
+    }
+    _edZahlungsarten = res.zahlungsarten || [];
+    _edZielInfo      = res.ziel_info || null;
+
+    const aktive = (res.zahlungen || []).filter(z => z.ist_aktiv);
+    // ZAHLUNGEN.BETRAG/SKONTO_BETRAG sind bei EK negativ (Geld-Ausgang).
+    // Fuer die Anzeige zeigen wir Absolut-Betraege.
+    const sumBetrag = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.BETRAG || 0)), 0);
+    const sumSkonto = aktive.reduce((s, z) => s + Math.abs(parseFloat(z.SKONTO_BETRAG || 0)), 0);
+    // Offener Betrag = BSUMME minus bisherige Zahlungen, sign-erhaltend.
+    // Bei Gutschriften (BSUMME<0): offen ist negativ → User gibt
+    // ebenfalls negativen Wert ein.
+    const sign = ED_BSUMME >= 0 ? 1 : -1;
+    const offen = sign * Math.max(0, Math.abs(ED_BSUMME) - sumBetrag - sumSkonto);
+    _edOffenerBetrag = Math.round(offen * 100) / 100;
+    info.innerHTML =
+        `<strong>${aktive.length}</strong> aktive Zahlung(en) · ` +
+        `Brutto-Soll <strong>${_eur(ED_BSUMME)}</strong> · ` +
+        `Bezahlt <strong>${_eur(sumBetrag)}</strong>` +
+        (sumSkonto > 0.001 ? ` (+ Skonto ${_eur(sumSkonto)})` : '') +
+        ` · Offen <strong style="color:${offen > 0.01 ? '#a02810' : '#1a4010'};">${_eur(offen)}</strong>`;
+
+    if (!res.zahlungen || res.zahlungen.length === 0) {
+        wrap.innerHTML = '<p class="ed-rdo" style="margin-top:8px;">Noch keine Zahlung erfasst.</p>';
+        return;
+    }
+    const rows = res.zahlungen.map(z => {
+        const datum = z.DATUM ? z.DATUM.split('T')[0].split('-').reverse().join('.') : '–';
+        const ist_storniert = z.ist_storniert;
+        const aus_cao = z.aus_cao_sepa;
+        const stornoBtn = ist_storniert
+            ? '<span style="color:#888;">— storniert —</span>'
+            : (aus_cao
+                ? `<span class="ed-rdo" title="ART=UB / UW_NUM=${z.UW_NUM} — kommt aus CAO-SEPA-Lauf, Storno bitte in CAO unter Finanzen / Überweisungen">🔒 nur in CAO</span>`
+                : `<button class="ed-del" title="Zahlung stornieren" onclick="edZahlungStorno(${z.REC_ID})">🗑</button>`);
+        const zahlart = _esc(z.ZAHLART_NAME || z.zahlart_stamm || '–');
+        const tagSepa = aus_cao ? '<span style="display:inline-block; padding:1px 6px; border-radius:4px; background:rgba(60,120,200,0.18); color:#2a4a8a; font-size:0.72rem; font-weight:700; margin-left:4px;">SEPA aus CAO</span>' : '';
+        const stornoTxt = ist_storniert
+            ? `<span style="color:#888; text-decoration:line-through;">storniert</span> · ${_esc(z.STORNOGRUND || '?')}`
+            : '';
+        const betragAbs = Math.abs(parseFloat(z.BETRAG || 0));
+        const skontoAbs = Math.abs(parseFloat(z.SKONTO_BETRAG || 0));
+        return `
+            <tr style="${ist_storniert ? 'background:rgba(180,180,180,0.10); color:#666;' : ''}">
+              <td>${datum}</td>
+              <td class="zahl-rechts">${_eur(betragAbs)}</td>
+              <td class="zahl-rechts">${skontoAbs > 0.001 ? _eur(skontoAbs) : '–'}</td>
+              <td>${zahlart}${tagSepa}</td>
+              <td>${_esc(z.BELEGNUM || '')}</td>
+              <td>${_esc((z.VERW_ZWECK || '').slice(0, 40))} ${stornoTxt}</td>
+              <td>${stornoBtn}</td>
+            </tr>`;
+    }).join('');
+    wrap.innerHTML = `
+        <table class="ed-tab" style="margin-top:6px;">
+          <thead><tr>
+            <th>Datum</th>
+            <th class="zahl-rechts">Betrag €</th>
+            <th class="zahl-rechts">Skonto €</th>
+            <th>Zahlart</th>
+            <th>Beleg</th>
+            <th>Verw.-Zweck / Storno-Grund</th>
+            <th>Stornieren</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    // Bankumsatz-Vorschlaege aus Hibiscus laden — nur wenn Beleg
+    // ueberhaupt offen ist.
+    _edBankVorschlaegeLaden();
+}
+
+async function _edBankVorschlaegeLaden() {
+    const wrap = document.getElementById('ed-bank-vorschlag');
+    if (!wrap) return;
+    if ([8, 9, 125, 126, 127].includes(ED_STADIUM)) {
+        wrap.style.display = 'none';
+        return;
+    }
+    let res;
+    try {
+        const r = await fetch(`${ED_API}/bankumsatz-kandidaten`);
+        res = await r.json();
+    } catch (e) {
+        wrap.innerHTML = '🏦 <em>Hibiscus-Vorschlaege nicht abrufbar (Verbindungsfehler).</em>';
+        return;
+    }
+    if (!res.ok) {
+        wrap.innerHTML = `🏦 <em>Fehler beim Laden: ${_esc(res.fehler || 'unbekannt')}</em>`;
+        return;
+    }
+    if (!res.kandidaten || !res.kandidaten.length) {
+        wrap.innerHTML = '🏦 <em>Keine passenden Hibiscus-Bankumsätze gefunden.</em>';
+        return;
+    }
+    const kk = res.kandidaten;
+    const rows = kk.map(k => {
+        const datum = k.datum ? k.datum.split('T')[0].split('-').reverse().join('.') : '–';
+        const score_color = k.score >= 80 ? '#1a4010'
+            : k.score >= 60 ? '#a05010'
+            : '#888';
+        const score_bg = k.score >= 80 ? 'rgba(46,122,46,0.18)'
+            : k.score >= 60 ? 'rgba(220,140,40,0.18)'
+            : 'rgba(180,180,180,0.30)';
+        const auto_btn = k.score >= 80
+            ? `<button class="btn-primary" style="font-size:0.85rem; padding:4px 10px;"
+                       onclick="_edBankVorschlagUebernehmen(${k.umsatz_id})">
+                 ✓ als Zahlung übernehmen
+               </button>`
+            : `<button class="btn-aktion" style="font-size:0.85rem; padding:4px 10px;"
+                       onclick="_edBankVorschlagUebernehmen(${k.umsatz_id})"
+                       title="Vorsicht: Score nur ${k.score}/100">
+                 ⚠ trotzdem übernehmen
+               </button>`;
+        return `
+            <tr>
+              <td style="padding:4px 8px;">${datum}</td>
+              <td style="padding:4px 8px; text-align:right; font-weight:700; font-family:'Nunito Mono',Consolas,monospace;">
+                  ${_eur(Math.abs(k.betrag))}
+              </td>
+              <td style="padding:4px 8px;">${_esc(k.empfaenger_name || '–')}</td>
+              <td style="padding:4px 8px; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                  title="${_esc(k.zweck || '')}">
+                  <span style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);">${_esc((k.zweck || '').slice(0, 60))}</span>
+              </td>
+              <td style="padding:4px 8px;">
+                  <span style="display:inline-block; padding:1px 8px; border-radius:999px;
+                               background:${score_bg}; color:${score_color};
+                               font-size:0.74rem; font-weight:700;">
+                      ${k.score}/100
+                  </span>
+                  <span style="font-size:0.74rem; color:var(--text-dim,#5a7a3a); margin-left:6px;">
+                      ${k.gruende.join(' · ')}
+                  </span>
+              </td>
+              <td style="padding:4px 8px;">${auto_btn}</td>
+            </tr>`;
+    }).join('');
+    wrap.style.display = 'block';
+    wrap.innerHTML = `
+        <div style="font-weight:700; color:#2a4a8a; margin-bottom:6px;">
+            🏦 Mögliche Zahlungseingänge aus Hibiscus (${kk.length})
+        </div>
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="font-size:0.74rem; text-transform:uppercase;
+                       color:var(--text-dim,#5a7a3a); letter-spacing:0.05em;">
+              <th style="text-align:left; padding:4px 8px;">Datum</th>
+              <th style="text-align:right; padding:4px 8px;">Betrag €</th>
+              <th style="text-align:left; padding:4px 8px;">Empfänger</th>
+              <th style="text-align:left; padding:4px 8px;">Verwendungszweck</th>
+              <th style="text-align:left; padding:4px 8px;">Score / Begründung</th>
+              <th style="padding:4px 8px;"></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+}
+
+async function _edBankVorschlagUebernehmen(umsatz_id) {
+    if (!confirm('Diesen Hibiscus-Bankumsatz als Zahlung übernehmen?\n\n' +
+                 'Der Umsatz wird in Hibiscus als „geprüft" markiert und ' +
+                 'als ZAHLUNGEN-Eintrag (ART=UB) zum Beleg verlinkt.')) {
+        return;
+    }
+    cxLadenZeigen('Übernehme Bankumsatz …');
+    const res = await _post(`${ED_API}/bankumsatz-uebernehmen`,
+                              {umsatz_id: umsatz_id});
+    cxLadenAusblenden();
+    if (!res.ok) {
+        alert('Fehler: ' + (res.fehler || 'unbekannt'));
+        return;
+    }
+    // Bei voll bezahlt → Reload (Buttons verschwinden)
+    if ([8, 9].includes(res.stadium)) {
+        location.reload();
+    } else {
+        _edZahlungenLaden();
+    }
+}
+
+function edZahlungErfassen() {
+    // Modal vorbereiten
+    // Zahlart-Dropdown (kassen-relevante kommen vom Server schon nicht)
+    const sel = document.getElementById('ed-zerf-zahlart');
+    sel.innerHTML = '<option value="">— wählen —</option>'
+        + _edZahlungsarten.map(za =>
+            `<option value="${za.REC_ID}">${_esc(za.NAME)}</option>`).join('');
+
+    // Bank-/Kasse-Konto-Dropdown direkt mit ALLEN unique Konten aus
+    // den verfuegbaren Zahlarten fuellen — damit der User auch ohne
+    // Zahlart-Vorauswahl ein Konto waehlen kann (User-Wunsch).
+    _edKontoDropdownFuellen();
+
+    const heute = new Date();
+    const dd = String(heute.getDate()).padStart(2, '0');
+    const mm = String(heute.getMonth() + 1).padStart(2, '0');
+    document.getElementById('ed-zerf-datum').value =
+        `${dd}.${mm}.${heute.getFullYear()}`;
+
+    // Skonto initial deaktiviert. Default-Betrag = offen.
+    // Bei Gutschriften (BSUMME<0) Skonto-Card komplett sperren —
+    // semantisch unsinnig (man koennte Skonto auf Skonto bekommen, no).
+    document.getElementById('ed-zerf-skonto-an').checked = false;
+    document.getElementById('ed-zerf-skonto-an').disabled = (ED_BSUMME < 0);
+    _edSkontoCardSync();
+    document.getElementById('ed-zerf-skonto-proz').value = '0,00';
+    document.getElementById('ed-zerf-skonto').value = '0,00';
+    document.getElementById('ed-zerf-betrag').value = _eur(_edOffenerBetrag);
+
+    // CAO-Defaults vorbelegen
+    document.getElementById('ed-zerf-belegnum').value =
+        {{ (kopf.VRENUM or '')|tojson }};
+    {% set _lief = (kopf.lief_name or '')|trim %}
+    document.getElementById('ed-zerf-vz').value =
+        {{ ('ZA EK-RE ' + _lief if _lief else '')|tojson }};
+
+    // Summary + Zahlungsziel-Info aus ADRESSEN-Stammdaten
+    const sum = document.getElementById('ed-zerf-summary');
+    sum.innerHTML = `Beleg <strong>{{ kopf.VRENUM or kopf.REC_ID }}</strong> · ` +
+        `Brutto <strong>${_eur(ED_BSUMME)}</strong>` +
+        (_edOffenerBetrag < ED_BSUMME - 0.01
+            ? ` · Offen <strong>${_eur(_edOffenerBetrag)}</strong>`
+            : '');
+    _edZielInfoRendern();
+
+    document.getElementById('ed-zerf-overlay').style.display = 'flex';
+    if (window.TouchInput && window.TouchInput.rewire) {
+        window.TouchInput.rewire();
+    }
+}
+
+function _edKontoDropdownFuellen(filterZaId) {
+    // Sammelt alle Konten — entweder aus einer einzelnen Zahlart oder
+    // aus allen verfuegbaren (unique by konto-Nr).
+    const sel = document.getElementById('ed-zerf-konto');
+    const sammeln = filterZaId
+        ? (_edZahlungsarten.find(z => z.REC_ID === filterZaId)?.konten || [])
+        : _edZahlungsarten.flatMap(za => za.konten || []);
+    const seen = new Set();
+    const konten = [];
+    for (const k of sammeln) {
+        if (seen.has(k.konto)) continue;
+        seen.add(k.konto);
+        konten.push(k);
+    }
+    konten.sort((a, b) => a.konto - b.konto);
+    if (!konten.length) {
+        sel.innerHTML = '<option value="">— keine Konten gepflegt —</option>';
+        return;
+    }
+    const opts = konten.map(k => {
+        const lbl = k.iban
+            ? `${k.konto} – ${_esc(k.name)} (${_esc(k.iban)})`
+            : `${k.konto} – ${_esc(k.name)}`;
+        return `<option value="${k.konto}">${lbl}</option>`;
+    });
+    sel.innerHTML = (konten.length === 1
+        ? opts.join('')
+        : '<option value="">— wählen —</option>' + opts.join(''));
+}
+
+function _edZahlartGewaehlt() {
+    // Wenn die gewaehlte Zahlart eindeutige Konten hat, schraenken wir
+    // die Konto-Liste ein — sonst lassen wir den User frei waehlen.
+    const zaId = parseInt(document.getElementById('ed-zerf-zahlart').value, 10);
+    if (!zaId) {
+        _edKontoDropdownFuellen();
+    } else {
+        _edKontoDropdownFuellen(zaId);
+    }
+}
+
+// ── Skonto-Logik ────────────────────────────────────────────────
+function _edSkontoCardSync() {
+    const card = document.getElementById('ed-zerf-skonto-card');
+    const an   = document.getElementById('ed-zerf-skonto-an').checked;
+    card.classList.toggle('aktiv', an);
+    card.classList.toggle('inaktiv', !an);
+    // Hint im Card-Header — zeigt Skonto-Frist + Warnung bei abgelaufener Frist
+    const hint = document.getElementById('ed-zerf-skonto-hint');
+    hint.style.color = '';
+    if (ED_BSUMME < 0) {
+        hint.textContent = 'Bei Gutschrift kein Skonto';
+    } else if (_edZielInfo && _edZielInfo.skonto_proz > 0.001 && _edZielInfo.skonto_datum) {
+        const sd_iso = _edZielInfo.skonto_datum;
+        const sd_de  = sd_iso.split('-').reverse().join('.');
+        // Vergleich mit dem Eingegebenen Datum (nicht nur "heute")
+        const heute_iso = (() => {
+            const v = (document.getElementById('ed-zerf-datum') || {}).value;
+            const m = (v || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+            if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+            const t = new Date();
+            return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+        })();
+        if (heute_iso > sd_iso) {
+            hint.style.color = '#a02810';
+            hint.textContent = `⚠ Skonto-Frist abgelaufen (Skonto bis ${sd_de})`;
+        } else {
+            hint.textContent = `${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % bis ${sd_de}`;
+        }
+    } else {
+        hint.textContent = 'Kein Skonto laut Stammdaten';
+    }
+}
+
+function _edSkontoToggle() {
+    const an = document.getElementById('ed-zerf-skonto-an').checked;
+    _edSkontoCardSync();
+    if (an) {
+        // Skonto-% aus Stammdaten als Default
+        const proz = (_edZielInfo && _edZielInfo.skonto_proz > 0.001)
+            ? _edZielInfo.skonto_proz
+            : 0;
+        document.getElementById('ed-zerf-skonto-proz').value = _eur(proz);
+        _edSkontoFromProz();
+    } else {
+        // Skonto raus → Skonto-Felder auf 0, Betrag = offen
+        document.getElementById('ed-zerf-skonto-proz').value = '0,00';
+        document.getElementById('ed-zerf-skonto').value = '0,00';
+        document.getElementById('ed-zerf-betrag').value = _eur(_edOffenerBetrag);
+    }
+}
+
+function _edSkontoFromProz() {
+    // %-Eingabe → Skonto-Betrag + Zahlbetrag berechnen, sodass der
+    // Beleg voll bezahlt wird (Skonto + Zahlung = Offen).
+    if (!document.getElementById('ed-zerf-skonto-an').checked) return;
+    const proz = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto-proz').value)) || 0;
+    const skontoBetrag = Math.round(_edOffenerBetrag * proz / 100 * 100) / 100;
+    document.getElementById('ed-zerf-skonto').value = _eur(skontoBetrag);
+    document.getElementById('ed-zerf-betrag').value =
+        _eur(Math.round((_edOffenerBetrag - skontoBetrag) * 100) / 100);
+}
+
+function _edSkontoFromBetrag() {
+    // Skonto-Betrag-Eingabe → %-Satz + Zahlbetrag berechnen.
+    if (!document.getElementById('ed-zerf-skonto-an').checked) return;
+    const skontoBetrag = parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0;
+    if (_edOffenerBetrag > 0.0001) {
+        const proz = Math.round(skontoBetrag / _edOffenerBetrag * 10000) / 100;
+        document.getElementById('ed-zerf-skonto-proz').value = _eur(proz);
+    }
+    document.getElementById('ed-zerf-betrag').value =
+        _eur(Math.round((_edOffenerBetrag - skontoBetrag) * 100) / 100);
+}
+
+function _edBetragGeaendert() {
+    // Zahlbetrag-Eingabe → bei aktivem Skonto: Skonto-Betrag = Offen - Zahlbetrag,
+    // %-Satz nachziehen. Bei inaktivem Skonto: Teilzahlung (Skonto bleibt 0).
+    if (!document.getElementById('ed-zerf-skonto-an').checked) return;
+    const betrag = parseFloat(_deToNum(document.getElementById('ed-zerf-betrag').value)) || 0;
+    const skontoBetrag = Math.round((_edOffenerBetrag - betrag) * 100) / 100;
+    if (skontoBetrag < 0) return;   // Ueber-Zahlung — wir aktualisieren den Skonto nicht
+    document.getElementById('ed-zerf-skonto').value = _eur(skontoBetrag);
+    if (_edOffenerBetrag > 0.0001) {
+        const proz = Math.round(skontoBetrag / _edOffenerBetrag * 10000) / 100;
+        document.getElementById('ed-zerf-skonto-proz').value = _eur(proz);
+    }
+}
+
+function _edZielInfoRendern() {
+    // Zeigt die Zahlungsziel-Info aus ADRESSEN/JOURNAL als Stammdaten-
+    // Hinweis ueber dem Eingabe-Bereich (analog CAO Zahlungsausgang).
+    const wrap = document.getElementById('ed-zerf-ziel-info');
+    if (!_edZielInfo || (!_edZielInfo.netto_datum && !_edZielInfo.skonto_datum)) {
+        wrap.style.display = 'none';
+        return;
+    }
+    const fmt = iso => iso ? iso.split('-').reverse().join('.') : '–';
+    let html = '<strong>Zahlungsziel laut Stammdaten:</strong> ';
+    const teile = [];
+    if (_edZielInfo.skonto_datum) {
+        teile.push(`Mit Skonto bis <strong>${fmt(_edZielInfo.skonto_datum)}</strong> ` +
+            `(${_edZielInfo.skonto_proz.toFixed(2).replace('.', ',')} % = ` +
+            `${_eur(_edZielInfo.skonto_max_betrag)})`);
+    } else {
+        teile.push('Kein Skonto');
+    }
+    if (_edZielInfo.netto_datum) {
+        teile.push(`Netto bis <strong>${fmt(_edZielInfo.netto_datum)}</strong>`);
+    }
+    html += teile.join(' · ');
+    wrap.innerHTML = html;
+    wrap.style.display = 'block';
+}
+function edZahlungErfassenSchliessen() {
+    document.getElementById('ed-zerf-overlay').style.display = 'none';
+}
+async function edZahlungErfassenSenden() {
+    const datum_de = document.getElementById('ed-zerf-datum').value.trim();
+    // TT.MM.JJJJ → JJJJ-MM-TT
+    let datum_iso = '';
+    const m = datum_de.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) {
+        datum_iso = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    } else {
+        alert('Datum bitte als TT.MM.JJJJ eingeben');
+        return;
+    }
+    const betrag = parseFloat(_deToNum(document.getElementById('ed-zerf-betrag').value));
+    if (!betrag || Math.abs(betrag) < 0.005) {
+        alert('Betrag darf nicht 0 sein');
+        return;
+    }
+    // Bei Gutschriften (BSUMME<0) erwarten wir einen negativen Betrag,
+    // bei Rechnungen (BSUMME>0) einen positiven. Vorzeichen-Mismatch
+    // klar melden — sonst würde CAO das Geld in die falsche Richtung
+    // buchen.
+    if (ED_BSUMME > 0 && betrag < 0) {
+        if (!confirm('Negativer Betrag bei einer Forderungs-Rechnung — ' +
+                     'bist du sicher? (entspricht Geld-Eingang vom ' +
+                     'Lieferanten)')) return;
+    }
+    if (ED_BSUMME < 0 && betrag > 0) {
+        if (!confirm('Positiver Betrag bei einer Gutschrift — ' +
+                     'bist du sicher? (entspricht Geld-Ausgang an den ' +
+                     'Lieferanten)')) return;
+    }
+    const skontoAn = document.getElementById('ed-zerf-skonto-an').checked;
+    const skonto = skontoAn
+        ? (parseFloat(_deToNum(document.getElementById('ed-zerf-skonto').value)) || 0)
+        : 0;
+    const skonto_proz = skontoAn
+        ? (parseFloat(_deToNum(document.getElementById('ed-zerf-skonto-proz').value)) || 0)
+        : 0;
+    const zahlart = document.getElementById('ed-zerf-zahlart').value;
+    if (!zahlart) { alert('Bitte Zahlart wählen'); return; }
+    const fibu_kto = document.getElementById('ed-zerf-konto').value;
+    if (!fibu_kto) { alert('Bitte Bank-/Kasse-Konto wählen'); return; }
+    const body = {
+        datum:         datum_iso,
+        betrag:        betrag,
+        skonto_betrag: skonto,
+        skonto_proz:   skonto_proz,
+        zahlart_id:    zahlart || null,
+        fibu_kto:      fibu_kto || null,
+        belegnum:      document.getElementById('ed-zerf-belegnum').value,
+        verw_zweck:    document.getElementById('ed-zerf-vz').value,
+    };
+    cxLadenZeigen('Speichere Zahlung …');
+    const res = await _post(`${ED_API}/zahlungen`, body);
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    edZahlungErfassenSchliessen();
+    // Wenn STADIUM auf 8/9 wechselt → Reload, damit "Zahlung erfassen"-
+    // Button verschwindet. Sonst nur die Zahlungs-Tabelle aktualisieren.
+    if ([8, 9].includes(res.stadium)) {
+        location.reload();
+    } else {
+        _edZahlungenLaden();
+    }
+}
+
+async function edZahlungStorno(zid) {
+    const grund = prompt('Storno-Grund (Pflicht):', '');
+    if (grund === null) return;
+    if (!grund.trim()) {
+        alert('Bitte einen Grund angeben.');
+        return;
+    }
+    cxLadenZeigen('Storniere Zahlung …');
+    const res = await _post(`/orga/bestellwesen/einkauf/zahlungen/${zid}/storno`,
+                             { grund: grund.trim() });
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    // Bei STADIUM-Aenderung neu laden, sonst nur die Liste
+    if (res.journal_stadium && [2, 7].includes(res.journal_stadium) && [8, 9].includes(ED_STADIUM)) {
+        location.reload();
+    } else {
+        _edZahlungenLaden();
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const scan = document.getElementById('ed-scan');
     if (scan) scan.focus();
+    // Zahlungen + Bank-Vorschlaege parallel laden — entkoppelt, damit
+    // ein Fehler in Zahlungen nicht die Hibiscus-Vorschlaege blockt.
+    _edZahlungenLaden().catch(e => console.error('Zahlungen-Load:', e));
+    _edBankVorschlaegeLaden().catch(e => console.error('Bank-Vorschlag:', e));
 });
 </script>
 

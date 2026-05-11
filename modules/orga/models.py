@@ -428,6 +428,42 @@ def warengruppen_liste() -> list:
         return cur.fetchall()
 
 
+def _wg_und_nachkommen(wgr_id: int) -> list[int]:
+    """Liefert ``wgr_id`` + alle Nachkommen-WG-IDs (rekursiv).
+
+    Eltern-Knoten haben oft 0 direkte Artikel — alle haengen an den
+    Unterkategorien. Klick auf einen Eltern-Knoten soll daher alle
+    Artikel der gesamten Sub-Hierarchie zeigen, nicht nur den Wurzel-
+    knoten selbst (gleiches Verhalten wie der CAO-Picker).
+    """
+    with get_db() as cur:
+        cur.execute("SELECT ID, TOP_ID FROM WARENGRUPPEN")
+        rows = cur.fetchall() or []
+    by_parent: dict[int, list[int]] = {}
+    for r in rows:
+        pid = r.get('TOP_ID')
+        try:
+            pid_i = int(pid) if pid is not None else None
+        except (TypeError, ValueError):
+            pid_i = None
+        if pid_i in (-1, 0):
+            pid_i = None  # CAO-Wurzel-Marker
+        wid = int(r['ID'])
+        if pid_i is not None and pid_i != wid:
+            by_parent.setdefault(pid_i, []).append(wid)
+    result: list[int] = []
+    stack: list[int] = [int(wgr_id)]
+    seen: set[int] = set()
+    while stack:
+        cur_id = stack.pop()
+        if cur_id in seen:
+            continue
+        seen.add(cur_id)
+        result.append(cur_id)
+        stack.extend(by_parent.get(cur_id, []))
+    return result
+
+
 def warengruppen_mit_faktor() -> list:
     """Warengruppen-Hierarchie mit Ø-Faktor aller aktiven Artikel.
 
@@ -511,10 +547,13 @@ def warengruppen_mit_faktor() -> list:
 
 def preispflege_liste(wgr_id: int | None = None,
                        nur_kontrolle: bool = False) -> list:
-    """Alle aktiven Artikel (N/F/S) mit EK, VK5, VPE und Faktor.
+    """Alle aktiven Artikel (N/F/S/L) mit EK, VK5, VPE und Faktor.
 
-    Aktive Artikel: ARTIKELTYP IN ('N','F','S'), kein VK-Sperre
+    Aktive Artikel: ARTIKELTYP IN ('N','F','S','L'), kein VK-Sperre
     (NO_VK_FLAG != 'J'/'Y') und kein Löschvermerk (USERFELD_02).
+    'L' (CAO-Default = "Lohn") wird hier als bei diesem Mandanten
+    zweckentfremdeter Lebensmittel-/Backwaren-Typ mit aufgenommen,
+    damit Bäcker-Artikel in der Preispflege sichtbar sind.
     Auch Artikel ohne VK5 werden angezeigt (Faktor = None).
 
     Args:
@@ -536,14 +575,21 @@ def preispflege_liste(wgr_id: int | None = None,
     wgr_filter = ''
     params: list = []
     if wgr_id is not None:
-        wgr_filter = 'AND a.WARENGRUPPE = %s '
-        params.append(wgr_id)
+        # Klick auf einen Eltern-Knoten soll alle Artikel der gesamten
+        # Sub-Hierarchie zeigen (Eltern-WGs haben oft 0 direkte Artikel).
+        # Siehe _wg_und_nachkommen().
+        ids = _wg_und_nachkommen(int(wgr_id))
+        placeholders = ','.join(['%s'] * len(ids))
+        wgr_filter = f'AND a.WARENGRUPPE IN ({placeholders}) '
+        params.extend(ids)
     kontrolle_filter = (
         'AND vk.REC_ID IS NOT NULL ' if nur_kontrolle else ''
     )
 
     # LEFT JOIN auf den juengsten OFFENEN VK-Kontroll-Eintrag pro
-    # Artikel (Subquery liefert max. 1 Zeile).
+    # Artikel (Subquery liefert max. 1 Zeile). Plus LEFT JOIN auf
+    # XT_KIOSK_PRODUKTE.bild_pfad fuer Thumbnail-Anzeige
+    # (id == ARTIKEL.REC_ID, siehe kiosk-app/schema.sql).
     sql = f"""
         SELECT
             a.REC_ID                                       AS artikel_id,
@@ -560,6 +606,7 @@ def preispflege_liste(wgr_id: int | None = None,
             COALESCE(a.VPE_EK, 1)                        AS VPE_EK,
             a.DEFAULT_LIEF_ID,
             aek.EK_BEZUG       AS EK_BEZUG,
+            kp.bild_pfad       AS BILD_PFAD,
             vk.REC_ID         AS VK_REC_ID,
             vk.GRUND          AS VK_GRUND,
             vk.ALT_EK         AS VK_ALT_EK,
@@ -570,6 +617,7 @@ def preispflege_liste(wgr_id: int | None = None,
         FROM ARTIKEL a
         LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
         LEFT JOIN XT_ARTIKEL_EK_BEZUG aek ON aek.ARTIKEL_ID = a.REC_ID
+        LEFT JOIN XT_KIOSK_PRODUKTE kp ON kp.id = a.REC_ID
         LEFT JOIN XT_ARTIKEL_VK_KONTROLLE vk
                ON vk.ARTIKEL_REC_ID = a.REC_ID
               AND vk.ERLEDIGT_AT IS NULL
@@ -578,7 +626,7 @@ def preispflege_liste(wgr_id: int | None = None,
                   WHERE vk2.ARTIKEL_REC_ID = a.REC_ID
                     AND vk2.ERLEDIGT_AT IS NULL
               )
-        WHERE a.ARTIKELTYP IN ('N', 'F', 'S')
+        WHERE a.ARTIKELTYP IN ('N', 'F', 'S', 'L')
           AND (a.NO_VK_FLAG IS NULL OR a.NO_VK_FLAG NOT IN ('J','Y'))
           AND (a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')
           {wgr_filter}
@@ -654,6 +702,7 @@ def preispflege_liste(wgr_id: int | None = None,
             'vpe_ek':          vpe_ek,
             'faktor':          faktor,
             'default_lief_id': r.get('DEFAULT_LIEF_ID'),
+            'bild_pfad':       (r.get('BILD_PFAD') or '') or None,
             'vk_kontrolle':    vk_kontrolle,
         })
 

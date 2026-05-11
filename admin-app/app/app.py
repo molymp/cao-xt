@@ -886,16 +886,46 @@ def artikel_bild_hochladen(artikel_id):
         return jsonify(ok=False, msg='Datei zu groß (max. 5 MB)'), 400
     datei.seek(0)
 
-    os.makedirs(PRODUKTBILDER_DIR, exist_ok=True)
-    for alt_endung in ERLAUBTE_BILD_ENDUNGEN:
-        alt_pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{alt_endung}")
-        if os.path.exists(alt_pfad):
-            os.remove(alt_pfad)
-
+    # Bytes lesen (fuer BINAERDATEN-BLOB UND legacy-Filesystem-Cache).
+    daten_bytes = datei.read()
     dateiname = f"{artikel_id}.{endung}"
-    datei.save(os.path.join(PRODUKTBILDER_DIR, dateiname))
 
-    bild_url_pfad = f"/produktbilder/{dateiname}"
+    # Primaer-Bild in CAO BINAERDATEN ablegen (MODUL_ID=1020 Artikel).
+    # Damit ist es sofort im CAO-Faktura-Artikelstamm-Reiter
+    # "Dateilinks" sichtbar.
+    from common import binaerdaten as _bd
+    try:
+        _bd.run_migration()  # idempotent: stellt Standard-Typ sicher
+        typ_id = _bd.typ_id_holen(_bd.TYP_NAME_PRODUKTBILD)
+        binaer_id = _bd.binaer_primaer_ersetzen(
+            modul_id=_bd.MODUL_ID_ARTIKEL,
+            referenz_id=int(artikel_id),
+            binaer_typ=typ_id,
+            pfad=f'/produktbilder/{dateiname}',
+            datei=dateiname,
+            daten=daten_bytes,
+            erst_name=session.get('login_name') or 'admin-app',
+        )
+    except Exception as e:
+        log.error("Bild-BINAERDATEN-Insert ID=%s: %s", artikel_id, e)
+        return jsonify(ok=False, msg=str(e)), 500
+    bild_url_pfad = f"/binaer/{binaer_id}"
+
+    # Legacy-Filesystem-Cache parallel pflegen (best-effort, damit
+    # bestehende Setups ohne BINAERDATEN-Endpoint weiterlaufen).
+    try:
+        os.makedirs(PRODUKTBILDER_DIR, exist_ok=True)
+        for alt_endung in ERLAUBTE_BILD_ENDUNGEN:
+            alt_pfad = os.path.join(PRODUKTBILDER_DIR,
+                                     f"{artikel_id}.{alt_endung}")
+            if os.path.exists(alt_pfad):
+                os.remove(alt_pfad)
+        with open(os.path.join(PRODUKTBILDER_DIR, dateiname), 'wb') as fh:
+            fh.write(daten_bytes)
+    except Exception as fs_exc:
+        log.warning("Bild-FS-Cache best-effort ID=%s: %s",
+                    artikel_id, fs_exc)
+
     try:
         with get_db() as cur:
             cur.execute("SELECT id FROM XT_KIOSK_PRODUKTE WHERE id=%s", (artikel_id,))
@@ -914,13 +944,29 @@ def artikel_bild_hochladen(artikel_id):
 @app.route('/artikel/<int:artikel_id>/bild', methods=['DELETE'])
 @_login_required
 def artikel_bild_loeschen(artikel_id):
-    """Bild eines Artikels löschen."""
+    """Bild eines Artikels löschen.
+
+    Entfernt das Hauptbild aus CAO ``BINAERDATEN`` (MODUL_ID=1020),
+    aus dem Filesystem-Cache und setzt ``XT_KIOSK_PRODUKTE.bild_pfad``
+    auf NULL.
+    """
     geloescht = False
+    # 1) BINAERDATEN-Hauptbild loeschen (MODUL_ID=1020 = Artikel).
+    try:
+        from common import binaerdaten as _bd
+        n = _bd.binaer_primaer_loeschen(
+            _bd.MODUL_ID_ARTIKEL, int(artikel_id))
+        if n:
+            geloescht = True
+    except Exception as exc:
+        log.warning("BINAERDATEN-Delete ID=%s: %s", artikel_id, exc)
+    # 2) Legacy-Filesystem-Cache leeren.
     for endung in ERLAUBTE_BILD_ENDUNGEN:
         pfad = os.path.join(PRODUKTBILDER_DIR, f"{artikel_id}.{endung}")
         if os.path.exists(pfad):
             os.remove(pfad)
             geloescht = True
+    # 3) bild_pfad in der Kiosk-Tabelle nullen.
     try:
         with get_db() as cur:
             cur.execute("UPDATE XT_KIOSK_PRODUKTE SET bild_pfad=NULL WHERE id=%s", (artikel_id,))
@@ -952,6 +998,34 @@ def produktbild(dateiname):
     """Liefert Produktbilder (für Vorschau in der Admin)."""
     from flask import send_from_directory
     return send_from_directory(PRODUKTBILDER_DIR, dateiname)
+
+
+@app.route('/binaer/<int:rec_id>')
+def binaerdaten_blob(rec_id: int):
+    """Liefert einen BLOB aus CAO ``BINAERDATEN`` (Bilder, PDFs, …).
+
+    Honoriert ``If-None-Match`` für Browser-Caching, damit das BLOB
+    nicht bei jedem Aufruf erneut über die Leitung geht.
+    """
+    from flask import request as _req, Response, abort
+    from common import binaerdaten as _bd
+    etag = f'binaer-{rec_id}'
+    if (_req.headers.get('If-None-Match') or '') == etag:
+        return ('', 304, {'ETag': etag,
+                          'Cache-Control': 'public, max-age=86400'})
+    row = _bd.binaer_holen(rec_id)
+    if not row or not row.get('DATEN'):
+        abort(404)
+    mime = _bd.mime_aus_dateiname(row.get('DATEI') or '')
+    return Response(
+        bytes(row['DATEN']),
+        mimetype=mime,
+        headers={
+            'Content-Length': str(len(row['DATEN'])),
+            'ETag': etag,
+            'Cache-Control': 'public, max-age=86400',
+        },
+    )
 
 
 # ── Phase F: Funktionen (Feature-Toggles) ─────────────────────────
@@ -2862,18 +2936,34 @@ def api_einkauf_position_anreichern(pos_id):
               if diag.get('ok') else {}
     if diag.get('ok') and parsed:
         # Bild ggf. herunterladen
+        bild_info = None
         if parsed.get('bild_url'):
             try:
                 lief = _einkauf.holen(lief_rec_id) or {}
-                lokal = _einkauf._download_lief_bild(
+                bild_info = _einkauf._download_lief_bild(
                     parsed['bild_url'],
                     lief.get('KUERZEL') or '',
                     artnr)
-                if lokal:
-                    parsed['bild_lokal'] = lokal
+                if bild_info:
+                    parsed['bild_lokal'] = bild_info.get('rel_pfad') or ''
             except Exception:
                 pass
-        _einkauf.lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
+        lief_art_rec_id = _einkauf.lief_artikel_speichern(
+            lief_rec_id, artnr, parsed=parsed)
+        if bild_info and lief_art_rec_id:
+            try:
+                binaer_id = _einkauf._bild_in_binaerdaten_speichern(
+                    lief_art_rec_id, bild_info,
+                    erst_name='Einkauf-UI')
+                if binaer_id:
+                    from common.db import get_db_transaction as _tx
+                    with _tx() as cur:
+                        cur.execute(
+                            "UPDATE XT_EINKAUF_LIEF_ARTIKEL "
+                            "SET BILD_BINAER_ID = %s WHERE REC_ID = %s",
+                            (binaer_id, lief_art_rec_id))
+            except Exception:
+                pass
     elif not diag.get('ok'):
         _einkauf.lief_artikel_speichern(
             lief_rec_id, artnr, parsed=None,

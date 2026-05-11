@@ -179,8 +179,66 @@ try:
                      ergebnis['geheilt'])
     except Exception as e:
         log.warning("EKBESTELL_POS-Migration uebersprungen: %s", e)
+
+    # Hintergrund: MyISAM key cache aufwaermen damit der erste echte
+    # User-Aufruf der Bestellwesen-Liste nicht 20 Sekunden braucht
+    # (Cold-Cache-Phaenomen, gemessen 2026-05-10). Wir feuern ein paar
+    # COUNT(*)/SELECT-Queries die genau die Indexe lesen, die spaeter
+    # die wichtigen Listen brauchen. Lauft im Background-Thread, blockt
+    # also den App-Start nicht.
+    def _bestellwesen_warmup():
+        try:
+            from common.db import get_db
+            with get_db() as cur:
+                cur.execute("SELECT COUNT(*) FROM EKBESTELL")
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM EKBESTELL_POS")
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM EKEINGANG")
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM EKEINGANG_POS")
+                cur.fetchall()
+                # Diese Index-Range-Reads warm-up den Index fuer
+                # bestellungen_liste's pos_anzahl-Subquery
+                cur.execute(
+                    "SELECT EKBESTELL_ID, COUNT(*) FROM EKBESTELL_POS "
+                    "GROUP BY EKBESTELL_ID")
+                cur.fetchall()
+            log.info("Bestellwesen-MyISAM-Warmup abgeschlossen.")
+        except Exception as e:
+            log.warning("Bestellwesen-Warmup fehlgeschlagen: %s", e)
+    import threading
+    threading.Thread(target=_bestellwesen_warmup, daemon=True,
+                     name='bw-warmup').start()
 except Exception as e:
     log.warning("Orga-Bestellwesen-Blueprint konnte nicht geladen werden: %s", e)
+
+try:
+    from modules.orga.banking import create_blueprint as _bk_bp
+    app.register_blueprint(_bk_bp(), url_prefix='/orga/banking')
+    log.info("Orga-Banking-Blueprint registriert.")
+    # Hibiscus-Tabellen (InnoDB) im Background warm-uppen — sonst dauert
+    # der erste konten_liste-Aufruf ~20s (cold InnoDB Buffer Pool, plus
+    # 30-Tage-Statistik-Subquery auf umsatz mit 7000+ Zeilen).
+    def _banking_warmup():
+        try:
+            from common.db import get_db
+            from datetime import date, timedelta
+            seit = date.today() - timedelta(days=30)
+            with get_db() as cur:
+                cur.execute("SELECT COUNT(*) FROM konto"); cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM umsatz "
+                            "WHERE datum >= %s", (seit,))
+                cur.fetchall()
+                cur.execute("SELECT COUNT(*) FROM sepasueb"); cur.fetchall()
+            log.info("Banking-Warmup abgeschlossen.")
+        except Exception as e:
+            log.warning("Banking-Warmup fehlgeschlagen: %s", e)
+    import threading
+    threading.Thread(target=_banking_warmup, daemon=True,
+                     name='bk-warmup').start()
+except Exception as e:
+    log.warning("Orga-Banking-Blueprint konnte nicht geladen werden: %s", e)
 
 try:
     from modules.haccp import create_blueprint as _haccp_bp
@@ -436,6 +494,33 @@ def artikel():
 def preispflege():
     """Preispflege-Tabelle: EK / VK5 / Faktor für alle aktiven Artikel (N/F/S)."""
     return render_template('preispflege.html')
+
+
+@app.route('/binaer/<int:rec_id>')
+def binaerdaten_blob(rec_id: int):
+    """Liefert einen BLOB aus CAO ``BINAERDATEN`` (z.B. Produktbilder).
+
+    Honoriert ``If-None-Match`` (ETag) für Browser-Caching.
+    """
+    from flask import request as _req, Response, abort
+    from common import binaerdaten as _bd
+    etag = f'binaer-{rec_id}'
+    if (_req.headers.get('If-None-Match') or '') == etag:
+        return ('', 304, {'ETag': etag,
+                          'Cache-Control': 'public, max-age=86400'})
+    row = _bd.binaer_holen(rec_id)
+    if not row or not row.get('DATEN'):
+        abort(404)
+    mime = _bd.mime_aus_dateiname(row.get('DATEI') or '')
+    return Response(
+        bytes(row['DATEN']),
+        mimetype=mime,
+        headers={
+            'Content-Length': str(len(row['DATEN'])),
+            'ETag': etag,
+            'Cache-Control': 'public, max-age=86400',
+        },
+    )
 
 
 # ── Reporting ─────────────────────────────────────────────────

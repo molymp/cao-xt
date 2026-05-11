@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Banking – SEPA-Sammelüberweisungen{% endblock %}
+
+{% block extra_style %}
+<style>
+.bk-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:12px; }
+.bk-kopf h1 { font-size:1.5rem; }
+.bk-kopf a.zurueck { color:var(--text-dim,#5a7a3a);
+  text-decoration:none; font-size:0.9rem; font-weight:700; }
+
+.bk-filter { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
+  background:white; padding:12px 16px; border-radius:var(--radius-klein);
+  box-shadow:var(--schatten); margin-bottom:14px; }
+.bk-filter label { font-size:0.78rem; font-weight:700;
+  color:var(--text-dim,#5a7a3a); text-transform:uppercase; }
+.bk-filter select { padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); background:white; }
+
+.bk-tabelle { width:100%; border-collapse:collapse; background:white;
+  border-radius:var(--radius); overflow:hidden; box-shadow:var(--schatten); }
+.bk-tabelle th { background:var(--gruen-dunkel); color:var(--creme);
+  padding:9px 12px; text-align:left; font-size:0.74rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; }
+.bk-tabelle td { padding:8px 12px; border-bottom:1px solid var(--creme-dunkel);
+  font-size:0.9rem; }
+.bk-tabelle tr:hover td { background:var(--bg-hell,#ece3cc); cursor:pointer; }
+.zahl-rechts { text-align:right; font-variant-numeric:tabular-nums; }
+
+.bk-pille { display:inline-block; padding:1px 8px; border-radius:999px;
+  font-size:0.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.04em; }
+.bk-pille.gruen { background:rgba(46,122,46,0.18); color:#1a4010; }
+.bk-pille.gelb  { background:rgba(220,140,40,0.18); color:#a05010; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bk-kopf">
+    <h1>📤 SEPA-Sammelüberweisungen</h1>
+    <a href="{{ url_for('orga_banking.uebersicht') }}" class="zurueck">← zurück zur Konten-Übersicht</a>
+</div>
+
+<form method="get" class="bk-filter">
+    <label>Konto:
+        <select name="konto_id" onchange="this.form.submit()">
+            <option value="">– alle –</option>
+            {% for k in konten %}
+                <option value="{{ k.id }}" {% if konto_id == k.id %}selected{% endif %}>
+                    {{ k.bezeichnung or k.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </label>
+</form>
+
+{% if not sepasueb %}
+<div style="background:white; padding:28px; border-radius:var(--radius);
+            box-shadow:var(--schatten); text-align:center;
+            color:var(--text-dim,#5a7a3a);">
+    Keine SEPA-Sammelüberweisungen gefunden.
+</div>
+{% else %}
+<table class="bk-tabelle">
+    <thead>
+        <tr>
+            <th>Termin</th>
+            <th>Konto</th>
+            <th>Bezeichnung</th>
+            <th class="zahl-rechts">Buchungen</th>
+            <th class="zahl-rechts">Summe €</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for s in sepasueb %}
+    <tr onclick="window.location='{{ url_for('orga_banking.sepa_ueb_detail', rec_id=s.id) }}'">
+        <td>{{ s.termin.strftime('%d.%m.%Y') if s.termin else '–' }}</td>
+        <td>{{ s.konto_bez or '–' }}</td>
+        <td><strong>{{ s.bezeichnung }}</strong></td>
+        <td class="zahl-rechts">{{ s.buchungen_n }}</td>
+        <td class="zahl-rechts" style="font-weight:700;">
+            {{ '{:,.2f}'.format(s.summe or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+        </td>
+        <td>
+            {% if s.ausgefuehrt %}
+                <span class="bk-pille gruen">✓ ausgeführt
+                    {% if s.ausgefuehrt_am %}({{ s.ausgefuehrt_am.strftime('%d.%m.%Y') }}){% endif %}
+                </span>
+            {% else %}
+                <span class="bk-pille gelb">⏳ offen</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

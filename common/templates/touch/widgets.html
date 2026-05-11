@@ -29,9 +29,14 @@
 /* ── gemeinsame Overlay-Basis ─────────────────────────────────── */
 .touch-overlay {
   position: fixed; inset: 0; background: rgba(20, 40, 10, 0.55);
-  z-index: 9100; display: none; align-items: flex-end;
+  z-index: 9500; display: none; align-items: flex-end;
   justify-content: center; touch-action: none;
 }
+/* z-index 9500: Touch-Overlay liegt VOR allen App-Modalen
+   (cxp-overlay = 9100, andere App-Modale wie Buchen/Einkauf-Quelle
+   bei 9200..9300). Sonst kommt der Numpad/Keyboard-Overlay hinter
+   dem darunterliegenden Modal zu liegen, wenn ein Touch-Input in
+   einem geschachtelten Modal sitzt. */
 .touch-overlay.sichtbar { display: flex; }
 .touch-panel {
   background: white; border-radius: 16px 16px 0 0; width: 100%;

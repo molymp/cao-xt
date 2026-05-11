@@ -138,6 +138,23 @@ def run_migration() -> None:
                             "ADD COLUMN BILD_LOKAL VARCHAR(255) NULL "
                             "AFTER BILD_URL")
 
+            # Bild-Cache jetzt in CAO BINAERDATEN (BLOB) statt im
+            # Filesystem. BILD_BINAER_ID = REC_ID in BINAERDATEN. Bei
+            # Stammdaten-Match wird der Eintrag auf MODUL_ID=1020
+            # (Artikel) umgetaggt — siehe common.binaerdaten. BILD_LOKAL
+            # bleibt vorerst als Fallback bestehen.
+            cur.execute("""
+                SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = 'XT_EINKAUF_LIEF_ARTIKEL'
+                  AND COLUMN_NAME  = 'BILD_BINAER_ID'
+            """)
+            if int((cur.fetchone() or {}).get('n', 0)) == 0:
+                cur.execute("ALTER TABLE XT_EINKAUF_LIEF_ARTIKEL "
+                            "ADD COLUMN BILD_BINAER_ID INT UNSIGNED NULL "
+                            "AFTER BILD_LOKAL, "
+                            "ADD INDEX idx_bild_binaer (BILD_BINAER_ID)")
+
             # Phase 5b-Verbesserung: EK_BEZUG-Override pro Lief-Artikel.
             # NULL = nimm Lieferanten-Default (XT_EINKAUF_LIEFERANT.
             # EK_BEZUG_DEFAULT). Erlaubt Artikel-spezifische Abweichungen,
@@ -385,6 +402,14 @@ def run_migration() -> None:
         log.info("Migration: XT_EINKAUF_LIEFERANT/BESTELLUNG/BESTELLPOS geprueft.")
     except Exception as exc:
         log.warning("XT_EINKAUF_*-Migration fehlgeschlagen: %s", exc)
+
+    # CAO-Bilder-Tabelle: Standard-BINAER_TYP "Produktbild" anlegen,
+    # damit Lieferanten-Bilder kategorisiert werden koennen.
+    try:
+        from . import binaerdaten as _bd
+        _bd.run_migration()
+    except Exception as exc:
+        log.warning("BINAER_TYPEN-Init fehlgeschlagen: %s", exc)
 
 
 def seed_defaults() -> int:
@@ -1454,12 +1479,20 @@ _LIEF_BILD_DIR = os.path.join(_PRODUKTBILDER_BASE, 'lieferanten')
 
 
 def _download_lief_bild(url: str, lief_kuerzel: str,
-                        artnr: str) -> Optional[str]:
-    """Laedt das Produktbild von ``url`` herunter und speichert es
-    lokal. Liefert den relativen Pfad (zur Verwendung am
-    ``/produktbilder/<path>``-Endpoint), oder ``None`` bei Fehler.
+                        artnr: str) -> Optional[dict]:
+    """Laedt das Produktbild von ``url`` und liefert die Bytes plus
+    Metadaten (oder None bei Fehler).
 
-    Pfadschema: ``lieferanten/<KUERZEL>/<artnr>.<ext>``.
+    Rueckgabe-Dict::
+
+        {'rel_pfad': 'lieferanten/<KUERZEL>/<artnr>.<ext>',
+         'datei':    '<artnr>.<ext>',
+         'daten':    <bytes>,
+         'url':      <urspruengliche URL>}
+
+    Schreibt das Bild ZUSAETZLICH ins Filesystem (Legacy-Cache),
+    damit bestehende Filesystem-Konsumenten weiterlaufen, solange wir
+    noch nicht alle Templates auf BINAERDATEN umgestellt haben.
     """
     if not (url and lief_kuerzel and artnr):
         return None
@@ -1471,8 +1504,6 @@ def _download_lief_bild(url: str, lief_kuerzel: str,
 
     kuerzel = re.sub(r'[^A-Za-z0-9_-]', '_', lief_kuerzel)[:20]
     artnr_safe = re.sub(r'[^A-Za-z0-9_-]', '_', artnr)[:40]
-    zielordner = os.path.join(_LIEF_BILD_DIR, kuerzel)
-    os.makedirs(zielordner, exist_ok=True)
 
     try:
         r = _req.get(url, timeout=15, allow_redirects=True)
@@ -1503,15 +1534,58 @@ def _download_lief_bild(url: str, lief_kuerzel: str,
                     ext = 'jpg'
 
     dateiname = f'{artnr_safe}.{ext}'
-    pfad = os.path.join(zielordner, dateiname)
+
+    # Filesystem-Cache (Legacy) — best effort, Fehler tolerieren.
+    rel_pfad = f'lieferanten/{kuerzel}/{dateiname}'
     try:
+        zielordner = os.path.join(_LIEF_BILD_DIR, kuerzel)
+        os.makedirs(zielordner, exist_ok=True)
+        pfad = os.path.join(zielordner, dateiname)
         with open(pfad, 'wb') as f:
             f.write(r.content)
     except Exception as exc:
-        log.warning('Bild-Save %s: %s', pfad, exc)
-        return None
+        log.warning('Bild-FS-Save best-effort fehlgeschlagen %s: %s',
+                    rel_pfad, exc)
 
-    return f'lieferanten/{kuerzel}/{dateiname}'
+    return {
+        'rel_pfad': rel_pfad,
+        'datei':    dateiname,
+        'daten':    r.content,
+        'url':      url,
+    }
+
+
+def _bild_in_binaerdaten_speichern(lief_art_rec_id: int,
+                                    bild_info: dict,
+                                    erst_name: str = 'Einkauf-Poller'
+                                    ) -> Optional[int]:
+    """Speichert ein Lieferanten-Bild als BLOB in CAO ``BINAERDATEN``.
+
+    Verwendet die XT-Sonder-MODUL_ID 91020 (Lieferantenartikel-Cache).
+    Sobald der Lief-Artikel auf einen CAO-``ARTIKEL.REC_ID`` gemappt
+    wird, kann ``binaerdaten.binaer_umtaggen`` den Eintrag auf
+    MODUL_ID=1020 verschieben. Liefert die ``BINAERDATEN.REC_ID``
+    oder ``None`` bei Fehler.
+    """
+    if not bild_info or not bild_info.get('daten'):
+        return None
+    try:
+        from . import binaerdaten as _bd
+        typ_id = _bd.typ_id_holen(_bd.TYP_NAME_PRODUKTBILD)
+        return _bd.binaer_speichern_oder_ersetzen(
+            modul_id=_bd.MODUL_ID_XT_LIEF_ARTIKEL_CACHE,
+            referenz_id=int(lief_art_rec_id),
+            binaer_typ=typ_id,
+            pfad=bild_info.get('url') or bild_info.get('rel_pfad') or '',
+            datei=bild_info.get('datei') or '',
+            daten=bild_info.get('daten') or b'',
+            primaer=True,
+            erst_name=erst_name,
+        )
+    except Exception as exc:
+        log.warning("BINAERDATEN-Save fuer LIEF_ART %s fehlgeschlagen: %s",
+                    lief_art_rec_id, exc)
+        return None
 
 
 def lief_artikel_speichern(lief_rec_id: int, artnr: str,
@@ -1571,7 +1645,18 @@ def lief_artikel_speichern(lief_rec_id: int, artnr: str,
             (p.get('verfuegbarkeit') or '')[:80] or None,
             (fehler or '')[:500] or None,
         ))
-        return int(cur.lastrowid)
+        # ON DUPLICATE KEY UPDATE liefert lastrowid=0, wenn ein
+        # bestehender Datensatz aktualisiert wurde — dann den
+        # vorhandenen REC_ID per UNIQUE-Schluessel nachschlagen.
+        rec_id = int(cur.lastrowid or 0)
+        if not rec_id:
+            cur.execute("""
+                SELECT REC_ID FROM XT_EINKAUF_LIEF_ARTIKEL
+                WHERE LIEF_REC_ID = %s AND ARTIKEL_NR_LIEF = %s
+            """, (int(lief_rec_id), (artnr or '')[:40]))
+            row = cur.fetchone()
+            rec_id = int((row or {}).get('REC_ID') or 0)
+        return rec_id
 
 
 def lief_artikel_ek_bezug_setzen(lief_rec_id: int, artnr: str,
@@ -1642,22 +1727,42 @@ def lief_artikel_anreichern_position(lief_rec_id: int, artnr: str) -> dict:
     parsed = (res.get('probe') or {}).get('parsed') or {}
 
     # Bild herunterladen, wenn noch nicht im lokalen Cache.
+    bild_info: Optional[dict] = None
     if parsed.get('bild_url'):
         cached = lief_artikel_holen(lief_rec_id, artnr) or {}
-        if not (cached.get('BILD_LOKAL') or '').strip():
+        if not cached.get('BILD_BINAER_ID') and \
+                not (cached.get('BILD_LOKAL') or '').strip():
             kuerzel = ''
             try:
                 lief = holen(lief_rec_id) or {}
                 kuerzel = lief.get('KUERZEL') or ''
             except Exception:
                 pass
-            lokal = _download_lief_bild(parsed['bild_url'], kuerzel, artnr)
-            if lokal:
-                parsed['bild_lokal'] = lokal
+            bild_info = _download_lief_bild(parsed['bild_url'],
+                                            kuerzel, artnr)
+            if bild_info:
+                parsed['bild_lokal'] = bild_info.get('rel_pfad') or ''
         else:
             parsed['bild_lokal'] = cached.get('BILD_LOKAL') or ''
 
-    lief_artikel_speichern(lief_rec_id, artnr, parsed=parsed)
+    lief_art_rec_id = lief_artikel_speichern(lief_rec_id, artnr,
+                                              parsed=parsed)
+    # Bild in BINAERDATEN ablegen (XT-Cache MODUL_ID 91020) und die
+    # ID am Cache-Eintrag persistieren.
+    if bild_info and lief_art_rec_id:
+        binaer_id = _bild_in_binaerdaten_speichern(lief_art_rec_id,
+                                                     bild_info)
+        if binaer_id:
+            try:
+                with get_db_transaction() as cur:
+                    cur.execute(
+                        "UPDATE XT_EINKAUF_LIEF_ARTIKEL "
+                        "SET BILD_BINAER_ID = %s WHERE REC_ID = %s",
+                        (binaer_id, lief_art_rec_id))
+            except Exception as exc:
+                log.warning(
+                    "BILD_BINAER_ID-Update fuer LIEF_ART %s: %s",
+                    lief_art_rec_id, exc)
     return {'ok': True, 'parsed': parsed, 'msg': None}
 
 
@@ -2306,6 +2411,70 @@ def _lief_preis_aktion(cao_artikel_rec_id: Optional[int],
     }
 
 
+def _lief_preis_aktion_aus_bulk(cao_artikel_rec_id: Optional[int],
+                                 cao_lief_id: Optional[int],
+                                 neue_bestnum: str,
+                                 neuer_preis: Optional[float],
+                                 neue_vpe: Optional[int],
+                                 preis_map: dict[int, dict]) -> dict:
+    """Wie ``_lief_preis_aktion`` — aber ohne DB-Roundtrip.
+
+    Liest den existierenden ARTIKEL_PREIS-Eintrag aus dem
+    vorgeladenen ``preis_map`` (artikel_id → row). Verwendet von
+    ``cao_match_positionen`` zur Performance-Optimierung
+    (Bulk-Lookup statt Pro-Pos-Query).
+    """
+    if not (cao_artikel_rec_id and cao_lief_id):
+        if not cao_artikel_rec_id:
+            return {'art': 'NICHT_MOEGLICH', 'grund': 'kein CAO-Artikel',
+                    'alt': None, 'andere_bestnums': []}
+        return {'art': 'NICHT_MOEGLICH',
+                'grund': 'Lieferant ohne CAO_LIEF_ID — '
+                          'Verknüpfung erst nach Adress-Zuordnung möglich',
+                'alt': None, 'andere_bestnums': []}
+
+    bestnum = (neue_bestnum or '').strip()
+    existing = preis_map.get(int(cao_artikel_rec_id))
+
+    if existing:
+        alt_bestnum = (existing.get('BESTNUM') or '').strip()
+        alt_preis   = float(existing.get('PREIS') or 0)
+        alt_vpe     = existing.get('VPE')
+        diff_preis   = abs((neuer_preis or 0) - alt_preis)
+        diff_vpe     = (neue_vpe or 0) != (int(alt_vpe) if alt_vpe else 0)
+        diff_bestnum = bestnum != alt_bestnum
+        if diff_preis < 0.0001 and not diff_vpe and not diff_bestnum:
+            return {
+                'art': 'UNVERAENDERT',
+                'grund': f'Eintrag mit BESTNUM {bestnum} und EK '
+                         f'{alt_preis:.4f} € ist bereits gepflegt.',
+                'alt': dict(existing),
+                'andere_bestnums': [],
+            }
+        teile = []
+        if diff_preis >= 0.0001:
+            teile.append(f'EK {alt_preis:.4f} → {neuer_preis or 0:.4f} €')
+        if diff_vpe:
+            teile.append(f'VPE {alt_vpe or 0} → {neue_vpe or 0}')
+        if diff_bestnum:
+            teile.append(f'BESTNUM {alt_bestnum or "—"} → {bestnum}')
+        return {
+            'art': 'UPDATE',
+            'grund': 'Bestehender Eintrag wird aktualisiert: '
+                     + '; '.join(teile) + '.',
+            'alt': dict(existing),
+            'andere_bestnums': [],
+        }
+
+    return {
+        'art': 'INSERT',
+        'grund': ('Bisher kein Lieferantenpreis vom aktuellen '
+                  'Lieferanten hinterlegt. Neue Zeile wird angelegt.'),
+        'alt': None,
+        'andere_bestnums': [],
+    }
+
+
 def _vk_kontrolle_ek_eintrag(artikel_rec_id: int,
                               alt_ek: float,
                               neu_ek: float,
@@ -2435,41 +2604,293 @@ def _stueck_ek(roh_ek: Optional[float],
     return round(ek, 4)
 
 
+_ARTIKEL_FELDER = (
+    'a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME, a.KURZNAME, '
+    'a.WARENGRUPPE, a.STEUER_CODE, a.EK_PREIS, a.VK5B, a.MENGE_AKT, '
+    'a.NO_VK_FLAG, a.USERFELD_02'
+)
+
+
+def _bulk_lief_artikel(cur, lief_rec_id: int,
+                        artnrs: list[str]) -> dict[str, dict]:
+    """Bulk-Lookup XT_EINKAUF_LIEF_ARTIKEL fuer alle Artikel-Nrn eines
+    Lieferanten. Liefert dict ARTIKEL_NR_LIEF → row."""
+    if not lief_rec_id or not artnrs:
+        return {}
+    ph = ','.join(['%s'] * len(artnrs))
+    cur.execute(
+        f"SELECT * FROM XT_EINKAUF_LIEF_ARTIKEL "
+        f"WHERE LIEF_REC_ID = %s AND ARTIKEL_NR_LIEF IN ({ph})",
+        (int(lief_rec_id), *[a[:40] for a in artnrs])
+    )
+    return {r['ARTIKEL_NR_LIEF']: r for r in cur.fetchall()}
+
+
+def _bulk_artikel_by_recids(cur, rec_ids: list[int]) -> dict[int, dict]:
+    """Bulk-Lookup ARTIKEL by REC_ID (fuer manuelle Matches)."""
+    if not rec_ids:
+        return {}
+    ph = ','.join(['%s'] * len(rec_ids))
+    cur.execute(
+        f"SELECT {_ARTIKEL_FELDER} FROM ARTIKEL a WHERE a.REC_ID IN ({ph})",
+        rec_ids
+    )
+    return {int(r['REC_ID']): r for r in cur.fetchall()}
+
+
+def _bulk_barcode_match(cur, barcodes: list[str]) -> dict[str, dict]:
+    """Bulk-Lookup ARTIKEL via TRIM(BARCODE/2/3) IN (...).
+
+    Liefert dict barcode → row (nur ein Treffer pro Barcode, wir nehmen
+    den mit NO_VK_FLAG='N' und niedrigster REC_ID)."""
+    if not barcodes:
+        return {}
+    bcs = sorted({b.strip() for b in barcodes if b and b.strip()})
+    if not bcs:
+        return {}
+    ph = ','.join(['%s'] * len(bcs))
+    cur.execute(
+        f"SELECT {_ARTIKEL_FELDER}, "
+        f"  TRIM(a.BARCODE) AS bc1, TRIM(a.BARCODE2) AS bc2, "
+        f"  TRIM(a.BARCODE3) AS bc3 "
+        f"FROM ARTIKEL a "
+        f"WHERE TRIM(a.BARCODE)  IN ({ph}) "
+        f"   OR TRIM(a.BARCODE2) IN ({ph}) "
+        f"   OR TRIM(a.BARCODE3) IN ({ph}) "
+        f"ORDER BY (a.NO_VK_FLAG = 'N') DESC, a.REC_ID",
+        (*bcs, *bcs, *bcs)
+    )
+    out: dict[str, dict] = {}
+    for r in cur.fetchall():
+        for bc_field in ('bc1', 'bc2', 'bc3'):
+            bc = r.get(bc_field) or ''
+            if bc and bc in bcs and bc not in out:
+                out[bc] = r
+    return out
+
+
+def _bulk_lief_artikel_preis(cur, artnrs: list[str],
+                              cao_lief: int) -> dict[str, dict]:
+    """Bulk-Lookup ARTIKEL_PREIS (Lief-spezifisch) via BESTNUM IN +
+    ADRESS_ID=cao_lief, PREIS_TYP=5. Liefert artnr → row."""
+    if not artnrs or not cao_lief:
+        return {}
+    ph = ','.join(['%s'] * len(artnrs))
+    cur.execute(
+        f"SELECT {_ARTIKEL_FELDER}, ap.BESTNUM AS bestnum_match "
+        f"FROM ARTIKEL_PREIS ap "
+        f"JOIN ARTIKEL a ON a.REC_ID = ap.ARTIKEL_ID "
+        f"WHERE ap.PREIS_TYP = 5 AND ap.ADRESS_ID = %s "
+        f"  AND ap.BESTNUM IN ({ph}) "
+        f"ORDER BY ap.GUELTIG_VON DESC",
+        (int(cao_lief), *artnrs)
+    )
+    out: dict[str, dict] = {}
+    for r in cur.fetchall():
+        bn = r.get('bestnum_match') or ''
+        if bn and bn not in out:
+            out[bn] = r
+    return out
+
+
+def _bulk_global_artikel_preis(cur, artnrs: list[str]) -> dict[str, dict]:
+    """Bulk-Lookup ARTIKEL_PREIS global via BESTNUM IN + PREIS_TYP=5.
+    Liefert dict artnr → {row, n_treffer} (n_treffer fuer mehrdeutig)."""
+    if not artnrs:
+        return {}
+    ph = ','.join(['%s'] * len(artnrs))
+    # 1. Treffer-Counts pro BESTNUM
+    cur.execute(
+        f"SELECT BESTNUM, COUNT(*) AS n FROM ARTIKEL_PREIS "
+        f"WHERE PREIS_TYP=5 AND BESTNUM IN ({ph}) "
+        f"GROUP BY BESTNUM",
+        artnrs
+    )
+    counts = {r['BESTNUM']: int(r['n']) for r in cur.fetchall()}
+    if not counts:
+        return {}
+    # 2. Erster Treffer pro BESTNUM (sortiert nach GUELTIG_VON DESC)
+    cur.execute(
+        f"SELECT {_ARTIKEL_FELDER}, ap.BESTNUM AS bestnum_match "
+        f"FROM ARTIKEL_PREIS ap "
+        f"JOIN ARTIKEL a ON a.REC_ID = ap.ARTIKEL_ID "
+        f"WHERE ap.PREIS_TYP = 5 AND ap.BESTNUM IN ({ph}) "
+        f"ORDER BY ap.GUELTIG_VON DESC",
+        artnrs
+    )
+    out: dict[str, dict] = {}
+    for r in cur.fetchall():
+        bn = r.get('bestnum_match') or ''
+        if bn and bn not in out:
+            out[bn] = {'row': r, 'n_treffer': counts.get(bn, 1)}
+    return out
+
+
+def _bulk_artikel_preis_lief(cur, artikel_ids: list[int],
+                              cao_lief: int) -> dict[int, dict]:
+    """Bulk-Lookup ARTIKEL_PREIS-PT2 fuer (artikel_id, cao_lief, PT5).
+    Genutzt fuer _lief_preis_aktion. Liefert artikel_id → {BESTNUM,PREIS,VPE}."""
+    if not artikel_ids or not cao_lief:
+        return {}
+    ph = ','.join(['%s'] * len(artikel_ids))
+    cur.execute(
+        f"SELECT ARTIKEL_ID, BESTNUM, PREIS, VPE FROM ARTIKEL_PREIS "
+        f"WHERE ARTIKEL_ID IN ({ph}) AND ADRESS_ID = %s AND PREIS_TYP = 5",
+        (*artikel_ids, int(cao_lief))
+    )
+    return {int(r['ARTIKEL_ID']): r for r in cur.fetchall()}
+
+
+def _bulk_xt_artikel_preis_bezug(cur, paare: list[tuple[int, int]]
+                                  ) -> dict[tuple[int, int], str]:
+    """Bulk-Lookup XT_ARTIKEL_PREIS_BEZUG fuer (artikel_id, adress_id)-
+    Tupel. Liefert dict (aid, addr) → EK_BEZUG."""
+    if not paare:
+        return {}
+    # OR-Chain ueber Tupel — MariaDB unterstuetzt (a,b) IN ((1,2),(3,4))
+    paare_uniq = sorted(set(paare))
+    placeholders = ','.join(['(%s,%s)'] * len(paare_uniq))
+    flat: list[int] = []
+    for a, b in paare_uniq:
+        flat.extend([a, b])
+    cur.execute(
+        f"SELECT ARTIKEL_ID, ADRESS_ID, EK_BEZUG "
+        f"FROM XT_ARTIKEL_PREIS_BEZUG "
+        f"WHERE (ARTIKEL_ID, ADRESS_ID) IN ({placeholders})",
+        flat
+    )
+    return {(int(r['ARTIKEL_ID']), int(r['ADRESS_ID'])):
+            (r.get('EK_BEZUG') or '') for r in cur.fetchall()}
+
+
 def cao_match_positionen(rec_id: int) -> list[dict]:
     """Read-only-Vorschau: pro Position der Bestellung pruefen, ob in CAO
     schon ein passender Artikel hinterlegt ist.
 
     Match-Strategie:
-      1. Wenn der Lieferant einen ``CAO_LIEF_ID`` hat: in
-         ``ARTIKEL_PREIS`` nach ``PREIS_TYP=5 AND ADRESS_ID=<lief>
-         AND PT2=<UTZ-ArtNr>`` suchen → eindeutiger Treffer (Lieferanten-
-         spezifisch, „enger" Match).
-      2. Fallback ohne Lieferanten-Filter: ``PREIS_TYP=5 AND PT2=...``.
-         Mehrere Treffer moeglich → wird als ``mehrdeutig`` markiert.
-      3. Kein Match → Position muss neu angelegt werden.
+      0. Manuelle Zuordnung (XT_EINKAUF_BESTELLPOS.STATUS) hat Vorrang.
+      1. Barcode-Match: TRIM(ARTIKEL.BARCODE/2/3) = lief_cache.BARCODE_STUECK
+      2. Lief-spezifisch: ARTIKEL_PREIS PT5 + ADRESS_ID=lief + BESTNUM=artnr
+      3. Global: ARTIKEL_PREIS PT5 + BESTNUM=artnr (mehrdeutig wenn n>1)
+      4. Vorschlaege: cao_artikel_vorschlag(bezeichnung) — nur bei kein-Match
 
-    Liefert pro Position ein dict mit::
-
-        {
-          'pos_rec_id', 'pos_nr', 'artikel_nr_lief', 'bezeichnung_lief',
-          'menge', 'preis_netto', 'zeilen_betrag',
-          'match_quelle': 'lieferant' | 'global' | 'mehrdeutig' | 'kein',
-          'cao': {  # nur wenn match_quelle != 'kein'
-            'rec_id', 'artnum', 'matchcode', 'kas_name', 'warengruppe',
-            'steuer_code', 'ek_preis', 'vk5b', 'lager', 'aktiv'
-          } | None,
-          'ek_diff':  float | None,    # NEUER_EK - CAO_EK
-          'ek_diff_pct': float | None, # in % vom CAO-EK
-        }
+    Performance: alle DB-Reads werden BULK ausgefuehrt vor der
+    Pos-Loop, danach laeuft der Pro-Pos-Code als reines Python. Vorher
+    war pro Pos 5-9 DB-Calls × 47 Pos = 47×9 ~14s. Jetzt ~6 Bulk-Querys
+    + leichte Pro-Pos-Aufrufe (cao_artikel_vorschlag und
+    _barcode_konflikt) — ca. 10x schneller bei 50+-Pos-Bestellungen.
     """
     head = bestellung_holen(rec_id)
     if not head:
         return []
 
     cao_lief = head.get('CAO_LIEF_ID')
+    lief_rec_id = head.get('LIEF_REC_ID') or 0
+    positionen = list(head.get('positionen') or [])
+
+    # ── Bulk-Pre-Load ALL data we need before the loop ─────────
+    artnrs = sorted({(p.get('ARTIKEL_NR_LIEF') or '').strip()
+                      for p in positionen
+                      if (p.get('ARTIKEL_NR_LIEF') or '').strip()})
+    manuell_ids = sorted({int(p['ARTIKEL_REC_ID']) for p in positionen
+                           if p.get('ARTIKEL_REC_ID')
+                           and (p.get('STATUS') or '').lower()
+                              not in ('manuell_klaeren', 'neu_anlegen')})
+
+    with get_db() as cur:
+        lief_cache_map = _bulk_lief_artikel(cur, lief_rec_id, artnrs)
+        manuell_artikel = _bulk_artikel_by_recids(cur, manuell_ids)
+        # Barcode-Match via Stueck-EAN aus dem Lief-Cache
+        barcodes = sorted({(c.get('BARCODE_STUECK') or '').strip()
+                            for c in lief_cache_map.values()
+                            if (c.get('BARCODE_STUECK') or '').strip()})
+        barcode_match_map = _bulk_barcode_match(cur, barcodes)
+        # Lief-spezifischer ARTIKEL_PREIS-Match
+        lief_match_map = _bulk_lief_artikel_preis(cur, artnrs, cao_lief or 0)
+        # Globaler Fallback
+        global_match_map = _bulk_global_artikel_preis(cur, artnrs)
+
+    # Wir brauchen pro Match auch das ARTIKEL_PREIS-Tupel
+    # (fuer _lief_preis_aktion). Erstmal alle Kandidaten-Artikel-IDs
+    # einsammeln, danach Bulk-Lookup.
     out: list[dict] = []
-    for p in head.get('positionen') or []:
+
+    # Pass 1: Match-Quelle pro Pos bestimmen, cao_treffer assignen
+    pos_state: list[dict] = []
+    for p in positionen:
         artnr = (p.get('ARTIKEL_NR_LIEF') or '').strip()
+        if not artnr:
+            pos_state.append({'pos': p, 'artnr': '', 'cao_treffer': None,
+                              'match_quelle': 'kein',
+                              'lief_cache': None})
+            continue
+
+        lief_cache = lief_cache_map.get(artnr)
+        barcode_stk = (lief_cache or {}).get('BARCODE_STUECK') or ''
+
+        man_status = (p.get('STATUS') or '').lower()
+        man_rec    = p.get('ARTIKEL_REC_ID')
+        cao_treffer = None
+        match_quelle = 'kein'
+        if man_status == 'manuell_klaeren':
+            match_quelle = 'manuell_klaeren'
+        elif man_status == 'neu_anlegen':
+            match_quelle = 'neu_anlegen'
+        elif man_rec:
+            cao_treffer = manuell_artikel.get(int(man_rec))
+            if cao_treffer:
+                match_quelle = 'manuell'
+
+        if cao_treffer is None and barcode_stk:
+            cao_treffer = barcode_match_map.get(barcode_stk.strip())
+            if cao_treffer:
+                match_quelle = 'barcode'
+        if cao_treffer is None and cao_lief:
+            cao_treffer = lief_match_map.get(artnr)
+            if cao_treffer:
+                match_quelle = 'lieferant'
+        if cao_treffer is None:
+            gm = global_match_map.get(artnr)
+            if gm:
+                cao_treffer = gm['row']
+                match_quelle = ('mehrdeutig'
+                                 if int(gm.get('n_treffer') or 1) > 1
+                                 else 'global')
+
+        # Barcode-Konflikt-Check (nur global/mehrdeutig)
+        # Bulk-fy spaeter wenn relevant — typischerweise wenige Positionen
+        if (cao_treffer and barcode_stk
+                and match_quelle in ('global', 'mehrdeutig')):
+            if _barcode_konflikt(barcode_stk, cao_treffer.get('REC_ID')):
+                match_quelle = 'unsicher'
+
+        pos_state.append({
+            'pos': p, 'artnr': artnr,
+            'lief_cache': lief_cache,
+            'cao_treffer': cao_treffer,
+            'match_quelle': match_quelle,
+        })
+
+    # Bulk-Lookup ARTIKEL_PREIS (PT5) fuer alle gematchten Artikel-IDs
+    # — fuer _lief_preis_aktion in der naechsten Pos-Loop
+    artikel_ids_match = sorted({int(s['cao_treffer']['REC_ID'])
+                                 for s in pos_state
+                                 if s['cao_treffer']})
+    with get_db() as cur:
+        artikel_preis_map = _bulk_artikel_preis_lief(
+            cur, artikel_ids_match, cao_lief or 0)
+
+    # Bulk-Lookup XT_ARTIKEL_PREIS_BEZUG fuer alle (aid, cao_lief)-Paare
+    bezug_paare = [(int(s['cao_treffer']['REC_ID']), int(cao_lief))
+                    for s in pos_state
+                    if s['cao_treffer'] and cao_lief]
+    with get_db() as cur:
+        bezug_override_map = _bulk_xt_artikel_preis_bezug(cur, bezug_paare)
+
+    # Pass 2: pro Pos das finale Output-Dict bauen
+    for s in pos_state:
+        p = s['pos']
+        artnr = s['artnr']
         if not artnr:
             out.append({
                 'pos_rec_id':       p.get('REC_ID'),
@@ -2486,118 +2907,10 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
             })
             continue
 
-        cao_treffer: Optional[dict] = None
-        match_quelle = 'kein'
-
-        # Cache-Eintrag des Lieferanten-Artikels (kann Barcode liefern)
-        lief_cache = lief_artikel_holen(head.get('LIEF_REC_ID') or 0, artnr) \
-                     if head.get('LIEF_REC_ID') else None
+        cao_treffer = s['cao_treffer']
+        match_quelle = s['match_quelle']
+        lief_cache = s['lief_cache']
         barcode_stk = (lief_cache or {}).get('BARCODE_STUECK') or ''
-        barcode_kt  = (lief_cache or {}).get('BARCODE_KT') or ''
-
-        # Manuelle User-Zuordnung hat hoechste Prioritaet.
-        man_status = (p.get('STATUS') or '').lower()
-        man_rec    = p.get('ARTIKEL_REC_ID')
-        if man_status == 'manuell_klaeren':
-            match_quelle = 'manuell_klaeren'
-        elif man_status == 'neu_anlegen':
-            match_quelle = 'neu_anlegen'
-        elif man_rec:
-            try:
-                with get_db() as cur:
-                    cur.execute("""
-                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
-                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
-                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
-                               a.USERFELD_02
-                        FROM ARTIKEL a WHERE a.REC_ID = %s
-                    """, (int(man_rec),))
-                    row = cur.fetchone()
-                if row:
-                    cao_treffer = row
-                    match_quelle = 'manuell'
-            except Exception as exc:
-                log.warning('manuell-Match Position %s: %s', artnr, exc)
-
-        try:
-            with get_db() as cur:
-                # 0. Hoechste Prioritaet: Barcode-Match (Stueck-EAN gegen
-                #    ARTIKEL.BARCODE/2/3). Eindeutigste Identifikation,
-                #    deshalb vor allen anderen Pfaden.
-                # TRIM beidseitig, weil CAO-Stammdaten oft Whitespace im
-                # Barcode-Feld haben.
-                if cao_treffer is None and barcode_stk:
-                    bc = barcode_stk.strip()
-                    cur.execute("""
-                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
-                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
-                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
-                               a.USERFELD_02
-                        FROM ARTIKEL a
-                        WHERE TRIM(a.BARCODE)  = %s
-                           OR TRIM(a.BARCODE2) = %s
-                           OR TRIM(a.BARCODE3) = %s
-                        ORDER BY (a.NO_VK_FLAG = 'N') DESC, a.REC_ID
-                        LIMIT 1
-                    """, (bc, bc, bc))
-                    row = cur.fetchone()
-                    if row:
-                        cao_treffer = row
-                        match_quelle = 'barcode'
-
-                # 1. Enger Match (Lieferanten-spezifisch)
-                if cao_treffer is None and cao_lief:
-                    cur.execute("""
-                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
-                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
-                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
-                               a.USERFELD_02
-                        FROM ARTIKEL_PREIS ap
-                        JOIN ARTIKEL a ON a.REC_ID = ap.ARTIKEL_ID
-                        WHERE ap.PREIS_TYP = 5
-                          AND ap.BESTNUM = %s
-                          AND ap.ADRESS_ID = %s
-                        ORDER BY ap.GUELTIG_VON DESC
-                        LIMIT 1
-                    """, (artnr, cao_lief))
-                    row = cur.fetchone()
-                    if row:
-                        cao_treffer = row
-                        match_quelle = 'lieferant'
-
-                # 2. Globaler Fallback
-                if cao_treffer is None:
-                    cur.execute("""
-                        SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME,
-                               a.KURZNAME, a.WARENGRUPPE, a.STEUER_CODE,
-                               a.EK_PREIS, a.VK5B, a.MENGE_AKT, a.NO_VK_FLAG,
-                               a.USERFELD_02,
-                               (SELECT COUNT(*) FROM ARTIKEL_PREIS x
-                                WHERE x.PREIS_TYP = 5 AND x.BESTNUM = %s
-                               ) AS n_treffer
-                        FROM ARTIKEL_PREIS ap
-                        JOIN ARTIKEL a ON a.REC_ID = ap.ARTIKEL_ID
-                        WHERE ap.PREIS_TYP = 5 AND ap.BESTNUM = %s
-                        ORDER BY ap.GUELTIG_VON DESC
-                        LIMIT 1
-                    """, (artnr, artnr))
-                    row = cur.fetchone()
-                    if row:
-                        cao_treffer = row
-                        match_quelle = ('mehrdeutig'
-                                        if int(row.get('n_treffer') or 1) > 1
-                                        else 'global')
-        except Exception as exc:
-            log.warning("cao_match Position %s: %s", artnr, exc)
-
-        # Barcode-Konflikt-Check fuer 'global'/'mehrdeutig': wenn der
-        # Lief-Cache eine Stueck-EAN hat und der gefundene CAO-Artikel
-        # andere Barcodes hat, ist der Match wackelig – wir markieren
-        # ihn als 'unsicher' und zeigen ihn als gelbe Pille.
-        if (cao_treffer and barcode_stk
-                and match_quelle in ('global', 'mehrdeutig')):
-            if _barcode_konflikt(barcode_stk, cao_treffer.get('REC_ID')):
-                match_quelle = 'unsicher'
 
         cao_block = None
         ek_diff = None
@@ -2675,14 +2988,20 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
         vpe_lief = None
         if lief_cache:
             bild_lokal = lief_cache.get('BILD_LOKAL') or ''
+            bild_binaer_id = lief_cache.get('BILD_BINAER_ID') or 0
+            # Bild-URL-Prio: BINAERDATEN-BLOB > Filesystem-Cache > externe URL.
+            if bild_binaer_id:
+                bild_url_eff = f'/binaer/{int(bild_binaer_id)}'
+            elif bild_lokal:
+                bild_url_eff = f'/produktbilder/{bild_lokal}'
+            else:
+                bild_url_eff = lief_cache.get('BILD_URL') or ''
             lief_block = {
                 'bezeichnung':     lief_cache.get('BEZEICHNUNG'),
                 'barcode_stueck':  lief_cache.get('BARCODE_STUECK'),
                 'barcode_kt':      lief_cache.get('BARCODE_KT'),
-                'bild_url':        (f'/produktbilder/{bild_lokal}'
-                                     if bild_lokal else
-                                     (lief_cache.get('BILD_URL') or '')),
-                'bild_lokal':      bool(bild_lokal),
+                'bild_url':        bild_url_eff,
+                'bild_lokal':      bool(bild_lokal or bild_binaer_id),
                 'verfuegbarkeit':  lief_cache.get('VERFUEGBARKEIT'),
                 'vpe_ek':          lief_cache.get('VPE_EK'),
             }
@@ -2693,29 +3012,40 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 vpe_lief = None
 
         # EK-Bezug ermitteln (CAO-Override > Lief-Cache > Lief-Default
-        # > 'STK'). Wenn schon ein CAO-Match steht, kann die
-        # Preispflege-UI einen Override fuer das spezifische Tupel
-        # (ARTIKEL_REC_ID, ADRESS_ID=cao_lief) gesetzt haben — dieser
-        # Override hat oberste Prioritaet.
-        ek_bezug, ek_bezug_quelle_neu = _effektiver_ek_bezug(
-            lief_cache, head.get('LIEF_EK_BEZUG_DEFAULT'),
-            artikel_rec_id=(cao_block or {}).get('rec_id'),
-            adress_id=cao_lief,
-        )
+        # > 'STK'). Bulk-Override aus bezug_override_map nutzen (vermeidet
+        # eine Pro-Pos-Query an XT_ARTIKEL_PREIS_BEZUG).
+        cao_id_for_bezug = (cao_block or {}).get('rec_id')
+        ek_bezug = None
+        ek_bezug_quelle_neu = 'default'
+        if cao_id_for_bezug and cao_lief:
+            ov = bezug_override_map.get(
+                (int(cao_id_for_bezug), int(cao_lief)))
+            if ov in ('STK', 'VPE_EK'):
+                ek_bezug, ek_bezug_quelle_neu = ov, 'cao'
+        if ek_bezug is None and lief_cache:
+            v = (lief_cache.get('EK_BEZUG') or '').strip()
+            if v in ('STK', 'VPE_EK'):
+                ek_bezug, ek_bezug_quelle_neu = v, 'cache'
+        if ek_bezug is None:
+            v = head.get('LIEF_EK_BEZUG_DEFAULT')
+            if v in ('STK', 'VPE_EK'):
+                ek_bezug, ek_bezug_quelle_neu = v, 'lieferant'
+        if ek_bezug is None:
+            ek_bezug, ek_bezug_quelle_neu = 'STK', 'default'
         roh_ek = float(p.get('PREIS_NETTO') or 0)
         stueck_ek = _stueck_ek(roh_ek, vpe_lief, ek_bezug)
 
-        # ARTIKEL_PREIS-Aktion-Vorschau bei matchenden Positionen.
-        # WICHTIG: wir vergleichen den Stueck-EK gegen CAO (CAO speichert
-        # Stueck-EK), NICHT den Mail-Roh-Wert.
+        # ARTIKEL_PREIS-Aktion-Vorschau aus dem Bulk-Lookup
+        # artikel_preis_map (vermeidet Pro-Pos-Query).
         preis_aktion = None
         if cao_block and match_quelle in ('barcode', 'lieferant', 'global',
                                             'manuell'):
-            preis_aktion = _lief_preis_aktion(
+            preis_aktion = _lief_preis_aktion_aus_bulk(
                 cao_block.get('rec_id'), cao_lief,
                 neue_bestnum=artnr,
                 neuer_preis=stueck_ek,
                 neue_vpe=vpe_lief,
+                preis_map=artikel_preis_map,
             )
 
         # Bezeichnung: bevorzugt aus dem Lief-Cache (saubere

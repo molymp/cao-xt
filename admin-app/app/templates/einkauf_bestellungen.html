@@ -106,7 +106,7 @@
 .summen-banner.warn   { background: #f6ecd0; border: 1px solid var(--status-gelb); color: #4b3a12; }
 .summen-banner.ok     { background: var(--brand-sage); border: 1px solid var(--gruen-mitte); color: var(--gruen-dunkel); }
 
-/* CAO-Match-Spalten in der Positions-Tabelle */
+/* Dorfkern-Match-Spalten in der Positions-Tabelle */
 .match-pill {
   display: inline-block;
   font-size: 11px;
@@ -426,7 +426,7 @@
   <span class="filter-pill aktiv" data-status="" onclick="setStatus('')">Alle</span>
   <span class="filter-pill" data-status="neu" onclick="setStatus('neu')">Neu</span>
   <span class="filter-pill" data-status="geparst" onclick="setStatus('geparst')">Geparst</span>
-  <span class="filter-pill" data-status="in_cao" onclick="setStatus('in_cao')">In CAO</span>
+  <span class="filter-pill" data-status="in_cao" onclick="setStatus('in_cao')">In Dorfkern</span>
   <span class="filter-pill" data-status="fehler" onclick="setStatus('fehler')">Fehler</span>
   <span id="abruf-info" style="margin-left:18px;color:var(--text-dim);font-size:13px;"></span>
 </div>
@@ -603,7 +603,7 @@ async function detailZeigen(recId) {
       ${diffOk ? '' : `
         <div class="summen-banner warn">
           ⚠ Mail-Footer-Summe weicht von der Summe der Positionen ab
-          (Differenz ${_eur(diff)}). Beim Einbuchen in CAO bitte mit dem
+          (Differenz ${_eur(diff)}). Beim Einbuchen in Dorfkern bitte mit dem
           Lieferschein abgleichen, welcher Wert korrekt ist.
         </div>
       `}
@@ -617,12 +617,19 @@ async function detailZeigen(recId) {
       <div style="display:flex;align-items:center;gap:10px;margin:18px 0 4px;flex-wrap:wrap;">
         <h3 style="margin:0;font-size:15px;">Positionen</h3>
         <button class="btn btn-neutral btn-sm" id="btn-anreichern-${e.REC_ID}"
-                onclick="anreichern(${e.REC_ID})">
+                onclick="anreichern(${e.REC_ID}, event)"
+                title="Lieferanten-Stammdaten holen — neue/veraltete Pos werden geholt, frische uebersprungen.&#10;Shift+Klick = Force (Cache komplett verwerfen).">
           🌐 Stammdaten anreichern
+        </button>
+        <button class="btn btn-neutral btn-sm" id="btn-anreichern-force-${e.REC_ID}"
+                onclick="anreichern(${e.REC_ID}, event, true)"
+                title="Force-Refresh: alle Pos neu vom Lieferanten holen, auch wenn Cache frisch ist."
+                style="padding-left:8px; padding-right:8px;">
+          ↻ Force
         </button>
         <button class="btn btn-neutral btn-sm" id="btn-cao-match-${e.REC_ID}"
                 onclick="caoMatch(${e.REC_ID})">
-          🔍 CAO-Match prüfen
+          🔍 Dorfkern-Match prüfen
         </button>
         <button class="btn btn-neutral btn-sm" id="btn-sync-plan-${e.REC_ID}"
                 onclick="syncPlan(${e.REC_ID})">
@@ -630,18 +637,18 @@ async function detailZeigen(recId) {
         </button>
         <button class="btn btn-neutral btn-sm" id="btn-sync-artikel-${e.REC_ID}"
                 onclick="syncArtikelAnlegen(${e.REC_ID})"
-                title="Phase 5b: legt neue Stammartikel in CAO an (alle Positionen mit Status 'neu_anlegen' und Warengruppe).">
+                title="Phase 5b: legt neue Stammartikel in Dorfkern an (alle Positionen mit Status 'neu_anlegen' und Warengruppe).">
           🆕 Stammartikel anlegen
         </button>
         <button class="btn btn-primary btn-sm" id="btn-sync-cao-${e.REC_ID}"
                 onclick="syncCao(${e.REC_ID})"
-                title="Schreibt die Lieferantenpreise nach CAO (Phase 5a). Lieferantenpreis-Verknüpfungen für gematchte Positionen.">
-          🚀 In CAO einbuchen (ARTIKEL_PREIS)
+                title="Schreibt die Lieferantenpreise nach Dorfkern (Phase 5a). Lieferantenpreis-Verknüpfungen für gematchte Positionen.">
+          🚀 In Dorfkern einbuchen (ARTIKEL_PREIS)
         </button>
         <button class="btn btn-primary btn-sm" id="btn-sync-ekbestell-${e.REC_ID}"
                 onclick="syncEkbestell(${e.REC_ID})"
-                title="Phase 6: legt diese Bestellung als CAO-EKBESTELL an. Voraussetzung: alle Positionen sind in CAO eingebucht.">
-          📦 Als CAO-Bestellung anlegen
+                title="Phase 6: legt diese Bestellung als Dorfkern-Bestellung (EKBESTELL) an. Voraussetzung: alle Positionen sind in Dorfkern eingebucht.">
+          📦 Als Dorfkern-Bestellung anlegen
         </button>
         ${e.CAO_BELEGNUM
           ? `<span class="status-pill in_cao" style="margin-left:8px;"
@@ -670,10 +677,10 @@ async function detailZeigen(recId) {
             <th style="text-align:right;width:80px;">Menge</th>
             <th style="text-align:right;width:110px;">Einzel netto</th>
             <th style="text-align:right;width:120px;">Zeilenbetrag</th>
-            <th class="cao-col" style="display:none;width:90px;">CAO</th>
-            <th class="cao-col" style="display:none;">CAO-Artikel</th>
+            <th class="cao-col" style="display:none;width:90px;">Dorfkern</th>
+            <th class="cao-col" style="display:none;">Dorfkern-Artikel</th>
             <th class="cao-col" style="display:none;text-align:right;width:60px;" title="Verpackungseinheit Einkauf (Lieferanten-Cache)">VPE</th>
-            <th class="cao-col" style="display:none;width:200px;" title="ARTIKEL_PREIS-Aktion beim CAO-Sync">Lief-Preis</th>
+            <th class="cao-col" style="display:none;width:200px;" title="ARTIKEL_PREIS-Aktion beim Dorfkern-Sync">Lief-Preis</th>
           </tr>
         </thead>
         <tbody>
@@ -710,7 +717,7 @@ async function detailZeigen(recId) {
   ar.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ── CAO-Sync-Plan (Phase-5/6-Vorschau, read-only) ────────────────
+// ── Dorfkern-Sync-Plan (Phase-5/6-Vorschau, read-only) ────────────────
 async function syncPlan(recId) {
   const tgt = document.getElementById('sync-plan-' + recId);
   const btn = document.getElementById('btn-sync-plan-' + recId);
@@ -746,12 +753,12 @@ async function syncPlan(recId) {
     <div class="sync-plan-card">
       <div class="sync-plan-readonly">
         ⚠ Read-only-Vorschau · zeigt was Phase 5/6 tun WÜRDE.
-        Kein einziger Schreibvorgang in CAO-Tabellen.
+        Kein einziger Schreibvorgang in Dorfkern-Tabellen.
       </div>
       <h4>Bestellung ${_esc(b.lief_kuerzel)} #${_esc(b.bestell_nr)}
-          · CAO-Lieferant: ${hCao}</h4>
+          · Dorfkern-Lieferant: ${hCao}</h4>
       <div class="sync-aggregat-grid">
-        <div class="agg"><div class="lbl">In CAO einbuchen</div>
+        <div class="agg"><div class="lbl">In Dorfkern einbuchen</div>
           <div class="val">${a.n_match + a.n_neu_anlegen}</div></div>
         <div class="agg"><div class="lbl">Verknüpfen</div>
           <div class="val">${a.n_match}</div></div>
@@ -759,16 +766,16 @@ async function syncPlan(recId) {
           <div class="val">${a.n_neu_anlegen}</div></div>
         <div class="agg"><div class="lbl">Offen</div>
           <div class="val">${a.n_offen}</div></div>
-        <div class="agg"><div class="lbl">Bereits in CAO</div>
+        <div class="agg"><div class="lbl">Bereits in Dorfkern</div>
           <div class="val">${a.n_in_cao}</div></div>
       </div>
   `;
   if (a.cao_lief_fehlt) {
     html += `
       <div class="summen-banner warn">
-        ⚠ Lieferant hat keinen CAO_LIEF_ID hinterlegt — ohne den
+        ⚠ Lieferant hat keine Dorfkern-Adress-Verknüpfung (CAO_LIEF_ID) — ohne
         kann keine ARTIKEL_PREIS-Verknüpfung geschrieben werden.
-        Bitte unter „Einkauf → Lieferanten" den CAO-Adress-Datensatz
+        Bitte unter „Einkauf → Lieferanten" den Dorfkern-Adress-Datensatz
         zuordnen.
       </div>`;
   }
@@ -776,8 +783,8 @@ async function syncPlan(recId) {
     html += `
       <div class="summen-banner warn">
         ⚠ ${a.fehlende_warengruppe} neuer Artikel ohne Warengruppe.
-        Vor dem CAO-Sync muss pro Position eine Warengruppe gewählt
-        werden (CAO-Pflichtfeld).
+        Vor dem Dorfkern-Sync muss pro Position eine Warengruppe gewählt
+        werden (Dorfkern-Pflichtfeld).
       </div>`;
   }
   // Pos-Tabelle
@@ -788,7 +795,7 @@ async function syncPlan(recId) {
           <th style="width:40px;text-align:right;">#</th>
           <th>Lieferanten-Artikel</th>
           <th>Aktion</th>
-          <th>Ziel in CAO</th>
+          <th>Ziel in Dorfkern</th>
           <th>Defaults / Hinweise</th>
         </tr>
       </thead>
@@ -847,7 +854,7 @@ async function syncPlan(recId) {
   tgt.style.display = '';
 }
 
-// ── In CAO einbuchen (Phase 5a: ARTIKEL_PREIS-Sync) ───────────────
+// ── In Dorfkern einbuchen (Phase 5a: ARTIKEL_PREIS-Sync) ───────────────
 async function syncCao(recId) {
   const btn  = document.getElementById('btn-sync-cao-' + recId);
   const hint = document.getElementById('cao-match-hint-' + recId);
@@ -877,7 +884,7 @@ async function syncCao(recId) {
 
   // Schritt 2: Bestätigung
   const txt =
-    `In CAO einbuchen?\n\n` +
+    `In Dorfkern einbuchen?\n\n` +
     `  ${plan.inserted}× INSERT (neue Lieferantenpreis-Zeile)\n` +
     `  ${plan.updated}× UPDATE (bestehende Zeile aktualisieren)\n` +
     `  ${plan.unchanged}× unverändert (nur Status-Update)\n` +
@@ -891,7 +898,7 @@ async function syncCao(recId) {
 
   // Schritt 3: Live-Sync
   btn.disabled = true;
-  hint.textContent = 'Schreibe nach CAO …';
+  hint.textContent = 'Schreibe nach Dorfkern …';
   let res;
   try {
     const r = await fetch(`/api/einkauf/bestellungen/${recId}/sync-cao`, {
@@ -916,11 +923,11 @@ async function syncCao(recId) {
     `${res.unchanged} unverändert, ${res.skipped} übersprungen` +
     (fz > 0 ? `, ${fz} Fehler` : '');
   toast(
-    `CAO-Sync: ${res.inserted}+${res.updated} geschrieben` +
+    `Dorfkern-Sync: ${res.inserted}+${res.updated} geschrieben` +
     (fz > 0 ? `, ${fz} Fehler` : ''),
     fz > 0 ? 'err' : 'ok'
   );
-  if (fz > 0) console.warn('CAO-Sync-Fehler:', res.fehler);
+  if (fz > 0) console.warn('Dorfkern-Sync-Fehler:', res.fehler);
   // Match-Tabelle neu laden, damit die jetzt 'in_cao'-Positionen korrekt
   // angezeigt werden (wurde in cao_match_positionen schon erkannt).
   caoMatch(recId);
@@ -957,7 +964,7 @@ async function syncEkbestell(recId) {
   const fmtEur = n => Number(n || 0).toLocaleString('de-DE',
     {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const lines = [
-    `Als CAO-EKBESTELL anlegen?\n`,
+    `Als Dorfkern-Bestellung (EKBESTELL) anlegen?\n`,
     `Lieferant: ${plan.lief_name}`,
     `Positionen: ${plan.positions}`
       + (plan.skipped ? ` (${plan.skipped} übersprungen — nicht 'in_cao')` : ''),
@@ -993,7 +1000,7 @@ async function syncEkbestell(recId) {
     return;
   }
   hint.textContent = `✓ EKBESTELL ${res.belegnum} angelegt (${res.positions} Positionen)`;
-  toast(`📦 CAO-Bestellung ${res.belegnum} angelegt`, 'ok');
+  toast(`📦 Dorfkern-Bestellung ${res.belegnum} angelegt`, 'ok');
   // Detail neu laden — der Status-Pill „BELEGNUM …" erscheint dann.
   detailZeigen(recId);
 }
@@ -1019,7 +1026,7 @@ async function positionManuellKlaeren(posId, bestRecId) {
 async function ekBezugToggle(posId, aktuell, bestRecId) {
   const neu = aktuell === 'STK' ? 'VPE_EK' : 'STK';
   const erkl = (neu === 'VPE_EK')
-    ? 'Bei "VPE_EK" wird der Mail-Preis durch VPE_EK geteilt → Stück-EK in CAO. '
+    ? 'Bei "VPE_EK" wird der Mail-Preis durch VPE_EK geteilt → Stück-EK in Dorfkern. '
       + 'Beispiel: Mail-Preis 16,84 € pro Karton, VPE_EK=20 → Stück-EK 0,8420 €.'
     : 'Bei "STK" wird der Mail-Preis direkt als Stück-EK übernommen.';
   if (!confirm(
@@ -1069,6 +1076,7 @@ async function _zuordnen(posId, body) {
 
 // ── Warengruppe-Picker (Phase 5b) ────────────────────────────────
 let _wgFlach = null;        // Cache der WGs (105 Eintraege)
+let _wgFlachIndex = null;   // id → {name, ...} fuer schnellen Lookup
 let _wgBaumRoots = null;
 let _wgPickerCtx = null;    // {posId, bestRecId} fuer aktiven Pick
 
@@ -1079,7 +1087,20 @@ async function _wgLaden() {
   if (d.ok) {
     _wgFlach = d.flach;
     _wgBaumRoots = d.baum;
+    _wgFlachIndex = {};
+    for (const w of (_wgFlach || [])) _wgFlachIndex[w.id] = w;
   }
+}
+
+// Liefert "Name [id]" wenn WG-Cache geladen ist, sonst nur "[id]".
+// Wird in der Match-Tabelle und im Picker-Status genutzt.
+function _wgLabel(id) {
+  if (id == null || id === '') return '';
+  const idn = (typeof id === 'number') ? id : parseInt(id, 10);
+  if (!_wgFlachIndex) return `[${idn}]`;
+  const w = _wgFlachIndex[idn];
+  if (!w || !w.name) return `[${idn}]`;
+  return `${w.name} [${idn}]`;
 }
 
 function _wgBaumRendern(roots, gewaehlt) {
@@ -1199,7 +1220,7 @@ async function syncArtikelAnlegen(recId) {
       `  Pos ${a.pos_nr}: ARTNUM ${a.artnum} · WG [${a.wg_id}] ${a.wg_name} · EK ${a.ek_preis} · VK5 ${a.vk5}`
     ).join('\n');
     if (!confirm(
-      `Stammartikel in CAO anlegen?\n\n` +
+      `Stammartikel in Dorfkern anlegen?\n\n` +
       `${plan.angelegt} neue ARTIKEL\n${plan.angelegt} ARTIKEL_LOG-Snapshots (XT-HMAC)\n` +
       `${plan.angelegt} XT_ARTIKEL_VK_KONTROLLE-Eintraege\n\n` +
       aktTxt +
@@ -1324,19 +1345,29 @@ async function anreichernPos(posId, bestRecId) {
 }
 
 // ── Stammdaten-Anreicherung via Lieferanten-Web ──────────────────
-async function anreichern(recId) {
-  const btn  = document.getElementById('btn-anreichern-' + recId);
-  const hint = document.getElementById('cao-match-hint-' + recId);
+//
+// Force-Modus: ueberspringe_aktuelle=false. Heisst auch frische
+// Cache-Eintraege werden neu vom Lieferanten geholt.
+//
+// Aufruf-Wege fuer Force:
+//   - eigener "↻ Force"-Button (Touch + Maus)
+//   - Shift+Klick auf "🌐 Stammdaten anreichern" (Maus, Legacy)
+async function anreichern(recId, ev, forceFlag) {
+  const btn      = document.getElementById('btn-anreichern-' + recId);
+  const forceBtn = document.getElementById('btn-anreichern-force-' + recId);
+  const hint     = document.getElementById('cao-match-hint-' + recId);
   if (!btn) return;
+  // Force entweder explizit (Force-Button) oder via Shift+Klick auf Primary
+  const force = !!(forceFlag || (ev && ev.shiftKey));
   btn.disabled = true;
+  if (forceBtn) forceBtn.disabled = true;
   const altText = btn.textContent;
   btn.textContent = '⏳ Frage Lieferanten ab …';
-  hint.textContent = 'das kann einige Zehn-Sekunden dauern · Shift+Klick = Force (Cache verwerfen)';
+  hint.textContent = force
+    ? 'FORCE-Refresh: Cache wird komplett neu …'
+    : 'das kann einige Zehn-Sekunden dauern · ↻ Force = Cache verwerfen';
   let d;
   try {
-    // Bei Shift-Klick: Cache komplett neu aufbauen (Force-Refresh)
-    const force = (window.event && window.event.shiftKey) || false;
-    if (force) hint.textContent = 'FORCE-Refresh: Cache wird komplett neu …';
     const r = await fetch(`/api/einkauf/bestellungen/${recId}/anreichern`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1345,11 +1376,13 @@ async function anreichern(recId) {
     d = await r.json();
   } catch (e) {
     btn.disabled = false;
+    if (forceBtn) forceBtn.disabled = false;
     btn.textContent = altText;
     hint.textContent = 'Fehler: ' + e.message;
     return;
   }
   btn.disabled = false;
+  if (forceBtn) forceBtn.disabled = false;
   btn.textContent = altText;
   if (!d.ok) {
     hint.textContent = 'Fehler: ' + (d.msg || '');
@@ -1365,7 +1398,7 @@ async function anreichern(recId) {
   if (d.aktualisiert > 0) caoMatch(recId);
 }
 
-// ── CAO-Match-Vorschau ──────────────────────────────────────────
+// ── Dorfkern-Match-Vorschau ──────────────────────────────────────────
 async function caoMatch(recId) {
   const btn  = document.getElementById('btn-cao-match-' + recId);
   const hint = document.getElementById('cao-match-hint-' + recId);
@@ -1373,7 +1406,7 @@ async function caoMatch(recId) {
   const tbl  = document.getElementById('pos-table-' + recId);
   if (!btn || !tbl) return;
   btn.disabled = true;
-  hint.textContent = 'Frage CAO-Stammdaten ab …';
+  hint.textContent = 'Frage Dorfkern-Stammdaten ab …';
 
   let d;
   try {
@@ -1426,12 +1459,12 @@ async function caoMatch(recId) {
       manuell:    'Manuell zugeordnet via „Vorschlag übernehmen" oder bei Edit gesetzt.',
       neu_anlegen: 'User hat diese Position als „muss neu angelegt werden" markiert.',
       manuell_klaeren: 'Lieferanten-Stammdaten unvollständig (z.B. Artikel nicht mehr bestellbar). Position bleibt liegen, Sync ignoriert sie.',
-      barcode:    'CAO-Artikel mit identischer Stück-EAN gefunden — höchste Sicherheit.',
-      lieferant:  'CAO-Artikel mit dieser Lieferanten-Bestellnummer (BESTNUM) bei UTZ als Lieferant gefunden.',
-      global:     'CAO-Artikel mit dieser BESTNUM existiert, aber nicht spezifisch bei UTZ verknüpft (anderer Lieferant oder ohne CAO_LIEF_ID). Wenn die Bezeichnung passt, ist es vermutlich derselbe Artikel.',
-      mehrdeutig: 'Mehrere CAO-Artikel mit dieser BESTNUM bei verschiedenen Lieferanten — bitte manuell entscheiden.',
-      unsicher:   'CAO-Artikel gefunden, aber EAN passt nicht zur Lieferanten-EAN — wahrscheinlich nicht derselbe Artikel.',
-      kein:       'Kein Match in CAO. Vorschläge unten prüfen oder als „neu anlegen" markieren.',
+      barcode:    'Dorfkern-Artikel mit identischer Stück-EAN gefunden — höchste Sicherheit.',
+      lieferant:  'Dorfkern-Artikel mit dieser Lieferanten-Bestellnummer (BESTNUM) bei UTZ als Lieferant gefunden.',
+      global:     'Dorfkern-Artikel mit dieser BESTNUM existiert, aber nicht spezifisch bei UTZ verknüpft (anderer Lieferant oder ohne Lieferanten-Verknüpfung). Wenn die Bezeichnung passt, ist es vermutlich derselbe Artikel.',
+      mehrdeutig: 'Mehrere Dorfkern-Artikel mit dieser BESTNUM bei verschiedenen Lieferanten — bitte manuell entscheiden.',
+      unsicher:   'Dorfkern-Artikel gefunden, aber EAN passt nicht zur Lieferanten-EAN — wahrscheinlich nicht derselbe Artikel.',
+      kein:       'Kein Match in Dorfkern. Vorschläge unten prüfen oder als „neu anlegen" markieren.',
     };
     pill.title = tipps[m.match_quelle] || '';
     if (m.match_quelle === 'manuell')     pill.textContent = '✓ manuell';
@@ -1445,7 +1478,7 @@ async function caoMatch(recId) {
     else pill.textContent = '🔴 NEU';
     tds[0].innerHTML = '';
     tds[0].appendChild(pill);
-    // CAO-Artikel
+    // Dorfkern-Artikel
     if (m.cao) {
       tds[1].innerHTML = `<code>${_esc(m.cao.artnum || '')}</code> ${_esc(m.cao.kas_name || '')}`;
     } else {
@@ -1557,7 +1590,7 @@ async function caoMatch(recId) {
       const hatVorschlaege = Array.isArray(m.vorschlaege)
                              && m.vorschlaege.length > 0;
       const vorschlaegeHtml = hatVorschlaege
-        ? '<span class="vor-titel">💡 Möglicherweise schon in CAO:</span>' +
+        ? '<span class="vor-titel">💡 Möglicherweise schon in Dorfkern:</span>' +
           m.vorschlaege.map(v => {
             const ekDiff = (m.preis_netto != null && v.ek_preis)
               ? (m.preis_netto - v.ek_preis) : null;
@@ -1583,7 +1616,7 @@ async function caoMatch(recId) {
           }).join('')
         : (m.kann_angelegt_werden === false
             ? '<span class="vor-titel">⚠ Keine Lieferanten-Stammdaten vorhanden — keine Vorschläge:</span>'
-            : '<span class="vor-titel">Keine Treffer in CAO:</span>');
+            : '<span class="vor-titel">Keine Treffer in Dorfkern:</span>');
       td.innerHTML = vorschlaegeHtml + endBtnHtml;
       td.firstChild?.remove;
       vrow.appendChild(td);
@@ -1599,7 +1632,7 @@ async function caoMatch(recId) {
       td.colSpan = 10;
       let txt;
       if (m.match_quelle === 'manuell') {
-        txt = `✓ manuell verknüpft mit CAO #${m.cao?.rec_id ?? '?'} (${_esc(m.cao?.kas_name || '')})`;
+        txt = `✓ manuell verknüpft mit Dorfkern #${m.cao?.rec_id ?? '?'} (${_esc(m.cao?.kas_name || '')})`;
       } else if (m.match_quelle === 'neu_anlegen') {
         txt = '🆕 als neuer Artikel markiert';
       } else {
@@ -1612,13 +1645,13 @@ async function caoMatch(recId) {
         const wgVorschlag = m.wg_vorschlag_id;
         const pilleClass = wgId ? 'wg-pille gesetzt' : 'wg-pille fehlt';
         const pilleTxt   = wgId
-          ? `WG: [${wgId}]`
+          ? `WG: ${_wgLabel(wgId)}`
           : (wgVorschlag
-              ? `⚠ WG wählen (Vorschlag: [${wgVorschlag}])`
+              ? `⚠ WG wählen (Vorschlag: ${_wgLabel(wgVorschlag)})`
               : '⚠ WG wählen');
         const bezForCtx = (m.bezeichnung_lief || '').replace(/'/g, "\\'");
         html += `<span class="${pilleClass}"
-                       title="Warengruppe für die CAO-Stammartikel-Anlage"
+                       title="Warengruppe für die Dorfkern-Stammartikel-Anlage"
                        onclick="wgPickerOeffnen(${m.pos_rec_id}, ${recId}, ${wgId || 'null'}, '${bezForCtx}')">
                    ${pilleTxt}
                  </span>`;
@@ -1662,6 +1695,11 @@ async function abrufen() {
 }
 
 // Init
+// WG-Cache eagerly laden — die Match-Tabelle braucht sie spaeter
+// fuer _wgLabel(id), und der WG-Picker im Hintergrund cached sie eh
+// beim ersten Klick. Vorabholen vermeidet "[123]"-Anzeige beim
+// ersten Render.
+_wgLaden().catch(() => {});
 laden();
 </script>
 {% endblock %}

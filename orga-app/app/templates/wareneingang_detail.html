@@ -623,6 +623,23 @@
                 onclick="wdStorno()">⛔ Wareneingang stornieren</button>
     </div>
 </div>
+{% elif kopf.STADIUM != 127 %}
+{# Gebuchter, nicht-stornierter WE → Storno mit Pre-Check + Lager-Korrektur #}
+<div class="wd-card">
+    <h2>Aktionen</h2>
+    <p class="wd-rdo">
+        Storno für gebuchten Wareneingang. Vor dem Storno wird geprüft,
+        ob EK-Rechnungen Pos aus diesem WE referenzieren — die müssen
+        zuerst storniert werden. Beim Storno werden Lager-Effekte
+        rückgängig gemacht (für Pos die noch nicht in einer EK-Rechnung
+        abgerechnet sind) und EKBESTELL_POS-Status auf „offen" zurück
+        gesetzt.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn-danger"
+                onclick="wdStorno()">⛔ Wareneingang stornieren</button>
+    </div>
+</div>
 {% endif %}
 
 {# ── Buchen-Modal (Phase B): Lieferschein-Daten bestaetigen ─── #}
@@ -830,12 +847,36 @@ async function wdScan() {
 }
 
 async function wdStorno() {
-    if (!confirm('Wareneingang wirklich stornieren?')) return;
+    // Pre-Check fuer gebuchte WE: gibt es EK-Rechnungen die Pos aus
+    // diesem WE referenzieren?
+    let pruef;
+    try {
+        const r = await fetch(`${WD_DETAIL_URL}/api/storno-pruefung`);
+        pruef = await r.json();
+    } catch (e) {
+        alert('Verbindungsfehler');
+        return;
+    }
+    if (!pruef.ok && pruef.ek_rechnungen) {
+        const eks = pruef.ek_rechnungen.map(e =>
+            `• EK-Rechnung ${e.VRENUM || '#'+e.ek_id} (STADIUM ${e.STADIUM})`).join('\n');
+        alert(
+            'Storno blockiert — bitte zuerst stornieren:\n\n' + eks +
+            '\n\n(in CAO Faktura oder über die EK-Rechnung-Detailansicht)'
+        );
+        return;
+    }
+    if (!confirm(
+        'Wareneingang wirklich stornieren?\n\n' +
+        'Lager wird für noch nicht in EK-Rechnung verbuchte Pos zurückgerollt. ' +
+        'EKBESTELL_POS gehen zurück auf „offen" wenn keine andere WE-Pos mehr bedient.'
+    )) return;
     const res = await _post(`${WD_DETAIL_URL}/api/storno`, {});
     if (!res.ok) {
         alert('Fehler: ' + (res.fehler || 'unbekannt'));
         return;
     }
+    alert(`Wareneingang storniert (${res.pos_lager_korrigiert || 0} Pos Lager-Korrektur).`);
     location.reload();
 }
 

@@ -111,7 +111,7 @@
 <h1 style="margin-bottom:6px;">🚛 Einkauf – Lieferanten</h1>
 <p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;">
   Lieferanten, deren Bestellbestaetigungen automatisch aus dem
-  Postfach <code id="hint-postfach">…</code> erkannt und nach CAO
+  Postfach <code id="hint-postfach">…</code> erkannt und nach Dorfkern
   uebernommen werden sollen. Daten- und Stammartikel-Anreicherung
   (Barcode, Bild, EK-Preis) erfolgt optional ueber den Web-Login
   des Lieferanten.
@@ -164,7 +164,7 @@
         <li>
           <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer">
             console.cloud.google.com</a> öffnen → neues Projekt anlegen
-          (z.B. „CAO-XT Habacher Dorfladen").
+          (z.B. „Dorfkern Habacher Dorfladen").
         </li>
         <li>„APIs &amp; Services" → „Library" → <b>Gmail API</b> aktivieren.</li>
         <li>„OAuth consent screen" → User type <b>Internal</b> →
@@ -240,7 +240,7 @@
       <input class="form-control" id="ed-bez" maxlength="120">
     </div>
     <div class="form-group">
-      <label>CAO-Lieferant (ADRESSEN.REC_ID)</label>
+      <label>Dorfkern-Lieferant (ADRESSEN.REC_ID)</label>
       <div style="display:flex;gap:8px;align-items:flex-start;">
         <input class="form-control" id="ed-caoid" type="number" min="1"
                style="max-width:120px;"
@@ -330,7 +330,7 @@
           <option value="VPE_EK">pro Karton/Kiste (VPE_EK)</option>
         </select>
         <p class="muted" style="margin-top:4px;">
-          Beim CAO-Sync wird der EK auf Stück-Basis gerechnet (CAO-Konvention).
+          Beim Dorfkern-Sync wird der EK auf Stück-Basis gerechnet (Dorfkern-Konvention).
           Wenn der Lieferant Karton-Preise schickt, wird durch <code>VPE_EK</code>
           geteilt, damit Faktor und Kalkulation stimmen.<br>
           Pro Lief-Artikel ist ein Override möglich (in der Bestellungs-Match-Tabelle
@@ -446,8 +446,8 @@ function lieferantEdit(recId) {
   _e('ed-caoid').value = e.CAO_LIEF_ID || '';
   _e('ed-caoid-suche').value = '';
   _e('ed-caoid-info').textContent = e.CAO_LIEF_ID
-    ? `→ Verknüpft mit CAO ADRESSEN.REC_ID ${e.CAO_LIEF_ID}`
-    : 'Lieferant noch nicht mit einem CAO-Adress-Datensatz verknüpft – '
+    ? `→ Verknüpft mit Dorfkern ADRESSEN.REC_ID ${e.CAO_LIEF_ID}`
+    : 'Lieferant noch nicht mit einem Dorfkern-Adress-Datensatz verknüpft – '
       + 'BESTNUM-Match liefert daher nur „global"-Pillen.';
   _e('ed-from').value = e.EMAIL_VON_PATTERN || '';
   _e('ed-subj').value = e.EMAIL_SUBJECT_PATTERN || '';
@@ -728,7 +728,7 @@ function caoAdrAuswahl(recId, label) {
   _e('ed-caoid').value = recId;
   _e('ed-caoid-suche').value = '';
   _e('ed-caoid-treffer').style.display = 'none';
-  _e('ed-caoid-info').textContent = `✓ Verknüpft mit CAO #${recId} · ${label}`;
+  _e('ed-caoid-info').textContent = `✓ Verknüpft mit Dorfkern #${recId} · ${label}`;
 }
 // Suche bei Klick ausserhalb schliessen
 document.addEventListener('click', (e) => {
