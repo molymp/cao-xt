@@ -107,7 +107,16 @@
   <input type="number" step="1" id="we-warm" value="18">
   <label>Regen ab (mm)</label>
   <input type="number" step="0.5" id="we-regen" value="5">
+  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+    <input type="checkbox" id="we-pro-stunde">
+    <span>pro Std offen</span>
+  </label>
   <button class="we-btn" onclick="weLaden()">↻ Aktualisieren</button>
+</div>
+<div style="font-size:0.85rem; color:var(--text-dim,#5a7a3a); margin:-8px 0 14px 0;">
+  ⓘ Bei aktivem „pro Std offen" wird der Umsatz durch die Öffnungsstunden
+  geteilt (Mo–Fr 11,5 h, Sa 5 h). Macht Wochentage und Wetter-Buckets
+  fair vergleichbar.
 </div>
 
 <!-- ── Headline-Card (Bauchgefühl) ──────────────────────────── -->
@@ -219,6 +228,7 @@ async function weLaden() {
   if (wt !== '') params.set('wochentag', wt);
   if (!isNaN(warm))  { params.set('warm_tmax', warm); params.set('kalt_tmax', warm - 6); }
   if (!isNaN(regen)) params.set('regen_mm', regen);
+  if (document.getElementById('we-pro-stunde').checked) params.set('pro_stunde', '1');
   document.getElementById('we-headline-titel').textContent = '⏳ lädt…';
   document.getElementById('we-headline-text').textContent = '';
 

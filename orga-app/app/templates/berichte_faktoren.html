@@ -96,8 +96,18 @@
   <input type="date" id="fk-von" value="{{ von.isoformat() }}">
   <label>Bis</label>
   <input type="date" id="fk-bis" value="{{ bis.isoformat() }}">
+  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+    <input type="checkbox" id="fk-pro-stunde">
+    <span>pro Std offen</span>
+  </label>
   <button class="fk-btn" onclick="fkLaden()">↻ Aktualisieren</button>
   <span id="fk-info" style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);"></span>
+</div>
+<div style="font-size:0.85rem; color:var(--text-dim,#5a7a3a); margin-bottom:14px;">
+  ⓘ Öffnungszeiten Habach: Mo–Fr 6:30–18:00 (11,5 h), Sa 7:00–12:00 (5 h).
+  Bei aktivem Toggle „pro Std offen" wird der Umsatz durch die Öffnungs-
+  stunden des jeweiligen Wochentags geteilt — so wird Samstag direkt
+  vergleichbar mit Mo–Fr.
 </div>
 
 <div class="fk-card">
@@ -188,9 +198,11 @@ function _zell(lift, n) {
 async function fkLaden() {
   const von = document.getElementById('fk-von').value;
   const bis = document.getElementById('fk-bis').value;
+  const ps  = document.getElementById('fk-pro-stunde').checked ? '1' : '';
   if (!von || !bis) return;
   document.getElementById('fk-info').textContent = '⏳ lädt…';
-  const r = await fetch(`/orga/berichte/faktoren/daten?von=${von}&bis=${bis}`);
+  const r = await fetch(`/orga/berichte/faktoren/daten?von=${von}&bis=${bis}`
+                         + (ps ? '&pro_stunde=1' : ''));
   const j = await r.json();
   if (!j.ok) {
     document.getElementById('fk-info').textContent = j.msg || 'Fehler';
@@ -293,6 +305,9 @@ function renderMittagCharts(j) {
   const mt = j.kategorien.find(k => k.slug === 'mittagstisch');
   if (!mt || !mt.faktoren) return;
   const f = mt.faktoren;
+  const ps = !!j.pro_stunde;
+  const label = ps ? 'Ø Umsatz pro Std offen (€)' : 'Ø Umsatz pro Tag (€)';
+  const yLabel = ps ? '€ / Std offen' : '€ / Tag';
   // Wochentag-Chart
   const wt_data = [];
   for (let i = 0; i < 7; i++) {
@@ -304,7 +319,7 @@ function renderMittagCharts(j) {
     data: {
       labels: WT,
       datasets: [{
-        label: 'Ø Umsatz pro Tag (€)',
+        label,
         data: wt_data,
         backgroundColor: 'rgba(200,120,10,0.75)',
         borderColor: '#a06000', borderWidth: 1,
@@ -314,8 +329,8 @@ function renderMittagCharts(j) {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false },
                  tooltip: { callbacks: {
-                   label: c => `${c.raw.toFixed(2)} € pro Tag` } } },
-      scales: { y: { title: { display: true, text: '€ / Tag' },
+                   label: c => `${c.raw.toFixed(2)} ${yLabel}` } } },
+      scales: { y: { title: { display: true, text: yLabel },
                      beginAtZero: true } },
     },
   });
@@ -330,7 +345,7 @@ function renderMittagCharts(j) {
     data: {
       labels: MON,
       datasets: [{
-        label: 'Ø Umsatz pro Tag (€)',
+        label,
         data: mo_data,
         backgroundColor: 'rgba(46,122,46,0.75)',
         borderColor: '#1a4010', borderWidth: 1,
@@ -340,8 +355,8 @@ function renderMittagCharts(j) {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false },
                  tooltip: { callbacks: {
-                   label: c => `${c.raw.toFixed(2)} € pro Tag` } } },
-      scales: { y: { title: { display: true, text: '€ / Tag' },
+                   label: c => `${c.raw.toFixed(2)} ${yLabel}` } } },
+      scales: { y: { title: { display: true, text: yLabel },
                      beginAtZero: true } },
     },
   });
