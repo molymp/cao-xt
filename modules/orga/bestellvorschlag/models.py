@@ -5,8 +5,10 @@ Aggregiert JOURNALPOS WG=1 ("Backwaren (Baecker)") pro Tag und
 reichert mit Wetter + Feiertag + Schulferien an.
 
 Quelle JOURNALPOS:
-* QUELLE=3 (VK-Bon), STADIUM=9 (bezahlt) — Standard-Filter, schliesst
-  Stornos, Trainings-Bons, Lieferscheine etc. aus.
+* QUELLE=3 AND QUELLE_SUB=2 AND STADIUM<127 — Kasse-Barverkauf,
+  nicht storniert. (QUELLE_SUB=2 trennt Kasse von VK-Rechnung mit
+  QUELLE_SUB=1, was z.B. Grosskunden-Lieferungen einschliessen
+  wuerde.)
 * WARENGRUPPE = 1 (siehe project_backwaren_bedarf.md).
 """
 from __future__ import annotations
@@ -59,7 +61,7 @@ def tagesdaten(von: _dt.date, bis: _dt.date) -> list[dict]:
             SUM(jp.GPREIS)              AS umsatz_brutto
         FROM JOURNAL j
         JOIN JOURNALPOS jp ON jp.JOURNAL_ID = j.REC_ID
-        WHERE j.QUELLE = 3 AND j.STADIUM = 9
+        WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
           AND jp.WARENGRUPPE IN (%s)
           AND j.RDATUM >= %s AND j.RDATUM < %s + INTERVAL 1 DAY
         GROUP BY DATE(j.RDATUM)
@@ -120,7 +122,7 @@ def wochentag_median(von: _dt.date, bis: _dt.date) -> dict[int, dict]:
             COUNT(DISTINCT DATE(j.RDATUM)) AS n_tage
         FROM JOURNAL j
         JOIN JOURNALPOS jp ON jp.JOURNAL_ID = j.REC_ID
-        WHERE j.QUELLE = 3 AND j.STADIUM = 9
+        WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
           AND jp.WARENGRUPPE IN (%s)
           AND j.RDATUM >= %s AND j.RDATUM < %s + INTERVAL 1 DAY
         GROUP BY WEEKDAY(j.RDATUM)

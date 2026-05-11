@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% block title %}Bericht – Faktoren-Heatmap{% endblock %}
+
+{% block extra_style %}
+<style>
+.fk-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+.fk-kopf h1 { font-size:1.5rem; }
+.fk-nav { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; }
+.fk-nav a { padding:6px 12px; border-radius:14px; background:white;
+  border:1px solid var(--creme-dunkel); color:var(--gruen-dunkel);
+  font-size:0.88rem; text-decoration:none; }
+.fk-nav a.aktiv { background:var(--gruen-dunkel); color:white; }
+
+.fk-toolbar { background:white; padding:14px 18px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  margin-bottom:18px; display:flex; gap:14px; align-items:center;
+  flex-wrap:wrap; }
+.fk-toolbar label { font-size:0.85rem; font-weight:700;
+  color:var(--text-dim,#5a7a3a); }
+.fk-toolbar input[type=date], .fk-toolbar select {
+  padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.9rem; min-width:90px; }
+.fk-btn { padding:7px 16px; background:var(--gruen-mitte); color:white;
+  border:none; border-radius:var(--radius-klein); font-weight:700;
+  cursor:pointer; }
+.fk-btn:hover { background:var(--gruen-dunkel); }
+
+.fk-card { background:white; padding:16px 20px;
+  border-radius:var(--radius); box-shadow:var(--schatten);
+  margin-bottom:18px; }
+.fk-card h2 { font-size:1.1rem; margin-bottom:6px; color:var(--gruen-dunkel); }
+.fk-card .sub { font-size:0.82rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:12px; line-height:1.5; }
+
+.fk-heatmap { width:100%; border-collapse:collapse; font-size:0.84rem; }
+.fk-heatmap th { padding:8px 4px; font-size:0.74rem;
+  font-weight:800; text-transform:uppercase; letter-spacing:0.04em;
+  color:var(--text-dim,#5a7a3a); background:var(--grau-hell);
+  border-bottom:2px solid var(--creme-dunkel); position:sticky; top:0;
+  z-index:5; min-width:70px; text-align:center; vertical-align:bottom; }
+.fk-heatmap th.first { text-align:left; padding-left:10px;
+  min-width:180px; }
+.fk-heatmap td { padding:6px 4px; text-align:center;
+  border-bottom:1px solid var(--creme-dunkel);
+  font-variant-numeric:tabular-nums;
+  position:relative; }
+.fk-heatmap td.lbl { text-align:left; padding-left:10px; font-weight:600;
+  background:var(--bg-hell,#ece3cc); }
+.fk-heatmap td .n { font-size:0.66rem; opacity:0.7; display:block;
+  font-weight:400; line-height:1; margin-top:2px; }
+.fk-heatmap tr.gruppe-trenn td { border-top:2px solid var(--creme-dunkel); }
+.fk-heatmap tr.gruppe-trenn td:first-child {
+  background:var(--gruen-blass,#dbe8ce);
+  color:var(--gruen-dunkel); font-weight:700;
+  font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em;
+  padding:6px 10px;
+}
+
+.fk-charts { display:grid; gap:18px;
+  grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); }
+.fk-chart-card { background:white; padding:16px 18px;
+  border-radius:var(--radius); box-shadow:var(--schatten); }
+.fk-chart-card h3 { font-size:1.0rem; margin-bottom:6px;
+  color:var(--gruen-dunkel); }
+.fk-chart-card .sub { font-size:0.78rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:6px; }
+.fk-chart-card canvas { max-width:100%; height:280px !important; }
+
+.fk-mittag-box { background:linear-gradient(180deg,#f4ecd1 0%,#ece3cc 100%);
+  border-radius:var(--radius); padding:16px 20px;
+  border-left:5px solid var(--gold,#c8780a);
+  margin-bottom:18px; }
+.fk-mittag-box h2 { color:var(--gold,#c8780a); font-size:1.15rem;
+  margin-bottom:6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fk-kopf">
+  <h1>🔥 Faktoren-Heatmap</h1>
+  <span style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
+    Lift in % gegen den Durchschnitt je Kategorie · 2 J Default
+  </span>
+</div>
+
+<div class="fk-nav">
+  <a href="{{ url_for('berichte_seite') }}">🏠 Übersicht</a>
+  <a href="{{ url_for('berichte_wettereffekt_seite') }}">🌦 Wettereffekt-Vergleich</a>
+  <a class="aktiv" href="#">🔥 Faktoren-Heatmap</a>
+</div>
+
+<div class="fk-toolbar">
+  <label>Von</label>
+  <input type="date" id="fk-von" value="{{ von.isoformat() }}">
+  <label>Bis</label>
+  <input type="date" id="fk-bis" value="{{ bis.isoformat() }}">
+  <button class="fk-btn" onclick="fkLaden()">↻ Aktualisieren</button>
+  <span id="fk-info" style="font-size:0.82rem; color:var(--text-dim,#5a7a3a);"></span>
+</div>
+
+<div class="fk-card">
+  <h2>Faktoren × Kategorien</h2>
+  <div class="sub">
+    Lift in %: positiv = mehr Umsatz an dem Faktor, negativ = weniger.
+    Farbcode: <span style="background:#0a5a0a;color:white;padding:1px 6px;border-radius:3px;">stark+</span>
+    <span style="background:#1a7a1a;color:white;padding:1px 6px;border-radius:3px;">+</span>
+    <span style="background:#bbb;color:#333;padding:1px 6px;border-radius:3px;">≈0</span>
+    <span style="background:#a02020;color:white;padding:1px 6px;border-radius:3px;">−</span>
+    <span style="background:#700000;color:white;padding:1px 6px;border-radius:3px;">stark−</span>.
+    Kleine Zahl darunter = n (Datenbasis).
+  </div>
+  <div style="overflow:auto; max-height:760px;">
+    <table class="fk-heatmap" id="fk-tabelle">
+      <thead><tr id="fk-thead-row"></tr></thead>
+      <tbody id="fk-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="fk-mittag-box">
+  <h2>🍽 Mittagstisch — Wochentag + Monatsverlauf</h2>
+  <div style="font-size:0.85rem; color:var(--text-mitte,#2e4a1a); line-height:1.5;">
+    Hauptfrage des Mittagstisch-Geschäfts. Bar-Charts unten zeigen, an welchen
+    Wochentagen Mo-Fr das Mittagessen am stärksten läuft und wie sich das
+    Geschäft übers Jahr verteilt. Hinweis: „Essen groß" gibt es als eigener
+    Artikel erst seit <strong>April 2024</strong>.
+  </div>
+</div>
+
+<div class="fk-charts">
+  <div class="fk-chart-card">
+    <h3>Mittagstisch nach Wochentag</h3>
+    <div class="sub">Ø-Umsatz pro geöffnetem Tag (€), 2 J.</div>
+    <canvas id="fk-mt-wt"></canvas>
+  </div>
+  <div class="fk-chart-card">
+    <h3>Mittagstisch nach Monat</h3>
+    <div class="sub">Ø-Umsatz pro Verkaufstag (€), 2 J.</div>
+    <canvas id="fk-mt-mo"></canvas>
+  </div>
+</div>
+
+<div style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);
+            line-height:1.55; margin-top:14px;">
+  ⓘ <strong>Was kann man aktiv beeinflussen?</strong>
+  Wetter, Feiertage und Ferien sind gegeben. Sortimentstaktung, Mittagstisch-
+  Wochentage, Aktionen und Öffnungszeiten dagegen schon. Schau dir die
+  „Wochentag"-Zeilen pro Kategorie an: wo eine Kategorie an einem Wochentag
+  schwach ist, lohnt ggf. ein Special oder bessere Bewerbung. Die Mittagstisch-
+  Charts unten zeigen besonders deutlich, dass Mo der Tagesgericht-Hauptträger
+  ist.
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+const WT = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+const MON = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+let _charts = {};
+
+function _fmt(v, dp) { dp = (dp==null) ? 1 : dp;
+  return v == null ? '–' : (v >= 0 ? '+' : '') + v.toFixed(dp) + ' %'; }
+
+function _farbe(v) {
+  if (v == null)   return ['#bbb', '#fff'];
+  if (v >=  50)    return ['#0a5a0a', '#fff'];
+  if (v >=  15)    return ['#1a7a1a', '#fff'];
+  if (v >=   5)    return ['#9ec790', '#1a3010'];
+  if (v >=  -5)    return ['#dcdcdc', '#444'];
+  if (v >= -15)    return ['#e8a0a0', '#fff'];
+  if (v >= -50)    return ['#a02020', '#fff'];
+  return ['#700000', '#fff'];
+}
+
+function _zell(lift, n) {
+  const [bg, fg] = _farbe(lift);
+  return `<td style="background:${bg};color:${fg};">
+    ${lift == null ? '–' : _fmt(lift, 1)}
+    ${n != null ? `<span class="n">n=${n}</span>` : ''}
+  </td>`;
+}
+
+async function fkLaden() {
+  const von = document.getElementById('fk-von').value;
+  const bis = document.getElementById('fk-bis').value;
+  if (!von || !bis) return;
+  document.getElementById('fk-info').textContent = '⏳ lädt…';
+  const r = await fetch(`/orga/berichte/faktoren/daten?von=${von}&bis=${bis}`);
+  const j = await r.json();
+  if (!j.ok) {
+    document.getElementById('fk-info').textContent = j.msg || 'Fehler';
+    return;
+  }
+  document.getElementById('fk-info').textContent =
+    `${j.von} … ${j.bis} (n=${j.kategorien[0]?.faktoren?.n || 0} Tage Gesamt)`;
+  Object.values(_charts).forEach(c => { try { c.destroy(); } catch(e){} });
+  _charts = {};
+  renderHeader(j);
+  renderHeatmap(j);
+  renderMittagCharts(j);
+}
+
+function renderHeader(j) {
+  const tr = document.getElementById('fk-thead-row');
+  let html = `<th class="first">Faktor</th>`;
+  j.kategorien.forEach(k => {
+    html += `<th title="${k.name}">${k.icon}<br>
+      <span style="font-size:0.7rem; font-weight:400;">${k.name.replace(/ \(.*$/,'').split(' / ')[0]}</span></th>`;
+  });
+  tr.innerHTML = html;
+}
+
+function renderHeatmap(j) {
+  const tbody = document.getElementById('fk-tbody');
+  tbody.innerHTML = '';
+  function gruppe(titel) {
+    const tr = document.createElement('tr');
+    tr.className = 'gruppe-trenn';
+    tr.innerHTML = `<td colspan="${j.kategorien.length + 1}">${titel}</td>`;
+    tbody.appendChild(tr);
+  }
+  function zeile(label, key_oder_fn, weekday_index) {
+    const tr = document.createElement('tr');
+    let html = `<td class="lbl">${label}</td>`;
+    j.kategorien.forEach(k => {
+      const f = k.faktoren || {};
+      let lift, n;
+      if (typeof key_oder_fn === 'function') {
+        const d = key_oder_fn(f);
+        lift = d ? d.lift : null; n = d ? d.n : null;
+      } else if (weekday_index != null) {
+        const wd_map = f.wochentag || {};
+        const v = wd_map[weekday_index];
+        if (v && f.avg_alle) {
+          lift = (v.avg - f.avg_alle) / f.avg_alle * 100;
+          n = v.n;
+        } else { lift = null; n = 0; }
+      } else if (weekday_index === 'monat') {
+        // unused
+      } else {
+        const d = f[key_oder_fn] || {};
+        lift = d.lift; n = d.n;
+      }
+      html += _zell(lift, n);
+    });
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  }
+
+  gruppe('Wochentag');
+  for (let i = 0; i < 6; i++) zeile(WT[i], null, i);
+
+  gruppe('Monat');
+  for (let m = 1; m <= 12; m++) {
+    const tr = document.createElement('tr');
+    let html = `<td class="lbl">${MON[m-1]}</td>`;
+    j.kategorien.forEach(k => {
+      const f = k.faktoren || {};
+      const mn_map = f.monat || {};
+      const v = mn_map[m];
+      let lift, n;
+      if (v && f.avg_alle) {
+        lift = (v.avg - f.avg_alle) / f.avg_alle * 100; n = v.n;
+      } else { lift = null; n = 0; }
+      html += _zell(lift, n);
+    });
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  }
+
+  gruppe('Saison-Cluster');
+  zeile('Adventszeit (1.–24. Dez)', 'advent');
+  zeile('Hochsommer (Jul + Aug)',    'hochsommer');
+  zeile('Nachweihnachten (Jan/Feb)', 'nachweihnachten');
+
+  gruppe('Feiertags-Cluster');
+  zeile('2 Tage VOR Feiertag', 'zwei_tage_vor_ft');
+  zeile('1 Tag  VOR Feiertag', 'tag_vor_ft');
+  zeile('1 Tag  NACH Feiertag', 'tag_nach_ft');
+  zeile('2 Tage NACH Feiertag', 'zwei_tage_nach_ft');
+
+  gruppe('Schulferien');
+  zeile('Schulferien Bayern', 'ferien');
+  zeile('Schulzeit Bayern',   'schulzeit');
+}
+
+function renderMittagCharts(j) {
+  const mt = j.kategorien.find(k => k.slug === 'mittagstisch');
+  if (!mt || !mt.faktoren) return;
+  const f = mt.faktoren;
+  // Wochentag-Chart
+  const wt_data = [];
+  for (let i = 0; i < 7; i++) {
+    const v = (f.wochentag || {})[i];
+    wt_data.push(v ? v.avg : 0);
+  }
+  _charts.wt = new Chart(document.getElementById('fk-mt-wt'), {
+    type: 'bar',
+    data: {
+      labels: WT,
+      datasets: [{
+        label: 'Ø Umsatz pro Tag (€)',
+        data: wt_data,
+        backgroundColor: 'rgba(200,120,10,0.75)',
+        borderColor: '#a06000', borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: {
+                   label: c => `${c.raw.toFixed(2)} € pro Tag` } } },
+      scales: { y: { title: { display: true, text: '€ / Tag' },
+                     beginAtZero: true } },
+    },
+  });
+  // Monat-Chart
+  const mo_data = [];
+  for (let m = 1; m <= 12; m++) {
+    const v = (f.monat || {})[m];
+    mo_data.push(v ? v.avg : 0);
+  }
+  _charts.mo = new Chart(document.getElementById('fk-mt-mo'), {
+    type: 'bar',
+    data: {
+      labels: MON,
+      datasets: [{
+        label: 'Ø Umsatz pro Tag (€)',
+        data: mo_data,
+        backgroundColor: 'rgba(46,122,46,0.75)',
+        borderColor: '#1a4010', borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: {
+                   label: c => `${c.raw.toFixed(2)} € pro Tag` } } },
+      scales: { y: { title: { display: true, text: '€ / Tag' },
+                     beginAtZero: true } },
+    },
+  });
+}
+
+fkLaden();
+</script>
+{% endblock %}
