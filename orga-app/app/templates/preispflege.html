@@ -879,7 +879,7 @@ function _renderWarengruppenbaum(wgr) {
   for (const r of byParent['__r'] || []) _renderKnoten(r, 0);
 }
 
-function _wgrWaehlen(wgrId, name) {
+function _wgrWaehlen(wgrId, name, _opt) {
   _aktWgrId = wgrId;
   // aktiv-Klasse umsetzen
   document.querySelectorAll('.pp-tree-item').forEach(e => {
@@ -894,8 +894,52 @@ function _wgrWaehlen(wgrId, name) {
   document.getElementById('pp-titel').textContent =
     wgrId === null ? 'Preispflege – Alle Warengruppen'
                     : `Preispflege – ${name}`;
+  // URL aktualisieren — pushState (Browser-Back funktioniert,
+  // Bookmark-faehig). Beim Initial-Laden aus der URL nutzen wir
+  // _opt.replace=true, um keinen extra Historie-Eintrag anzulegen.
+  try {
+    const url = new URL(window.location.href);
+    if (wgrId === null) {
+      url.searchParams.set('wgr', 'alle');
+    } else if (typeof wgrId === 'number' || /^\d+$/.test(String(wgrId))) {
+      url.searchParams.set('wgr', String(wgrId));
+    } else {
+      url.searchParams.delete('wgr');
+    }
+    const neu = url.pathname + url.search;
+    if (_opt && _opt.replace) {
+      history.replaceState({wgr: wgrId}, '', neu);
+    } else {
+      history.pushState({wgr: wgrId}, '', neu);
+    }
+  } catch (e) { /* alter Browser, egal */ }
   ladeTabelle();
 }
+
+// Bei Browser-Back/Forward: WG aus URL/State wiederherstellen
+window.addEventListener('popstate', () => {
+  const p = new URLSearchParams(window.location.search);
+  const wgrRaw = p.get('wgr');
+  if (wgrRaw === null) {
+    _aktWgrId = undefined;
+  } else if (wgrRaw === 'alle') {
+    _aktWgrId = null;
+  } else {
+    const n = parseInt(wgrRaw, 10);
+    _aktWgrId = isNaN(n) ? undefined : n;
+  }
+  // Aktiv-Markierung im Baum nachziehen ohne Rerender
+  document.querySelectorAll('.pp-tree-item').forEach(e => {
+    e.classList.remove('aktiv');
+    const id = e.dataset.wgrId;
+    if (_aktWgrId === null && e.classList.contains('alle-btn')) {
+      e.classList.add('aktiv');
+    } else if (id != null && id !== '' && String(_aktWgrId) === String(id)) {
+      e.classList.add('aktiv');
+    }
+  });
+  ladeTabelle();
+});
 
 // ── Tabelle laden ─────────────────────────────────────────────
 async function ladeTabelle() {
@@ -1746,10 +1790,24 @@ document.addEventListener('input', e => {
 
 // ── Init ──────────────────────────────────────────────────────
 (async function init() {
-  // Nur den Baum + die VK-Kontroll-Pille aufbauen — die Tabelle bleibt
-  // leer, bis der User eine Warengruppe (oder VK-Kontrolle) waehlt.
-  // Das spart das initiale SELECT ueber alle Artikel (mehrere Sekunden).
+  // Baum + VK-Kontroll-Pille bauen, danach optional WG aus URL ziehen.
   await Promise.all([ladeWarengruppenbaum(), ladeVkKontrolleCount()]);
+
+  // ?wgr=<id> oder ?wgr=alle aus der URL? Dann direkt anwenden.
+  const p = new URLSearchParams(window.location.search);
+  const wgrRaw = p.get('wgr');
+  if (wgrRaw === 'alle') {
+    _wgrWaehlen(null, '— Alle Warengruppen —', {replace: true});
+  } else if (wgrRaw && /^\d+$/.test(wgrRaw)) {
+    const id = parseInt(wgrRaw, 10);
+    // Namen aus dem Baum holen (falls geladen). dataset.wgrId
+    // (DOM-Property) entspricht dem HTML-Attribut data-wgr-id.
+    const btn = document.querySelector(
+      '.pp-tree-item[data-wgr-id="' + id + '"] .wgr-name');
+    const name = btn ? btn.textContent : ('WGR ' + id);
+    _wgrWaehlen(id, name, {replace: true});
+  }
+  // Sonst: kein wgr-Param → bleib im Hinweis-Modus.
 })();
 </script>
 {% endblock %}
