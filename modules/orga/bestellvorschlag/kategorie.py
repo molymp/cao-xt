@@ -412,6 +412,89 @@ def _faktoren_lifts(rows: list[dict],
     }
 
 
+# ── Mittagstisch-Spezialaufschluesselung: 'Essen' vs 'Essen gross' ──
+
+MITTAGSTISCH_ARTIKEL = [
+    {'rec_id': 5314, 'name': 'Essen',       'icon': '🥘'},
+    {'rec_id': 6195, 'name': 'Essen groß',  'icon': '🍛'},
+]
+
+
+def mittagstisch_artikel_split(von: _dt.date,
+                                bis: _dt.date) -> dict:
+    """Wochentag- und Monatsaufschluesselung der zwei Mittagstisch-
+    Artikel separat (Essen / Essen gross).
+
+    Liefert::
+
+        {
+          'artikel': [{'rec_id', 'name', 'icon',
+                       'wochentag': {wd: {menge_summe, summe, n}},
+                       'monat':     {m:  {menge_summe, summe, n}},
+                       'erste_buchung': date|None,
+                       'gesamt_menge': int,
+                       'gesamt_umsatz': float,
+                      }, ...]
+        }
+    """
+    sql = """
+        SELECT
+            DATE(j.RDATUM) AS datum,
+            WEEKDAY(j.RDATUM) AS wd,
+            MONTH(j.RDATUM) AS monat,
+            jp.ARTIKEL_ID AS artikel_id,
+            SUM(jp.MENGE)  AS menge,
+            SUM(jp.GPREIS) AS umsatz
+        FROM JOURNAL j
+        JOIN JOURNALPOS jp ON jp.JOURNAL_ID = j.REC_ID
+        WHERE j.QUELLE = 3 AND j.QUELLE_SUB = 2 AND j.STADIUM < 127
+          AND jp.ARTIKEL_ID IN (%s)
+          AND j.RDATUM >= %%s AND j.RDATUM < %%s + INTERVAL 1 DAY
+        GROUP BY DATE(j.RDATUM), jp.ARTIKEL_ID
+    """ % ','.join('%s' for _ in MITTAGSTISCH_ARTIKEL)
+    params = [a['rec_id'] for a in MITTAGSTISCH_ARTIKEL] + [von, bis]
+    with get_db() as cur:
+        cur.execute(sql, params)
+        zeilen = cur.fetchall() or []
+
+    # Pro Artikel aggregieren
+    out_artikel = []
+    for art in MITTAGSTISCH_ARTIKEL:
+        relevant = [z for z in zeilen
+                     if int(z['artikel_id']) == art['rec_id']]
+        wt_buckets: dict[int, list[dict]] = {}
+        mn_buckets: dict[int, list[dict]] = {}
+        for z in relevant:
+            wt_buckets.setdefault(int(z['wd']), []).append(z)
+            mn_buckets.setdefault(int(z['monat']), []).append(z)
+        wt: dict[int, dict] = {}
+        for wd, lst in wt_buckets.items():
+            wt[wd] = {
+                'menge_summe': sum(float(z['menge']) for z in lst),
+                'summe':       sum(float(z['umsatz']) for z in lst),
+                'n':           len(lst),
+            }
+        mn: dict[int, dict] = {}
+        for m, lst in mn_buckets.items():
+            mn[m] = {
+                'menge_summe': sum(float(z['menge']) for z in lst),
+                'summe':       sum(float(z['umsatz']) for z in lst),
+                'n':           len(lst),
+            }
+        out_artikel.append({
+            'rec_id':        art['rec_id'],
+            'name':          art['name'],
+            'icon':          art['icon'],
+            'wochentag':     wt,
+            'monat':         mn,
+            'erste_buchung': (min(z['datum'] for z in relevant).isoformat()
+                              if relevant else None),
+            'gesamt_menge':  sum(float(z['menge']) for z in relevant),
+            'gesamt_umsatz': sum(float(z['umsatz']) for z in relevant),
+        })
+    return {'artikel': out_artikel}
+
+
 def faktoren_vergleich(von: _dt.date, bis: _dt.date,
                         wochentag: Optional[int] = None,
                         pro_stunde: bool = False) -> dict:
@@ -447,6 +530,7 @@ def faktoren_vergleich(von: _dt.date, bis: _dt.date,
         'wochentag':   wochentag,
         'pro_stunde':  pro_stunde,
         'kategorien':  ergebnisse,
+        'mittagstisch_split': mittagstisch_artikel_split(von, bis),
     }
 
 

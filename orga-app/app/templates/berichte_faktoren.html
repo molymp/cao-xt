@@ -141,22 +141,30 @@
 
 <div class="fk-charts">
   <div class="fk-chart-card">
-    <h3>Mittagstisch nach Wochentag</h3>
+    <h3>Mittagstisch nach Wochentag (Essen / Essen groß)</h3>
     <div class="sub">
-      Bars = Summe verkaufter Portionen, Linie = Summe Umsatz im
-      ausgewählten Zeitraum. Tooltip zeigt zusätzlich den
-      Tages-Schnitt (Ø pro geöffnetem Tag).
+      Gestapelte Bars: Portionen pro Artikel. Linie: Σ Umsatz gesamt.
+      Tooltip zeigt Ø pro Tag und Anzahl Tage.
     </div>
     <canvas id="fk-mt-wt"></canvas>
   </div>
   <div class="fk-chart-card">
-    <h3>Mittagstisch nach Monat</h3>
+    <h3>Mittagstisch nach Monat (Essen / Essen groß)</h3>
     <div class="sub">
-      Bars = Summe verkaufter Portionen, Linie = Summe Umsatz im
-      ausgewählten Zeitraum. Saisonalität auf einen Blick.
+      Gestapelte Bars: Portionen pro Artikel. Linie: Σ Umsatz gesamt.
     </div>
     <canvas id="fk-mt-mo"></canvas>
   </div>
+</div>
+
+<div class="fk-card" style="margin-top:18px;">
+  <h2>Mittagstisch — Gesamtsummen pro Artikel</h2>
+  <div class="sub">
+    Übersicht über den gewählten Zeitraum. Beachte unterschiedliche
+    Einführungs-Daten — „Essen groß" gibt es als eigenständiger
+    Artikel erst seit Mai 2024.
+  </div>
+  <div id="fk-mt-summen"></div>
 </div>
 
 <div style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);
@@ -312,87 +320,116 @@ function renderMittagCharts(j) {
   const mt = j.kategorien.find(k => k.slug === 'mittagstisch');
   if (!mt || !mt.faktoren) return;
   const f = mt.faktoren;
+  const split = j.mittagstisch_split || {artikel: []};
 
-  // Helper: Dual-Achse Chart (Bars = Σ Portionen, Linie = Σ Umsatz)
-  function dualChart(elId, labels, mengen, umsaetze, n_tage) {
+  // Farben pro Artikel
+  const ART_FARBEN = {
+    5314: {bg: 'rgba(200,120,10,0.80)', border: '#a06000'},   // Essen
+    6195: {bg: 'rgba(46, 90,150,0.80)', border: '#1a4080'},   // Essen groß
+  };
+
+  // Helper: Stacked-Bar (Portionen pro Artikel) + Linie (Σ Umsatz)
+  function stackedChart(elId, labels, getter) {
+    // getter(i) -> { artikel: [{rec_id, menge_summe, summe}], total_eur, n }
+    const datasets = [];
+    split.artikel.forEach(art => {
+      const farbe = ART_FARBEN[art.rec_id] || {bg:'#888', border:'#444'};
+      datasets.push({
+        type: 'bar',
+        label: art.icon + ' ' + art.name + ' (Portionen)',
+        data: labels.map((_, i) => getter(i, art.rec_id).menge),
+        backgroundColor: farbe.bg,
+        borderColor: farbe.border, borderWidth: 1,
+        stack: 'menge', yAxisID: 'yMenge', order: 2,
+      });
+    });
+    datasets.push({
+      type: 'line',
+      label: 'Σ Umsatz gesamt (€)',
+      data: labels.map((_, i) => getter(i, null).total_eur),
+      borderColor: '#1a4010',
+      backgroundColor: 'rgba(26,64,16,0.10)',
+      borderWidth: 2,
+      tension: 0.25,
+      fill: false,
+      yAxisID: 'yEUR',
+      pointRadius: 4, pointBackgroundColor: '#1a4010',
+      order: 1,
+    });
     return new Chart(document.getElementById(elId), {
-      data: {
-        labels,
-        datasets: [
-          { type: 'bar',
-            label: 'Σ Portionen',
-            data: mengen,
-            backgroundColor: 'rgba(200,120,10,0.75)',
-            borderColor: '#a06000', borderWidth: 1,
-            yAxisID: 'yMenge',
-            order: 2 },
-          { type: 'line',
-            label: 'Σ Umsatz (€)',
-            data: umsaetze,
-            borderColor: '#1a4010',
-            backgroundColor: 'rgba(26,64,16,0.10)',
-            borderWidth: 2,
-            tension: 0.25,
-            fill: false,
-            yAxisID: 'yEUR',
-            pointRadius: 4,
-            pointBackgroundColor: '#1a4010',
-            order: 1 },
-        ],
-      },
+      data: { labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'top' },
+          legend: { position: 'top', labels: { boxWidth: 14 } },
           tooltip: {
             callbacks: {
-              afterLabel: function(ctx) {
-                const i = ctx.dataIndex;
-                const n = n_tage[i];
-                if (ctx.datasetIndex === 0) {
-                  // Bar (Mengen-Dataset)
-                  const proTag = n ? (mengen[i] / n).toFixed(1) : '0';
-                  return `(Ø ${proTag} Portionen / Tag, n=${n} Tage)`;
-                }
-                const proTag = n ? (umsaetze[i] / n).toFixed(2) : '0';
-                return `(Ø ${proTag} € / Tag, n=${n} Tage)`;
+              afterTitle: (items) => {
+                const i = items[0].dataIndex;
+                const ctx = getter(i, null);
+                if (!ctx.n) return '';
+                return `Ø ${(ctx.total_menge/ctx.n).toFixed(1)} Portionen, ${(ctx.total_eur/ctx.n).toFixed(2)} € pro Tag · n=${ctx.n} Tage`;
               },
             },
           },
         },
         scales: {
-          yMenge: { type: 'linear', position: 'left',
+          yMenge: { type: 'linear', position: 'left', stacked: true,
                     title: { display: true, text: 'Σ Portionen' },
                     beginAtZero: true },
           yEUR:   { type: 'linear', position: 'right',
                     title: { display: true, text: 'Σ Umsatz (€)' },
                     beginAtZero: true,
                     grid: { drawOnChartArea: false } },
+          x:      { stacked: true },
         },
       },
     });
   }
 
-  // Wochentag
-  const wt_mengen = [], wt_umsatz = [], wt_n = [];
-  for (let i = 0; i < 7; i++) {
+  // Wochentag-Daten
+  _charts.wt = stackedChart('fk-mt-wt', WT, (i, recId) => {
     const v = (f.wochentag || {})[i] || {};
-    wt_mengen.push(v.menge_summe || 0);
-    wt_umsatz.push(v.summe || 0);
-    wt_n.push(v.n || 0);
-  }
-  _charts.wt = dualChart('fk-mt-wt', WT, wt_mengen, wt_umsatz, wt_n);
+    if (recId == null) {
+      let total_menge = 0;
+      split.artikel.forEach(a => { total_menge += (a.wochentag || {})[i]?.menge_summe || 0; });
+      return { total_eur: v.summe || 0, total_menge, n: v.n || 0 };
+    }
+    const art = split.artikel.find(a => a.rec_id === recId);
+    const av = (art?.wochentag || {})[i] || {};
+    return { menge: av.menge_summe || 0 };
+  });
 
-  // Monat
-  const mo_mengen = [], mo_umsatz = [], mo_n = [];
-  for (let m = 1; m <= 12; m++) {
+  // Monat-Daten
+  _charts.mo = stackedChart('fk-mt-mo', MON, (i, recId) => {
+    const m = i + 1;
     const v = (f.monat || {})[m] || {};
-    mo_mengen.push(v.menge_summe || 0);
-    mo_umsatz.push(v.summe || 0);
-    mo_n.push(v.n || 0);
+    if (recId == null) {
+      let total_menge = 0;
+      split.artikel.forEach(a => { total_menge += (a.monat || {})[m]?.menge_summe || 0; });
+      return { total_eur: v.summe || 0, total_menge, n: v.n || 0 };
+    }
+    const art = split.artikel.find(a => a.rec_id === recId);
+    const av = (art?.monat || {})[m] || {};
+    return { menge: av.menge_summe || 0 };
+  });
+
+  // Mini-Tabelle mit Gesamtsummen pro Artikel
+  const tabEl = document.getElementById('fk-mt-summen');
+  if (tabEl) {
+    let html = '<table class="we-tabelle" style="font-size:0.85rem;"><thead><tr>'
+      + '<th>Artikel</th><th class="right">Σ Portionen</th>'
+      + '<th class="right">Σ Umsatz</th><th>Erste Buchung</th></tr></thead><tbody>';
+    split.artikel.forEach(a => {
+      html += `<tr><td>${a.icon} ${a.name}</td>`
+        + `<td class="right">${Math.round(a.gesamt_menge).toLocaleString('de-DE')}</td>`
+        + `<td class="right">${a.gesamt_umsatz.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} €</td>`
+        + `<td>${a.erste_buchung || '–'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    tabEl.innerHTML = html;
   }
-  _charts.mo = dualChart('fk-mt-mo', MON, mo_mengen, mo_umsatz, mo_n);
 }
 
 fkLaden();
