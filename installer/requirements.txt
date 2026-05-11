@@ -7,3 +7,7 @@ mysql-connector-python>=8.0
 # Auf älteren Linux-Systemen ohne Rust schlägt der Build neuerer Versionen fehl;
 # in diesem Fall bitte manuell pinnen: cryptography==3.3.2
 cryptography>=3.3
+
+# Backwaren-Bestellvorschlag (Orga): lineare Regression + Feiertage Bayern.
+numpy>=1.24
+holidays>=0.50
