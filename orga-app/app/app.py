@@ -1074,6 +1074,53 @@ def berichte_kategorie_daten(slug: str):
     })
 
 
+# ── Wettereffekt-Vergleich (übergreifend) ─────────────────────
+
+@app.get('/orga/berichte/wettereffekt')
+def berichte_wettereffekt_seite():
+    """Wettereffekt-Vergleich über alle Kategorien + Gesamtumsatz."""
+    heute = date.today()
+    von = _parse_datum(request.args.get('von'),
+                        heute - timedelta(days=730))
+    bis = _parse_datum(request.args.get('bis'), heute)
+    return render_template('berichte_wettereffekt.html',
+                           von=von, bis=bis)
+
+
+@app.get('/orga/berichte/wettereffekt/daten')
+def berichte_wettereffekt_daten():
+    """JSON-Daten fuer den Wettereffekt-Vergleich.
+
+    Query:
+      von        YYYY-MM-DD (Default heute - 2J)
+      bis        YYYY-MM-DD (Default heute)
+      wochentag  0..6 optional (filtert auf einen Wochentag)
+      warm_tmax / kalt_tmax / trocken_mm / regen_mm /
+       sonnig_h / bedeckt_h    Schwellen-Overrides (optional)
+    """
+    from modules.orga.bestellvorschlag import kategorie as _kat
+    heute = date.today()
+    try:
+        von = date.fromisoformat(request.args.get('von')
+                                  or (heute - timedelta(days=730)).isoformat())
+        bis = date.fromisoformat(request.args.get('bis') or heute.isoformat())
+        wt  = request.args.get('wochentag')
+        wt  = int(wt) if wt not in (None, '') else None
+        schwellen = {}
+        for k in ('warm_tmax', 'kalt_tmax', 'trocken_mm', 'regen_mm',
+                   'sonnig_h', 'bedeckt_h'):
+            v = request.args.get(k)
+            if v not in (None, ''):
+                schwellen[k] = float(v)
+    except ValueError:
+        return jsonify({'ok': False, 'msg': 'ungueltige Parameter'}), 400
+    r = _kat.wettereffekt_vergleich(von, bis, wochentag=wt,
+                                     schwellen=schwellen)
+    r['von'] = r['von'].isoformat()
+    r['bis'] = r['bis'].isoformat()
+    return jsonify({'ok': True, **r})
+
+
 # ── Koppelkauf-Analyse ─────────────────────────────────────────
 
 try:

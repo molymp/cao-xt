@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Bericht – Wettereffekt-Vergleich{% endblock %}
+
+{% block extra_style %}
+<style>
+.we-kopf { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+.we-kopf h1 { font-size:1.5rem; }
+.we-nav { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; }
+.we-nav a { padding:6px 12px; border-radius:14px; background:white;
+  border:1px solid var(--creme-dunkel); color:var(--gruen-dunkel);
+  font-size:0.88rem; text-decoration:none; }
+.we-nav a.aktiv { background:var(--gruen-dunkel); color:white; }
+
+.we-toolbar { background:white; padding:14px 18px; border-radius:var(--radius);
+  box-shadow:var(--schatten); margin-bottom:18px;
+  display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+.we-toolbar label { font-size:0.85rem; font-weight:700;
+  color:var(--text-dim,#5a7a3a); }
+.we-toolbar input[type=date], .we-toolbar input[type=number],
+.we-toolbar select { padding:6px 10px; border:1px solid var(--creme-dunkel);
+  border-radius:var(--radius-klein); font-family:'Nunito',sans-serif;
+  font-size:0.9rem; min-width:90px; }
+.we-btn { padding:7px 16px; background:var(--gruen-mitte); color:white;
+  border:none; border-radius:var(--radius-klein); font-weight:700;
+  cursor:pointer; }
+.we-btn:hover { background:var(--gruen-dunkel); }
+
+.we-headline { background:linear-gradient(180deg, #f4ecd1 0%, #ece3cc 100%);
+  border-radius:var(--radius); padding:18px 22px; margin-bottom:18px;
+  border-left:5px solid var(--gruen-dunkel); }
+.we-headline h2 { color:var(--gruen-dunkel); font-size:1.2rem; margin-bottom:8px; }
+.we-headline p { line-height:1.6; margin-bottom:4px; }
+.we-headline strong { color:var(--gruen-dunkel); }
+
+.we-card { background:white; border-radius:var(--radius);
+  box-shadow:var(--schatten); padding:16px 20px; margin-bottom:18px; }
+.we-card h2 { font-size:1.1rem; margin-bottom:10px; color:var(--gruen-dunkel); }
+.we-card .sub { font-size:0.82rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:14px; line-height:1.5; }
+
+.we-tabelle { width:100%; border-collapse:collapse; font-size:0.92rem; }
+.we-tabelle th, .we-tabelle td { padding:9px 10px;
+  border-bottom:1px solid var(--creme-dunkel); }
+.we-tabelle th { background:var(--grau-hell); text-align:left; font-size:0.78rem;
+  font-weight:800; text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--text-dim,#5a7a3a); }
+.we-tabelle td { font-variant-numeric:tabular-nums; }
+.we-tabelle td.right { text-align:right; }
+.we-tabelle td.lift { text-align:right; font-weight:700; }
+.we-tabelle tr.gesamt { background:rgba(46,122,46,0.05); font-weight:700; }
+.we-tabelle tr.gesamt td { border-bottom:2px solid var(--gruen-mitte); }
+.we-tabelle td.n { font-size:0.78rem; color:var(--text-dim,#5a7a3a); }
+
+.we-pos { color:#1a7a1a; }
+.we-pos-stark { color:#0a5a0a; }
+.we-neg { color:#a02020; }
+.we-neg-stark { color:#700000; }
+.we-neutral { color:#777; }
+
+.we-charts { display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  gap:16px; }
+.we-chart-card { background:white; border-radius:var(--radius);
+  box-shadow:var(--schatten); padding:16px 18px; }
+.we-chart-card h3 { font-size:1.0rem; margin-bottom:8px;
+  color:var(--gruen-dunkel); }
+.we-chart-card .sub { font-size:0.78rem; color:var(--text-dim,#5a7a3a);
+  margin-bottom:6px; }
+.we-chart-card canvas { max-width:100%; height:260px !important; }
+
+.we-hinweis { font-size:0.85rem; color:var(--text-dim,#5a7a3a);
+  line-height:1.55; margin-top:8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="we-kopf">
+  <h1>🌦 Wettereffekt-Vergleich aller Kategorien</h1>
+  <span style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
+    Wetter Habach · 2 J Default · alle Wochentage
+  </span>
+</div>
+
+<div class="we-nav">
+  <a href="{{ url_for('berichte_seite') }}">🏠 Übersicht</a>
+  <a class="aktiv" href="#">🌦 Wettereffekt-Vergleich</a>
+  <a href="{{ url_for('berichte_kategorie_seite', slug='backwaren') }}">🥨 Einzel-Berichte ↗</a>
+</div>
+
+<!-- ── Toolbar ────────────────────────────────────────────── -->
+<div class="we-toolbar">
+  <label>Von</label>
+  <input type="date" id="we-von" value="{{ von.isoformat() }}">
+  <label>Bis</label>
+  <input type="date" id="we-bis" value="{{ bis.isoformat() }}">
+  <label>Wochentag</label>
+  <select id="we-wt">
+    <option value="">alle</option>
+    <option value="0">Mo</option><option value="1">Di</option>
+    <option value="2">Mi</option><option value="3">Do</option>
+    <option value="4">Fr</option><option value="5">Sa</option>
+    <option value="6">So</option>
+  </select>
+  <label>Warm ab (°C)</label>
+  <input type="number" step="1" id="we-warm" value="18">
+  <label>Regen ab (mm)</label>
+  <input type="number" step="0.5" id="we-regen" value="5">
+  <button class="we-btn" onclick="weLaden()">↻ Aktualisieren</button>
+</div>
+
+<!-- ── Headline-Card (Bauchgefühl) ──────────────────────────── -->
+<div class="we-headline" id="we-headline">
+  <h2 id="we-headline-titel">⏳ Lade Daten…</h2>
+  <p id="we-headline-text"></p>
+</div>
+
+<!-- ── Tabelle ──────────────────────────────────────────────── -->
+<div class="we-card">
+  <h2>Wettereffekt im Detail</h2>
+  <div class="sub">
+    Tabelle zeigt den prozentualen Mehr-/Minderumsatz an „guten" gegenüber
+    „schlechten" Tagen. <strong>Schönwetter</strong> = warm UND trocken;
+    <strong>Schlechtwetter</strong> = kalt ODER nass. Daneben jede
+    Wetter-Variable einzeln. Negative Werte = der Faktor wirkt umgekehrt.
+  </div>
+  <div style="overflow:auto;">
+    <table class="we-tabelle" id="we-tabelle">
+      <thead>
+        <tr>
+          <th>Kategorie</th>
+          <th class="right">Schönwetter vs.<br>Schlechtwetter</th>
+          <th class="right">Warm vs.<br>Kalt (Tmax)</th>
+          <th class="right">Trocken vs.<br>Regnerisch</th>
+          <th class="right">Sonnig vs.<br>Bedeckt</th>
+          <th class="right">Ø-Umsatz<br>insg.</th>
+        </tr>
+      </thead>
+      <tbody id="we-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Bar-Charts ───────────────────────────────────────────── -->
+<div class="we-charts">
+  <div class="we-chart-card">
+    <h3>Schönwetter-Lift (Composite)</h3>
+    <div class="sub">Warm UND trocken vs. kalt ODER nass.</div>
+    <canvas id="we-ch-schoen"></canvas>
+  </div>
+  <div class="we-chart-card">
+    <h3>Warm vs. Kalt (Tmax)</h3>
+    <div class="sub">Tmax oberhalb vs. unterhalb der Schwellen.</div>
+    <canvas id="we-ch-warm"></canvas>
+  </div>
+  <div class="we-chart-card">
+    <h3>Trocken vs. Regnerisch</h3>
+    <div class="sub">Niederschlag &lt; 1 mm vs. ≥ Schwelle.</div>
+    <canvas id="we-ch-regen"></canvas>
+  </div>
+  <div class="we-chart-card">
+    <h3>Sonnig vs. Bedeckt</h3>
+    <div class="sub">Sonnenstunden ≥ 8 h vs. &lt; 2 h.</div>
+    <canvas id="we-ch-sonne"></canvas>
+  </div>
+</div>
+
+<div class="we-hinweis">
+  ⓘ Lift-Werte sind <strong>relativer Mehrumsatz</strong> in % bezogen auf
+  den Vergleichs-Bucket. Beispiel „+50 %" heißt: bei der „guten" Bedingung
+  ist der Tages-Avg-Umsatz 1,5× so hoch wie bei der „schlechten". Werte
+  über ±200 % entstehen vor allem bei stark saisonalen Sortimenten
+  (Eisverkauf, Eis-Spezialitäten) und sind dann eher als
+  „Sommer vs. Winter"-Indikator zu lesen. Die n-Werte daneben zeigen
+  die Robustheit der Zahl — bei n &lt; 30 vorsichtig interpretieren.
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+const WT = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+let _charts = {};
+
+function _eur(v, dp) { dp = (dp==null) ? 2 : dp;
+  return v == null ? '–' : Number(v).toLocaleString('de-DE',
+    {minimumFractionDigits: dp, maximumFractionDigits: dp}); }
+
+function _liftKlasse(v) {
+  if (v == null) return 'we-neutral';
+  if (v >= 50) return 'we-pos-stark';
+  if (v >= 10) return 'we-pos';
+  if (v <= -50) return 'we-neg-stark';
+  if (v <= -10) return 'we-neg';
+  return 'we-neutral';
+}
+function _liftStr(v) {
+  if (v == null) return '<span class="we-neutral">–</span>';
+  const cls = _liftKlasse(v);
+  return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(1)} %</span>`;
+}
+
+function _zerstoere() {
+  Object.values(_charts).forEach(c => { try { c.destroy(); } catch(e){} });
+  _charts = {};
+}
+
+async function weLaden() {
+  const von   = document.getElementById('we-von').value;
+  const bis   = document.getElementById('we-bis').value;
+  const wt    = document.getElementById('we-wt').value;
+  const warm  = parseFloat(document.getElementById('we-warm').value);
+  const regen = parseFloat(document.getElementById('we-regen').value);
+  if (!von || !bis) return;
+  const params = new URLSearchParams({von, bis});
+  if (wt !== '') params.set('wochentag', wt);
+  if (!isNaN(warm))  { params.set('warm_tmax', warm); params.set('kalt_tmax', warm - 6); }
+  if (!isNaN(regen)) params.set('regen_mm', regen);
+  document.getElementById('we-headline-titel').textContent = '⏳ lädt…';
+  document.getElementById('we-headline-text').textContent = '';
+
+  const r = await fetch('/orga/berichte/wettereffekt/daten?' + params);
+  const j = await r.json();
+  if (!j.ok) {
+    document.getElementById('we-headline-titel').textContent =
+      'Fehler: ' + (j.msg || 'unbekannt');
+    return;
+  }
+  _zerstoere();
+  renderHeadline(j);
+  renderTabelle(j);
+  renderCharts(j);
+}
+
+function renderHeadline(j) {
+  const ges = j.kategorien.find(k => k.slug === 'gesamt');
+  const wt = j.wochentag != null ? ` (nur ${WT[j.wochentag]})` : '';
+  if (!ges || !ges.effekt || ges.effekt.lift_schoen_vs_schlecht == null) {
+    document.getElementById('we-headline-titel').textContent = 'Nicht genug Daten.';
+    document.getElementById('we-headline-text').textContent = '';
+    return;
+  }
+  const lift = ges.effekt.lift_schoen_vs_schlecht;
+  let aussage = '';
+  if (lift >= 3) {
+    aussage = `Bei <strong>Schönwetter</strong> (warm &amp; trocken) ist der Gesamtumsatz im Schnitt <strong>+${lift.toFixed(1)} %</strong> höher als bei Schlechtwetter${wt}. <strong>Bauchgefühl bestätigt.</strong>`;
+  } else if (lift >= -3) {
+    aussage = `Beim Gesamtumsatz ist <strong>kein klarer Wettereffekt</strong> erkennbar (${lift >= 0 ? '+':''}${lift.toFixed(1)} %)${wt}. Einzelne Kategorien können trotzdem stark betroffen sein.`;
+  } else {
+    aussage = `Schönwetter wirkt sich <strong>negativ</strong> auf den Gesamtumsatz aus (${lift.toFixed(1)} %)${wt} — ungewöhnlich.`;
+  }
+  // Top-3 und Bottom-3 nach Schönwetter-Lift
+  const mit_lift = j.kategorien
+    .filter(k => k.slug !== 'gesamt' && k.effekt.lift_schoen_vs_schlecht != null)
+    .sort((a,b) => b.effekt.lift_schoen_vs_schlecht - a.effekt.lift_schoen_vs_schlecht);
+  const top  = mit_lift.slice(0, 2);
+  const bot  = mit_lift.slice(-2).reverse();
+  const topStr = top.map(k => `${k.icon} ${k.name.split(' (')[0]} (${k.effekt.lift_schoen_vs_schlecht >= 0 ? '+':''}${k.effekt.lift_schoen_vs_schlecht.toFixed(0)} %)`).join(', ');
+  const botStr = bot.map(k => `${k.icon} ${k.name.split(' (')[0]} (${k.effekt.lift_schoen_vs_schlecht >= 0 ? '+':''}${k.effekt.lift_schoen_vs_schlecht.toFixed(0)} %)`).join(', ');
+
+  document.getElementById('we-headline-titel').innerHTML = aussage;
+  document.getElementById('we-headline-text').innerHTML =
+    `<strong>Profitiert am stärksten:</strong> ${topStr}.&nbsp;&nbsp; `
+    + `<strong>Geht zurück:</strong> ${botStr}.&nbsp;&nbsp; `
+    + `n=${ges.effekt.n} Tage Datenbasis.`;
+}
+
+function renderTabelle(j) {
+  const tbody = document.getElementById('we-tbody');
+  tbody.innerHTML = '';
+  j.kategorien.forEach(k => {
+    const e = k.effekt;
+    const tr = document.createElement('tr');
+    if (k.slug === 'gesamt') tr.className = 'gesamt';
+    if (!e || e.n < 20) {
+      tr.innerHTML = `<td>${k.icon} ${k.name}</td>
+        <td colspan="5" class="we-neutral right">n=${e?.n || 0} Tage — zu wenig für Aussage</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+    const cell = (lift, n_g, n_b) =>
+      `<td class="lift">${_liftStr(lift)}
+        <div class="n">n=${n_g}/${n_b}</div></td>`;
+    tr.innerHTML = `
+      <td>${k.icon} ${k.name}</td>
+      ${cell(e.lift_schoen_vs_schlecht,  e.n_schoen,   e.n_schlecht)}
+      ${cell(e.lift_warm_vs_kalt,        e.n_warm,     e.n_kalt)}
+      ${cell(e.lift_trocken_vs_regen,    e.n_trocken,  e.n_regen)}
+      ${cell(e.lift_sonnig_vs_bedeckt,   e.n_sonnig,   e.n_bedeckt)}
+      <td class="right">${_eur(e.avg_alle, 2)} €</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function _farben(values) {
+  return values.map(v => {
+    if (v == null)   return 'rgba(120,120,120,0.30)';
+    if (v >=  50)    return 'rgba(10, 90, 10, 0.85)';
+    if (v >=  10)    return 'rgba(46,122,46, 0.75)';
+    if (v >= -10)    return 'rgba(150,150,150,0.55)';
+    if (v >= -50)    return 'rgba(160,32,32, 0.75)';
+    return 'rgba(112,0,0, 0.85)';
+  });
+}
+
+function _barChart(elId, j, key, title) {
+  // Sortieren nach Lift, Gesamtumsatz fett oben
+  const dat = j.kategorien
+    .filter(k => k.effekt && k.effekt[key] != null)
+    .sort((a,b) => (b.effekt[key] - a.effekt[key]));
+  // Gesamt nach oben (an Index 0)
+  const gIdx = dat.findIndex(k => k.slug === 'gesamt');
+  if (gIdx > 0) {
+    const [g] = dat.splice(gIdx, 1);
+    dat.unshift(g);
+  }
+  const labels = dat.map(k => `${k.icon} ${k.name.replace(/ \(.*$/, '')}`);
+  const vals   = dat.map(k => k.effekt[key]);
+  _charts[elId] = new Chart(document.getElementById(elId), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: title,
+        data: vals,
+        backgroundColor: _farben(vals),
+        borderColor: _farben(vals),
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: c => `${c.raw == null ? '–' : (c.raw >= 0 ? '+' : '') + c.raw.toFixed(1) + ' %'}`,
+          },
+        },
+      },
+      scales: {
+        x: { title: { display: true, text: 'Lift (%)' },
+             grid: { color: (ctx) => ctx.tick.value === 0 ? '#333' : 'rgba(0,0,0,0.05)' } },
+        y: { grid: { display: false } },
+      },
+    },
+  });
+}
+
+function renderCharts(j) {
+  _barChart('we-ch-schoen', j, 'lift_schoen_vs_schlecht', 'Schönwetter-Lift');
+  _barChart('we-ch-warm',   j, 'lift_warm_vs_kalt',       'Warm vs. Kalt');
+  _barChart('we-ch-regen',  j, 'lift_trocken_vs_regen',   'Trocken vs. Regen');
+  _barChart('we-ch-sonne',  j, 'lift_sonnig_vs_bedeckt',  'Sonnig vs. Bedeckt');
+}
+
+weLaden();
+</script>
+{% endblock %}
