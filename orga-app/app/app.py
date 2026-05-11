@@ -247,6 +247,15 @@ try:
 except Exception as e:
     log.warning("HACCP-Blueprint konnte nicht geladen werden: %s", e)
 
+try:
+    from modules.orga.bestellvorschlag import create_blueprint as _bv_bp
+    app.register_blueprint(_bv_bp(), url_prefix='/orga/bestellvorschlag')
+    log.info("Orga-Bestellvorschlag-Blueprint registriert.")
+    # Modell lazy beim ersten Request trainieren (kostet ~30s).
+except Exception as e:
+    log.warning("Orga-Bestellvorschlag-Blueprint konnte nicht geladen "
+                "werden: %s", e)
+
 
 # ── Git-Commit-Hash (einmalig beim Start) ─────────────────────
 try:
