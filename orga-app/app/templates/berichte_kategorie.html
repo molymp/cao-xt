@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Bericht – Backwaren-Bedarf{% endblock %}
+{% block title %}Bericht – {{ kategorie.name }}{% endblock %}
 
 {% block extra_style %}
 <style>
@@ -68,9 +68,9 @@
 
 {% block content %}
 <div class="br-kopf">
-  <h1>🥨 Bericht: Backwaren-Bedarf</h1>
+  <h1>{{ kategorie.icon }} Bericht: {{ kategorie.name }}</h1>
   <span style="font-size:0.85rem; color:var(--text-dim,#5a7a3a);">
-    Datenbasis: WG=1 (Backwaren) · Wetter Habach · Feiertage/Schulferien Bayern
+    Wetter Habach · Feiertage/Schulferien Bayern
   </span>
 </div>
 
@@ -79,8 +79,15 @@
   <a href="{{ url_for('tagesumsatz_seite') }}">💰 Tagesumsatz</a>
   <a href="{{ url_for('monatsuebersicht_seite') }}">📅 Monatsübersicht</a>
   <a href="{{ url_for('umsatz_heatmap_seite') }}">🌡️ Umsatz-Heatmap</a>
-  <a class="aktiv" href="#">🥨 Backwaren-Bedarf</a>
+  {% for k in kategorien %}
+  <a class="{% if k.slug == kategorie.slug %}aktiv{% endif %}"
+     href="{{ url_for('berichte_kategorie_seite', slug=k.slug) }}">{{ k.icon }} {{ k.name }}</a>
+  {% endfor %}
 </div>
+
+<p style="font-size:0.85rem; color:var(--text-dim,#5a7a3a); margin-bottom:14px;">
+  {{ kategorie.beschreibung }}
+</p>
 
 <div class="br-toolbar">
   <label>Stichtag</label>
@@ -145,8 +152,10 @@
 </div>
 
 <div class="br-hinweis" style="margin-top:14px;">
-  ⓘ MAE und Korrelationen beziehen sich auf die WG „Backwaren (Bäcker)" insgesamt
-  (Sammelartikel). Sortendetail kommt mit dem CSV-Import historischer Bestellzettel.
+  ⓘ Korrelationen beziehen sich auf die gesamte Kategorie „{{ kategorie.name }}".
+  Lineare Pearson-Korrelation — schwache |r|-Werte (≪ 0,3) bedeuten nicht „kein
+  Effekt", sondern nur „kein linearer Effekt". Die Bucket-Karten oben geben oft
+  ein klareres Bild.
 </div>
 {% endblock %}
 
@@ -204,7 +213,7 @@ async function brLaden() {
   const lookback = document.getElementById('br-lookback').value;
   if (!stichtag) return;
   document.getElementById('br-stichtag-info').textContent = '⏳ lädt…';
-  const r = await fetch(`/orga/berichte/backwaren/daten`
+  const r = await fetch(`/orga/berichte/kategorie/{{ kategorie.slug }}/daten`
     + `?stichtag=${stichtag}&fenster=${fenster}&lookback=${lookback}`
     + (wt !== '' ? `&wochentag=${wt}` : ''));
   const j = await r.json();

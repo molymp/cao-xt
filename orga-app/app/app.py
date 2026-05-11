@@ -738,7 +738,13 @@ def _parse_datum(s: str | None, fallback: date) -> date:
 @app.get('/orga/berichte')
 def berichte_seite():
     """Übersichtsseite CFO-Berichte."""
-    return render_template('berichte.html')
+    try:
+        from modules.orga.bestellvorschlag import kategorie as _kat
+        kategorien = _kat.alle()
+    except Exception:
+        kategorien = []
+    return render_template('berichte.html',
+                           bericht_kategorien=kategorien)
 
 
 # ── Tagesumsatz ────────────────────────────────────────────────
@@ -894,20 +900,40 @@ def umsatz_heatmap_export():
                      download_name=f'umsatz_heatmap_{von}_{bis}.csv')
 
 
-# ── Backwaren-Bedarf (Reporting) ───────────────────────────────
+# ── Verzehr-Berichte (Reporting Kategorien) ────────────────────
 
 @app.get('/orga/berichte/backwaren')
 def berichte_backwaren_seite():
-    """Visualisierung Wetter/Ferien/Feiertage-Effekte auf den
-    Backwaren-Umsatz um einen Stichtag herum."""
+    """Backwaerts-Kompatibilitaet — Weiterleitung auf neue Kategorie-Route."""
+    qs = request.query_string.decode('utf-8')
+    suffix = ('?' + qs) if qs else ''
+    return redirect('/orga/berichte/kategorie/backwaren' + suffix)
+
+
+@app.get('/orga/berichte/kategorie/<string:slug>')
+def berichte_kategorie_seite(slug: str):
+    """Visualisierung Wetter/Ferien/Feiertage-Effekte auf den Umsatz
+    einer Bericht-Kategorie (Backwaren, Heißgetränke, Eis usw.)."""
+    from modules.orga.bestellvorschlag import kategorie as _kat
+    k = _kat.holen(slug)
+    if not k:
+        return _abort_404_fuer_slug(slug)
     stichtag = _parse_datum(request.args.get('stichtag'),
                              date.today() - timedelta(days=7))
-    return render_template('berichte_backwaren.html', stichtag=stichtag)
+    return render_template('berichte_kategorie.html',
+                           kategorie=k,
+                           kategorien=_kat.alle(),
+                           stichtag=stichtag)
 
 
-@app.get('/orga/berichte/backwaren/daten')
-def berichte_backwaren_daten():
-    """JSON-Daten fuer den Backwaren-Bericht.
+def _abort_404_fuer_slug(slug):
+    from flask import abort
+    abort(404, description=f'Bericht-Kategorie "{slug}" unbekannt.')
+
+
+@app.get('/orga/berichte/kategorie/<string:slug>/daten')
+def berichte_kategorie_daten(slug: str):
+    """JSON-Daten fuer eine Bericht-Kategorie.
 
     Query:
       stichtag     YYYY-MM-DD (Pflicht)
@@ -915,7 +941,11 @@ def berichte_backwaren_daten():
       lookback     Tage rueckwaerts fuer Scatter/Korrelation (Default 1095 = 3 J)
       wochentag    0..6 optional (filtert Lookback auf einen Wochentag)
     """
-    from modules.orga.bestellvorschlag import models as _bvm
+    from modules.orga.bestellvorschlag import kategorie as _kat
+    k = _kat.holen(slug)
+    if not k:
+        return jsonify({'ok': False,
+                        'msg': f'Unbekannte Kategorie "{slug}".'}), 404
     try:
         sti_str = request.args.get('stichtag')
         if not sti_str:
@@ -932,12 +962,12 @@ def berichte_backwaren_daten():
     # Timeline um den Stichtag (±fenster Tage)
     tl_von = stichtag - timedelta(days=fenster)
     tl_bis = stichtag + timedelta(days=fenster)
-    timeline = list(reversed(_bvm.tagesdaten(tl_von, tl_bis)))
+    timeline = list(reversed(_kat.tagesdaten_kategorie(k, tl_von, tl_bis)))
 
     # Lookback-Range (fuer Scatter + Korrelation + Vergleich)
     lb_von = stichtag - timedelta(days=lookback)
     lb_bis = stichtag
-    lookback_zeilen = _bvm.tagesdaten(lb_von, lb_bis)
+    lookback_zeilen = _kat.tagesdaten_kategorie(k, lb_von, lb_bis)
     if wt_filt is not None:
         lookback_zeilen = [r for r in lookback_zeilen
                             if r['wochentag'] == wt_filt]
@@ -1017,6 +1047,12 @@ def berichte_backwaren_daten():
 
     return jsonify({
         'ok': True,
+        'kategorie': {
+            'slug':         k['slug'],
+            'name':         k['name'],
+            'icon':         k['icon'],
+            'beschreibung': k['beschreibung'],
+        },
         'stichtag': {
             'datum':         stichtag.isoformat(),
             'wochentag':     stichtag.weekday(),
