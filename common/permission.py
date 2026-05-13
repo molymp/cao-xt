@@ -88,9 +88,18 @@ def run_migration() -> None:
 
 
 # Initialer Objekt-Katalog laut Release-Plan §5.4.
-# Weitere Orga-Objekte werden pro Sidebar-Eintrag ergaenzt (TODO, Phase 7).
+#
+# Pflege: idempotent — neue Objekte koennen jederzeit am Ende der Liste
+# ergaenzt werden, der naechste App-Start ruft seed_objekte() auf, das
+# INSERT IGNORE schreibt nur neue Zeilen.
+#
+# Granularitaet: ein Permission-Objekt pro Sidebar-Eintrag / sinnvolle
+# Funktionsgruppe. Beim Setzen von "LESE_PFLEGE": Sichten sollten LESEN
+# kriegen, Aenderungen brauchen PFLEGEN.
 _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
     # (OBJEKT_KEY, APP, BEZEICHNUNG, BESCHREIBUNG, UNTERSCHEIDUNG)
+
+    # ── KIOSK ─────────────────────────────────────────────────
     ('kiosk.zugriff',          'KIOSK',
      'Kiosk – Zugriff',
      'Grund-Zugriff auf die Kiosk-App.', 'KEINE'),
@@ -107,6 +116,7 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Kiosk – Stempeluhr',
      'Zeiterfassungs-Stempeluhr am Kiosk.', 'KEINE'),
 
+    # ── KASSE ─────────────────────────────────────────────────
     ('kasse.zugriff',          'KASSE',
      'Kasse – Zugriff',
      'Grund-Zugriff auf die Kassen-App.', 'KEINE'),
@@ -117,6 +127,7 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Kasse – Einstellungen',
      'Kasse-Einstellungen (Drucker, Terminal).', 'KEINE'),
 
+    # ── ORGA ──────────────────────────────────────────────────
     ('orga.zugriff',           'ORGA',
      'Orga – Zugriff',
      'Grund-Zugriff auf die Orga-App (Dashboard + Basis-Navigation).',
@@ -126,40 +137,163 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Artikel-Suche und Detail-Ansicht.', 'KEINE'),
     ('orga.preispflege',       'ORGA',
      'Orga – Preispflege',
-     'Artikel-VK-Preise und Kalkulation bearbeiten.', 'KEINE'),
+     'Artikel-VK-Preise und Kalkulation bearbeiten.', 'LESE_PFLEGE'),
     ('orga.personal.mitarbeiter', 'ORGA',
      'Orga – Personal: Mitarbeiter',
      'Stammdaten der Mitarbeiter (Personalnummer, Kontakt, Urlaub).',
-     'KEINE'),
+     'LESE_PFLEGE'),
     ('orga.schichtplan',       'ORGA',
      'Orga – Personal: Schichtplan',
-     'Schichtplan je Kalenderwoche. Lese-/Pflege-Trennung '
-     '(Mitarbeiter sehen, Ladenleitung pflegt).',
+     'Schichtplan je Kalenderwoche.',
      'LESE_PFLEGE'),
     ('orga.personal.schichten', 'ORGA',
      'Orga – Personal: Schichten',
      'Vergangene und gebuchte Schichten (Zeiterfassung).',
-     'KEINE'),
+     'LESE_PFLEGE'),
     ('orga.personal.abwesenheiten', 'ORGA',
      'Orga – Personal: Abwesenheiten',
      'Urlaub, Krankheit, Sonderurlaub – Kalender-Ansicht.',
-     'KEINE'),
+     'LESE_PFLEGE'),
     ('orga.personal.arbeitszeitkonten', 'ORGA',
      'Orga – Personal: Arbeitszeitkonten',
      'Stunden-Salden, Ueberstunden, Urlaubs-Konten.',
-     'KEINE'),
+     'LESE_PFLEGE'),
     ('orga.datev_export',      'ORGA',
      'Orga – DATEV-Export',
      'Buchungssaetze nach DATEV exportieren.', 'KEINE'),
     ('orga.reporting',         'ORGA',
      'Orga – Reporting',
-     'Reporting-Dashboards (Umsatz, KPIs).', 'KEINE'),
+     'Reporting-Dashboards (Umsatz, KPIs, Wettereffekt, '
+     'Faktoren-Heatmap, Kategorie-Berichte).', 'KEINE'),
+    ('orga.betriebserfolg',    'ORGA',
+     'Orga – Reporting: Betriebserfolg',
+     'Monatliche Betriebserfolgsmessung — Umsatz, MAI, Personalkosten, '
+     'Rohertrag, Blitz-Ertragsrechnung, Hochrechnung. Inkl. Editor '
+     'fuer Verderb/MA-Std/Krankstd/Fixkosten und Konfig-Quoten.',
+     'LESE_PFLEGE'),
     ('orga.haccp',             'ORGA',
      'Orga – Hygiene/HACCP',
      'HACCP-Dashboard, Alarme, Sichtkontrolle.', 'KEINE'),
     ('orga.handbuch',          'ORGA',
      'Orga – Handbuch',
-     'Internes Handbuch (Lesen/Editieren).', 'KEINE'),
+     'Internes Handbuch (Lesen/Editieren).', 'LESE_PFLEGE'),
+    ('orga.bestellwesen',      'ORGA',
+     'Orga – Bestellwesen',
+     'Bestellungen, Wareneingaenge, Einkaeufe (EK-Rechnungen), '
+     'Storno- und Buchen-Workflows.', 'LESE_PFLEGE'),
+    ('orga.bestellvorschlag',  'ORGA',
+     'Orga – Bestellvorschlag',
+     'Backwaren-Bedarfsprognose (Luidl): Historie + Wetter + Feiertage. '
+     'Vorhersage und Bestellzettel-Vorschlag.', 'KEINE'),
+    ('orga.banking',           'ORGA',
+     'Orga – Banking (Hibiscus)',
+     'Bankkonten-Uebersicht, Umsaetze, SEPA-Sammelueberweisungen, '
+     'Reconcile mit EK-Rechnungen.', 'LESE_PFLEGE'),
+
+    # ── ADMIN ─────────────────────────────────────────────────
+    ('admin.zugriff',          'ADMIN',
+     'Admin – Zugriff',
+     'Grund-Zugriff auf die Admin-App (Dashboard + Basis-Navigation).',
+     'KEINE'),
+
+    # System (technische Wartung)
+    ('admin.system.apps',      'ADMIN',
+     'Admin – System: App-Manager',
+     'Status, Start/Stop von Admin/Orga/Kasse/Kiosk-Apps.', 'LESE_PFLEGE'),
+    ('admin.system.drucker',   'ADMIN',
+     'Admin – System: Drucker',
+     'Drucker-Stammdaten und Test-Druck.', 'LESE_PFLEGE'),
+    ('admin.system.terminals', 'ADMIN',
+     'Admin – System: Terminals',
+     'Terminal-Registry, Drucker-Zuordnung.', 'LESE_PFLEGE'),
+    ('admin.system.tse',       'ADMIN',
+     'Admin – System: TSE',
+     'TSE-Status (KassenSichV).', 'LESE_PFLEGE'),
+    ('admin.system.db_config', 'ADMIN',
+     'Admin – System: DB-Konfiguration',
+     'Datenbank-Verbindung (caoxt.ini).', 'LESE_PFLEGE'),
+    ('admin.system.haccp_poller', 'ADMIN',
+     'Admin – System: HACCP-Poller',
+     'HACCP-Temperatur-Poller-Konfig.', 'LESE_PFLEGE'),
+    ('admin.system.einkauf_poller', 'ADMIN',
+     'Admin – System: Einkauf-Poller',
+     'Einkauf-Email-Poller (Gmail OAuth, Cron-Intervall).',
+     'LESE_PFLEGE'),
+    ('admin.system.mitarbeiter', 'ADMIN',
+     'Admin – System: Mitarbeiter',
+     'Admin-System-Mitarbeiter (Login, Rolle in CAO-Gruppen).',
+     'LESE_PFLEGE'),
+    ('admin.system.updates',   'ADMIN',
+     'Admin – System: Updates',
+     'Software-Updates ausspielen.', 'LESE_PFLEGE'),
+
+    # Dorfkern-Konfiguration
+    ('admin.dorfkern.konfig',  'ADMIN',
+     'Admin – Dorfkern: Konfiguration',
+     'Allgemeine Dorfkern-Konfiguration (Mandant, Bundesland etc.).',
+     'LESE_PFLEGE'),
+    ('admin.dorfkern.terminals', 'ADMIN',
+     'Admin – Dorfkern: Terminal-Verwaltung',
+     'Terminal-Konfiguration aus Dorfkern-Sicht.', 'LESE_PFLEGE'),
+    ('admin.dorfkern.aktivierungen', 'ADMIN',
+     'Admin – Dorfkern: App-Aktivierungen',
+     'Welche Apps sind freigeschaltet (Lizenzierung).',
+     'LESE_PFLEGE'),
+    ('admin.dorfkern.rechte',  'ADMIN',
+     'Admin – Dorfkern: Rechte-Editor',
+     'Permission-Objekte und Rollen-Rechte verwalten. '
+     'Kritisches Recht — wer hier PFLEGEN hat, kann jede Rolle '
+     'umkonfigurieren.', 'LESE_PFLEGE'),
+    ('admin.dorfkern.einstellungen', 'ADMIN',
+     'Admin – Dorfkern: Einstellungen',
+     'Allgemeine Einstellungen (XT_EINSTELLUNGEN) - z.B. '
+     'Betriebserfolg-Quoten, Personal-Bundesland.', 'LESE_PFLEGE'),
+    ('admin.dorfkern.benachrichtigungen', 'ADMIN',
+     'Admin – Dorfkern: Benachrichtigungen',
+     'Email-/Push-Benachrichtigungen konfigurieren.', 'LESE_PFLEGE'),
+    ('admin.dorfkern.funktionen', 'ADMIN',
+     'Admin – Dorfkern: Funktionen / Feature-Toggles',
+     'Optionale Features ein-/ausschalten.', 'LESE_PFLEGE'),
+    ('admin.dorfkern.feiertage', 'ADMIN',
+     'Admin – Dorfkern: Feiertage',
+     'Feiertage je Bundesland pflegen und syncen.', 'LESE_PFLEGE'),
+    ('admin.dorfkern.handbuch', 'ADMIN',
+     'Admin – Dorfkern: Handbuch',
+     'Handbuch-Editor (Markdown).', 'LESE_PFLEGE'),
+
+    # Stammdaten (CAO-Sicht). Sammelobjekt + Mittagstisch separat,
+    # weil das pflegelastig ist.
+    ('admin.stammdaten',       'ADMIN',
+     'Admin – Stammdaten (CAO)',
+     'CAO-Stammdaten — Mengeneinheiten, Zahlungsarten, Lieferarten, '
+     'Laender, Adressgruppen, Warengruppen, Kontenrahmen, '
+     'Firmenbankkonten, Firma, Artikelattribute, Nummernkreise, '
+     'Exporte, Binaerdaten. LESEN = Listen einsehen, PFLEGEN = anlegen/'
+     'aendern/loeschen.', 'LESE_PFLEGE'),
+    ('admin.stammdaten.mittagstisch', 'ADMIN',
+     'Admin – Stammdaten: Mittagstisch',
+     'Mittagstisch-Karte konfigurieren (Sonderfall, oft taeglich '
+     'gepflegt).', 'LESE_PFLEGE'),
+
+    # Artikel (Bilder, Bereinigung)
+    ('admin.artikel',          'ADMIN',
+     'Admin – Artikel',
+     'Artikel-Verwaltung in der Admin-App (Bilder hochladen / '
+     'loeschen, Stamm-Bereinigung).', 'LESE_PFLEGE'),
+
+    # Einkauf (Lieferanten + Bestellbestaetigungen)
+    ('admin.einkauf.lieferanten', 'ADMIN',
+     'Admin – Einkauf: Lieferanten',
+     'Lieferanten-Stammdaten, Web-Zugaenge (Username/Pwd), '
+     'Email-Patterns.', 'LESE_PFLEGE'),
+    ('admin.einkauf.bestellungen', 'ADMIN',
+     'Admin – Einkauf: Bestellbestaetigungen',
+     'Eingegangene Bestellbestaetigungen sichten, Positionen pruefen, '
+     'CAO-Sync ausloesen.', 'LESE_PFLEGE'),
+    ('admin.einkauf.oauth',    'ADMIN',
+     'Admin – Einkauf: Gmail-OAuth',
+     'Gmail-OAuth-Token holen/loeschen (für Bestellbestaetigungs-'
+     'Email-Polling).', 'LESE_PFLEGE'),
 ]
 
 
