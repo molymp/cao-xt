@@ -55,6 +55,8 @@ app.context_processor(_perm_ctx)
 # Nur URL-Sektionen mit eigenem Permission-Objekt (Dashboard/Home
 # zaehlen als 'orga.zugriff' und werden per Default gecheckt).
 _ORGA_PERMISSION_MAP: list[tuple[str, str]] = [
+    # Reihenfolge ist wichtig: first-match. Spezifische Pfade vor
+    # /orga-Wurzel.
     ('/orga/preispflege',                'orga.preispflege'),
     ('/orga/datev-export',               'orga.datev_export'),
     ('/orga/personal/schichtplan',       'orga.schichtplan'),
@@ -64,6 +66,11 @@ _ORGA_PERMISSION_MAP: list[tuple[str, str]] = [
     ('/orga/personal',                   'orga.personal.mitarbeiter'),
     ('/orga/haccp',                      'orga.haccp'),
     ('/orga/handbuch',                   'orga.handbuch'),
+    ('/orga/bestellwesen',               'orga.bestellwesen'),
+    ('/orga/banking',                    'orga.banking'),
+    ('/orga/bestellvorschlag',           'orga.bestellvorschlag'),
+    ('/orga/berichte/betriebserfolg',    'orga.betriebserfolg'),
+    ('/orga/berichte',                   'orga.reporting'),
     ('/orga',                            'orga.artikel'),
     ('/reporting',                       'orga.reporting'),
 ]
