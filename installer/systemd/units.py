@@ -380,15 +380,15 @@ def _cli() -> int:
     p.add_argument('--install-root', default='',
                    help='Installations-Root (Default je nach Modus+Instanz)')
     p.add_argument('--user',  default='',
-                   help='Service-User (nur system; Default: dorfkern[-<instance>])')
+                   help=f'Service-User (nur system; Default: {DEFAULT_USER})')
     p.add_argument('--group', default='',
-                   help='Service-Group (nur system; Default: dorfkern[-<instance>])')
+                   help=f'Service-Group (nur system; Default: {DEFAULT_GROUP})')
     args = p.parse_args()
 
     install_root = args.install_root or _default_install_root(args.mode,
                                                                 args.instance_name)
-    user  = args.user  or systemd_prefix(args.instance_name)
-    group = args.group or systemd_prefix(args.instance_name)
+    user  = args.user  or DEFAULT_USER
+    group = args.group or DEFAULT_GROUP
 
     rendered = render_all(
         mode=args.mode,

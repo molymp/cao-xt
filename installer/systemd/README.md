@@ -207,7 +207,7 @@ Was sich pro Instanz unterscheidet (Suffix = der gewählte Instanz-Name):
 | Sache | Default (leer) | Instanz `prod` | Instanz `dev` |
 |---|---|---|---|
 | Install-Pfad | `/opt/dorfkern` | `/opt/dorfkern-prod` | `/opt/dorfkern-dev` |
-| System-User | `dorfkern` | `dorfkern-prod` | `dorfkern-dev` |
+| **System-User** | **`dorfkern`** | **`dorfkern`** | **`dorfkern`** |
 | systemd-Target | `dorfkern.target` | `dorfkern-prod.target` | `dorfkern-dev.target` |
 | Service-Units | `dorfkern-admin.service`, … | `dorfkern-prod-admin.service`, … | `dorfkern-dev-admin.service`, … |
 | `/var/log` | `/var/log/dorfkern` | `/var/log/dorfkern-prod` | `/var/log/dorfkern-dev` |
@@ -216,6 +216,12 @@ Was sich pro Instanz unterscheidet (Suffix = der gewählte Instanz-Name):
 | Update-Lock | `/var/lock/dorfkern-update.lock` | `/var/lock/dorfkern-prod-update.lock` | `/var/lock/dorfkern-dev-update.lock` |
 | Port admin | 5004 (Base 5000) | 5004 (Base 5000) | 5104 (Base 5100) |
 | Port kiosk | 5001 | 5001 | 5101 |
+
+Der **System-User ist immer `dorfkern`**, auch bei Multi-Instanz. FS-
+Isolation zwischen Instanzen wäre kein echter Sicherheitsgewinn — die
+wirkliche Trennung läuft über die DB-Credentials in der jeweiligen
+`caoxt.ini`. So bleibt der Operator-Aufwand minimal: ein User pflegen,
+ein sudoers-Snippet, gemeinsame Backup-Rotation.
 
 **Beispiel: PROD-Setup + parallele DEV-Instanz**
 

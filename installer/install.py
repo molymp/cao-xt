@@ -136,9 +136,9 @@ def phase0_install_type(non_interactive: bool = False) -> dict:
     print()
     print("    3) Dienst systemweit")
     print("       systemd-System-Units in /etc/systemd/system/. Apps laufen")
-    print("       unter dem System-User 'dorfkern[-<instance>]'. Klassische")
-    print("       PROD-Installation; setzt voraus, dass dieser Installer mit")
-    print("       sudo gestartet wurde.")
+    print("       immer unter dem System-User 'dorfkern' (auch bei Multi-")
+    print("       Instanz). Klassische PROD-Installation; setzt voraus, dass")
+    print("       dieser Installer mit sudo gestartet wurde.")
     print()
     choice = _ask("Auswahl (1/2/3)", "1")
     install_type = {

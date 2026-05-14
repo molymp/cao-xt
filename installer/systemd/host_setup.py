@@ -327,10 +327,15 @@ def install_system(install_root: str, *,
         print_fn("  ⚠  Nicht als root gestartet — verwende sudo -n. "
                  "Falls kein passwortloses sudo, bricht das gleich ab.")
 
+    # Default-User ist IMMER 'dorfkern' — auch bei Multi-Instanz.
+    # Die Trennung zwischen Instanzen laeuft ueber Pfade/Unit-Namen/
+    # Ports/DB-Credentials, nicht ueber FS-Berechtigung. So bleibt
+    # der Operator-Aufwand klein (ein User pflegen, ein sudoers-
+    # Snippet, gemeinsame Backup-Rotation).
     if not user:
-        user = units.systemd_prefix(instance_name)
+        user = units.DEFAULT_USER
     if not group:
-        group = user
+        group = units.DEFAULT_GROUP if user == units.DEFAULT_USER else user
 
     if not _ensure_system_user(user, install_root, print_fn=print_fn):
         return False
@@ -395,9 +400,9 @@ def regenerate_system(install_root: str, *,
     bleibt unangetastet (App-Auswahl erhalten).
     """
     if not user:
-        user = units.systemd_prefix(instance_name)
+        user = units.DEFAULT_USER
     if not group:
-        group = user
+        group = units.DEFAULT_GROUP if user == units.DEFAULT_USER else user
 
     print_fn("  → System-Service-Units rendern …")
     rendered = units.render_all(mode='system',
