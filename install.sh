@@ -61,19 +61,35 @@ fi
 
 # ── Python-Version prüfen ─────────────────────────────────────
 echo "─── Systemvoraussetzungen prüfen ───────────────────────────"
-if ! command -v python3 &>/dev/null; then
+# PYTHON-Env-Var erlaubt explizite Wahl (z.B. unter sudo, wo pyenv-
+# Pythons nicht im PATH stehen):
+#   sudo PYTHON=/home/kasse/.pyenv/versions/3.11.9/bin/python3 ./install.sh
+# Falls nicht gesetzt: erst nach python3.11 / python3.10 suchen
+# (bevorzugt explizite Minor-Versionen), dann auf 'python3' fallen.
+PYTHON_BIN="${PYTHON:-}"
+if [ -z "$PYTHON_BIN" ]; then
+    for cand in python3.13 python3.12 python3.11 python3.10 python3; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            PYTHON_BIN="$(command -v "$cand")"
+            break
+        fi
+    done
+fi
+if [ -z "$PYTHON_BIN" ] || ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     fail "python3 nicht gefunden. Bitte Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+ installieren."
 fi
 
-PYTHON_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYTHON_VER=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 PYTHON_MAJOR=$(echo "$PYTHON_VER" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VER" | cut -d. -f2)
 
 if [ "$PYTHON_MAJOR" -lt "$MIN_PYTHON_MAJOR" ] || \
    ([ "$PYTHON_MAJOR" -eq "$MIN_PYTHON_MAJOR" ] && [ "$PYTHON_MINOR" -lt "$MIN_PYTHON_MINOR" ]); then
-    fail "Python ${PYTHON_VER} zu alt. Benötigt: ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+"
+    fail "Python ${PYTHON_VER} (${PYTHON_BIN}) zu alt. Benötigt: ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}+
+        Falls eine neuere Version unter anderem Pfad liegt (z.B. pyenv):
+          sudo PYTHON=/pfad/zu/python3.11 ./install.sh"
 fi
-ok "Python ${PYTHON_VER}"
+ok "Python ${PYTHON_VER} (${PYTHON_BIN})"
 
 # ── lsof prüfen (für Port-Management) ─────────────────────────
 if command -v lsof &>/dev/null; then
@@ -86,8 +102,8 @@ fi
 echo ""
 echo "─── Virtuelle Python-Umgebung ──────────────────────────────"
 if [ ! -d "$VENV_DIR" ]; then
-    echo "  Erstelle virtualenv in .venv …"
-    python3 -m venv "$VENV_DIR"
+    echo "  Erstelle virtualenv in .venv (mit $PYTHON_BIN) …"
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
     ok "Virtualenv erstellt"
 else
     ok "Virtualenv vorhanden: .venv"
