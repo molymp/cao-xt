@@ -14,6 +14,16 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from .auth import backoffice_required
 from . import models as m
 from . import stundenzettel_pdf as _sz_pdf
+from common import permission as _permission
+
+
+def _kann_pflegen_schichtplan() -> bool:
+    """True wenn der aktuelle MA das Recht 'orga.schichtplan' / PFLEGEN hat.
+    Wird in die Schichtplan-Templates durchgereicht, damit Edit-Buttons
+    fuer reine LESEN-Rollen ausgeblendet werden koennen."""
+    ma_id = session.get('ma_id')
+    return bool(ma_id and _permission.hat_recht(ma_id, 'orga.schichtplan',
+                                                'PFLEGEN'))
 
 
 bp = Blueprint('orga_personal', __name__, template_folder=None)
@@ -1316,8 +1326,9 @@ def _kw_optionen(referenz_jahr: int) -> list[dict]:
 
 
 @bp.get('/schichtplan/')
-@backoffice_required
 def schichtplan():
+    # Permission-Check via app.before_request (orga.schichtplan / LESEN)
+
     montag = _parse_woche(request.args.get('woche'))
     sonntag = montag + timedelta(days=6)
     tage = [montag + timedelta(days=i) for i in range(7)]
@@ -1425,6 +1436,7 @@ def schichtplan():
         woche_gesperrt=(status['STATUS'] == 'freigegeben'),
         woche_log=log,
         vorlagen=vorlagen,
+        kann_pflegen=_kann_pflegen_schichtplan(),
     )
 
 
@@ -1436,8 +1448,9 @@ def _redirect_schichtplan(montag_raw: str, rueck: str):
 
 
 @bp.post('/schichtplan/ziel-umsatz')
-@backoffice_required
 def schichtplan_ziel_umsatz_setzen():
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Setzt den DORFKERN_KONFIG-Eintrag schichtplan.umsatz_pro_ma_stunde
     auf einen neuen Ganzzahl-Wert. Wird vom Bonus-Banner inline-Editor
     aufgerufen, JSON-Antwort fuer schnelles AJAX.
@@ -1460,8 +1473,9 @@ def schichtplan_ziel_umsatz_setzen():
 
 
 @bp.post('/schichtplan/zuordnung')
-@backoffice_required
 def schichtplan_zuordnung_anlegen():
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Akzeptiert ein ODER mehrere pers_id-Werte (getlist) – das
     Click-to-assign-Modal kann mehrere Mitarbeitende gleichzeitig auf
     dieselbe Schicht zuweisen.
@@ -1503,8 +1517,9 @@ def schichtplan_zuordnung_anlegen():
 
 
 @bp.get('/schichtplan/raster')
-@backoffice_required
 def schichtplan_raster():
+    # Permission-Check via app.before_request (orga.schichtplan / LESEN)
+
     """Wochenansicht mit Uhrzeit auf der Y-Achse und Tagen auf der X-Achse.
     Nur fix-Schichten sind im Raster platziert (flex/aufgabe unten als Liste)."""
     montag = _parse_woche(request.args.get('woche'))
@@ -1729,12 +1744,14 @@ def schichtplan_raster():
         feiertage=feiertage,
         umsatz_overlay=umsatz_overlay,
         bonus_summary=bonus_summary,
+        kann_pflegen=_kann_pflegen_schichtplan(),
     )
 
 
 @bp.post('/schichtplan/zuordnung/<int:rec_id>/loeschen')
-@backoffice_required
 def schichtplan_zuordnung_loeschen(rec_id: int):
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     montag_raw = request.form.get('woche', '')
     rueck = request.form.get('rueck', 'matrix')
     try:
@@ -1747,8 +1764,9 @@ def schichtplan_zuordnung_loeschen(rec_id: int):
 
 
 @bp.post('/schichtplan/kopieren')
-@backoffice_required
 def schichtplan_kopieren():
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Kopiert alle Zuordnungen einer Quell-KW in eine Ziel-KW (Zukunft).
     Ziel muss leer sein (sonst Abbruch). Warnungen bei Urlaub/Austritt/Eintritt
     werden als Flash-Meldung angezeigt."""
@@ -1777,8 +1795,9 @@ def schichtplan_kopieren():
 
 
 @bp.post('/schichtplan/vorlage/speichern')
-@backoffice_required
 def schichtplan_vorlage_speichern():
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Speichert die Zuordnungen einer Quell-KW als Vorlage."""
     quelle_raw = request.form.get('woche', '')
     name = request.form.get('name', '').strip()
@@ -1796,8 +1815,9 @@ def schichtplan_vorlage_speichern():
 
 
 @bp.post('/schichtplan/vorlage/anwenden')
-@backoffice_required
 def schichtplan_vorlage_anwenden():
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Wendet eine Vorlage auf die Ziel-KW an (Ziel muss leer, in Zukunft)."""
     quelle_raw = request.form.get('woche', '')
     ziel_raw = request.form.get('ziel_woche', '')
@@ -1826,8 +1846,9 @@ def schichtplan_vorlage_anwenden():
 
 
 @bp.post('/schichtplan/vorlage/<int:rec_id>/loeschen')
-@backoffice_required
 def schichtplan_vorlage_loeschen(rec_id: int):
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Loescht eine Vorlage inkl. aller Zuordnungen."""
     quelle_raw = request.form.get('woche', '')
     rueck = request.form.get('rueck', 'matrix')
@@ -1843,8 +1864,9 @@ def schichtplan_vorlage_loeschen(rec_id: int):
 
 
 @bp.post('/schichtplan/freigabe')
-@backoffice_required
 def schichtplan_freigabe():
+    # PFLEGEN-Check via app.before_request (POST auf orga.schichtplan)
+
     """Toggelt den Wochen-Status zwischen 'offen' und 'freigegeben'.
     Aktion kommt aus dem Form-Feld 'aktion' ('freigeben' | 'entsperren').
     Bei 'freigeben' werden zusaetzlich die MA-Benachrichtigungsmails versendet

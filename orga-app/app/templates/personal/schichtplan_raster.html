@@ -259,6 +259,7 @@
       Planung läuft – Zuordnungen änderbar.
     {% endif %}
   </span>
+  {% if kann_pflegen %}
   <button type="button" class="btn btn-secondary"
           onclick="oeffneVorlagen()">Vorlagen…</button>
   <form method="post" action="{{ url_for('orga_personal.schichtplan_freigabe') }}"
@@ -273,8 +274,14 @@
       <button type="submit" class="btn">Freigeben</button>
     {% endif %}
   </form>
+  {% else %}
+  <span class="status-meta" style="font-style: italic; color: var(--grau-mitte);">
+    (Nur-Lesen-Modus – keine Pflege-Berechtigung)
+  </span>
+  {% endif %}
 </div>
 
+{% if kann_pflegen %}
 <div id="vorlagen-overlay" class="overlay-bg" onclick="if(event.target===this)schliesseVorlagen()">
   <div class="overlay-sheet" style="max-width: 560px;">
     <div class="handle"></div>
@@ -400,6 +407,7 @@ function setVorlageZielRelativ(tage) {
     basis.toISOString().slice(0, 10);
 }
 </script>
+{% endif %}{# /kann_pflegen Vorlagen-Overlay #}
 
 <div class="msg msg-info" style="font-weight: 500;">
   Zeitraster: Fix-Schichten als Bloecke auf der Zeitachse, Flex-Schichten
@@ -412,8 +420,10 @@ function setVorlageZielRelativ(tage) {
     <div class="bb-label">Zielumsatz / MA-Stunde</div>
     <div class="bb-wert" id="bb-ziel-anzeige" data-aktuell="{{ bonus_summary.ziel_pro_ma_h|int }}">
       <span id="bb-ziel-wert">{{ bonus_summary.ziel_pro_ma_h|int }}</span>&nbsp;€
+      {% if kann_pflegen %}
       <button type="button" class="bb-edit-btn" onclick="zielBearbeiten()"
               title="Ziel-Umsatz aendern">✎</button>
+      {% endif %}
     </div>
     <div id="bb-ziel-edit" style="display:none;">
       <div style="display:flex; gap:6px; align-items:center;">
@@ -538,7 +548,7 @@ async function zielSpeichern() {
       {% set ist_heute = tag == heute %}
       <div class="tag-spalte {% if ist_heute %}heute{% endif %}"
            data-datum="{{ tag.isoformat() }}"
-           {% if not woche_gesperrt %}onclick="leereZelleKlick(event, this)"{% endif %}>
+           {% if kann_pflegen and not woche_gesperrt %}onclick="leereZelleKlick(event, this)"{% endif %}>
         {# Heatmap-Unterlage: pro Stunde ein Streifen, der die
            Soll-/Ist-Differenz farblich anzeigt. Liegt VOR den
            Schicht-Bloecken im DOM, damit die Bloecke darueber liegen. #}
@@ -565,7 +575,7 @@ async function zielSpeichern() {
                data-bezeichnung="{{ gr.BEZEICHNUNG }}"
                data-zeit="{{ zeit(gr.STARTZEIT) }}–{{ zeit(gr.ENDZEIT) }}"
                data-mas='[{% for ma in gr.mas %}{% if ma %}{"rec_id":{{ ma.REC_ID }},"pers_id":{{ ma.PERS_ID }},"name":"{{ ma.VNAME }} {{ ma.NAME }}"}{% if not loop.last %},{% endif %}{% endif %}{% endfor %}]'
-               onclick="oeffneSchichtOverlay(this)"
+               {% if kann_pflegen %}onclick="oeffneSchichtOverlay(this)"{% endif %}
                style="
                top: {{ top_px }}px; height: {{ hoehe }}px;
                background: {{ gr.FARBE }};">
@@ -637,6 +647,7 @@ async function zielSpeichern() {
 </div>
 {% endif %}
 
+{% if kann_pflegen %}
 <!-- MA-Edit-Overlay fuer Schicht-Blöcke -->
 <div id="schicht-overlay" class="overlay-bg"
      onclick="if(event.target===this)schliesseSchichtOverlay()">
@@ -801,7 +812,8 @@ async function zielSpeichern() {
                     font-variant-numeric: tabular-nums; }
 .nz-chip.nz-schicht-chip.passend { border-color: var(--gruen-mitte); }
 </style>
-{% endif %}
+{% endif %}{# /not woche_gesperrt -- neuzu-overlay + styles #}
+{% endif %}{# /kann_pflegen -- schicht-overlay + neuzu-overlay #}
 
 <script>
 const CSRF_WOCHE = '{{ montag.isoformat() }}';
