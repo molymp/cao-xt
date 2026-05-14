@@ -275,11 +275,19 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Mittagstisch-Karte konfigurieren (Sonderfall, oft taeglich '
      'gepflegt).', 'LESE_PFLEGE'),
 
-    # Artikel (Bilder, Bereinigung)
+    # Artikel (Bilder, Kategorien, Vorlauf — Backwaren-Pflege)
+    # In der Sidebar liegt das unter „Daten → 🥐 Backwaren".
     ('admin.artikel',          'ADMIN',
-     'Admin – Artikel',
-     'Artikel-Verwaltung in der Admin-App (Bilder hochladen / '
-     'loeschen, Stamm-Bereinigung).', 'LESE_PFLEGE'),
+     'Admin – Daten: Backwaren-Pflege',
+     'Backwaren-Anzeige im Kiosk-Frontend pflegen (Bilder, '
+     'Kategorien, Wochentage, Zutaten, Vorlaufzeit, Aktiv-Flag). '
+     'Sidebar: Daten → 🥐 Backwaren. Endpoint /artikel.',
+     'LESE_PFLEGE'),
+    ('admin.zeiten_import',    'ADMIN',
+     'Admin – Daten: Zeiten-Import',
+     'CSV-Import von Mitarbeiter-Arbeitszeiten. '
+     'Sidebar: Daten → 📥 Zeiten-Import. Endpoint /zeiten-import.',
+     'LESE_PFLEGE'),
 
     # Einkauf (Lieferanten + Bestellbestaetigungen)
     ('admin.einkauf.lieferanten', 'ADMIN',
@@ -300,27 +308,41 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
 def seed_objekte() -> int:
     """Uebernimmt den Start-Katalog in ``DORFKERN_PERMISSION_OBJEKT``.
 
-    ``INSERT IGNORE`` – Eintraege, die bereits existieren (etwa durch
-    Admin-UI angepasst), werden nicht ueberschrieben.
+    Code = Source of Truth: ``INSERT ... ON DUPLICATE KEY UPDATE`` —
+    Bezeichnung/Beschreibung/Unterscheidung aus ``_SEED_OBJEKTE``
+    werden bei jedem App-Start nachgezogen. Der App-Spalten-Wert wird
+    nicht überschrieben (zur Sicherheit, falls ein Object mal manuell
+    umgezogen wurde).
 
-    Returns: Anzahl neu angelegter Zeilen.
+    Returns: Anzahl Zeilen, die NEU angelegt wurden (cur.rowcount
+    liefert bei einem Update 2, bei einem Insert 1).
     """
-    anzahl = 0
+    anzahl_neu = 0
+    anzahl_update = 0
     for key, app, bez, beschr, unt in _SEED_OBJEKTE:
         try:
             with get_db_transaction() as cur:
                 cur.execute("""
-                    INSERT IGNORE INTO DORFKERN_PERMISSION_OBJEKT
+                    INSERT INTO DORFKERN_PERMISSION_OBJEKT
                       (OBJEKT_KEY, APP, BEZEICHNUNG, BESCHREIBUNG,
                        UNTERSCHEIDUNG)
                     VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                      BEZEICHNUNG    = VALUES(BEZEICHNUNG),
+                      BESCHREIBUNG   = VALUES(BESCHREIBUNG),
+                      UNTERSCHEIDUNG = VALUES(UNTERSCHEIDUNG)
                 """, (key, app, bez, beschr, unt))
-                anzahl += cur.rowcount
+                # rowcount: 1 = INSERT, 2 = UPDATE, 0 = unveraendert
+                if cur.rowcount == 1:
+                    anzahl_neu += 1
+                elif cur.rowcount == 2:
+                    anzahl_update += 1
         except Exception as exc:
             log.warning("seed_objekte: %s fehlgeschlagen: %s", key, exc)
-    if anzahl:
-        log.info("seed_objekte: %d Permission-Objekte neu angelegt.", anzahl)
-    return anzahl
+    if anzahl_neu or anzahl_update:
+        log.info("seed_objekte: %d neu, %d aktualisiert.",
+                 anzahl_neu, anzahl_update)
+    return anzahl_neu
 
 
 # ── CAO-Rollen-Lookup ─────────────────────────────────────────────────────────
