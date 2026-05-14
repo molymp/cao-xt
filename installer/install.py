@@ -133,6 +133,9 @@ def phase0_install_type(non_interactive: bool = False) -> str:
     return install_type
 
 
+_TARGET_OPT_DORFKERN = '/opt/dorfkern'
+
+
 def _validate_install_type(install_type: str, *, exit_on_error: bool) -> bool:
     """Prueft Voraussetzungen fuer den Typ. Bei Fehler optional exit().
 
@@ -146,20 +149,93 @@ def _validate_install_type(install_type: str, *, exit_on_error: bool) -> bool:
             if exit_on_error:
                 sys.exit(1)
             return False
-        # Repo sollte unter /opt/dorfkern liegen — sonst warnen.
-        # (Hartes Verschieben machen wir nicht; das soll der User selbst.)
-        if _REPO_ROOT != '/opt/dorfkern':
+        # Repo sollte unter /opt/dorfkern liegen. Wenn nicht: anbieten zu
+        # verschieben (per shutil.move = rename auf gleichem Filesystem,
+        # sonst copy+remove).
+        if _REPO_ROOT != _TARGET_OPT_DORFKERN:
             print()
-            print(f"  ⚠  Das Repo liegt unter {_REPO_ROOT!r}, nicht unter /opt/dorfkern.")
-            print("     Fuer die System-Installation ist /opt/dorfkern der erwartete")
-            print("     Pfad. Du kannst trotzdem fortfahren — die Units werden mit")
-            print("     dem aktuellen Pfad gerendert. Spaeteres Verschieben braucht")
-            print("     dann ein erneutes ./install.sh.")
+            print(f"  Das Repo liegt unter {_REPO_ROOT!r}, nicht unter "
+                  f"{_TARGET_OPT_DORFKERN!r}.")
+            print(f"  Fuer die System-Installation ist {_TARGET_OPT_DORFKERN} "
+                  "der erwartete Pfad.")
+            print()
+            if _ask_yes_no(f"Repo nach {_TARGET_OPT_DORFKERN} verschieben?", True):
+                _move_to_opt_dorfkern_and_exit()
+                # Kommt nie hierher zurueck — exit oben.
+            # Nicht verschoben → klare Warnung, weitermachen am alten Pfad.
+            print()
+            print(f"  ⚠  Weiter mit {_REPO_ROOT}. Units zeigen auf diesen Pfad;")
+            print("     wenn du das Repo spaeter doch verschieben willst, einmal")
+            print("     'sudo ./install.sh' aus dem neuen Pfad nachholen.")
             if not _ask_yes_no("Mit aktuellem Pfad fortfahren?", True):
                 if exit_on_error:
                     sys.exit(1)
                 return False
     return True
+
+
+def _move_to_opt_dorfkern_and_exit() -> None:
+    """Verschiebt _REPO_ROOT nach /opt/dorfkern und exit-0 mit Re-Start-Hinweis.
+
+    Strategie:
+      - /opt/dorfkern darf nicht existieren oder muss leer sein (sonst Abbruch
+        ohne Datenverlust).
+      - shutil.move ist atomar auf demselben Filesystem, sonst macht es
+        intern copy+remove.
+      - Im Ziel das .venv wegwerfen — die alten Shebangs zeigen auf den
+        Quellpfad und waeren nach dem Move kaputt; install.sh erstellt es
+        beim Neustart sauber neu.
+      - Cwd vor dem Move auf / wechseln, sonst hat der Python-Prozess ein
+        toten Working Directory ueber.
+      - Nicht selbst re-execen: der User soll klar sehen, was passiert,
+        und einen frischen Befehl von der neuen Stelle aus tippen.
+    """
+    import shutil
+
+    if os.path.exists(_TARGET_OPT_DORFKERN):
+        try:
+            content = os.listdir(_TARGET_OPT_DORFKERN)
+        except OSError as exc:
+            print(f"  ✗ Kann {_TARGET_OPT_DORFKERN} nicht lesen: {exc}")
+            sys.exit(1)
+        if content:
+            print(f"  ✗ {_TARGET_OPT_DORFKERN} existiert und ist nicht leer:")
+            for item in content[:10]:
+                print(f"      {item}")
+            print("  Bitte manuell aufraeumen (oder anderes Ziel waehlen),")
+            print("  dann diesen Installer erneut starten.")
+            sys.exit(1)
+        try:
+            os.rmdir(_TARGET_OPT_DORFKERN)
+        except OSError as exc:
+            print(f"  ✗ Leeres {_TARGET_OPT_DORFKERN} nicht entfernbar: {exc}")
+            sys.exit(1)
+
+    print()
+    print(f"  → Verschiebe {_REPO_ROOT} → {_TARGET_OPT_DORFKERN} …")
+    os.chdir('/')  # alten cwd freigeben, sonst stirbt er beim mv
+    try:
+        shutil.move(_REPO_ROOT, _TARGET_OPT_DORFKERN)
+    except OSError as exc:
+        print(f"  ✗ Move fehlgeschlagen: {exc}")
+        sys.exit(1)
+    print(f"  ✓ verschoben")
+
+    # Altes venv (mit kaputten Shebangs) wegwerfen
+    altes_venv = os.path.join(_TARGET_OPT_DORFKERN, '.venv')
+    if os.path.isdir(altes_venv):
+        shutil.rmtree(altes_venv, ignore_errors=True)
+        print(f"  ✓ {altes_venv} entfernt (wird beim Neustart neu angelegt)")
+
+    print()
+    print("  ──────────────────────────────────────────────")
+    print("  Installer beendet — Repo ist jetzt unter /opt/dorfkern.")
+    print("  Bitte neu starten:")
+    print()
+    print(f"      sudo {_TARGET_OPT_DORFKERN}/install.sh")
+    print("  ──────────────────────────────────────────────")
+    print()
+    sys.exit(0)
 
 
 # ─── Phase 1: DB ──────────────────────────────────────────────────────

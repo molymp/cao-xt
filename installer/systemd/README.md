@@ -5,6 +5,37 @@ Kinder — die hängen am Cgroup desjenigen, der das Skript aufgerufen hat,
 sterben mit dem Terminal und werden beim Reboot nicht wieder gestartet.
 
 Für eine dauerhaft laufende Installation gibt es zwei systemd-Modi.
+
+## Schnellster Weg: Einzeiler
+
+Auf einer frischen Maschine reicht ein Befehl. `bootstrap.sh` prüft
+Voraussetzungen (git, python3 ≥ 3.10), klont das Repo an die passende
+Stelle und startet den Installer-Dialog.
+
+**Für Produktivbetrieb** (Repo nach `/opt/dorfkern`, Dialog → Typ 3):
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/molymp/cao-xt/master/bootstrap.sh)"
+```
+
+**Für Entwicklung / User-Dienst** (Repo nach `~/dorfkern`, Dialog → Typ 1 oder 2):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/molymp/cao-xt/master/bootstrap.sh)"
+```
+
+Anderes Repo/Branch: per Env-Var `DORFKERN_REPO_URL` / `DORFKERN_REPO_BRANCH`.
+
+Wer das Repo schon hat (z. B. nach manuellem `git clone`), springt direkt:
+
+```bash
+./install.sh
+```
+
+Beide Modi treffen sich in derselben Dialog-Tabelle:
+
+## Modus-Übersicht
+
 **Beide werden im interaktiven Dialog von `./install.sh` ausgewählt**,
 nicht über CLI-Flags:
 
