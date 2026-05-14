@@ -144,10 +144,28 @@ def init_empty_db(host: str, port: int, name: str,
     return False
 
 
+def run_migrations(print_fn=print) -> None:
+    """Anwendungs-Stub fuer DB-Migrationen, gerufen vom Updater wenn
+    ``VERSION.json`` die Flag ``db_migration_required: true`` setzt.
+
+    Aktuell ist hier nichts zu tun: das Projekt verwendet noch kein
+    eigenstaendiges Migrations-Framework. Schema-Erweiterungen werden
+    bisher implizit beim Admin-App-Start angewendet (in ``common/db.py``
+    und in den Modul-Schemata: ``CREATE TABLE IF NOT EXISTS ...``).
+
+    Der Stub existiert damit der Update-Pfad nicht mit ImportError
+    abbricht, sobald jemand in der naechsten Release-VERSION.json
+    ``db_migration_required: true`` setzt. Wenn ein echtes Migrations-
+    Framework (yoyo, alembic, …) eingefuehrt wird, kommt die zentrale
+    Migration-Anwendung hier rein.
+    """
+    print_fn("  ℹ  run_migrations: kein eigenstaendiges Migrations-Framework "
+             "aktiv. Schema-Updates erfolgen implizit beim App-Start.")
+
+
 def write_ini(ini_path: str,
               host: str, port: int, name: str,
               user: str, password: str,
-              environment: str,
               active_apps: list,
               kiosk_db_name: str = '') -> None:
     """Schreibt (oder überschreibt) caoxt.ini mit den gegebenen Werten."""
@@ -172,9 +190,11 @@ def write_ini(ini_path: str,
             'db_pass': password,
         }
 
-    cfg['Umgebung'] = {
-        'xt_environment': environment,
-    }
+    # Falls eine alte [Umgebung]-Section noch in der existierenden
+    # caoxt.ini steht (aus Pre-Dorfkern-Zeiten), wegraeumen — sie wird
+    # nirgends mehr gelesen.
+    if cfg.has_section('Umgebung'):
+        cfg.remove_section('Umgebung')
 
     cfg['Installation'] = {
         'aktive_apps': ','.join(active_apps),

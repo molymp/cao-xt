@@ -1,15 +1,23 @@
 #!/bin/bash
 # ============================================================
-# install.sh – CAO-XT Installationsroutine & Update
+# install.sh – Dorfkern Installationsroutine & Update
 #
-# Prüft Systemvoraussetzungen, richtet ein virtuelles Python-
+# Prueft Systemvoraussetzungen, richtet ein virtuelles Python-
 # Environment ein und startet den interaktiven Installer.
 #
 # Verwendung:
 #   ./install.sh                   # Interaktive Installation
 #   ./install.sh --non-interactive # Automatisch (aus Umgebung / INI)
 #   ./install.sh --update          # System updaten (Fallback)
-#   ./install.sh --check-update    # Nur auf Updates prüfen
+#   ./install.sh --check-update    # Nur auf Updates pruefen
+#
+# Im interaktiven Modus fragt der Installer in Phase 0, welcher
+# Installationstyp gewuenscht ist:
+#   1) Ad-hoc                   (kein systemd, lebt mit der Login-Session)
+#   2) Dienst pro Benutzer      (systemd --user, Lingering)
+#   3) Dienst systemweit        (systemd-System-Units, braucht sudo)
+# Im non-interactive Modus kommt der Typ aus XT_INSTALL_TYPE
+# (Default: ad_hoc). Details: installer/systemd/README.md
 #
 # Referenz: HAB-355, HAB-356
 # ============================================================
@@ -33,10 +41,23 @@ fail() { echo -e "  ${RED}✗${NC}  $*"; exit 1; }
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║     CAO-XT Installationsroutine                         ║"
-echo "║     Habacher Dorfladen                                  ║"
+echo "║     Dorfkern – Vorbereitung (Python, venv, deps)        ║"
+echo "║     (vormals CAO-XT)                                    ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
+
+# ── Root-Hinweis ──────────────────────────────────────────────
+# Sudo ist nur fuer Typ 3 ("Dienst systemweit") noetig. Wer als root
+# startet und dann im Dialog Typ 1/2 waehlt, kriegt das venv unter
+# root-Ownership und (bei Typ 2) die User-Units in /root/.config — beides
+# fast immer ungewollt. Einmal warnen, weitermachen.
+if [ "$EUID" -eq 0 ]; then
+    echo -e "  ${YELLOW}⚠${NC}  Du startest als root."
+    echo -e "  ${YELLOW}⚠${NC}    → Sinnvoll nur fuer Typ 3 ('Dienst systemweit')."
+    echo -e "  ${YELLOW}⚠${NC}    → Fuer Typ 1 (Ad-hoc) oder Typ 2 (Dienst pro Benutzer)"
+    echo -e "  ${YELLOW}⚠${NC}      bitte als normaler User neu starten."
+    echo ""
+fi
 
 # ── Python-Version prüfen ─────────────────────────────────────
 echo "─── Systemvoraussetzungen prüfen ───────────────────────────"
