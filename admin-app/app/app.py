@@ -422,9 +422,13 @@ _ADMIN_PERMISSION_MAP: list[tuple[str, str]] = [
     ('/api/stammdaten/mittagstisch', 'admin.stammdaten.mittagstisch'),
     ('/stammdaten',                  'admin.stammdaten'),
     ('/api/stammdaten',              'admin.stammdaten'),
-    # Artikel
+    # Artikel = Backwaren-Pflege (Sidebar: Daten → 🥐 Backwaren)
     ('/artikel',                     'admin.artikel'),
     ('/api/artikel',                 'admin.artikel'),
+    # Zeiten-Import (Sidebar: Daten → 📥 Zeiten-Import)
+    ('/zeiten-import',               'admin.zeiten_import'),
+    # /rechte/dorfkern teilt sich das Rechte-Editor-Objekt mit /rechte
+    ('/rechte/dorfkern',             'admin.dorfkern.rechte'),
     # Einkauf
     ('/einkauf/oauth',               'admin.einkauf.oauth'),
     ('/api/einkauf/oauth',           'admin.einkauf.oauth'),
