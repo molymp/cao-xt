@@ -19,6 +19,7 @@ import config
 import db as db_modul
 from db import get_db, get_db_transaction, test_verbindung, reset_pool
 from common.auth import mitarbeiter_login_karte
+from common.permission import flask_helpers as _perm_flask_helpers
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -41,6 +42,11 @@ app.jinja_loader = ChoiceLoader([
     app.jinja_loader,
     FileSystemLoader(_COMMON_TEMPLATES),
 ])
+
+# Dorfkern-Permissions: hat_recht in Jinja-Templates verfuegbar machen
+# (Sidebar-Filtering + ausgegraute Eintraege bei fehlenden Rechten).
+_permission_required, _perm_ctx = _perm_flask_helpers()
+app.context_processor(_perm_ctx)
 
 
 # ── DB-Migrationen ──────────────────────────────────────────────

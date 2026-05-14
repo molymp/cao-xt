@@ -356,64 +356,55 @@ a { color: inherit; text-decoration: none; }
   <!-- Body -->
   <div class="body-area">
 
+    {# ── Macro: Sidebar-Item mit Permission-Check ───────────────
+       href:  Zielpfad
+       label: Anzeigetext
+       icon:  Emoji
+       key:   OBJEKT_KEY (None = kein Check, immer klickbar)
+       recht: 'LESEN' (default), 'PFLEGEN', 'BEIDES'
+
+       Bei fehlendem Recht: Klasse "ausgegraut", href="#",
+       pointer-events:none via CSS — siehe dorfkern.css. #}
+    {% macro nav_item(href, label, icon, key=None, recht='LESEN') %}
+      {% set ok = (key is none) or hat_recht(key, recht) %}
+      <a href="{% if ok %}{{ href }}{% else %}#{% endif %}"
+         class="sidebar-item
+                {% if ok and request.path == href %}aktiv{% endif %}
+                {% if not ok %}ausgegraut{% endif %}"
+         {% if not ok %}title="Keine Berechtigung ({{ key }})"
+            aria-disabled="true"{% endif %}>
+        <span class="icon">{{ icon }}</span> {{ label }}
+      </a>
+    {% endmacro %}
+
     <!-- Sidebar -->
     <nav class="sidebar">
       <div class="sidebar-section">
-        <a href="/" class="sidebar-item {% if request.path == '/' %}aktiv{% endif %}">
-          <span class="icon">📊</span> Dashboard
-        </a>
+        {{ nav_item('/', 'Dashboard', '📊', 'admin.zugriff') }}
       </div>
 
       <div class="sidebar-section-title">System</div>
       <div class="sidebar-section">
-        <a href="/db-config" class="sidebar-item {% if request.path == '/db-config' %}aktiv{% endif %}">
-          <span class="icon">🗄️</span> Datenbank
-        </a>
-        <a href="/drucker" class="sidebar-item {% if request.path == '/drucker' %}aktiv{% endif %}">
-          <span class="icon">🖨️</span> Bondrucker
-        </a>
-        <a href="/terminals" class="sidebar-item {% if request.path == '/terminals' %}aktiv{% endif %}">
-          <span class="icon">💻</span> Terminals
-        </a>
-        <a href="/tse" class="sidebar-item {% if request.path == '/tse' %}aktiv{% endif %}">
-          <span class="icon">🔐</span> TSE-Geräte
-        </a>
-        <a href="/rechte" class="sidebar-item {% if request.path == '/rechte' %}aktiv{% endif %}">
-          <span class="icon">🔑</span> CAO-Rechte
-        </a>
-        <a href="/rechte/dorfkern" class="sidebar-item {% if request.path == '/rechte/dorfkern' %}aktiv{% endif %}">
-          <span class="icon">🔐</span> Dorfkern-Rechte
-        </a>
-        <a href="/system/mitarbeiter" class="sidebar-item {% if request.path == '/system/mitarbeiter' %}aktiv{% endif %}">
-          <span class="icon">👤</span> Mitarbeiter
-        </a>
-        <a href="/einstellungen" class="sidebar-item {% if request.path == '/einstellungen' %}aktiv{% endif %}">
-          <span class="icon">⚙️</span> Einstellungen
-        </a>
-        <a href="/system/updates" class="sidebar-item {% if request.path == '/system/updates' %}aktiv{% endif %}">
-          <span class="icon">⬆️</span> Updates
-        </a>
-        <a href="/system/apps" class="sidebar-item {% if request.path == '/system/apps' %}aktiv{% endif %}">
-          <span class="icon">🎛️</span> App-Steuerung
-        </a>
-        <a href="/system/haccp-poller" class="sidebar-item {% if request.path == '/system/haccp-poller' %}aktiv{% endif %}">
-          <span class="icon">🌡️</span> HACCP-Poller
-        </a>
-        <a href="/system/einkauf-poller" class="sidebar-item {% if request.path == '/system/einkauf-poller' %}aktiv{% endif %}">
-          <span class="icon">📥</span> Einkauf-Poller
-        </a>
+        {{ nav_item('/db-config',              'Datenbank',       '🗄️', 'admin.system.db_config') }}
+        {{ nav_item('/drucker',                'Bondrucker',      '🖨️', 'admin.system.drucker') }}
+        {{ nav_item('/terminals',              'Terminals',       '💻', 'admin.system.terminals') }}
+        {{ nav_item('/tse',                    'TSE-Geräte',      '🔐', 'admin.system.tse') }}
+        {{ nav_item('/rechte',                 'CAO-Rechte',      '🔑', 'admin.dorfkern.rechte') }}
+        {{ nav_item('/rechte/dorfkern',        'Dorfkern-Rechte', '🔐', 'admin.dorfkern.rechte') }}
+        {{ nav_item('/system/mitarbeiter',     'Mitarbeiter',     '👤', 'admin.system.mitarbeiter') }}
+        {{ nav_item('/einstellungen',          'Einstellungen',   '⚙️', 'admin.dorfkern.einstellungen') }}
+        {{ nav_item('/system/updates',         'Updates',         '⬆️', 'admin.system.updates') }}
+        {{ nav_item('/system/apps',            'App-Steuerung',   '🎛️', 'admin.system.apps') }}
+        {{ nav_item('/system/haccp-poller',    'HACCP-Poller',    '🌡️', 'admin.system.haccp_poller') }}
+        {{ nav_item('/system/einkauf-poller',  'Einkauf-Poller',  '📥', 'admin.system.einkauf_poller') }}
       </div>
 
       <hr class="sidebar-divider">
 
       <div class="sidebar-section-title">Einkauf</div>
       <div class="sidebar-section">
-        <a href="/einkauf/lieferanten" class="sidebar-item {% if request.path == '/einkauf/lieferanten' %}aktiv{% endif %}">
-          <span class="icon">🚛</span> Lieferanten
-        </a>
-        <a href="/einkauf/bestellungen" class="sidebar-item {% if request.path == '/einkauf/bestellungen' %}aktiv{% endif %}">
-          <span class="icon">📥</span> Bestellungen
-        </a>
+        {{ nav_item('/einkauf/lieferanten',  'Lieferanten', '🚛', 'admin.einkauf.lieferanten') }}
+        {{ nav_item('/einkauf/bestellungen', 'Bestellungen','📥', 'admin.einkauf.bestellungen') }}
       </div>
 
       <hr class="sidebar-divider">
@@ -423,41 +414,25 @@ a { color: inherit; text-decoration: none; }
 
         <div class="sidebar-subgroup" data-sg="artikel">
           <div class="sidebar-subgroup-title">
-            <span class="caret">▾</span> Artikel & Lager
+            <span class="caret">▾</span> Artikel &amp; Lager
           </div>
           <div class="sidebar-subgroup-items">
-            <a href="/stammdaten/mengeneinheiten" class="sidebar-item {% if request.path == '/stammdaten/mengeneinheiten' %}aktiv{% endif %}">
-              <span class="icon">📐</span> Mengeneinheiten
-            </a>
-            <a href="/stammdaten/warengruppen" class="sidebar-item {% if request.path == '/stammdaten/warengruppen' %}aktiv{% endif %}">
-              <span class="icon">📦</span> Warengruppen
-            </a>
-            <a href="/stammdaten/artikelattribute" class="sidebar-item {% if request.path == '/stammdaten/artikelattribute' %}aktiv{% endif %}">
-              <span class="icon">🏷️</span> Artikelattribute
-            </a>
-            <a href="/stammdaten/binaerdaten" class="sidebar-item {% if request.path == '/stammdaten/binaerdaten' %}aktiv{% endif %}">
-              <span class="icon">📎</span> Binärdaten
-            </a>
+            {{ nav_item('/stammdaten/mengeneinheiten',  'Mengeneinheiten',  '📐', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/warengruppen',     'Warengruppen',     '📦', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/artikelattribute', 'Artikelattribute', '🏷️', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/binaerdaten',      'Binärdaten',       '📎', 'admin.stammdaten') }}
           </div>
         </div>
 
         <div class="sidebar-subgroup" data-sg="kunden">
           <div class="sidebar-subgroup-title">
-            <span class="caret">▾</span> Kunden & Verkauf
+            <span class="caret">▾</span> Kunden &amp; Verkauf
           </div>
           <div class="sidebar-subgroup-items">
-            <a href="/stammdaten/adressgruppen" class="sidebar-item {% if request.path == '/stammdaten/adressgruppen' %}aktiv{% endif %}">
-              <span class="icon">👥</span> Adressgruppen
-            </a>
-            <a href="/stammdaten/laender" class="sidebar-item {% if request.path == '/stammdaten/laender' %}aktiv{% endif %}">
-              <span class="icon">🌍</span> Laender & MwSt
-            </a>
-            <a href="/stammdaten/zahlungsarten" class="sidebar-item {% if request.path == '/stammdaten/zahlungsarten' %}aktiv{% endif %}">
-              <span class="icon">💳</span> Zahlungsarten
-            </a>
-            <a href="/stammdaten/lieferarten" class="sidebar-item {% if request.path == '/stammdaten/lieferarten' %}aktiv{% endif %}">
-              <span class="icon">🚚</span> Lieferarten
-            </a>
+            {{ nav_item('/stammdaten/adressgruppen', 'Adressgruppen',   '👥', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/laender',       'Laender & MwSt',  '🌍', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/zahlungsarten', 'Zahlungsarten',   '💳', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/lieferarten',   'Lieferarten',     '🚚', 'admin.stammdaten') }}
           </div>
         </div>
 
@@ -466,15 +441,9 @@ a { color: inherit; text-decoration: none; }
             <span class="caret">▾</span> Buchhaltung
           </div>
           <div class="sidebar-subgroup-items">
-            <a href="/stammdaten/kontenrahmen" class="sidebar-item {% if request.path == '/stammdaten/kontenrahmen' %}aktiv{% endif %}">
-              <span class="icon">📒</span> Kontenrahmen
-            </a>
-            <a href="/stammdaten/firmen-bankkonten" class="sidebar-item {% if request.path == '/stammdaten/firmen-bankkonten' %}aktiv{% endif %}">
-              <span class="icon">🏦</span> Firmen-Bankkonten
-            </a>
-            <a href="/stammdaten/firma" class="sidebar-item {% if request.path == '/stammdaten/firma' %}aktiv{% endif %}">
-              <span class="icon">🏢</span> Firmendaten
-            </a>
+            {{ nav_item('/stammdaten/kontenrahmen',      'Kontenrahmen',      '📒', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/firmen-bankkonten', 'Firmen-Bankkonten', '🏦', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/firma',             'Firmendaten',       '🏢', 'admin.stammdaten') }}
           </div>
         </div>
 
@@ -483,12 +452,8 @@ a { color: inherit; text-decoration: none; }
             <span class="caret">▾</span> System
           </div>
           <div class="sidebar-subgroup-items">
-            <a href="/stammdaten/nummernkreise" class="sidebar-item {% if request.path == '/stammdaten/nummernkreise' %}aktiv{% endif %}">
-              <span class="icon">🔢</span> Nummernkreise
-            </a>
-            <a href="/stammdaten/exporte" class="sidebar-item {% if request.path == '/stammdaten/exporte' %}aktiv{% endif %}">
-              <span class="icon">📊</span> Export-Queries
-            </a>
+            {{ nav_item('/stammdaten/nummernkreise', 'Nummernkreise',  '🔢', 'admin.stammdaten') }}
+            {{ nav_item('/stammdaten/exporte',       'Export-Queries', '📊', 'admin.stammdaten') }}
           </div>
         </div>
 
@@ -497,9 +462,7 @@ a { color: inherit; text-decoration: none; }
             <span class="caret">▾</span> Zusätzliches
           </div>
           <div class="sidebar-subgroup-items">
-            <a href="/stammdaten/mittagstisch" class="sidebar-item {% if request.path == '/stammdaten/mittagstisch' %}aktiv{% endif %}">
-              <span class="icon">🍽️</span> Mittagstisch
-            </a>
+            {{ nav_item('/stammdaten/mittagstisch', 'Mittagstisch', '🍽️', 'admin.stammdaten.mittagstisch') }}
           </div>
         </div>
 
@@ -509,44 +472,26 @@ a { color: inherit; text-decoration: none; }
 
       <div class="sidebar-section-title">Dorfkern</div>
       <div class="sidebar-section">
-        <a href="/dorfkern/konfig" class="sidebar-item {% if request.path == '/dorfkern/konfig' %}aktiv{% endif %}">
-          <span class="icon">🔧</span> Konfiguration
-        </a>
-        <a href="/dorfkern/terminals" class="sidebar-item {% if request.path == '/dorfkern/terminals' %}aktiv{% endif %}">
-          <span class="icon">📟</span> Registry
-        </a>
-        <a href="/dorfkern/aktivierungen" class="sidebar-item {% if request.path == '/dorfkern/aktivierungen' %}aktiv{% endif %}">
-          <span class="icon">🎚️</span> App-Aktivierungen
-        </a>
+        {{ nav_item('/dorfkern/konfig',         'Konfiguration',     '🔧',  'admin.dorfkern.konfig') }}
+        {{ nav_item('/dorfkern/terminals',      'Registry',          '📟',  'admin.dorfkern.terminals') }}
+        {{ nav_item('/dorfkern/aktivierungen',  'App-Aktivierungen', '🎚️', 'admin.dorfkern.aktivierungen') }}
       </div>
 
       <hr class="sidebar-divider">
 
       <div class="sidebar-section-title">Daten</div>
       <div class="sidebar-section">
-        <a href="/artikel" class="sidebar-item {% if request.path == '/artikel' %}aktiv{% endif %}">
-          <span class="icon">🥐</span> Backwaren
-        </a>
-        <a href="/funktionen" class="sidebar-item {% if request.path == '/funktionen' %}aktiv{% endif %}">
-          <span class="icon">🔧</span> Funktionen
-        </a>
-        <a href="/feiertage" class="sidebar-item {% if request.path == '/feiertage' %}aktiv{% endif %}">
-          <span class="icon">📅</span> Feiertage
-        </a>
-        <a href="/benachrichtigungen" class="sidebar-item {% if request.path == '/benachrichtigungen' %}aktiv{% endif %}">
-          <span class="icon">✉️</span> Benachrichtigungen
-        </a>
-        <a href="/zeiten-import" class="sidebar-item {% if request.path == '/zeiten-import' %}aktiv{% endif %}">
-          <span class="icon">📥</span> Zeiten-Import
-        </a>
+        {{ nav_item('/artikel',            'Backwaren',         '🥐', 'admin.artikel') }}
+        {{ nav_item('/funktionen',         'Funktionen',        '🔧', 'admin.dorfkern.funktionen') }}
+        {{ nav_item('/feiertage',          'Feiertage',         '📅', 'admin.dorfkern.feiertage') }}
+        {{ nav_item('/benachrichtigungen', 'Benachrichtigungen','✉️', 'admin.dorfkern.benachrichtigungen') }}
+        {{ nav_item('/zeiten-import',      'Zeiten-Import',     '📥', 'admin.zeiten_import') }}
       </div>
 
       <hr class="sidebar-divider">
 
       <div class="sidebar-section">
-        <a href="/admin/handbuch" class="sidebar-item">
-          <span class="icon">📖</span> Handbuch
-        </a>
+        {{ nav_item('/admin/handbuch', 'Handbuch', '📖', 'admin.dorfkern.handbuch') }}
       </div>
     </nav>
 

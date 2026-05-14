@@ -208,6 +208,28 @@ a:hover { color: var(--akzent-hell); }
   flex-shrink: 0;
 }
 
+/* Eintraege ohne Berechtigung: ausgegraut, nicht klickbar.
+   Wird vom Sidebar-Macro gesetzt, wenn hat_recht(...) false ist. */
+.sidebar-item.ausgegraut,
+.sidebar-sub-item.ausgegraut {
+  opacity: 0.40;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.6);
+}
+.sidebar-item.ausgegraut::after,
+.sidebar-sub-item.ausgegraut::after {
+  content: "🔒";
+  margin-left: auto;
+  font-size: 0.78em;
+  opacity: 0.75;
+}
+.sidebar-item.ausgegraut:hover,
+.sidebar-sub-item.ausgegraut:hover {
+  background: transparent;
+  color: inherit;
+}
+
 .sidebar-divider {
   border: none;
   border-top: 1px solid var(--border);

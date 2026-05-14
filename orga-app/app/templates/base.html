@@ -389,36 +389,27 @@ a { text-decoration: none; color: inherit; }
         </a>
 
         {% set artikel_aktiv = request.path in ('/orga', '/orga/preispflege') %}
-        {% set zeige_artikel = hat_recht('orga.artikel') or hat_recht('orga.preispflege') %}
-        {% if zeige_artikel %}
         <div class="sidebar-group {% if artikel_aktiv %}open{% endif %}" id="grp-artikel">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-artikel')">
             <span class="icon">📦</span> Artikel
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
-            {% if hat_recht('orga.artikel') %}
-            <a href="/orga"
-               class="sidebar-sub-item {% if request.path == '/orga' %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.artikel') %}
+            <a href="{% if _ok %}/orga{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path == '/orga' %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.artikel)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">🔍</span> Suche &amp; Detail
             </a>
-            {% endif %}
-            {% if hat_recht('orga.preispflege') %}
-            <a href="/orga/preispflege"
-               class="sidebar-sub-item {% if request.path == '/orga/preispflege' %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.preispflege') %}
+            <a href="{% if _ok %}/orga/preispflege{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path == '/orga/preispflege' %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.preispflege)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">💶</span> Preispflege
             </a>
-            {% endif %}
           </div>
         </div>
-        {% endif %}
 
-        {% set zeige_personal = hat_recht('orga.personal.mitarbeiter')
-                              or hat_recht('orga.schichtplan', 'LESEN')
-                              or hat_recht('orga.personal.schichten')
-                              or hat_recht('orga.personal.abwesenheiten')
-                              or hat_recht('orga.personal.arbeitszeitkonten') %}
-        {% if zeige_personal %}
         <div class="sidebar-group {% if request.path.startswith('/orga/personal') %}open{% endif %}"
              id="grp-personal">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-personal')">
@@ -426,42 +417,41 @@ a { text-decoration: none; color: inherit; }
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
-            {% if hat_recht('orga.personal.mitarbeiter') %}
-            <a href="/orga/personal/"
-               class="sidebar-sub-item {% if request.path == '/orga/personal/' or (request.path.startswith('/orga/personal/') and not request.path.startswith('/orga/personal/schicht')) %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.personal.mitarbeiter') %}
+            <a href="{% if _ok %}/orga/personal/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and (request.path == '/orga/personal/' or (request.path.startswith('/orga/personal/') and not request.path.startswith('/orga/personal/schicht'))) %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.personal.mitarbeiter)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">👥</span> Mitarbeiter
             </a>
-            {% endif %}
-            {% if hat_recht('orga.schichtplan', 'LESEN') %}
-            <a href="/orga/personal/schichtplan/"
-               class="sidebar-sub-item {% if request.path.startswith('/orga/personal/schichtplan') %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.schichtplan', 'LESEN') %}
+            <a href="{% if _ok %}/orga/personal/schichtplan/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/personal/schichtplan') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.schichtplan)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">📅</span> Schichtplan
-              {% if not hat_recht('orga.schichtplan', 'PFLEGEN') %}
+              {% if _ok and not hat_recht('orga.schichtplan', 'PFLEGEN') %}
               <span class="sub" style="color:var(--text-dim);">(nur lesen)</span>
               {% endif %}
             </a>
-            {% endif %}
-            {% if hat_recht('orga.personal.schichten') %}
-            <a href="/orga/personal/schicht/"
-               class="sidebar-sub-item {% if request.path.startswith('/orga/personal/schicht/') or request.path == '/orga/personal/schicht' %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.personal.schichten') %}
+            <a href="{% if _ok %}/orga/personal/schicht/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and (request.path.startswith('/orga/personal/schicht/') or request.path == '/orga/personal/schicht') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.personal.schichten)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">🕐</span> Schichten
             </a>
-            {% endif %}
-            {% if hat_recht('orga.personal.abwesenheiten') %}
-            <a href="/orga/personal/abwesenheiten/kalender"
-               class="sidebar-sub-item {% if request.path.startswith('/orga/personal/abwesenheiten') %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.personal.abwesenheiten') %}
+            <a href="{% if _ok %}/orga/personal/abwesenheiten/kalender{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/personal/abwesenheiten') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.personal.abwesenheiten)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">🗓️</span> Abwesenheiten
             </a>
-            {% endif %}
-            {% if hat_recht('orga.personal.arbeitszeitkonten') %}
-            <a href="/orga/personal/arbeitszeitkonten"
-               class="sidebar-sub-item {% if request.path.startswith('/orga/personal/arbeitszeitkonten') %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.personal.arbeitszeitkonten') %}
+            <a href="{% if _ok %}/orga/personal/arbeitszeitkonten{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/personal/arbeitszeitkonten') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.personal.arbeitszeitkonten)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">⏱️</span> Arbeitszeitkonten
             </a>
-            {% endif %}
           </div>
         </div>
-        {% endif %}
       </div>
 
       <hr class="sidebar-divider">
@@ -475,8 +465,10 @@ a { text-decoration: none; color: inherit; }
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
-            <a href="/orga/bestellwesen/"
-               class="sidebar-sub-item {% if request.path == '/orga/bestellwesen/' or (request.path.startswith('/orga/bestellwesen/') and not request.path.startswith('/orga/bestellwesen/wareneingang') and not request.path.startswith('/orga/bestellwesen/einkauf')) %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.bestellwesen') %}
+            <a href="{% if _ok %}/orga/bestellwesen/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and (request.path == '/orga/bestellwesen/' or (request.path.startswith('/orga/bestellwesen/') and not request.path.startswith('/orga/bestellwesen/wareneingang') and not request.path.startswith('/orga/bestellwesen/einkauf'))) %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.bestellwesen)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">📋</span> Bestellungen
             </a>
             <div class="sidebar-group {% if request.path.startswith('/orga/bestellvorschlag') %}open{% endif %}"
@@ -487,19 +479,24 @@ a { text-decoration: none; color: inherit; }
                 <span class="toggle-arrow">▶</span>
               </button>
               <div class="sidebar-group-items">
-                <a href="/orga/bestellvorschlag/luidl"
-                   class="sidebar-sub-item {% if request.path.startswith('/orga/bestellvorschlag/luidl') %}aktiv{% endif %}"
+                {% set _ok = hat_recht('orga.bestellvorschlag') %}
+                <a href="{% if _ok %}/orga/bestellvorschlag/luidl{% else %}#{% endif %}"
+                   class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/bestellvorschlag/luidl') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+                   {% if not _ok %}title="Keine Berechtigung (orga.bestellvorschlag)" aria-disabled="true"{% endif %}
                    style="padding-left:40px;">
                   <span class="sub-icon">🥨</span> Luidl (Backwaren)
                 </a>
               </div>
             </div>
-            <a href="/orga/bestellwesen/wareneingang/"
-               class="sidebar-sub-item {% if request.path.startswith('/orga/bestellwesen/wareneingang') %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.bestellwesen') %}
+            <a href="{% if _ok %}/orga/bestellwesen/wareneingang/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/bestellwesen/wareneingang') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.bestellwesen)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">📥</span> Wareneingänge
             </a>
-            <a href="/orga/bestellwesen/einkauf/"
-               class="sidebar-sub-item {% if request.path.startswith('/orga/bestellwesen/einkauf') %}aktiv{% endif %}">
+            <a href="{% if _ok %}/orga/bestellwesen/einkauf/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/bestellwesen/einkauf') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.bestellwesen)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">🧾</span> Einkäufe
             </a>
             <a href="/coming-soon?modul=Preisanfragen" class="sidebar-sub-item">
@@ -550,11 +547,12 @@ a { text-decoration: none; color: inherit; }
             <a href="/coming-soon?modul=Lastschriften" class="sidebar-sub-item">
               <span class="sub-icon">📑</span> Lastschriften
             </a>
-            {% if hat_recht('orga.datev_export') %}
-            <a href="/orga/datev-export" class="sidebar-sub-item {% if request.path.startswith('/orga/datev-export') %}aktiv{% endif %}">
+            {% set _ok = hat_recht('orga.datev_export') %}
+            <a href="{% if _ok %}/orga/datev-export{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/datev-export') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.datev_export)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">📤</span> Datev-Export
             </a>
-            {% endif %}
             <a href="/coming-soon?modul=Mahnungen" class="sidebar-sub-item">
               <span class="sub-icon">⚠️</span> Mahnungen
             </a>
@@ -566,16 +564,19 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">Weitere</div>
       <div class="sidebar-section">
-        {% if hat_recht('orga.reporting') %}
-        <a href="/orga/berichte" class="sidebar-item {% if request.path.startswith('/orga/berichte') %}aktiv{% endif %}">
+        {% set _ok = hat_recht('orga.reporting') %}
+        <a href="{% if _ok %}/orga/berichte{% else %}#{% endif %}"
+           class="sidebar-item {% if _ok and request.path.startswith('/orga/berichte') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+           {% if not _ok %}title="Keine Berechtigung (orga.reporting)" aria-disabled="true"{% endif %}>
           <span class="icon">📊</span> Berichte
           <span class="sub">Tagesumsatz · Monat · Kassenbuch · EC · Heatmap · Koppelkauf</span>
         </a>
-        <a href="/reporting" class="sidebar-item {% if request.path == '/reporting' %}aktiv{% endif %}">
+        <a href="{% if _ok %}/reporting{% else %}#{% endif %}"
+           class="sidebar-item {% if _ok and request.path == '/reporting' %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+           {% if not _ok %}title="Keine Berechtigung (orga.reporting)" aria-disabled="true"{% endif %}>
           <span class="icon">📈</span> Reporting
           <span class="sub">MwSt · Warengruppen · KPIs</span>
         </a>
-        {% endif %}
 
         <div class="sidebar-group" id="grp-tools">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-tools')">
@@ -595,23 +596,28 @@ a { text-decoration: none; color: inherit; }
           </div>
         </div>
 
-        <a href="/orga/banking" class="sidebar-item {% if request.path.startswith('/orga/banking') %}aktiv{% endif %}">
+        {% set _ok = hat_recht('orga.banking') %}
+        <a href="{% if _ok %}/orga/banking{% else %}#{% endif %}"
+           class="sidebar-item {% if _ok and request.path.startswith('/orga/banking') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+           {% if not _ok %}title="Keine Berechtigung (orga.banking)" aria-disabled="true"{% endif %}>
           <span class="icon">🏦</span> Banking
           <span class="sub">Konten · Umsätze · SEPA-Sammler (Hibiscus)</span>
         </a>
         <a href="/coming-soon?modul=Lohnbuchhaltung" class="sidebar-item">
           <span class="icon">💼</span> Lohnbuchhaltung
         </a>
-        {% if hat_recht('orga.haccp') %}
-        <a href="{{ url_for('haccp.dashboard') }}" class="sidebar-item">
+        {% set _ok = hat_recht('orga.haccp') %}
+        <a href="{% if _ok %}{{ url_for('haccp.dashboard') }}{% else %}#{% endif %}"
+           class="sidebar-item {% if not _ok %}ausgegraut{% endif %}"
+           {% if not _ok %}title="Keine Berechtigung (orga.haccp)" aria-disabled="true"{% endif %}>
           <span class="icon">🧼</span> Hygiene / HACCP
         </a>
-        {% endif %}
-        {% if hat_recht('orga.handbuch') %}
-        <a href="/orga/handbuch" class="sidebar-item">
+        {% set _ok = hat_recht('orga.handbuch') %}
+        <a href="{% if _ok %}/orga/handbuch{% else %}#{% endif %}"
+           class="sidebar-item {% if not _ok %}ausgegraut{% endif %}"
+           {% if not _ok %}title="Keine Berechtigung (orga.handbuch)" aria-disabled="true"{% endif %}>
           <span class="icon">📖</span> Handbuch
         </a>
-        {% endif %}
       </div>
     </nav>
 
