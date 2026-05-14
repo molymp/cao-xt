@@ -513,9 +513,10 @@ def uninstall_system(*, instance_name: str = '',
 # wer fedora/arch nutzt, muss das manuell nachziehen.
 
 _KIOSK_LIGHTDM_DIR     = '/etc/lightdm/lightdm.conf.d'
-_KIOSK_LIGHTDM_CONF    = f'{_KIOSK_LIGHTDM_DIR}/50-dorfkern-kiosk.conf'
-_KIOSK_SESSION_DESKTOP = '/usr/share/xsessions/dorfkern-kiosk.desktop'
-_KIOSK_SESSION_SCRIPT  = '/usr/local/bin/dorfkern-kiosk-session'
+_KIOSK_LIGHTDM_CONF      = f'{_KIOSK_LIGHTDM_DIR}/50-dorfkern-kiosk.conf'
+_KIOSK_SESSION_DESKTOP   = '/usr/share/xsessions/dorfkern-kiosk.desktop'
+_KIOSK_SESSION_SCRIPT    = '/usr/local/bin/dorfkern-kiosk-session'
+_KIOSK_MAINTENANCE_SCRIPT = '/usr/local/bin/dorfkern-maintenance-mode'
 
 _KIOSK_APT_PKGS_PRIMARY  = ['lightdm', 'xorg', 'chromium', 'openbox']
 # Auf aelteren/Debian-Stretch-Boxen heisst das Paket 'chromium-browser'
@@ -750,6 +751,24 @@ def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
                                mode='0644', print_fn=print_fn):
         return False
 
+    # ── 2b) Maintenance-Toggle-Skript ──────────────────────────
+    # Wechselt LightDM zwischen Auto-Kiosk und Greeter (manueller
+    # Login fuer Wartung), ohne Reboot. Aufrufbar via SSH oder
+    # ueber einen Button in der Admin-App.
+    maintenance_src = os.path.join(os.path.dirname(__file__),
+                                     'kiosk_maintenance.sh')
+    if os.path.isfile(maintenance_src):
+        try:
+            with open(maintenance_src, 'r', encoding='utf-8') as f:
+                maintenance_content = f.read()
+        except OSError as exc:
+            print_fn(f"  ⚠  kiosk_maintenance.sh nicht lesbar: {exc}")
+        else:
+            if not _install_file_sudo(_KIOSK_MAINTENANCE_SCRIPT,
+                                       maintenance_content,
+                                       mode='0755', print_fn=print_fn):
+                return False
+
     # ── 3) dorfkern Login-Shell nur wenn nologin ────────────────
     shell = _get_user_shell('dorfkern')
     if shell is None:
@@ -820,8 +839,9 @@ def uninstall_kiosk(*, print_fn: PrintFn = print) -> bool:
       - dorfkern-Login-Shell — User koennte sich anderweitig einloggen
         muessen
     """
-    for path in (_KIOSK_LIGHTDM_CONF, _KIOSK_SESSION_DESKTOP,
-                 _KIOSK_SESSION_SCRIPT):
+    for path in (_KIOSK_LIGHTDM_CONF, f'{_KIOSK_LIGHTDM_CONF}.off',
+                 _KIOSK_SESSION_DESKTOP, _KIOSK_SESSION_SCRIPT,
+                 _KIOSK_MAINTENANCE_SCRIPT):
         if not os.path.exists(path):
             continue
         r = _run(_maybe_sudo(['rm', '-f', path]))

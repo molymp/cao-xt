@@ -43,4 +43,72 @@
     Datenbank-Einstellungen, Bondrucker-Admin, Terminal-Zuweisungen, TSE-Geräte und Backwaren-Stammdaten.
   </p>
 </div>
+
+{# ── Ein/Aus-Widget ─────────────────────────────────────────
+   Schneller Feierabend-Knopf direkt vom Dashboard. Selbe Backend-
+   Endpoints wie /system/power, hier nur als Quick-Action eingebettet.
+   Nur sichtbar, wenn der User das Permission-Objekt hat. #}
+{% if hat_recht('admin.system.power', 'LESEN') %}
+<div class="card" style="margin-top:16px;max-width:760px;">
+  <h3 style="margin-bottom:10px;font-size:18px;">⚡ Ein/Aus</h3>
+  <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px;">
+    Feierabend-Knopf für diese Box.
+  </p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <button class="btn btn-error" id="dash-btn-shutdown"
+            onclick="dashConfirmPower('shutdown')"
+            style="flex:1 1 200px;min-height:64px;font-size:16px;font-weight:700;">
+      ⏻ Herunterfahren
+    </button>
+    <button class="btn btn-primary" id="dash-btn-reboot"
+            onclick="dashConfirmPower('reboot')"
+            style="flex:1 1 200px;min-height:64px;font-size:16px;font-weight:700;">
+      🔄 Neu starten
+    </button>
+  </div>
+  <p style="margin-top:12px;font-size:11px;color:var(--text-dim);">
+    Volle Details + Wartungs-Hinweise: <a href="/system/power"
+       style="color:var(--akzent-hell);">System → Ein/Aus</a>
+  </p>
+  <div id="dash-power-status"
+       style="margin-top:12px;font-size:13px;color:var(--text-mitte);display:none;"></div>
+</div>
+<script>
+async function dashConfirmPower(action) {
+  const isShutdown = action === 'shutdown';
+  const verb = isShutdown ? 'herunterfahren' : 'neu starten';
+  if (!confirm(`Wirklich JETZT ${verb}?\n\n` +
+               (isShutdown
+                ? 'Die Box geht sofort aus.\n'
+                : 'Die Box rebootet (1–2 Min bis Apps wieder oben).\n') +
+               'Bitte sicherstellen, dass:\n' +
+               '  - keine Kasse-Verkäufe offen sind\n' +
+               '  - der Tagesabschluss gemacht wurde')) return;
+  const sd = document.getElementById('dash-btn-shutdown');
+  const rb = document.getElementById('dash-btn-reboot');
+  const box = document.getElementById('dash-power-status');
+  sd.disabled = true; rb.disabled = true;
+  box.style.display = '';
+  box.textContent = '⏳ wird ausgelöst …';
+  const url = isShutdown ? '/api/system/shutdown' : '/api/system/reboot';
+  try {
+    const r = await fetch(url, { method: 'POST' });
+    const data = await r.json();
+    if (!data.ok) {
+      box.textContent = '✗ Fehler: ' + (data.error || 'unbekannt');
+      sd.disabled = false; rb.disabled = false;
+      return;
+    }
+    box.textContent = isShutdown
+      ? '⏻ Wird heruntergefahren … Verbindung bricht ab.'
+      : '🔄 Wird neu gestartet … Seite in ca. 2 Min neu laden.';
+  } catch (e) {
+    // Verbindungsabbruch hier erwartet, sobald der Shutdown greift.
+    box.textContent = isShutdown
+      ? '⏻ Wird heruntergefahren … Verbindung bricht ab.'
+      : '🔄 Wird neu gestartet … Seite in ca. 2 Min neu laden.';
+  }
+}
+</script>
+{% endif %}
 {% endblock %}

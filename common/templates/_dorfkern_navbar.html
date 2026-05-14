@@ -63,6 +63,53 @@
      rechts vom App-Switcher, falls die App welche setzt. #}
   {% if nav_badges_html %}{{ nav_badges_html|safe }}{% endif %}
 
+  {# Zoom-Steuerung — Touch-freundlich, persistent in localStorage.
+     Skaliert das gesamte Dokument via document.documentElement.style.zoom
+     (Chromium/Webkit; Firefox unterstuetzt es auch, aber per CSS-transform
+     waere portabler — fuer das Kiosk-Setup auf Chromium reicht zoom). #}
+  <div class="nav-zoom" role="group" aria-label="Anzeige skalieren"
+       style="display:flex;align-items:center;gap:4px;margin:0 8px;">
+    <button type="button" class="nav-btn nav-zoom-out" onclick="dorfkernZoomStep(-10)"
+            title="Verkleinern (−10 %)"
+            style="min-width:34px;padding:4px 10px;font-size:18px;line-height:1;">−</button>
+    <span class="nav-zoom-pct" id="nav-zoom-pct"
+          style="min-width:42px;text-align:center;font-size:12px;color:var(--text-dim);">100 %</span>
+    <button type="button" class="nav-btn nav-zoom-in" onclick="dorfkernZoomStep(10)"
+            title="Vergroessern (+10 %)"
+            style="min-width:34px;padding:4px 10px;font-size:18px;line-height:1;">+</button>
+    <button type="button" class="nav-btn nav-zoom-reset" onclick="dorfkernZoomSet(100)"
+            title="Auf 100 % zuruecksetzen"
+            style="min-width:34px;padding:4px 8px;font-size:11px;line-height:1;">↺</button>
+  </div>
+  <script>
+    // Persistent zoom: speichert in localStorage unter 'dorfkern.zoom'.
+    // 10%-Schritte zwischen 50% und 200% (Touch-sicherer Bereich).
+    (function () {
+      const KEY = 'dorfkern.zoom';
+      const MIN = 50, MAX = 200, STEP = 10;
+      window.dorfkernZoomApply = function (pct) {
+        pct = Math.max(MIN, Math.min(MAX, Math.round(pct)));
+        document.documentElement.style.zoom = (pct / 100).toString();
+        try { localStorage.setItem(KEY, String(pct)); } catch (e) {}
+        const lbl = document.getElementById('nav-zoom-pct');
+        if (lbl) lbl.textContent = pct + ' %';
+        return pct;
+      };
+      window.dorfkernZoomStep = function (delta) {
+        const cur = parseInt(localStorage.getItem(KEY) || '100', 10) || 100;
+        // auf STEP-Raster runden, dann +/- delta
+        const grid = Math.round(cur / STEP) * STEP;
+        window.dorfkernZoomApply(grid + delta);
+      };
+      window.dorfkernZoomSet = function (pct) {
+        window.dorfkernZoomApply(pct);
+      };
+      // beim Laden direkt anwenden
+      const saved = parseInt(localStorage.getItem(KEY) || '100', 10) || 100;
+      window.dorfkernZoomApply(saved);
+    })();
+  </script>
+
   <div class="spacer" style="flex:1"></div>
 
   {% if nav_extra_html %}{{ nav_extra_html|safe }}{% endif %}
