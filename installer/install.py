@@ -90,8 +90,14 @@ _TYPE_LABEL = {
 }
 
 
-def phase0_install_type(non_interactive: bool = False) -> str:
-    """Phase 0: Installationstyp festlegen."""
+def phase0_install_type(non_interactive: bool = False) -> dict:
+    """Phase 0: Installationstyp + Instanz-Name + Port-Base festlegen.
+
+    Returns dict mit:
+        install_type:    'ad_hoc' | 'service_user' | 'service_system'
+        instance_name:   str (leer = Default-Praefix 'dorfkern')
+        base_port:       int (Default 5000 -> Apps 5001-5004)
+    """
     _section("Phase 0: Installations-Typ")
 
     if non_interactive:
@@ -99,9 +105,23 @@ def phase0_install_type(non_interactive: bool = False) -> str:
         if env not in INSTALL_TYPES:
             print(f"  ⚠  XT_INSTALL_TYPE={env!r} ist unbekannt — falle auf 'ad_hoc' zurueck.")
             env = 'ad_hoc'
+        instance_name = os.environ.get('XT_INSTANCE_NAME', '').strip()
+        try:
+            base_port = int(os.environ.get('XT_BASE_PORT', '5000'))
+        except ValueError:
+            base_port = 5000
         print(f"  Installationstyp: {env}  ({_TYPE_LABEL[env]})")
-        _validate_install_type(env, exit_on_error=True)
-        return env
+        if instance_name:
+            print(f"  Instanz-Name:     {instance_name!r} "
+                  f"(Praefix: dorfkern-{instance_name})")
+        print(f"  Port-Base:        {base_port}  "
+              f"(admin={base_port+4}, orga={base_port+3}, "
+              f"kasse={base_port+2}, kiosk={base_port+1})")
+        result = {'install_type': env,
+                  'instance_name': instance_name,
+                  'base_port': base_port}
+        _validate_install_type(result, exit_on_error=True)
+        return result
 
     print("  Wie soll Dorfkern auf diesem Rechner laufen?")
     print()
@@ -116,8 +136,9 @@ def phase0_install_type(non_interactive: bool = False) -> str:
     print()
     print("    3) Dienst systemweit")
     print("       systemd-System-Units in /etc/systemd/system/. Apps laufen")
-    print("       unter dem System-User 'dorfkern'. Klassische PROD-Installation;")
-    print("       setzt voraus, dass dieser Installer mit sudo gestartet wurde.")
+    print("       unter dem System-User 'dorfkern[-<instance>]'. Klassische")
+    print("       PROD-Installation; setzt voraus, dass dieser Installer mit")
+    print("       sudo gestartet wurde.")
     print()
     choice = _ask("Auswahl (1/2/3)", "1")
     install_type = {
@@ -129,18 +150,59 @@ def phase0_install_type(non_interactive: bool = False) -> str:
         print(f"  ✗ Ungueltige Auswahl: {choice!r}")
         sys.exit(1)
     print(f"  ✓ {_TYPE_LABEL[install_type]}")
-    _validate_install_type(install_type, exit_on_error=True)
-    return install_type
+
+    # Instanz-Name + Port-Base fragen (nur sinnvoll fuer Service-Modi,
+    # aber auch fuer Ad-hoc gibt's keinen Schaden, falls jemand mehrere
+    # parallele Klone laufen lassen will).
+    print()
+    print("  Optional: Instanz-Name + Port-Base.")
+    print("  Mehrere Dorfkern-Installationen koennen parallel auf einem Host")
+    print("  laufen, indem sie unterschiedliche Namen + Ports bekommen.")
+    print("  Leer lassen = Default ('dorfkern'-Praefix, Ports 5001-5004).")
+    print()
+    instance_name = _ask("Instanz-Name (z.B. 'prod' oder 'dev', leer = Default)", "")
+    instance_name = instance_name.strip().lower()
+    if instance_name and not instance_name.replace('-', '').replace('_', '').isalnum():
+        print(f"  ✗ Ungueltiger Instanz-Name: {instance_name!r} "
+              "(nur Buchstaben/Zahlen/-_).")
+        sys.exit(1)
+
+    base_port_str = _ask("Port-Base (admin = +4, kiosk = +1)", "5000")
+    try:
+        base_port = int(base_port_str)
+    except ValueError:
+        print(f"  ✗ Port-Base muss eine Zahl sein: {base_port_str!r}")
+        sys.exit(1)
+    if not (1024 <= base_port <= 65500):
+        print(f"  ✗ Port-Base ausserhalb 1024..65500: {base_port}")
+        sys.exit(1)
+
+    print(f"  ✓ Praefix: {('dorfkern-' + instance_name) if instance_name else 'dorfkern'}, "
+          f"Ports {base_port+1}..{base_port+4}")
+
+    result = {'install_type': install_type,
+              'instance_name': instance_name,
+              'base_port': base_port}
+    _validate_install_type(result, exit_on_error=True)
+    return result
 
 
-_TARGET_OPT_DORFKERN = '/opt/dorfkern'
+def _opt_dorfkern_target(instance_name: str) -> str:
+    """Erwarteter Install-Root fuer System-Mode bei gegebener Instanz."""
+    prefix = f'dorfkern-{instance_name}' if instance_name else 'dorfkern'
+    return f'/opt/{prefix}'
 
 
-def _validate_install_type(install_type: str, *, exit_on_error: bool) -> bool:
-    """Prueft Voraussetzungen fuer den Typ. Bei Fehler optional exit().
+def _validate_install_type(cfg: dict, *, exit_on_error: bool) -> bool:
+    """Prueft Voraussetzungen fuer den gewaehlten Typ.
 
-    Returns True wenn alles OK, sonst False (nur relevant wenn exit_on_error=False).
+    Args:
+        cfg: Dict aus phase0_install_type() — install_type, instance_name,
+            base_port.
     """
+    install_type  = cfg['install_type']
+    instance_name = cfg['instance_name']
+
     if install_type == 'service_system':
         if os.geteuid() != 0:
             print()
@@ -149,20 +211,20 @@ def _validate_install_type(install_type: str, *, exit_on_error: bool) -> bool:
             if exit_on_error:
                 sys.exit(1)
             return False
-        # Repo sollte unter /opt/dorfkern liegen. Wenn nicht: anbieten zu
-        # verschieben (per shutil.move = rename auf gleichem Filesystem,
-        # sonst copy+remove).
-        if _REPO_ROOT != _TARGET_OPT_DORFKERN:
+        # Repo sollte unter /opt/dorfkern[-<instance>] liegen. Wenn nicht:
+        # anbieten zu verschieben (shutil.move = rename auf gleichem
+        # Filesystem, sonst copy+remove).
+        target = _opt_dorfkern_target(instance_name)
+        if _REPO_ROOT != target:
             print()
             print(f"  Das Repo liegt unter {_REPO_ROOT!r}, nicht unter "
-                  f"{_TARGET_OPT_DORFKERN!r}.")
-            print(f"  Fuer die System-Installation ist {_TARGET_OPT_DORFKERN} "
-                  "der erwartete Pfad.")
+                  f"{target!r}.")
+            print(f"  Fuer die System-Installation (Instanz "
+                  f"{instance_name!r}) ist {target} der erwartete Pfad.")
             print()
-            if _ask_yes_no(f"Repo nach {_TARGET_OPT_DORFKERN} verschieben?", True):
-                _move_to_opt_dorfkern_and_exit()
+            if _ask_yes_no(f"Repo nach {target} verschieben?", True):
+                _move_to_opt_dorfkern_and_exit(target)
                 # Kommt nie hierher zurueck — exit oben.
-            # Nicht verschoben → klare Warnung, weitermachen am alten Pfad.
             print()
             print(f"  ⚠  Weiter mit {_REPO_ROOT}. Units zeigen auf diesen Pfad;")
             print("     wenn du das Repo spaeter doch verschieben willst, einmal")
@@ -174,8 +236,8 @@ def _validate_install_type(install_type: str, *, exit_on_error: bool) -> bool:
     return True
 
 
-def _move_to_opt_dorfkern_and_exit() -> None:
-    """Verschiebt _REPO_ROOT nach /opt/dorfkern und exit-0 mit Re-Start-Hinweis.
+def _move_to_opt_dorfkern_and_exit(target: str) -> None:
+    """Verschiebt _REPO_ROOT nach ``target`` und exit-0 mit Re-Start-Hinweis.
 
     Strategie:
       - /opt/dorfkern darf nicht existieren oder muss leer sein (sonst Abbruch
@@ -192,47 +254,47 @@ def _move_to_opt_dorfkern_and_exit() -> None:
     """
     import shutil
 
-    if os.path.exists(_TARGET_OPT_DORFKERN):
+    if os.path.exists(target):
         try:
-            content = os.listdir(_TARGET_OPT_DORFKERN)
+            content = os.listdir(target)
         except OSError as exc:
-            print(f"  ✗ Kann {_TARGET_OPT_DORFKERN} nicht lesen: {exc}")
+            print(f"  ✗ Kann {target} nicht lesen: {exc}")
             sys.exit(1)
         if content:
-            print(f"  ✗ {_TARGET_OPT_DORFKERN} existiert und ist nicht leer:")
+            print(f"  ✗ {target} existiert und ist nicht leer:")
             for item in content[:10]:
                 print(f"      {item}")
             print("  Bitte manuell aufraeumen (oder anderes Ziel waehlen),")
             print("  dann diesen Installer erneut starten.")
             sys.exit(1)
         try:
-            os.rmdir(_TARGET_OPT_DORFKERN)
+            os.rmdir(target)
         except OSError as exc:
-            print(f"  ✗ Leeres {_TARGET_OPT_DORFKERN} nicht entfernbar: {exc}")
+            print(f"  ✗ Leeres {target} nicht entfernbar: {exc}")
             sys.exit(1)
 
     print()
-    print(f"  → Verschiebe {_REPO_ROOT} → {_TARGET_OPT_DORFKERN} …")
+    print(f"  → Verschiebe {_REPO_ROOT} → {target} …")
     os.chdir('/')  # alten cwd freigeben, sonst stirbt er beim mv
     try:
-        shutil.move(_REPO_ROOT, _TARGET_OPT_DORFKERN)
+        shutil.move(_REPO_ROOT, target)
     except OSError as exc:
         print(f"  ✗ Move fehlgeschlagen: {exc}")
         sys.exit(1)
     print(f"  ✓ verschoben")
 
     # Altes venv (mit kaputten Shebangs) wegwerfen
-    altes_venv = os.path.join(_TARGET_OPT_DORFKERN, '.venv')
+    altes_venv = os.path.join(target, '.venv')
     if os.path.isdir(altes_venv):
         shutil.rmtree(altes_venv, ignore_errors=True)
         print(f"  ✓ {altes_venv} entfernt (wird beim Neustart neu angelegt)")
 
     print()
     print("  ──────────────────────────────────────────────")
-    print("  Installer beendet — Repo ist jetzt unter /opt/dorfkern.")
+    print(f"  Installer beendet — Repo ist jetzt unter {target}.")
     print("  Bitte neu starten:")
     print()
-    print(f"      sudo {_TARGET_OPT_DORFKERN}/install.sh")
+    print(f"      sudo {target}/install.sh")
     print("  ──────────────────────────────────────────────")
     print()
     sys.exit(0)
@@ -350,21 +412,35 @@ def phase3_app_selection(non_interactive: bool = False) -> list[str]:
 # ─── Phase 4: Installation + Start ────────────────────────────────────
 
 def phase4_install_and_start(selected_apps: list[str],
-                              install_type: str) -> bool:
+                              type_cfg: dict) -> bool:
     """Phase 4: Apps tatsaechlich starten (oder als Dienste installieren).
 
+    Args:
+        type_cfg: Dict aus phase0_install_type() — install_type,
+            instance_name, base_port.
     Returns True, wenn alle Apps (vermutlich) laufen.
     """
+    install_type  = type_cfg['install_type']
+    instance_name = type_cfg['instance_name']
+    base_port     = type_cfg['base_port']
+
     _section(f"Phase 4: {_TYPE_LABEL[install_type]} einrichten + starten")
     print()
 
     if install_type == 'ad_hoc':
-        results = start_all(selected_apps)
+        # base_port + instance wirken bereits ueber caoxt.ini-Reload bei
+        # naechstem app_manager-Import — fuer die laufende Session sind
+        # die Werte schon in APPS gesetzt (aus dem Reimport unten).
+        _reload_app_manager()
+        from installer.app_manager import start_all as _start_all
+        results = _start_all(selected_apps)
         return all(results.get(a, False) for a in selected_apps)
 
     if install_type == 'service_user':
         ok = host_setup.install_user(
             install_root=_REPO_ROOT,
+            instance_name=instance_name,
+            base_port=base_port,
             selected_apps=selected_apps,
             enable_lingering=True,
             start_after_enable=True,
@@ -375,6 +451,8 @@ def phase4_install_and_start(selected_apps: list[str],
     if install_type == 'service_system':
         ok = host_setup.install_system(
             install_root=_REPO_ROOT,
+            instance_name=instance_name,
+            base_port=base_port,
             selected_apps=selected_apps,
             start_after_enable=True,
         )
@@ -385,10 +463,29 @@ def phase4_install_and_start(selected_apps: list[str],
     return False
 
 
+def _reload_app_manager() -> None:
+    """Erzwingt einen Reimport von installer.app_manager.
+
+    Wird in Phase 4 vor dem Ad-hoc-Start gerufen: die caoxt.ini wurde
+    soeben mit neuen instance_name/base_port-Werten beschrieben, der
+    erste Import von app_manager hatte aber noch die alten Werte
+    gelesen. Reload sorgt dafuer, dass APPS-Ports + PID_FILE-Pfad
+    stimmen.
+    """
+    import importlib
+    import installer.app_manager as _am
+    importlib.reload(_am)
+
+
 # ─── Phase 5: Abschlussbericht ────────────────────────────────────────
 
-def phase5_report(selected_apps: list[str], install_type: str, ok: bool) -> None:
+def phase5_report(selected_apps: list[str], type_cfg: dict, ok: bool) -> None:
     """Phase 5: Status + Adressen + Logs ausgeben."""
+    install_type  = type_cfg['install_type']
+    instance_name = type_cfg['instance_name']
+    base_port     = type_cfg['base_port']
+    prefix = f'dorfkern-{instance_name}' if instance_name else 'dorfkern'
+
     _section("Abschlussbericht")
     print_status()
 
@@ -398,7 +495,10 @@ def phase5_report(selected_apps: list[str], install_type: str, ok: bool) -> None
         print("  ⚠  Installation mit Problemen — siehe Logs.")
 
     print()
-    print(f"  Modus: {_TYPE_LABEL[install_type]}")
+    inst_hint = f" (Instanz {instance_name!r})" if instance_name else ''
+    print(f"  Modus: {_TYPE_LABEL[install_type]}{inst_hint}")
+    print(f"  Ports: admin={base_port+4} orga={base_port+3} "
+          f"kasse={base_port+2} kiosk={base_port+1}")
     print()
     print("  Adressen:")
     for app in selected_apps:
@@ -417,7 +517,7 @@ def phase5_report(selected_apps: list[str], install_type: str, ok: bool) -> None
     else:
         flag = ' --user' if install_type == 'service_user' else ''
         for app in selected_apps:
-            print(f"    {app:<14}  journalctl{flag} -u dorfkern-{app}")
+            print(f"    {app:<14}  journalctl{flag} -u {prefix}-{app}")
 
     print()
     print("  Steuerung:")
@@ -474,7 +574,7 @@ def main() -> None:
         if not args.terminal_typ:
             print("  ✗ --role terminal erfordert --terminal-typ")
             sys.exit(1)
-        install_type  = phase0_install_type(True)
+        type_cfg = phase0_install_type(True)
         host, port, name, user, password = phase1_db_config(True)
         # KEINE DB-Init (das ist Sache des Admin-Hosts).
         selected_apps = phase3b_terminal_apps(args.terminal_typ)
@@ -484,14 +584,16 @@ def main() -> None:
             host=host, port=port, name=name,
             user=user, password=password,
             active_apps=selected_apps,
+            instance_name=type_cfg['instance_name'],
+            base_port=type_cfg['base_port'],
         )
         print(f"  ✓ caoxt.ini gespeichert: {_INI_PATH}")
-        ok = phase4_install_and_start(selected_apps, install_type)
-        phase5_report(selected_apps, install_type, ok)
+        ok = phase4_install_and_start(selected_apps, type_cfg)
+        phase5_report(selected_apps, type_cfg, ok)
         return
 
     # ── Admin-Rolle (Vollinstallation, Default) ──────────────
-    install_type = phase0_install_type(args.non_interactive)
+    type_cfg = phase0_install_type(args.non_interactive)
     host, port, name, user, password = phase1_db_config(args.non_interactive)
     db_ok = phase2_db_init(host, port, name, user, password)
     if not db_ok and not args.non_interactive:
@@ -505,11 +607,13 @@ def main() -> None:
         host=host, port=port, name=name,
         user=user, password=password,
         active_apps=selected_apps,
+        instance_name=type_cfg['instance_name'],
+        base_port=type_cfg['base_port'],
     )
     print(f"  ✓ caoxt.ini gespeichert: {_INI_PATH}")
 
-    ok = phase4_install_and_start(selected_apps, install_type)
-    phase5_report(selected_apps, install_type, ok)
+    ok = phase4_install_and_start(selected_apps, type_cfg)
+    phase5_report(selected_apps, type_cfg, ok)
 
 
 if __name__ == '__main__':

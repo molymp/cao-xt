@@ -167,8 +167,16 @@ def write_ini(ini_path: str,
               host: str, port: int, name: str,
               user: str, password: str,
               active_apps: list,
-              kiosk_db_name: str = '') -> None:
-    """Schreibt (oder überschreibt) caoxt.ini mit den gegebenen Werten."""
+              kiosk_db_name: str = '',
+              instance_name: str = '',
+              base_port: int = 5000) -> None:
+    """Schreibt (oder überschreibt) caoxt.ini mit den gegebenen Werten.
+
+    ``instance_name`` (default leer) und ``base_port`` (default 5000) gehen
+    in [Installation] und steuern, unter welchem Suffix die systemd-Units
+    laufen bzw. welche Ports die Web-Apps nutzen. Mehrere Dorfkern-Klone
+    auf demselben Host koennen so parallel als 'prod' / 'dev' / etc. laufen.
+    """
     cfg = configparser.ConfigParser()
 
     # Bestehende Werte laden um nicht-DB-Sektionen zu erhalten
@@ -197,7 +205,9 @@ def write_ini(ini_path: str,
         cfg.remove_section('Umgebung')
 
     cfg['Installation'] = {
-        'aktive_apps': ','.join(active_apps),
+        'aktive_apps':   ','.join(active_apps),
+        'instance_name': instance_name,
+        'base_port':     str(base_port),
     }
 
     os.makedirs(os.path.dirname(ini_path), exist_ok=True)

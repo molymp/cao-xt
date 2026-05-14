@@ -19,6 +19,22 @@ db_user=[database-user]
 db_pass=[database-password]
 db_pref=XT_
 
+[Installation]
+; instance_name: leer = Default-Praefix 'dorfkern'. Wer mehrere
+; Dorfkern-Instanzen parallel auf einem Host laufen lassen will (z.B.
+; 'prod' + 'dev'), setzt hier einen eindeutigen Namen — daraus werden
+; systemd-Unit-Namen (dorfkern-<name>-admin.service), Pfade
+; (/opt/dorfkern-<name>, /var/log/dorfkern-<name>) und der Service-User
+; (dorfkern-<name>) abgeleitet.
+instance_name=
+; base_port: 5000 = admin auf 5004, orga 5003, kasse 5002, kiosk 5001.
+; Bei zweiter Instanz z.B. 5100 (admin 5104, kiosk 5101), damit die
+; Ports sich nicht beissen.
+base_port=5000
+; aktive_apps wird von install.py beim Setup geschrieben (Liste der
+; Apps, die ueber dorfkern.target automatisch hochkommen).
+;aktive_apps=admin,orga,kasse,kiosk
+
 [Module]
 ini_navstyle=web
 ini_editsn=

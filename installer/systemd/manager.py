@@ -2,9 +2,12 @@
 Laufzeit-Dispatch der App-Steuerung an systemctl.
 
 Wird von ``installer/app_manager.py`` aufgerufen. Erkennt automatisch,
-ob die ``dorfkern.target``-Unit als System-Service (root, /etc/systemd/system)
+ob die ``<prefix>.target``-Unit als System-Service (root, /etc/systemd/system)
 oder als User-Service (--user, ~/.config/systemd/user) installiert ist —
 und benutzt im entsprechenden Modus die richtigen systemctl-Flags.
+
+Welcher ``<prefix>`` aktiv ist, kommt aus ``common.config.load_instance_config()``
+(Default: leerer Instanz-Name -> Praefix ``dorfkern``).
 
 Ist gar keine Target-Unit da, liefert ``systemd_mode()`` None und der
 Aufrufer faellt auf den Popen-Pfad (Dev-Ad-hoc) zurueck.
@@ -29,6 +32,24 @@ _SYSTEMCTL_TIMEOUT = 60   # einzelner systemctl-Aufruf
 _WAIT_ACTIVE_SECS  = 60   # Default-Wartezeit bis "active"
 
 
+@lru_cache(maxsize=1)
+def _instance_name() -> str:
+    """Liest den Instanz-Namen aus caoxt.ini (gecached pro Prozess)."""
+    try:
+        from common.config import load_instance_config
+        return load_instance_config().get('instance_name', '') or ''
+    except Exception:
+        return ''
+
+
+def _target() -> str:
+    return units.target_name(_instance_name())
+
+
+def _unit_for(name: str) -> str:
+    return units.unit_name(name, _instance_name())
+
+
 def _systemctl_available() -> bool:
     """True wenn ``systemctl`` ueberhaupt im PATH ist."""
     try:
@@ -40,16 +61,16 @@ def _systemctl_available() -> bool:
 
 
 def _has_unit(mode: str) -> bool:
-    """True wenn dorfkern.target im gegebenen systemctl-Modus existiert."""
+    """True wenn das Instanz-Target im gegebenen systemctl-Modus existiert."""
     cmd = ['systemctl']
     if mode == 'user':
         cmd.append('--user')
-    cmd += ['list-unit-files', '--no-legend', '--no-pager', 'dorfkern.target']
+    cmd += ['list-unit-files', '--no-legend', '--no-pager', _target()]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
-    return r.returncode == 0 and 'dorfkern.target' in r.stdout
+    return r.returncode == 0 and _target() in r.stdout
 
 
 @lru_cache(maxsize=1)
@@ -75,16 +96,14 @@ def systemd_mode() -> Optional[str]:
 
 
 def is_systemd_managed() -> bool:
-    """True wenn irgendein Mode (user oder system) erkannt wurde.
-
-    Erhalten fuer Aufrufer, denen der Mode egal ist (z.B. app_manager).
-    """
+    """True wenn irgendein Mode (user oder system) erkannt wurde."""
     return systemd_mode() is not None
 
 
 def invalidate_cache() -> None:
-    """Cache von ``systemd_mode()`` (und damit ``is_systemd_managed``) leeren."""
+    """Cache von ``systemd_mode()`` und Instanz-Name leeren."""
     systemd_mode.cache_clear()
+    _instance_name.cache_clear()
 
 
 def _systemctl(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
@@ -92,8 +111,7 @@ def _systemctl(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
 
     - User-Mode: ``systemctl --user ...`` ohne sudo.
     - System-Mode als root: direkt.
-    - System-Mode als non-root: via ``sudo -n``, damit das in
-      passwortfreien sudoers-Snippets funktioniert.
+    - System-Mode als non-root: via ``sudo -n``.
     """
     mode = systemd_mode()
     cmd = ['systemctl']
@@ -111,10 +129,7 @@ def _systemctl(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
 
 
 def _wait_active(unit: str, timeout: int = _WAIT_ACTIVE_SECS) -> bool:
-    """Wartet bis Unit ``active`` ist oder Timeout abgelaufen ist.
-
-    Bricht frueh ab, sobald die Unit ``failed`` meldet.
-    """
+    """Wartet bis Unit ``active`` ist oder Timeout abgelaufen ist."""
     for _ in range(timeout):
         active = _systemctl('is-active', '--quiet', unit)
         if active.returncode == 0:
@@ -139,7 +154,7 @@ def _journalctl_hint(unit: str) -> str:
 
 def start_app(name: str, *, print_fn=print) -> bool:
     """Startet eine einzelne App. True bei Erfolg."""
-    unit = units.unit_name(name)
+    unit = _unit_for(name)
     r = _systemctl('start', unit)
     if r.returncode != 0:
         print_fn(f"  ✗  {name}: systemctl start fehlgeschlagen: {_err(r)}")
@@ -154,7 +169,7 @@ def start_app(name: str, *, print_fn=print) -> bool:
 
 def stop_app(name: str, *, print_fn=print) -> None:
     """Stoppt eine einzelne App."""
-    unit = units.unit_name(name)
+    unit = _unit_for(name)
     r = _systemctl('stop', unit)
     if r.returncode == 0:
         print_fn(f"  ✓  {name} gestoppt (systemd-{systemd_mode()})")
@@ -164,7 +179,7 @@ def stop_app(name: str, *, print_fn=print) -> None:
 
 def restart_app(name: str, *, print_fn=print) -> bool:
     """Restart einer einzelnen App."""
-    unit = units.unit_name(name)
+    unit = _unit_for(name)
     r = _systemctl('restart', unit)
     if r.returncode != 0:
         print_fn(f"  ✗  {name}: systemctl restart fehlgeschlagen: {_err(r)}")
@@ -180,7 +195,7 @@ def restart_app(name: str, *, print_fn=print) -> bool:
 def status_app(name: str, *, port: Optional[int],
                is_daemon: bool) -> Dict[str, object]:
     """Status-Dict in derselben Form wie ``app_manager.status_app``."""
-    unit = units.unit_name(name)
+    unit = _unit_for(name)
     active = ''
     main_pid = 0
     show = _systemctl('show', '-p', 'ActiveState,MainPID,LoadState', unit)
@@ -209,25 +224,27 @@ def status_app(name: str, *, port: Optional[int],
 
 def start_all(apps: Optional[List[str]] = None, *,
               print_fn=print) -> Dict[str, bool]:
-    """Startet via ``dorfkern.target`` (bei None) oder einzelne Apps."""
+    """Startet via Instanz-Target (bei None) oder einzelne Apps."""
     if apps is None:
-        r = _systemctl('start', 'dorfkern.target')
+        target = _target()
+        r = _systemctl('start', target)
         if r.returncode != 0:
-            print_fn(f"  ✗  systemctl start dorfkern.target: {_err(r)}")
+            print_fn(f"  ✗  systemctl start {target}: {_err(r)}")
             return {a: False for a in units.all_app_names()}
-        print_fn(f"  ✓  dorfkern.target gestartet (systemd-{systemd_mode()})")
+        print_fn(f"  ✓  {target} gestartet (systemd-{systemd_mode()})")
         return {a: True for a in units.all_app_names()}
     return {a: start_app(a, print_fn=print_fn) for a in apps}
 
 
 def stop_all(apps: Optional[List[str]] = None, *, print_fn=print) -> None:
-    """Stoppt via ``dorfkern.target`` oder einzelne Apps."""
+    """Stoppt via Instanz-Target oder einzelne Apps."""
     if apps is None:
-        r = _systemctl('stop', 'dorfkern.target')
+        target = _target()
+        r = _systemctl('stop', target)
         if r.returncode == 0:
-            print_fn(f"  ✓  dorfkern.target gestoppt (systemd-{systemd_mode()})")
+            print_fn(f"  ✓  {target} gestoppt (systemd-{systemd_mode()})")
         else:
-            print_fn(f"  ✗  systemctl stop dorfkern.target: {_err(r)}")
+            print_fn(f"  ✗  systemctl stop {target}: {_err(r)}")
         return
     for a in apps:
         stop_app(a, print_fn=print_fn)

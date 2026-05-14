@@ -2191,25 +2191,34 @@ def api_update_status():
 def api_system_update():
     """
     Startet das Update im Hintergrund.
-    Das Script loggt nach /tmp/caoxt-update.log.
+    Das Script loggt nach /tmp/<prefix>-update.log (Default
+    /tmp/dorfkern-update.log; bei Instanz 'prod' z.B.
+    /tmp/dorfkern-prod-update.log).
     """
     repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
     venv_python = os.path.join(repo_root, '.venv', 'bin', 'python3')
     if not os.path.exists(venv_python):
         venv_python = sys.executable
 
+    # Log-Pfad aus dem Updater holen, damit Instanz-Suffix konsistent bleibt.
+    try:
+        from installer import updater as _upd
+        log_path = _upd._LOG_FILE
+    except Exception:
+        log_path = '/tmp/dorfkern-update.log'
+
     try:
         subprocess.Popen(
             [venv_python, '-m', 'installer.updater', '--update'],
             cwd=repo_root,
-            stdout=open('/tmp/caoxt-update.log', 'a'),
+            stdout=open(log_path, 'a'),
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
-    return jsonify({'ok': True, 'log': '/tmp/caoxt-update.log'})
+    return jsonify({'ok': True, 'log': log_path})
 
 
 @app.route('/api/system/restart-all', methods=['POST'])
@@ -2236,17 +2245,26 @@ def api_system_restart_all():
     if not os.path.exists(ctl):
         return jsonify({'ok': False,
                         'error': 'dorfkern-ctl nicht gefunden'}), 500
+
+    # Restart-Log instanz-suffigiert (passend zur Updater-Konvention).
+    try:
+        from common.config import load_instance_config
+        prefix = load_instance_config()['systemd_prefix']
+    except Exception:
+        prefix = 'dorfkern'
+    restart_log = f'/tmp/{prefix}-restart.log'
+
     try:
         subprocess.Popen(
             [ctl, 'restart'],   # kein App-Arg = alle Apps
             cwd=repo_root,
-            stdout=open('/tmp/caoxt-restart.log', 'a'),
+            stdout=open(restart_log, 'a'),
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
-    return jsonify({'ok': True, 'log': '/tmp/caoxt-restart.log'})
+    return jsonify({'ok': True, 'log': restart_log})
 
 
 # ── Zeiten-CSV Import (ShiftJuggler Attendance-Export) ───────────

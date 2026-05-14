@@ -45,10 +45,17 @@ nicht über CLI-Flags:
 | Dienst pro Benutzer   | 2 | `~/.config/systemd/user/` | Login-User | egal |
 | Dienst systemweit     | 3 | `/etc/systemd/system/` | `dorfkern` | bevorzugt `/opt/dorfkern` |
 
+In Phase 0 fragt der Installer zusätzlich nach **Instanz-Name**
+(default leer) und **Port-Base** (default 5000). Beides ist für die
+übliche Single-Instance-Installation egal — die Defaults erzeugen exakt
+die historischen Namen und Ports. Wer mehrere Instanzen parallel laufen
+lassen will, vergibt unterschiedliche Suffixe. Siehe Abschnitt
+[Mehrere Instanzen parallel](#mehrere-instanzen-parallel-dev--prod).
+
 `./install.sh` führt durch:
 
 ```
-Phase 0: Installations-Typ (1/2/3)
+Phase 0: Installations-Typ (1/2/3) + Instanz-Name + Port-Base
 Phase 1: DB-Verbindung
 Phase 2: DB-Init
 Phase 3: App-Auswahl
@@ -186,6 +193,63 @@ sudo userdel dorfkern
 Das `dorfkern`-Verzeichnis unter `/opt/`, `/var/log/`, `/var/backups/`
 wird absichtlich nicht automatisch gelöscht — Backups und Logs könnten
 noch gebraucht werden.
+
+## Mehrere Instanzen parallel (DEV + PROD)
+
+Auf einem einzelnen Host können mehrere Dorfkern-Installationen
+nebeneinander laufen, sofern jede einen eindeutigen **Instanz-Namen**
+und eine eigene **Port-Base** bekommt. Typischer Anwendungsfall:
+Staging-Server, der gleichzeitig `prod` (gegen Live-DB) und `dev`
+(gegen Test-DB) hostet.
+
+Was sich pro Instanz unterscheidet (Suffix = der gewählte Instanz-Name):
+
+| Sache | Default (leer) | Instanz `prod` | Instanz `dev` |
+|---|---|---|---|
+| Install-Pfad | `/opt/dorfkern` | `/opt/dorfkern-prod` | `/opt/dorfkern-dev` |
+| System-User | `dorfkern` | `dorfkern-prod` | `dorfkern-dev` |
+| systemd-Target | `dorfkern.target` | `dorfkern-prod.target` | `dorfkern-dev.target` |
+| Service-Units | `dorfkern-admin.service`, … | `dorfkern-prod-admin.service`, … | `dorfkern-dev-admin.service`, … |
+| `/var/log` | `/var/log/dorfkern` | `/var/log/dorfkern-prod` | `/var/log/dorfkern-dev` |
+| `/var/backups` | `/var/backups/dorfkern` | `/var/backups/dorfkern-prod` | `/var/backups/dorfkern-dev` |
+| Update-Log | `/tmp/dorfkern-update.log` | `/tmp/dorfkern-prod-update.log` | `/tmp/dorfkern-dev-update.log` |
+| Update-Lock | `/var/lock/dorfkern-update.lock` | `/var/lock/dorfkern-prod-update.lock` | `/var/lock/dorfkern-dev-update.lock` |
+| Port admin | 5004 (Base 5000) | 5004 (Base 5000) | 5104 (Base 5100) |
+| Port kiosk | 5001 | 5001 | 5101 |
+
+**Beispiel: PROD-Setup + parallele DEV-Instanz**
+
+```bash
+# 1) PROD-Instanz: Default (leerer Name, Base 5000)
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/molymp/cao-xt/master/bootstrap.sh)"
+# Dialog:
+#   Auswahl: 3
+#   Instanz-Name: <leer>
+#   Port-Base:    5000
+# -> Repo unter /opt/dorfkern, Apps auf 5001-5004
+
+# 2) DEV-Instanz im selben Schritt:
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/molymp/cao-xt/master/bootstrap.sh)"
+# Dialog:
+#   Auswahl: 3
+#   Instanz-Name: dev
+#   Port-Base:    5100
+# Der Bootstrap erkennt, dass /opt/dorfkern schon belegt ist, und klont
+# (oder verschiebt) das neue Repo nach /opt/dorfkern-dev.
+# -> Repo unter /opt/dorfkern-dev, Apps auf 5101-5104,
+#    Service-User dorfkern-dev, Units dorfkern-dev-*.service
+```
+
+Beide Instanzen laufen unabhängig — `systemctl status dorfkern.target`
+und `systemctl status dorfkern-dev.target` zeigen jeweils ihren eigenen
+Stand, `dorfkern-ctl status` aus dem jeweiligen Repo-Verzeichnis trifft
+nur die zugehörige Instanz (weil es die Instanz aus der lokalen
+`caoxt.ini` liest).
+
+Die DBs gehören NICHT zur Instanz-Trennung — die kommen aus
+`[Datenbank]` in `caoxt.ini` und können prinzipiell auch dieselbe DB
+zeigen (würde aber im Normalfall nicht gemacht; PROD-Instanz → Live-DB,
+DEV-Instanz → separate Test-DB).
 
 ## Fallback-Verhalten
 

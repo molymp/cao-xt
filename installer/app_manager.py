@@ -11,7 +11,8 @@ Daemons (type='daemon', PID-basiert, kein Port):
   haccp-poller    → zieht zyklisch TFA-Messwerte, schreibt Heartbeat
   einkauf-poller  → fragt zyklisch Gmail nach Lieferanten-Bestellbestaetigungen
 
-PIDs werden in /tmp/caoxt-pids.json persistiert.
+PIDs werden in /tmp/caoxt-pids[-<instance>].json persistiert (Default-
+Instanz behaelt den historischen Pfad ohne Suffix).
 """
 import json
 import os
@@ -47,7 +48,7 @@ _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 _VENV_PYTHON = os.path.join(_REPO_ROOT, '.venv', 'bin', 'python3')
 _APP_PYTHON  = _VENV_PYTHON if os.path.isfile(_VENV_PYTHON) else sys.executable
 
-PID_FILE = '/tmp/caoxt-pids.json'
+# PID_FILE wird weiter unten nach dem Lesen der Instanz-Konfig gesetzt.
 LOG_DIR  = '/tmp'
 
 # Log-Rotation: vor jedem Start wird geprueft, ob das Log groesser als
@@ -173,42 +174,69 @@ def log_info(log_path: str) -> dict:
         pass
     return info
 
+# Ports + Instanz-Praefix kommen aus caoxt.ini ([Installation] base_port +
+# instance_name), per Default 5000 / leer. So koennen DEV und PROD parallel
+# auf einem Host laufen, jede Instanz mit eigenem Port-Block und eigenem
+# PID-/Log-File.
+try:
+    from common.config import load_instance_config as _load_inst
+    _INST = _load_inst()
+except Exception:  # pragma: no cover - falls common.config nicht importierbar
+    _INST = {'instance_name': '', 'base_port': 5000, 'systemd_prefix': 'dorfkern'}
+_BASE_PORT     = _INST['base_port']
+_INSTANCE_NAME = _INST['instance_name']
+_PREFIX        = _INST['systemd_prefix']
+
+# PID-File pro Instanz, sonst stoeren sich DEV und PROD beim Tracken der
+# Popen-PIDs gegenseitig. Bei leerer Instanz Bleibt der historische
+# Pfad /tmp/caoxt-pids.json erhalten.
+PID_FILE = (f'/tmp/caoxt-pids-{_INSTANCE_NAME}.json'
+            if _INSTANCE_NAME else '/tmp/caoxt-pids.json')
+
+
+def _log_path(app: str) -> str:
+    """Tmp-Logpfad fuer den Dev-Mode. Im systemd-Mode (systemd_manager)
+    wird das ohnehin durch ``journalctl -u …`` ersetzt. Suffix mit Instanz-
+    Namen, damit parallele Instanzen sich nicht ueberschreiben."""
+    return os.path.join(LOG_DIR, f'{_PREFIX}-{app}.log')
+
+
 APPS = {
     'admin': {
         'type': 'web',
-        'port': 5004,
+        'port': _BASE_PORT + 4,
         'app_dir': os.path.join(_REPO_ROOT, 'admin-app', 'app'),
-        'log': os.path.join(LOG_DIR, 'caoxt-admin.log'),
+        'log': _log_path('admin'),
     },
     'orga': {
         'type': 'web',
-        'port': 5003,
+        'port': _BASE_PORT + 3,
         'app_dir': os.path.join(_REPO_ROOT, 'orga-app', 'app'),
-        'log': os.path.join(LOG_DIR, 'caoxt-orga.log'),
+        'log': _log_path('orga'),
     },
     'kasse': {
         'type': 'web',
-        'port': 5002,
+        'port': _BASE_PORT + 2,
         'app_dir': os.path.join(_REPO_ROOT, 'kasse-app', 'app'),
-        'log': os.path.join(LOG_DIR, 'caoxt-kasse.log'),
+        'log': _log_path('kasse'),
     },
     'kiosk': {
         'type': 'web',
-        'port': 5001,
+        'port': _BASE_PORT + 1,
         'app_dir': os.path.join(_REPO_ROOT, 'kiosk-app', 'app'),
-        'log': os.path.join(LOG_DIR, 'caoxt-kiosk.log'),
+        'log': _log_path('kiosk'),
     },
     'haccp-poller': {
         'type': 'daemon',
         'module': 'modules.haccp.poller',
         'cwd': _REPO_ROOT,
-        'log': os.path.join(LOG_DIR, 'caoxt-haccp-poller.log'),
+        'log': _log_path('haccp-poller'),
     },
     'einkauf-poller': {
         'type': 'daemon',
         'module': 'installer.einkauf_poller',
         'cwd': _REPO_ROOT,
-        'log': os.path.join(LOG_DIR, 'caoxt-einkauf-poller.log'),
+        'log': _log_path('einkauf-poller'),
     },
 }
 

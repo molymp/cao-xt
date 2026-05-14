@@ -5,10 +5,11 @@ Im Gegensatz zu ``units.py`` (rein) und ``manager.py`` (laufzeit-Steuerung)
 fasst dieses Modul die Setup-Aktionen zusammen, die einmal beim
 Installer-Lauf passieren:
 
-  install_user(install_root)        -> Units nach ~/.config/systemd/user
-  install_system(install_root)      -> Units nach /etc/systemd/system
-  uninstall_user()                  -> stoppen, disablen, loeschen (user)
-  uninstall_system()                -> stoppen, disablen, loeschen (system)
+  install_user(install_root, instance_name=...)        -> ~/.config/systemd/user
+  install_system(install_root, instance_name=...)      -> /etc/systemd/system
+  regenerate_user/system(install_root, instance_name=...) -> nur Service-Units
+                                                              neu schreiben + reload
+  uninstall_user/system(instance_name=...)              -> stoppen + loeschen
 
 Alle Funktionen schreiben Fortschritt ueber das ``print_fn``-Callback
 (Default: print). Sie geben True bei Erfolg zurueck und False, wenn ein
@@ -16,13 +17,16 @@ Teilschritt fehlschlaegt — der Aufrufer entscheidet ueber Abbruch vs.
 Weitermachen.
 
 Hinweise:
-  - System-Mode-Aktionen brauchen root (useradd, mkdir /etc, chown,
-    systemctl). Wenn nicht root, wird via ``sudo -n`` gewrappt — d.h.
-    der aufrufende User muss passwortlos sudo-Rechte haben oder vorher
-    ein ``sudo -v`` gemacht haben. Sonst schlaegt die Aktion mit klarer
-    Fehlermeldung fehl.
+  - Alle System-Mode-Aktionen brauchen root. Wenn nicht root, wird via
+    ``sudo -n`` gewrappt — d.h. der aufrufende User muss passwortlos
+    sudo-Rechte haben. Sonst schlaegt die Aktion mit klarer Fehlermeldung
+    fehl.
   - User-Mode-Aktionen brauchen kein root, AUSSER fuer
     ``loginctl enable-linger`` — auch hier ``sudo -n``.
+  - Mit nicht-leerem ``instance_name`` bekommen User, Pfade und Units
+    einen Suffix (z.B. dorfkern-prod-admin.service, /opt/dorfkern-prod,
+    /var/log/dorfkern-prod, System-User dorfkern-prod). Default ohne
+    Suffix laesst alles wie bisher.
 """
 import getpass
 import os
@@ -36,11 +40,23 @@ from . import units
 SYSTEM_UNIT_DIR = '/etc/systemd/system'
 USER_UNIT_DIR   = os.path.expanduser('~/.config/systemd/user')
 
-# Verzeichnisse, die fuer System-Mode angelegt werden (Owner = Service-User).
-SYSTEM_DIRS = ('/var/log/dorfkern', '/var/backups/dorfkern')
-
 
 PrintFn = Callable[[str], None]
+
+
+def system_dirs(instance_name: str = '') -> List[str]:
+    """Liste der /var-Verzeichnisse, die fuer System-Mode angelegt werden.
+
+    Pro Instanz separat, damit sich DEV und PROD-Backups/Logs nicht
+    vermischen.
+    """
+    prefix = units.systemd_prefix(instance_name)
+    return [f'/var/log/{prefix}', f'/var/backups/{prefix}']
+
+
+# Behaelt das alte Tupel-Symbol als Default-Wert (leerer Instanz) bei,
+# falls jemand das aus aelterem Code importiert.
+SYSTEM_DIRS = tuple(system_dirs(''))
 
 
 # ─── Hilfsfunktionen ──────────────────────────────────────────────────
@@ -79,8 +95,6 @@ def _write_units(target_dir: str, rendered: dict,
     (Workaround dafuer, dass wir keinen Root-Open-Handle haben).
     """
     if sudo:
-        # Erst ein temporaeres Verzeichnis als User befuellen, dann mit sudo
-        # nach target_dir kopieren. Stabiler als 'sudo tee'-Pipeline.
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             for fname, content in rendered.items():
@@ -97,7 +111,6 @@ def _write_units(target_dir: str, rendered: dict,
                 print_fn(f"  ✓  {dst}")
         return True
 
-    # User-Mode: direkt schreiben
     os.makedirs(target_dir, exist_ok=True)
     for fname, content in rendered.items():
         path = os.path.join(target_dir, fname)
@@ -111,11 +124,11 @@ def _write_units(target_dir: str, rendered: dict,
     return True
 
 
-def _remove_units(target_dir: str, *, sudo: bool,
-                  print_fn: PrintFn) -> None:
-    """Loescht alle dorfkern-*.service und dorfkern.target in target_dir."""
-    files = [units.unit_name(a) for a in units.all_app_names()]
-    files.append('dorfkern.target')
+def _remove_units(target_dir: str, instance_name: str, *,
+                  sudo: bool, print_fn: PrintFn) -> None:
+    """Loescht alle <prefix>-*.service und <prefix>.target in target_dir."""
+    files = [units.unit_name(a, instance_name) for a in units.all_app_names()]
+    files.append(units.target_name(instance_name))
     paths = [os.path.join(target_dir, f) for f in files]
     paths = [p for p in paths if os.path.lexists(p)]
     if not paths:
@@ -138,6 +151,8 @@ def _remove_units(target_dir: str, *, sudo: bool,
 # ─── User-Mode ────────────────────────────────────────────────────────
 
 def install_user(install_root: str, *,
+                 instance_name: str = '',
+                 base_port: int = units.DEFAULT_BASE_PORT,
                  selected_apps: Optional[List[str]] = None,
                  enable_lingering: bool = True,
                  start_after_enable: bool = True,
@@ -145,22 +160,21 @@ def install_user(install_root: str, *,
     """Installiert die Units als ``systemctl --user``-Dienste.
 
     Args:
-        install_root: Repo-Wurzel auf diesem Host (das, was als
-            ``WorkingDirectory`` in die Units geht).
-        selected_apps: Apps, die im ``Wants=`` des Targets stehen sollen
-            (None = alle). Wirkt sich nur darauf aus, was beim
-            Target-Start automatisch hochkommt — die Service-Units werden
-            immer fuer alle Apps installiert.
-        enable_lingering: Wenn True, ``sudo loginctl enable-linger`` ausrufen,
-            damit die Dienste auch ohne aktive Session weiterlaufen.
-        start_after_enable: Wenn True, am Ende ``systemctl --user start
-            dorfkern.target`` triggern (auf Enable folgt bei systemd-User
-            nicht automatisch der erste Start).
-
-    Returns True bei Erfolg.
+        install_root: Repo-Wurzel auf diesem Host (-> ``WorkingDirectory``).
+        instance_name: Suffix fuer Unit-/Target-Namen (leer = Default).
+        base_port: Port-Base fuer Web-Apps (Default 5000).
+        selected_apps: Apps im ``Wants=`` des Targets (None = alle).
+        enable_lingering: ``sudo loginctl enable-linger`` ausrufen, damit
+            die Dienste auch ohne aktive Session weiterlaufen.
+        start_after_enable: am Ende ``systemctl --user start <target>``
+            triggern.
     """
+    target = units.target_name(instance_name)
     print_fn("  → Units rendern und ablegen …")
-    rendered = units.render_all(mode='user', install_root=install_root,
+    rendered = units.render_all(mode='user',
+                                 instance_name=instance_name,
+                                 base_port=base_port,
+                                 install_root=install_root,
                                  apps=selected_apps)
     if not _write_units(USER_UNIT_DIR, rendered, sudo=False, print_fn=print_fn):
         return False
@@ -182,39 +196,43 @@ def install_user(install_root: str, *,
         print_fn(f"  ✗  daemon-reload: {_err(r)}")
         return False
 
-    print_fn("  → systemctl --user enable dorfkern.target …")
-    r = _run(['systemctl', '--user', 'enable', 'dorfkern.target'])
+    print_fn(f"  → systemctl --user enable {target} …")
+    r = _run(['systemctl', '--user', 'enable', target])
     if r.returncode != 0:
         print_fn(f"  ✗  enable: {_err(r)}")
         return False
-    print_fn("  ✓  dorfkern.target enabled")
+    print_fn(f"  ✓  {target} enabled")
 
     if start_after_enable:
-        print_fn("  → systemctl --user start dorfkern.target …")
-        r = _run(['systemctl', '--user', 'start', 'dorfkern.target'],
-                 timeout=180)
+        print_fn(f"  → systemctl --user start {target} …")
+        r = _run(['systemctl', '--user', 'start', target], timeout=180)
         if r.returncode != 0:
             print_fn(f"  ✗  start: {_err(r)}")
             return False
-        print_fn("  ✓  dorfkern.target gestartet")
+        print_fn(f"  ✓  {target} gestartet")
 
     return True
 
 
 def regenerate_user(install_root: str, *,
+                    instance_name: str = '',
+                    base_port: int = units.DEFAULT_BASE_PORT,
                     print_fn: PrintFn = print) -> bool:
     """Schreibt User-Service-Units neu und macht systemctl --user daemon-reload.
 
     Update-Pfad: nach einem ``git pull``, wenn der User-Mode aktiv ist,
-    moegen sich Templates in ``units.py`` geaendert haben (ExecStart,
-    Restart-Policy, Env-Vars). Dann muessen die Dateien neu geschrieben
-    werden, damit beim naechsten Start die neue Definition gilt.
+    moegen sich Templates in ``units.py`` geaendert haben. Dann muessen
+    die Dateien neu geschrieben werden, damit beim naechsten Start die
+    neue Definition gilt.
 
-    Das ``dorfkern.target`` wird absichtlich NICHT angefasst — die
-    urspruengliche App-Auswahl aus dem Install bleibt erhalten.
+    Das Target wird absichtlich NICHT angefasst — die urspruengliche
+    App-Auswahl aus dem Install bleibt erhalten.
     """
     print_fn("  → User-Service-Units rendern …")
-    rendered = units.render_all(mode='user', install_root=install_root,
+    rendered = units.render_all(mode='user',
+                                 instance_name=instance_name,
+                                 base_port=base_port,
+                                 install_root=install_root,
                                  include_target=False)
     if not _write_units(USER_UNIT_DIR, rendered, sudo=False,
                         print_fn=print_fn):
@@ -227,15 +245,16 @@ def regenerate_user(install_root: str, *,
     return True
 
 
-def uninstall_user(*, print_fn: PrintFn = print) -> bool:
-    """Stoppt + disabled + loescht User-Units. Lingering bleibt unangetastet
-    (kann auch fuer andere User-Services genutzt sein)."""
-    print_fn("  → systemctl --user stop/disable dorfkern.target …")
-    _run(['systemctl', '--user', 'stop',    'dorfkern.target'], timeout=120)
-    _run(['systemctl', '--user', 'disable', 'dorfkern.target'])
+def uninstall_user(*, instance_name: str = '',
+                   print_fn: PrintFn = print) -> bool:
+    """Stoppt + disabled + loescht User-Units der gegebenen Instanz."""
+    target = units.target_name(instance_name)
+    print_fn(f"  → systemctl --user stop/disable {target} …")
+    _run(['systemctl', '--user', 'stop',    target], timeout=120)
+    _run(['systemctl', '--user', 'disable', target])
 
     print_fn("  → Unit-Files loeschen …")
-    _remove_units(USER_UNIT_DIR, sudo=False, print_fn=print_fn)
+    _remove_units(USER_UNIT_DIR, instance_name, sudo=False, print_fn=print_fn)
 
     print_fn("  → systemctl --user daemon-reload …")
     _run(['systemctl', '--user', 'daemon-reload'])
@@ -253,9 +272,12 @@ def _user_exists(name: str) -> bool:
         return False
 
 
-def _ensure_system_user(user: str, group: str, install_root: str,
+def _ensure_system_user(user: str, install_root: str,
                        *, print_fn: PrintFn) -> bool:
-    """Legt System-User+Gruppe an, falls noch nicht vorhanden."""
+    """Legt System-User+Gruppe an, falls noch nicht vorhanden.
+
+    Gruppenname = Username (``--user-group``).
+    """
     if _user_exists(user):
         print_fn(f"  ✓  Service-User {user!r} existiert bereits")
         return True
@@ -268,14 +290,14 @@ def _ensure_system_user(user: str, group: str, install_root: str,
     if r.returncode != 0:
         print_fn(f"  ✗  useradd: {_err(r)}")
         return False
-    print_fn(f"  ✓  {user}:{group} angelegt")
+    print_fn(f"  ✓  {user} angelegt (eigene Gruppe ebenfalls {user})")
     return True
 
 
-def _ensure_system_dirs(user: str, group: str,
+def _ensure_system_dirs(user: str, group: str, instance_name: str,
                        *, print_fn: PrintFn) -> bool:
-    """Legt /var/log/dorfkern und /var/backups/dorfkern mit korrektem Owner an."""
-    for d in SYSTEM_DIRS:
+    """Legt /var/log/<prefix> und /var/backups/<prefix> mit korrektem Owner an."""
+    for d in system_dirs(instance_name):
         if os.path.isdir(d):
             print_fn(f"  ✓  {d} existiert")
             continue
@@ -289,25 +311,30 @@ def _ensure_system_dirs(user: str, group: str,
 
 
 def install_system(install_root: str, *,
-                   user: str = units.DEFAULT_USER,
-                   group: str = units.DEFAULT_GROUP,
+                   instance_name: str = '',
+                   base_port: int = units.DEFAULT_BASE_PORT,
+                   user: str = '',
+                   group: str = '',
                    selected_apps: Optional[List[str]] = None,
                    start_after_enable: bool = True,
                    print_fn: PrintFn = print) -> bool:
     """Installiert die Units als systemweite Dienste unter Service-User.
 
-    Voraussetzungen werden vom Installer abgefragt (root, install_root
-    = /opt/dorfkern). Wir pruefen hier nur defensiv die offensichtlichen
-    Voraussetzungen + raisen klar.
+    user/group sind defaultmaessig vom Instanz-Namen abgeleitet
+    (dorfkern bzw. dorfkern-<instance>), koennen aber ueberschrieben werden.
     """
     if os.geteuid() != 0:
-        # Wir versuchen es trotzdem ueber sudo, aber warnen frueh.
         print_fn("  ⚠  Nicht als root gestartet — verwende sudo -n. "
                  "Falls kein passwortloses sudo, bricht das gleich ab.")
 
-    if not _ensure_system_user(user, group, install_root, print_fn=print_fn):
+    if not user:
+        user = units.systemd_prefix(instance_name)
+    if not group:
+        group = user
+
+    if not _ensure_system_user(user, install_root, print_fn=print_fn):
         return False
-    if not _ensure_system_dirs(user, group, print_fn=print_fn):
+    if not _ensure_system_dirs(user, group, instance_name, print_fn=print_fn):
         return False
 
     # Ownership von install_root sicherstellen — Code muss vom Service-
@@ -324,7 +351,10 @@ def install_system(install_root: str, *,
         return False
 
     print_fn("  → Units rendern und ablegen …")
-    rendered = units.render_all(mode='system', install_root=install_root,
+    rendered = units.render_all(mode='system',
+                                 instance_name=instance_name,
+                                 base_port=base_port,
+                                 install_root=install_root,
                                  user=user, group=group,
                                  apps=selected_apps)
     if not _write_units(SYSTEM_UNIT_DIR, rendered, sudo=True, print_fn=print_fn):
@@ -336,33 +366,44 @@ def install_system(install_root: str, *,
         print_fn(f"  ✗  daemon-reload: {_err(r)}")
         return False
 
+    target = units.target_name(instance_name)
     action = 'enable --now' if start_after_enable else 'enable'
-    print_fn(f"  → systemctl {action} dorfkern.target …")
+    print_fn(f"  → systemctl {action} {target} …")
     cmd = ['systemctl', 'enable']
     if start_after_enable:
         cmd.append('--now')
-    cmd.append('dorfkern.target')
+    cmd.append(target)
     r = _run(_maybe_sudo(cmd), timeout=180)
     if r.returncode != 0:
         print_fn(f"  ✗  enable: {_err(r)}")
         return False
     msg = 'enabled + gestartet' if start_after_enable else 'enabled'
-    print_fn(f"  ✓  dorfkern.target {msg}")
+    print_fn(f"  ✓  {target} {msg}")
     return True
 
 
 def regenerate_system(install_root: str, *,
-                      user: str = units.DEFAULT_USER,
-                      group: str = units.DEFAULT_GROUP,
+                      instance_name: str = '',
+                      base_port: int = units.DEFAULT_BASE_PORT,
+                      user: str = '',
+                      group: str = '',
                       print_fn: PrintFn = print) -> bool:
     """Schreibt System-Service-Units neu und macht systemctl daemon-reload.
 
     Analog zu :func:`regenerate_user`, aber im System-Mode (Units leben
-    unter /etc/systemd/system, Schreibvorgang via sudo).
-    Das ``dorfkern.target`` bleibt unangetastet (App-Auswahl erhalten).
+    unter /etc/systemd/system, Schreibvorgang via sudo). Das Target
+    bleibt unangetastet (App-Auswahl erhalten).
     """
+    if not user:
+        user = units.systemd_prefix(instance_name)
+    if not group:
+        group = user
+
     print_fn("  → System-Service-Units rendern …")
-    rendered = units.render_all(mode='system', install_root=install_root,
+    rendered = units.render_all(mode='system',
+                                 instance_name=instance_name,
+                                 base_port=base_port,
+                                 install_root=install_root,
                                  user=user, group=group,
                                  include_target=False)
     if not _write_units(SYSTEM_UNIT_DIR, rendered, sudo=True,
@@ -376,14 +417,20 @@ def regenerate_system(install_root: str, *,
     return True
 
 
-def uninstall_system(*, print_fn: PrintFn = print) -> bool:
-    """Stoppt + disabled + loescht System-Units. User-Account bleibt."""
-    print_fn("  → systemctl stop/disable dorfkern.target …")
-    _run(_maybe_sudo(['systemctl', 'stop',    'dorfkern.target']), timeout=120)
-    _run(_maybe_sudo(['systemctl', 'disable', 'dorfkern.target']))
+def uninstall_system(*, instance_name: str = '',
+                     print_fn: PrintFn = print) -> bool:
+    """Stoppt + disabled + loescht System-Units der gegebenen Instanz.
+
+    User + /var-Verzeichnisse bleiben — die koennen noch Backups/Logs
+    enthalten und sollen vom Operator manuell aufgeraeumt werden.
+    """
+    target = units.target_name(instance_name)
+    print_fn(f"  → systemctl stop/disable {target} …")
+    _run(_maybe_sudo(['systemctl', 'stop',    target]), timeout=120)
+    _run(_maybe_sudo(['systemctl', 'disable', target]))
 
     print_fn("  → Unit-Files loeschen …")
-    _remove_units(SYSTEM_UNIT_DIR, sudo=True, print_fn=print_fn)
+    _remove_units(SYSTEM_UNIT_DIR, instance_name, sudo=True, print_fn=print_fn)
 
     print_fn("  → systemctl daemon-reload …")
     _run(_maybe_sudo(['systemctl', 'daemon-reload']))

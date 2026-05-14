@@ -22,19 +22,34 @@ from typing import Optional, Tuple
 
 _REPO_ROOT     = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 _VERSION_FILE  = os.path.join(_REPO_ROOT, 'VERSION.json')
-_LOG_FILE      = os.path.join(os.sep, 'tmp', 'caoxt-update.log')
 _DORFKERN_CTL  = os.path.join(_REPO_ROOT, 'dorfkern-ctl')
 
-# Update-Lock: verhindert parallele Update-Laeufe. Standardpfad
-# /var/lock; bei fehlenden Rechten faellt _acquire_lock() auf /tmp
-# zurueck (dann muss eben die Konkurrenz mit jemandem geklaert
-# werden, der Update auf der gleichen Box parallel startet — sehr
-# unwahrscheinlich, aber dokumentiert).
-_LOCK_FILE = '/var/lock/dorfkern-update.lock'
 
-# Wohin die DB-Dumps geschrieben werden, bevor eine DB-Migration
-# laeuft. Per XT_BACKUP_DIR ueberschreibbar (z.B. fuer Tests).
-_BACKUP_DIR = os.environ.get('XT_BACKUP_DIR', '/var/backups/dorfkern')
+# Instanz-Konfig laden (instance_name + base_port), damit Lock-, Log- und
+# Backup-Pfade pro Instanz separat sind. So koennen DEV- und PROD-Updates
+# auf demselben Host parallel oder verschachtelt laufen, ohne sich
+# gegenseitig den Lock oder das Backup wegzuziehen.
+def _load_prefix() -> str:
+    try:
+        from common.config import load_instance_config
+        return load_instance_config()['systemd_prefix']
+    except Exception:
+        return 'dorfkern'
+
+
+_PREFIX = _load_prefix()
+
+# Update-Log: pro Instanz separat, damit DEV/PROD-Update-Verlaeufe
+# unterscheidbar sind.
+_LOG_FILE = os.path.join(os.sep, 'tmp', f'{_PREFIX}-update.log')
+
+# Update-Lock: verhindert parallele Update-Laeufe DERSELBEN Instanz.
+# Standardpfad /var/lock; bei fehlenden Rechten faellt _acquire_lock()
+# auf /tmp zurueck.
+_LOCK_FILE = f'/var/lock/{_PREFIX}-update.lock'
+
+# DB-Dumps vor Migrationen. Per XT_BACKUP_DIR ueberschreibbar.
+_BACKUP_DIR = os.environ.get('XT_BACKUP_DIR', f'/var/backups/{_PREFIX}')
 
 # ── Farben ────────────────────────────────────────────────────
 RED    = '\033[0;31m'
@@ -193,13 +208,14 @@ def check_for_updates(branch: str = '') -> dict:
 # ─── Lock, Working-Tree-Check, Bootstrap ──────────────────────────────
 
 def _acquire_lock() -> Optional[object]:
-    """Versucht eine exklusive Lock auf /var/lock/dorfkern-update.lock.
+    """Versucht eine exklusive Lock auf das Lockfile dieser Instanz.
 
     Liefert das offene File-Handle (Lock haelt bis zum close()) oder
     None, wenn ein anderer Updater laeuft. Faellt bei fehlenden
-    Schreibrechten auf /tmp/dorfkern-update.lock zurueck.
+    Schreibrechten auf das Pendant in /tmp zurueck.
     """
-    for path in (_LOCK_FILE, '/tmp/dorfkern-update.lock'):
+    fallback_lock = f'/tmp/{_PREFIX}-update.lock'
+    for path in (_LOCK_FILE, fallback_lock):
         try:
             fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
         except PermissionError:
@@ -550,8 +566,8 @@ def perform_update(branch: str = '') -> bool:
 
     lock = _acquire_lock()
     if lock is None:
-        _log("FEHLER: Ein anderer Update-Lauf hat den Lock. "
-             "Pruefen: /var/lock/dorfkern-update.lock bzw. /tmp/dorfkern-update.lock")
+        _log(f"FEHLER: Ein anderer Update-Lauf hat den Lock. "
+             f"Pruefen: {_LOCK_FILE} bzw. /tmp/{_PREFIX}-update.lock")
         return False
 
     try:
@@ -646,8 +662,8 @@ def perform_update(branch: str = '') -> bool:
         ok_count, total = _http_health_check()
         _log(f"  {ok_count}/{total} Apps antworten via HTTP.")
         if ok_count < total:
-            _log("  WARNUNG: Nicht alle Apps antworten. Logs pruefen mit "
-                 "`journalctl -u dorfkern-<app>` bzw. /tmp/caoxt-<app>.log.")
+            _log(f"  WARNUNG: Nicht alle Apps antworten. Logs pruefen mit "
+                 f"`journalctl -u {_PREFIX}-<app>` bzw. /tmp/{_PREFIX}-<app>.log.")
 
         # Neue Version melden
         new_local = load_local_version()

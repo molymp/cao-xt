@@ -51,6 +51,89 @@ def _bootstrap_ini() -> None:
 _bootstrap_ini()
 
 
+# ── Instanz-Konzept ───────────────────────────────────────────
+#
+# Mehrere Dorfkern-Instanzen koennen parallel auf einem Host laufen
+# (z.B. ``prod`` + ``dev``), in dem sie jeweils einen eigenen
+# Instanz-Namen tragen. Der Name laeuft als Suffix durch:
+#
+#   leer        -> dorfkern, /opt/dorfkern, dorfkern-admin.service, ...
+#   'prod'      -> dorfkern-prod, /opt/dorfkern-prod, dorfkern-prod-admin.service, ...
+#
+# Der Default ist leer, damit bestehende Installationen unveraendert
+# weiterlaufen.
+
+# Port-Offsets der vier Web-Apps relativ zu base_port. Die Belegung
+# liegt nahe an den historischen Ports (5001-5004 = base 5000).
+APP_PORT_OFFSETS: dict = {
+    'admin': 4,
+    'orga':  3,
+    'kasse': 2,
+    'kiosk': 1,
+}
+
+
+def systemd_prefix(instance_name: str) -> str:
+    """Liefert das Praefix fuer systemd-Units, Service-User und Pfade.
+
+    Leerer Instanz-Name -> 'dorfkern' (heutiges Verhalten).
+    Sonst 'dorfkern-<instance_name>'.
+    """
+    name = (instance_name or '').strip()
+    return f'dorfkern-{name}' if name else 'dorfkern'
+
+
+def app_port(app_name: str, base_port: int) -> int:
+    """Berechnet den TCP-Port einer Web-App fuer eine gegebene Port-Base.
+
+    ``base_port=5000`` -> admin=5004, orga=5003, kasse=5002, kiosk=5001.
+    """
+    try:
+        offset = APP_PORT_OFFSETS[app_name]
+    except KeyError as exc:
+        raise KeyError(f'Unbekannte App: {app_name!r}') from exc
+    return base_port + offset
+
+
+def load_instance_config() -> dict:
+    """Liest instance_name + base_port (Bootstrap-Konfig vor App-Start).
+
+    Prioritaet: ``XT_INSTANCE_NAME`` / ``XT_BASE_PORT`` Env-Vars >
+    ``[Installation]`` in caoxt.ini > Defaults ('' / 5000).
+
+    Rueckgabe::
+
+        {
+          'instance_name': str,     # leer wenn kein Suffix
+          'base_port':     int,     # Default 5000
+          'systemd_prefix': str,    # abgeleitet, fuers Komfort
+        }
+    """
+    instance_name = os.environ.get('XT_INSTANCE_NAME', '').strip()
+    base_port_env = os.environ.get('XT_BASE_PORT', '').strip()
+
+    if not instance_name or not base_port_env:
+        cfg = configparser.ConfigParser()
+        cfg.read(_INI_PATH)
+        if not instance_name:
+            instance_name = cfg.get('Installation', 'instance_name',
+                                    fallback='').strip()
+        if not base_port_env:
+            base_port_env = cfg.get('Installation', 'base_port',
+                                    fallback='').strip()
+
+    try:
+        base_port = int(base_port_env) if base_port_env else 5000
+    except ValueError:
+        base_port = 5000
+
+    return {
+        'instance_name':  instance_name,
+        'base_port':      base_port,
+        'systemd_prefix': systemd_prefix(instance_name),
+    }
+
+
 def load_security_config() -> dict:
     """Laedt Sicherheits-Konfiguration aus caoxt.ini / Env.
 
