@@ -329,9 +329,11 @@ _SUDOERS_SHUTDOWN_CONTENT = (
     "/usr/local/bin/dorfkern-maintenance-mode --maintenance, "
     "/usr/local/bin/dorfkern-maintenance-mode --greeter, "
     "/usr/local/bin/dorfkern-maintenance-mode --status\n"
-    "# Plus: kasse-User darf das Skript ohne Passwort rufen — fuer das\n"
-    "# Desktop-Icon 'Zurueck zum Kiosk' im Wartungs-Desktop.\n"
-    "kasse ALL=(root) NOPASSWD: /usr/local/bin/dorfkern-maintenance-mode --kiosk\n"
+    "# Hinweis: der GUI-Login-User (z.B. 'kasse') bekommt das Recht\n"
+    "# 'dorfkern-maintenance-mode --kiosk' separat via\n"
+    "# /etc/sudoers.d/dorfkern-kiosk-user (von install_kiosk angelegt) —\n"
+    "# damit der Desktop-Icon 'Zurueck zum Kiosk' im Wartungs-Desktop\n"
+    "# ohne Passwort-Prompt funktioniert.\n"
 )
 
 
@@ -530,21 +532,32 @@ _KIOSK_SESSION_SCRIPT    = '/usr/local/bin/dorfkern-kiosk-session'
 _KIOSK_MAINTENANCE_SCRIPT = '/usr/local/bin/dorfkern-maintenance-mode'
 _KIOSK_CHROMIUM_POLICY_DIR  = '/etc/chromium/policies/managed'
 _KIOSK_CHROMIUM_POLICY_FILE = f'{_KIOSK_CHROMIUM_POLICY_DIR}/dorfkern-kiosk.json'
+_KIOSK_USER_SUDOERS_FILE = '/etc/sudoers.d/dorfkern-kiosk-user'
 
-_KIOSK_APT_PKGS_PRIMARY  = ['lightdm', 'xorg', 'chromium', 'openbox']
+_KIOSK_APT_PKGS_PRIMARY  = ['lightdm', 'lightdm-gtk-greeter', 'accountsservice',
+                            'xorg', 'chromium', 'openbox']
 # Auf aelteren/Debian-Stretch-Boxen heisst das Paket 'chromium-browser'
 # statt 'chromium'. Fallback wenn primary fehlschlaegt.
-_KIOSK_APT_PKGS_FALLBACK = ['lightdm', 'xorg', 'chromium-browser', 'openbox']
+_KIOSK_APT_PKGS_FALLBACK = ['lightdm', 'lightdm-gtk-greeter', 'accountsservice',
+                             'xorg', 'chromium-browser', 'openbox']
 
+# LightDM-Drop-in. Login-User wird beim Render eingesetzt — typisch der
+# regulaere OS-User, der die GUI-Session startet (NICHT der dorfkern-
+# Service-User; der ist 'nologin' fuer Sicherheit).
+#
+# Bewusst KEIN 'autologin-user-timeout': pi-greeter ignoriert das
+# (Bug in den Pi-Versionen), und lightdm-gtk-greeter respektiert es
+# nur bei echtem Boot, nicht bei systemctl restart. Wartung laeuft
+# stattdessen ueber das Admin-Widget bzw. dorfkern-maintenance-mode.
 _KIOSK_LIGHTDM_TEMPLATE = """\
 # Auto-generiert von installer/systemd/host_setup.py
-# 5-Sek-Autologin-Timeout: ohne Tastendruck bootet die Box direkt in die
-# Kiosk-Session. Wer in dem Fenster klickt/ESC drueckt, bekommt den
-# normalen Login-Bildschirm fuer Wartung.
+# Direkter Auto-Login als {kiosk_user} in die Dorfkern-Kiosk-Session.
+# Greeter-Wechsel zur Wartung: ueber Admin-Widget oder
+# 'sudo dorfkern-maintenance-mode --maintenance|--greeter'.
 [Seat:*]
-autologin-user=dorfkern
+greeter-session=lightdm-gtk-greeter
+autologin-user={kiosk_user}
 autologin-session=dorfkern-kiosk
-autologin-user-timeout=5
 greeter-show-manual-login=true
 """
 
@@ -625,6 +638,34 @@ _KIOSK_CHROMIUM_POLICY_CONTENT = """\
   "ImportSavedPasswords": false
 }
 """
+
+
+def _default_kiosk_user() -> str:
+    """Sinnvoller Default-Login-User fuer die Kiosk-Session.
+
+    Heuristik (in dieser Reihenfolge):
+      1. ``XT_KIOSK_USER``-Env-Var (explizit gesetzt vom Aufrufer)
+      2. ``SUDO_USER`` (= echter User der ``sudo install.sh`` gestartet hat,
+         meist sinnvoll fuer Single-Box-Installs)
+      3. Erster regulaerer User mit UID >= 1000 und Login-Shell aus pwd
+      4. Leerer String (Aufrufer muss dann selbst entscheiden /
+         Autologin wird nicht konfiguriert)
+    """
+    cand = os.environ.get('XT_KIOSK_USER', '').strip()
+    if cand and _user_exists(cand):
+        return cand
+    sudo_user = os.environ.get('SUDO_USER', '').strip()
+    if sudo_user and sudo_user != 'root' and _user_exists(sudo_user):
+        return sudo_user
+    # erste reguläre UID
+    try:
+        import pwd
+        for p in pwd.getpwall():
+            if 1000 <= p.pw_uid < 60000 and not _is_nologin_shell(p.pw_shell):
+                return p.pw_name
+    except Exception:
+        pass
+    return ''
 
 
 def is_kiosk_installed() -> bool:
@@ -763,12 +804,21 @@ def _active_display_manager() -> Optional[str]:
 
 def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
                   app: str = 'kiosk',
+                  kiosk_user: str = '',
                   print_fn: PrintFn = print) -> bool:
     """Konfiguriert die Box als Kiosk-Terminal — additiv.
 
+    Args:
+        kiosk_user: OS-User, der die GUI-Session startet (NICHT der dorfkern-
+            Service-User; der ist 'nologin'). Default: ``_default_kiosk_user()``
+            — bevorzugt ``XT_KIOSK_USER``-Env, sonst ``SUDO_USER``, sonst
+            erster regulaerer UID-1000+-User. Wenn None ermittelbar:
+            LightDM-Autologin-Conf wird nicht geschrieben, Session-Files
+            bleiben aber installiert (manuell aus dem Greeter waehlbar).
+
     Macht IMMER:
-      - apt install lightdm xorg chromium openbox  (idempotent — wer
-        die Pakete schon hat, kriegt nichts neues)
+      - apt install lightdm/-gtk-greeter/accountsservice/xorg/chromium/openbox
+        (idempotent — wer die Pakete schon hat, kriegt nichts neues)
       - dorfkern-kiosk-session-Wrapper-Script + .desktop-Entry, sodass
         die Session im LightDM-Greeter waehlbar ist
 
@@ -833,6 +883,45 @@ def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
     # Wechselt LightDM zwischen Auto-Kiosk und Greeter (manueller
     # Login fuer Wartung), ohne Reboot. Aufrufbar via SSH oder
     # ueber einen Button in der Admin-App.
+    # Wir installieren das Maintenance-Skript weiter unten, NACHDEM der
+    # kiosk_user feststeht — wir setzen den `DESKTOP_USER=kasse`-Default
+    # im Skript per textueller Ersetzung auf den ermittelten User. So
+    # zeigt das Desktop-Icon-Setup im Wartungs-Modus auf den richtigen
+    # Login-User.
+
+    # ── 3) Kiosk-Login-User pruefen + ggf. Shell aktivieren ────
+    #
+    # WICHTIG: der GUI-Login-User ist NICHT dorfkern (der ist nologin-
+    # Service-User). Wir nehmen den OS-User, der im Wartungs-Desktop
+    # eingeloggt sein soll und unter dessen Konto Chromium den Kiosk
+    # zeigt. Default-Heuristik in _default_kiosk_user().
+    if not kiosk_user:
+        kiosk_user = _default_kiosk_user()
+    if not kiosk_user:
+        print_fn("  ⚠  Kein Kiosk-Login-User ermittelt (SUDO_USER/XT_KIOSK_USER "
+                 "leer und kein UID-1000+-User mit Login-Shell). "
+                 "LightDM-Autologin wird NICHT geschrieben — Session-Files "
+                 "bleiben installiert, manuell im Greeter waehlbar.")
+    else:
+        ku_shell = _get_user_shell(kiosk_user)
+        if ku_shell is None:
+            print_fn(f"  ⚠  Kiosk-Login-User '{kiosk_user}' existiert nicht. "
+                     "Autologin wird nicht konfiguriert.")
+            kiosk_user = ''
+        elif _is_nologin_shell(ku_shell):
+            print_fn(f"  → Kiosk-User '{kiosk_user}' hat Shell {ku_shell} "
+                     "(nologin) — auf /bin/bash umstellen …")
+            r = _run(_maybe_sudo(['chsh', '-s', '/bin/bash', kiosk_user]))
+            if r.returncode != 0:
+                print_fn(f"  ⚠  chsh: {_err(r)} — Autologin wird nicht "
+                         "funktionieren")
+                kiosk_user = ''
+            else:
+                print_fn(f"  ✓  {kiosk_user} hat jetzt Login-Shell /bin/bash")
+        else:
+            print_fn(f"  ✓  Kiosk-User: {kiosk_user} (Shell {ku_shell})")
+
+    # ── 3b) Maintenance-Skript installieren (kiosk_user injizieren) ─
     maintenance_src = os.path.join(os.path.dirname(__file__),
                                      'kiosk_maintenance.sh')
     if os.path.isfile(maintenance_src):
@@ -842,42 +931,56 @@ def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
         except OSError as exc:
             print_fn(f"  ⚠  kiosk_maintenance.sh nicht lesbar: {exc}")
         else:
+            # Hartkodierten Default DESKTOP_USER=kasse auf den
+            # tatsaechlichen kiosk_user umstellen, sonst zeigt das
+            # Desktop-Icon-Setup im Wartungs-Modus auf den falschen User.
+            if kiosk_user:
+                maintenance_content = maintenance_content.replace(
+                    'DESKTOP_USER=kasse',
+                    f'DESKTOP_USER={kiosk_user}',
+                )
             if not _install_file_sudo(_KIOSK_MAINTENANCE_SCRIPT,
                                        maintenance_content,
                                        mode='0755', print_fn=print_fn):
                 return False
 
-    # ── 3) dorfkern Login-Shell nur wenn nologin ────────────────
-    shell = _get_user_shell('dorfkern')
-    if shell is None:
-        print_fn("  ⚠  User 'dorfkern' existiert nicht — wurde er per "
-                 "install_system angelegt?")
-    elif _is_nologin_shell(shell):
-        print_fn(f"  → dorfkern-Shell ({shell}) auf /bin/bash umstellen …")
-        r = _run(_maybe_sudo(['chsh', '-s', '/bin/bash', 'dorfkern']))
-        if r.returncode != 0:
-            print_fn(f"  ⚠  chsh: {_err(r)} — Login wird ggf. nicht funktionieren")
-        else:
-            print_fn("  ✓  dorfkern hat jetzt Login-Shell /bin/bash")
-    else:
-        print_fn(f"  ✓  dorfkern hat bereits Login-Shell ({shell}) — unveraendert")
+    # ── 3c) Sudoers-Snippet fuer den Kiosk-User (Desktop-Icon) ───
+    # Erlaubt z.B. 'kasse' das maintenance-mode-Skript ohne Passwort-
+    # Prompt zu rufen — Voraussetzung fuer das Desktop-Icon
+    # 'Zurueck zum Kiosk', das im Wartungs-Modus angelegt wird.
+    if kiosk_user and kiosk_user != 'dorfkern':
+        user_sudoers = (
+            "# Auto-generiert von installer/systemd/host_setup.py\n"
+            f"# Erlaubt {kiosk_user} das Maintenance-Skript ohne Passwort\n"
+            "# zu rufen (Desktop-Icon 'Zurueck zum Kiosk').\n"
+            f"{kiosk_user} ALL=(root) NOPASSWD: "
+            f"{_KIOSK_MAINTENANCE_SCRIPT} --kiosk\n"
+        )
+        _install_file_sudo(_KIOSK_USER_SUDOERS_FILE, user_sudoers,
+                            mode='0440', print_fn=print_fn)
+    elif os.path.exists(_KIOSK_USER_SUDOERS_FILE):
+        # Wenn kein kiosk_user oder es ist dorfkern: alten Eintrag wegraeumen
+        _run(_maybe_sudo(['rm', '-f', _KIOSK_USER_SUDOERS_FILE]))
 
-    # ── 4) LightDM-Autologin nur wenn nicht schon ein anderer User
-    #       konfiguriert ist ─────────────────────────────────────
+    # ── 4) LightDM-Autologin nur wenn ein Kiosk-User da ist UND
+    #       kein anderer User bereits konfiguriert ist ─────────
     existing_user = _existing_autologin()
-    if existing_user:
+    if not kiosk_user:
+        print_fn("  ↷  LightDM-Autologin uebersprungen (kein Kiosk-User).")
+    elif existing_user and existing_user != kiosk_user:
         print_fn(f"  ↷  LightDM-Autologin ist bereits auf User "
                  f"'{existing_user}' konfiguriert — nicht ueberschrieben.")
-        print_fn("     Falls du auf Kiosk umstellen willst:")
+        print_fn("     Falls du auf Kiosk-Autologin umstellen willst:")
         print_fn(f"       Datei in {_KIOSK_LIGHTDM_DIR}/ anpassen:")
-        print_fn("         autologin-user=dorfkern")
+        print_fn(f"         autologin-user={kiosk_user}")
         print_fn("         autologin-session=dorfkern-kiosk")
         print_fn("     Oder die Session 'Dorfkern Kiosk' manuell im "
                  "Login-Bildschirm waehlen.")
     else:
-        if not _install_file_sudo(_KIOSK_LIGHTDM_CONF,
-                                   _KIOSK_LIGHTDM_TEMPLATE,
-                                   mode='0644', print_fn=print_fn):
+        if not _install_file_sudo(
+                _KIOSK_LIGHTDM_CONF,
+                _KIOSK_LIGHTDM_TEMPLATE.format(kiosk_user=kiosk_user),
+                mode='0644', print_fn=print_fn):
             return False
 
     # ── 5) lightdm enablen nur wenn kein anderer DM aktiv ──────
@@ -920,7 +1023,8 @@ def uninstall_kiosk(*, print_fn: PrintFn = print) -> bool:
     for path in (_KIOSK_LIGHTDM_CONF, f'{_KIOSK_LIGHTDM_CONF}.off',
                  _KIOSK_SESSION_DESKTOP, _KIOSK_SESSION_SCRIPT,
                  _KIOSK_MAINTENANCE_SCRIPT,
-                 _KIOSK_CHROMIUM_POLICY_FILE):
+                 _KIOSK_CHROMIUM_POLICY_FILE,
+                 _KIOSK_USER_SUDOERS_FILE):
         if not os.path.exists(path):
             continue
         r = _run(_maybe_sudo(['rm', '-f', path]))

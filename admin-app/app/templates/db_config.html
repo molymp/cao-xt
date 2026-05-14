@@ -2,7 +2,7 @@
 {% block title %}Datenbank{% endblock %}
 {% block content %}
 <h1 style="margin-bottom:8px;">🗄️ Datenbank-Konfiguration</h1>
-<p style="color:var(--text-dim); margin-bottom:20px; max-width:600px;">
+<p style="color:var(--text-dim); margin-bottom:20px; max-width:680px;">
   Bootstrap-Zugangsdaten der MariaDB-Verbindung (Host, Port, DB-Name, User,
   Passwort). Diese werden in <code>caoxt.ini</code> gespeichert, weil sie
   gebraucht werden, <em>bevor</em> eine DB-Verbindung steht.
@@ -11,8 +11,8 @@
   <a href="/dorfkern/konfig">Dorfkern → Konfiguration</a> gepflegt.
 </p>
 
-<div class="card" style="max-width:600px;">
-  <form id="dbForm" onsubmit="return saveConfig(event)">
+<div class="card" style="max-width:680px;">
+  <form id="dbForm">
     <div class="form-group">
       <label>Server (Host)</label>
       <input class="form-control" name="db_loc" value="{{ ini.get('db_loc', '') }}">
@@ -31,11 +31,46 @@
     </div>
     <div class="form-group">
       <label>Passwort</label>
-      <input class="form-control" name="db_pass" type="password" placeholder="(unverändert lassen = kein Update)">
+      <input class="form-control" name="db_pass" type="password"
+             placeholder="(leer lassen = aktuelles Passwort beibehalten)">
     </div>
-    <div style="display:flex;gap:10px;margin-top:20px;">
-      <button type="submit" class="btn btn-primary">💾 Speichern</button>
-      <button type="button" class="btn btn-neutral" onclick="testConnection()">🔌 Verbindung testen</button>
+
+    {# Probe-Ergebnis: zeigt Verbindungs-Status + erkannten DB-Typ.
+       SCHREIBT noch nichts. Erst "Speichern" persistiert. #}
+    <div id="probeResult"
+         style="display:none;margin-top:18px;padding:12px 16px;
+                border-radius:var(--radius-klein);font-size:14px;
+                border:1px solid var(--border);background:var(--bg-dunkel);"></div>
+
+    {# Option: bei leerer DB explizit init_empty erlauben. Wird nur
+       sichtbar wenn Probe sagt db_type='empty'. #}
+    <div id="initEmptyBlock" style="display:none;margin-top:12px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+        <input type="checkbox" id="initEmptyCheckbox">
+        Auch leere DB initialisieren (Schema-Tabellen anlegen)
+      </label>
+    </div>
+
+    {# Apps-Restart Option: per Default ein, weil ohne keine andere
+       App die neue Config sieht. #}
+    <div style="margin-top:12px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+        <input type="checkbox" id="restartAppsCheckbox" checked>
+        Nach Speichern <strong>alle Apps neu starten</strong>
+        (sonst sehen orga/kasse/kiosk weiter die alte DB)
+      </label>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-neutral" onclick="testCurrent()">
+        🔌 Aktuelle Verbindung testen
+      </button>
+      <button type="button" class="btn btn-neutral" onclick="probe()">
+        🔍 Eingaben prüfen
+      </button>
+      <button type="button" class="btn btn-primary" id="saveBtn" onclick="save()">
+        💾 Speichern
+      </button>
     </div>
   </form>
   <div id="testResult" style="margin-top:16px;"></div>
@@ -43,25 +78,99 @@
 {% endblock %}
 {% block extra_script %}
 <script>
-async function saveConfig(e) {
-  e.preventDefault();
-  const fd = new FormData(document.getElementById('dbForm'));
-  const r = await fetch('/db-config', {
-    method: 'POST',
-    body: fd,
-  });
-  const d = await r.json();
-  toast(d.msg, d.ok ? 'ok' : 'err');
-  return false;
+function setProbe(html, kind) {
+  const el = document.getElementById('probeResult');
+  el.style.display = '';
+  const color = kind === 'ok' ? 'var(--gruen-hell)'
+              : kind === 'warn' ? 'var(--gold-hell)'
+              : '#f08080';
+  el.innerHTML = '<span style="color:' + color + ';">' + html + '</span>';
 }
 
-async function testConnection() {
+async function testCurrent() {
   const el = document.getElementById('testResult');
-  el.innerHTML = '<span style="color:var(--text-dim)">Teste Verbindung...</span>';
+  el.innerHTML = '<span style="color:var(--text-dim)">Teste aktuell konfigurierte Verbindung …</span>';
   const r = await api('POST', '/db-config/test');
   el.innerHTML = r.ok
     ? '<span style="color:var(--gruen-hell)">✅ ' + r.msg + '</span>'
     : '<span style="color:#f08080">❌ ' + r.msg + '</span>';
+}
+
+async function probe() {
+  const fd = new FormData(document.getElementById('dbForm'));
+  setProbe('⏳ Prüfe Eingaben …', 'warn');
+  const r = await fetch('/db-config/probe', {method: 'POST', body: fd});
+  const d = await r.json();
+  if (!d.ok) {
+    setProbe('❌ ' + (d.msg || 'unbekannter Fehler'), 'err');
+    return;
+  }
+  if (!d.conn) {
+    setProbe('❌ ' + d.msg, 'err');
+    document.getElementById('initEmptyBlock').style.display = 'none';
+    return;
+  }
+  if (d.db_type === 'cao') {
+    setProbe('✅ ' + d.msg, 'ok');
+    document.getElementById('initEmptyBlock').style.display = 'none';
+  } else if (d.db_type === 'empty') {
+    setProbe('⚠ ' + d.msg, 'warn');
+    document.getElementById('initEmptyBlock').style.display = '';
+  } else {
+    setProbe('⚠ ' + d.msg, 'warn');
+    document.getElementById('initEmptyBlock').style.display = 'none';
+  }
+}
+
+async function save() {
+  const fd = new FormData(document.getElementById('dbForm'));
+  if (document.getElementById('initEmptyCheckbox').checked) {
+    fd.append('init_empty', '1');
+  }
+  const restart = document.getElementById('restartAppsCheckbox').checked;
+  if (restart) fd.append('restart_apps', '1');
+
+  if (restart) {
+    if (!confirm('Konfiguration jetzt speichern?\n\n'
+               + '• caoxt.ini wird überschrieben\n'
+               + '• DB-Init läuft falls nötig (idempotent)\n'
+               + '• ALLE APPS werden neu gestartet (orga/kasse/kiosk/Poller)\n'
+               + '• Browser-Verbindung zur Admin-App kann kurz abreißen.\n\n'
+               + 'Bitte sicherstellen, dass keine offenen Kasse-Vorgänge laufen.')) return;
+  }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  setProbe('⏳ Schreibe caoxt.ini, führe DB-Init aus, starte ggf. Apps …', 'warn');
+
+  let d;
+  try {
+    const r = await fetch('/db-config', {method: 'POST', body: fd});
+    d = await r.json();
+  } catch (e) {
+    setProbe('❌ Verbindung weg: ' + e.message
+           + (restart ? ' (kann erwartet sein wenn Apps gerade neu starten)' : ''),
+             restart ? 'warn' : 'err');
+    btn.disabled = false;
+    return;
+  }
+  if (!d.ok) {
+    setProbe('❌ ' + (d.msg || 'Fehler'), 'err');
+    btn.disabled = false;
+    return;
+  }
+  let html = '✅ ' + (d.msg || 'Gespeichert.');
+  if (d.init_steps && d.init_steps.length) {
+    html += '<br><span style="font-size:12px;color:var(--text-dim);">'
+          + 'DB-Init: ' + d.init_steps.join(' / ') + '</span>';
+  }
+  if (d.restart_triggered) {
+    html += '<br>🔄 Apps werden neu gestartet — Seite in ca. 15 s neu laden.';
+    setTimeout(() => window.location.reload(), 15000);
+  }
+  setProbe(html, 'ok');
+  toast('Konfiguration gespeichert.', 'ok');
+  btn.disabled = false;
 }
 </script>
 {% endblock %}

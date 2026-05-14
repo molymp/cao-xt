@@ -628,33 +628,156 @@ def db_config():
     return render_template('db_config.html', ini=ini)
 
 
+def _form_db_credentials():
+    """Liest die Form-Felder, fallback Passwort aus aktueller ini.
+
+    Wird von /db-config/probe und /db-config/save gleichermassen genutzt.
+    """
+    pw = request.form.get('db_pass', '').strip()
+    if not pw:
+        # Wenn das Passwort-Feld leer ist (User hat es nicht neu eingegeben):
+        # nimm das aus der aktuellen ini, sonst kann der Test gar nicht laufen.
+        existing = configparser.ConfigParser()
+        existing.read(config.INI_PATH)
+        pw = existing.get('Datenbank', 'db_pass', fallback='').strip()
+    try:
+        port = int(request.form.get('db_port', '3306').strip() or '3306')
+    except ValueError:
+        port = 3306
+    return {
+        'host':     request.form.get('db_loc', '').strip(),
+        'port':     port,
+        'name':     request.form.get('db_name', '').strip(),
+        'user':     request.form.get('db_user', '').strip(),
+        'password': pw,
+    }
+
+
+@app.post('/db-config/probe')
+@_login_required
+def db_config_probe():
+    """Stufe 1 des DB-Wechsels: NEUE Credentials testen + DB-Typ erkennen.
+
+    Schreibt NICHTS. Liefert dem Frontend zurueck:
+      ok=True/False, conn=True/False, db_type=cao|empty|unknown
+    Damit kann das Frontend den User informiert entscheiden lassen, ob
+    er auf 'empty' (= leere DB initialisieren!) oder 'cao' (= sicher
+    weiter) oder gar nicht (= unknown, vermutlich Tippfehler) gehen will.
+    """
+    from installer.db_init import test_connection, detect_db_type
+    cred = _form_db_credentials()
+    if not all([cred['host'], cred['name'], cred['user'], cred['password']]):
+        return jsonify(ok=False, msg='Bitte alle Felder ausfuellen.'), 400
+    ok_conn, err = test_connection(cred['host'], cred['port'], cred['name'],
+                                    cred['user'], cred['password'])
+    if not ok_conn:
+        return jsonify(ok=True, conn=False, db_type='unknown',
+                        msg=f'Verbindung fehlgeschlagen: {err}')
+    db_type = detect_db_type(cred['host'], cred['port'], cred['name'],
+                              cred['user'], cred['password'])
+    return jsonify(ok=True, conn=True, db_type=db_type,
+                    msg={
+                        'cao':   'CAO-Faktura-DB erkannt (MITARBEITER-Tabelle vorhanden).',
+                        'empty': 'Leere DB — bei "Speichern + Init" werden die XT_*-Schema-Tabellen angelegt.',
+                        'unknown': 'DB-Typ nicht erkannt — bitte Verbindungsdaten pruefen.',
+                    }.get(db_type, 'Unbekannter Zustand.'))
+
+
 @app.post('/db-config')
 @_login_required
 def db_config_save():
-    cfg = configparser.ConfigParser()
-    cfg.read(config.INI_PATH)
-    if not cfg.has_section('Datenbank'):
-        cfg.add_section('Datenbank')
-    cfg.set('Datenbank', 'db_loc',  request.form.get('db_loc', '').strip())
-    cfg.set('Datenbank', 'db_port', request.form.get('db_port', '3306').strip())
-    cfg.set('Datenbank', 'db_name', request.form.get('db_name', '').strip())
-    cfg.set('Datenbank', 'db_user', request.form.get('db_user', '').strip())
-    pw = request.form.get('db_pass', '').strip()
-    if pw:
-        cfg.set('Datenbank', 'db_pass', pw)
+    """Stufe 2 des DB-Wechsels: caoxt.ini schreiben, ggf. DB initialisieren,
+    Admin-DB-Pool reset, Migrationen, dann optional Apps-Restart.
+
+    Body: db_loc, db_port, db_name, db_user, db_pass (wie bisher)
+          + restart_apps=1 wenn alle Apps neu gestartet werden sollen
+          + init_empty=1 wenn die DB als leer/neu erkannt wurde und der
+            User init_empty_db erlaubt hat (Bestaetigung im Frontend).
+    """
+    from installer.db_init import test_connection, detect_db_type, init_cao_db, init_empty_db
+
+    cred = _form_db_credentials()
+    if not all([cred['host'], cred['name'], cred['user'], cred['password']]):
+        return jsonify(ok=False, msg='Bitte alle Felder ausfuellen.'), 400
+
+    # Pre-Test: nicht schreiben wenn die DB nicht erreichbar ist
+    ok_conn, err = test_connection(cred['host'], cred['port'], cred['name'],
+                                    cred['user'], cred['password'])
+    if not ok_conn:
+        return jsonify(ok=False, msg=f'Verbindung fehlgeschlagen: {err}'), 400
+
+    db_type = detect_db_type(cred['host'], cred['port'], cred['name'],
+                              cred['user'], cred['password'])
+    init_empty = bool(request.form.get('init_empty')) or False
+    init_steps = []
+
+    if db_type == 'empty' and not init_empty:
+        # Sicherheits-Stop: User muss explizit init_empty=1 senden
+        return jsonify(ok=False, db_type='empty',
+                        msg='DB ist leer. Bitte "Auch leere DB initialisieren" '
+                            'aktivieren und nochmal absenden.'), 400
+
+    # caoxt.ini schreiben
     try:
+        cfg = configparser.ConfigParser()
+        cfg.read(config.INI_PATH)
+        if not cfg.has_section('Datenbank'):
+            cfg.add_section('Datenbank')
+        cfg.set('Datenbank', 'db_loc',  cred['host'])
+        cfg.set('Datenbank', 'db_port', str(cred['port']))
+        cfg.set('Datenbank', 'db_name', cred['name'])
+        cfg.set('Datenbank', 'db_user', cred['user'])
+        cfg.set('Datenbank', 'db_pass', cred['password'])
         with open(config.INI_PATH, 'w') as f:
             cfg.write(f)
-        log.info("caoxt.ini aktualisiert durch %s", session.get('login_name'))
-        # In-Memory-Config und DB-Pool mit neuen Werten neu laden
-        config.reload_db_config()
-        reset_pool()
-        # Migrationen erneut versuchen (beim Start evtl. fehlgeschlagen)
-        _migrationen_ausfuehren()
-        return jsonify(ok=True, msg='Konfiguration gespeichert.')
+        log.info("caoxt.ini aktualisiert durch %s (DB-Wechsel auf %s@%s/%s, type=%s)",
+                 session.get('login_name'), cred['user'], cred['host'],
+                 cred['name'], db_type)
     except Exception as e:
         log.error("caoxt.ini schreiben fehlgeschlagen: %s", e)
-        return jsonify(ok=False, msg=f'Fehler: {e}'), 500
+        return jsonify(ok=False, msg=f'Konnte caoxt.ini nicht schreiben: {e}'), 500
+
+    # Admin-Pool reset + Migrationen
+    config.reload_db_config()
+    reset_pool()
+
+    # DB-Init je nach Typ (idempotent — CAO macht CREATE TABLE IF NOT EXISTS)
+    if db_type in ('cao', 'empty'):
+        try:
+            def _capture(msg):
+                init_steps.append(str(msg))
+            if db_type == 'cao':
+                init_cao_db(cred['host'], cred['port'], cred['name'],
+                            cred['user'], cred['password'], print_fn=_capture)
+            else:
+                init_empty_db(cred['host'], cred['port'], cred['name'],
+                              cred['user'], cred['password'], print_fn=_capture)
+        except Exception as e:
+            log.warning("DB-Init nach Wechsel fehlgeschlagen: %s", e)
+            init_steps.append(f'DB-Init-Fehler: {e}')
+
+    _migrationen_ausfuehren()
+
+    # Optional: alle Apps neu starten, sodass orga/kasse/kiosk/poller
+    # die neue caoxt.ini lesen (sonst bleiben deren DB-Pools alt).
+    restart_triggered = False
+    if request.form.get('restart_apps') in ('1', 'true', 'on', 'yes'):
+        repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
+        ctl = os.path.join(repo_root, 'dorfkern-ctl')
+        if os.path.exists(ctl):
+            try:
+                subprocess.Popen([ctl, 'restart'], cwd=repo_root,
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                restart_triggered = True
+            except Exception as e:
+                log.warning("Apps-Restart nach DB-Wechsel fehlgeschlagen: %s", e)
+
+    return jsonify(ok=True, db_type=db_type,
+                    msg='Konfiguration gespeichert.',
+                    init_steps=init_steps,
+                    restart_triggered=restart_triggered)
 
 
 @app.post('/db-config/test')

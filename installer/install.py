@@ -530,9 +530,13 @@ def phase5_kiosk_setup(type_cfg: dict, non_interactive: bool = False) -> None:
             if not _ask_yes_no("Kiosk-Setup einrichten?", False):
                 return
 
+    # kiosk_user kommt aus XT_KIOSK_USER (env) bzw. SUDO_USER bzw.
+    # erstem regulaeren UID-1000+-User; install_kiosk macht die
+    # Heuristik selbst, wir reichen nur durch falls Env-Var gesetzt.
     ok = host_setup.install_kiosk(
         base_port=type_cfg['base_port'],
         app='kiosk',
+        kiosk_user=os.environ.get('XT_KIOSK_USER', ''),
     )
     if not ok:
         print("  ✗ Kiosk-Setup fehlgeschlagen — siehe Meldungen oben.")
