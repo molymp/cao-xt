@@ -25,7 +25,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
-PYTHON="${VENV_DIR}/bin/python3"
+# venv-Python (gibt's nach dem Venv-Setup). NICHT 'PYTHON' nennen, weil
+# diese Env-Var von ausserhalb zur expliziten System-Python-Wahl genutzt
+# wird (siehe weiter unten, Python-Versions-Check).
+VENV_PYTHON="${VENV_DIR}/bin/python3"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=10
 
@@ -146,12 +149,12 @@ for arg in "$@"; do
         --update)
             echo "─── Update-Modus ───────────────────────────────────────────"
             echo ""
-            exec "$PYTHON" -m installer.updater --update
+            exec "$VENV_PYTHON" -m installer.updater --update
             ;;
         --check-update)
             echo "─── Update-Prüfung ─────────────────────────────────────────"
             echo ""
-            exec "$PYTHON" -m installer.updater --check
+            exec "$VENV_PYTHON" -m installer.updater --check
             ;;
     esac
 done
@@ -160,4 +163,4 @@ echo "─── Installer starten ───────────────�
 echo ""
 
 # Installer aufrufen (alle übergebenen Argumente durchreichen)
-exec "$PYTHON" -m installer.install "$@"
+exec "$VENV_PYTHON" -m installer.install "$@"
