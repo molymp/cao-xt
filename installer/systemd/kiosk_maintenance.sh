@@ -87,21 +87,29 @@ EOF
 
 
 _ensure_back_icon() {
-    # Desktop-Icon "Zurueck zum Kiosk" fuer den kasse-User anlegen.
-    # Klick fuehrt 'sudo dorfkern-maintenance-mode --kiosk' aus.
+    # Desktop-Icon "Zurueck zum Kiosk" fuer den Desktop-User anlegen.
+    # Klick fuehrt das Skript via passwortloses sudo (sudoers-Snippet
+    # erlaubt kasse '/usr/local/bin/dorfkern-maintenance-mode --kiosk').
     install -d -o "$DESKTOP_USER" -g "$DESKTOP_USER" "${DESKTOP_HOME}/Desktop"
     cat <<'EOF' | install -m 0755 -o "$DESKTOP_USER" -g "$DESKTOP_USER" /dev/stdin "$RUECK_ICON"
 [Desktop Entry]
 Type=Application
 Name=Zurück zum Kiosk
 Comment=LightDM auf Kiosk-Auto-Login zurueckschalten und neu starten
-Icon=view-fullscreen
-Exec=sh -c 'pkexec dorfkern-maintenance-mode --kiosk || \
-            xterm -e "sudo dorfkern-maintenance-mode --kiosk; sleep 2" || \
-            x-terminal-emulator -e "sudo dorfkern-maintenance-mode --kiosk; sleep 2"'
+Icon=system-shutdown
+Exec=sudo -n /usr/local/bin/dorfkern-maintenance-mode --kiosk
 Terminal=false
 Categories=System;
 EOF
+    # pcmanfm/LXDE behandelt .desktop-Files standardmaessig als "untrusted"
+    # — Doppelklick zeigt dann "Was tun mit dieser Datei?"-Dialog statt
+    # auszufuehren. gio markiert die Datei als trusted, dann oeffnet ein
+    # Doppelklick sie direkt ohne Rueckfrage.
+    runuser -u "$DESKTOP_USER" -- gio set "$RUECK_ICON" \
+        "metadata::trusted" true 2>/dev/null || true
+    # Plus: Executable-Bit via gio nochmal sicherstellen (manche
+    # GNOME-Builds entfernen es bei nicht-trusted Files).
+    chmod +x "$RUECK_ICON"
 }
 
 

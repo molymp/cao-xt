@@ -564,12 +564,23 @@ xset s off       # Bildschirmschoner aus
 xset -dpms       # DPMS / Stromsparen aus
 xset s noblank   # kein Blanking
 
+# Eigenes Chromium-Profil fuer den Kiosk-Mode (separat vom normalen
+# ~/.config/chromium). Verhindert, dass Chromium das gespeicherte
+# Fenster-Placement aus Desktop-Sitzungen uebernimmt und mit schwarzen
+# Raendern statt Vollbild startet. Persistent in $HOME des Login-Users.
+CHROMIUM_DIR="$HOME/.config/dorfkern-chromium-kiosk"
+mkdir -p "$CHROMIUM_DIR"
+
 exec chromium --kiosk \\
+              --user-data-dir="$CHROMIUM_DIR" \\
+              --start-fullscreen \\
+              --window-position=0,0 \\
               --noerrdialogs \\
               --disable-infobars \\
               --disable-features=TranslateUI \\
               --check-for-update-interval=31536000 \\
               --no-first-run \\
+              --password-store=basic \\
               {url}
 """
 
