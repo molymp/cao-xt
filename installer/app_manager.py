@@ -21,6 +21,24 @@ import subprocess
 import sys
 import time
 
+# systemd-Dispatch ist optional: kann beim Import fehlschlagen,
+# wenn das Subpackage nicht da ist (sehr alte Klone) — dann bleiben
+# wir hart im Popen-Dev-Pfad.
+try:
+    from installer.systemd import manager as _systemd
+except Exception:  # pragma: no cover - defensiver Fallback
+    _systemd = None
+
+
+def _use_systemd() -> bool:
+    """True, wenn die Steuerung an systemctl delegiert werden soll.
+
+    Bedingungen: das systemd-Subpackage ist importierbar UND
+    ``dorfkern.target`` ist im System registriert. Andernfalls bleibt
+    alles beim Popen-basierten Dev-Pfad.
+    """
+    return _systemd is not None and _systemd.is_systemd_managed()
+
 # Repo-Root aus diesem Dateiverzeichnis ableiten
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -273,8 +291,13 @@ def _pid_alive(pid: int) -> bool:
 
 def start_app(name: str, *, print_fn=print) -> bool:
     """Startet eine einzelne App/Daemon. Gibt True bei Erfolg zurück.
-    Dispatch nach ``type``: 'web' wartet auf Port, 'daemon' prueft Lebenszeichen."""
+    Dispatch nach ``type``: 'web' wartet auf Port, 'daemon' prueft Lebenszeichen.
+
+    Auf PROD (dorfkern.target installiert) wird an systemctl delegiert.
+    """
     name = _resolve(name)
+    if _use_systemd():
+        return _systemd.start_app(name, print_fn=print_fn)
     cfg = APPS[name]
     if cfg.get('type', 'web') == 'daemon':
         return _start_daemon(name, cfg, print_fn=print_fn)
@@ -405,6 +428,9 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
 def stop_app(name: str, *, print_fn=print) -> None:
     """Stoppt eine einzelne App/Daemon."""
     name = _resolve(name)
+    if _use_systemd():
+        _systemd.stop_app(name, print_fn=print_fn)
+        return
     cfg = APPS[name]
     pids = _load_pids()
     pid = pids.get(name)
@@ -428,6 +454,9 @@ def stop_app(name: str, *, print_fn=print) -> None:
 
 def restart_app(name: str, *, print_fn=print) -> bool:
     """Stoppt und startet eine App neu."""
+    name = _resolve(name)
+    if _use_systemd():
+        return _systemd.restart_app(name, print_fn=print_fn)
     stop_app(name, print_fn=print_fn)
     time.sleep(1)
     return start_app(name, print_fn=print_fn)
@@ -440,6 +469,12 @@ def status_app(name: str) -> dict:
     name = _resolve(name)
     cfg = APPS[name]
     is_daemon = cfg.get('type', 'web') == 'daemon'
+    if _use_systemd():
+        return _systemd.status_app(
+            name,
+            port=None if is_daemon else cfg['port'],
+            is_daemon=is_daemon,
+        )
     pids = _load_pids()
     pid = pids.get(name)
     alive = _pid_alive(pid) if pid else False
@@ -460,7 +495,13 @@ def status_app(name: str) -> dict:
 
 
 def start_all(apps: list[str] | None = None, *, print_fn=print) -> dict[str, bool]:
-    """Startet alle (oder eine Auswahl von) Apps in der festgelegten Reihenfolge."""
+    """Startet alle (oder eine Auswahl von) Apps in der festgelegten Reihenfolge.
+
+    Im systemd-Modus mit ``apps=None`` wird die ``dorfkern.target`` als
+    Ganzes gestartet — Reihenfolge regelt systemd ueber ``After=``.
+    """
+    if _use_systemd():
+        return _systemd.start_all(apps, print_fn=print_fn)
     targets = apps if apps else START_ORDER
     results = {}
     for name in targets:
@@ -471,6 +512,9 @@ def start_all(apps: list[str] | None = None, *, print_fn=print) -> dict[str, boo
 
 def stop_all(apps: list[str] | None = None, *, print_fn=print) -> None:
     """Stoppt alle Apps in umgekehrter Reihenfolge (für sauberes Rollback)."""
+    if _use_systemd():
+        _systemd.stop_all(apps, print_fn=print_fn)
+        return
     targets = list(reversed(apps if apps else START_ORDER))
     for name in targets:
         if name in APPS:
