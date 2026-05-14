@@ -571,10 +571,24 @@ xset s noblank   # kein Blanking
 CHROMIUM_DIR="$HOME/.config/dorfkern-chromium-kiosk"
 mkdir -p "$CHROMIUM_DIR"
 
+# Display-Groesse dynamisch ermitteln. Hintergrund: --kiosk und
+# --start-fullscreen sollten zwar Fullscreen erzwingen, in der Praxis
+# nimmt Chromium aber oft eine Default-Groesse (z.B. 945x1060) und
+# laesst den Rest des Displays schwarz. Mit explizitem --window-size
+# erzwingen wir die tatsaechliche Display-Aufloesung; --kiosk packt
+# dann sauber drauf.
+RES=$(xdpyinfo 2>/dev/null | awk '/dimensions:/ {{print $2}}' | head -1)
+W=$(echo "$RES" | cut -dx -f1)
+H=$(echo "$RES" | cut -dx -f2)
+if [ -z "$W" ] || [ -z "$H" ]; then
+    W=1920; H=1080   # Fallback wenn xdpyinfo nicht da
+fi
+
 exec chromium --kiosk \\
+              --window-size="$W,$H" \\
+              --window-position=0,0 \\
               --user-data-dir="$CHROMIUM_DIR" \\
               --start-fullscreen \\
-              --window-position=0,0 \\
               --noerrdialogs \\
               --disable-infobars \\
               --disable-features=TranslateUI \\
