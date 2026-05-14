@@ -226,6 +226,10 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
     ('admin.system.updates',   'ADMIN',
      'Admin – System: Updates',
      'Software-Updates ausspielen.', 'LESE_PFLEGE'),
+    ('admin.system.power',     'ADMIN',
+     'Admin – System: Ein/Aus',
+     'Rechner herunterfahren oder neu starten (Feierabend-Knopf).',
+     'LESE_PFLEGE'),
 
     # Dorfkern-Konfiguration
     ('admin.dorfkern.konfig',  'ADMIN',
