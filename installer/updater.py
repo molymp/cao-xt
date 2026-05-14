@@ -614,6 +614,24 @@ def perform_update(branch: str = '') -> bool:
         # falls jemand auf einem alten Klon noch das frueher getrackte
         # File hat. Idempotent.
         _git('update-index', '--skip-worktree', 'caoxt/caoxt.ini')
+        # Snapshot der caoxt.ini VOR dem Pull. Hintergrund: wenn die
+        # Datei auf einem aelteren Klon noch im Index war und ein Pull
+        # einen Commit reinbringt, der sie aus dem Tracking entfernt,
+        # loescht git die Datei im Working Tree (sie war ja "im Index
+        # alt, im Index neu nicht da"). Der nachfolgende
+        # _ensure_caoxt_ini()-Restore zieht dann die Vorlage rein —
+        # echte DB-Credentials sind weg. Der Snapshot wird nach dem
+        # Pull verglichen und wenn die Datei verschwunden/identisch zur
+        # Vorlage ist, restoren wir aus dem Snapshot.
+        ini_path = os.path.join(_REPO_ROOT, 'caoxt', 'caoxt.ini')
+        ini_snapshot = None
+        if os.path.isfile(ini_path):
+            try:
+                with open(ini_path, 'rb') as f:
+                    ini_snapshot = f.read()
+            except OSError as exc:
+                _log(f"  Warnung: caoxt.ini-Snapshot fehlgeschlagen: {exc}")
+
         pull = _run(['git', 'pull', '--ff-only', 'origin', branch],
                     cwd=_REPO_ROOT, capture=True, timeout=120)
         if pull.returncode != 0:
@@ -621,6 +639,44 @@ def perform_update(branch: str = '') -> bool:
             _rollback(rollback_ref, dump_path=None)
             return False
         _log(f"  {pull.stdout.strip()}")
+
+        # caoxt.ini-Snapshot pruefen: wenn der Pull die Datei
+        # geloescht hat (klassisch: Untracking-Commit kam rein) ODER
+        # sie nun byte-identisch zur Vorlage ist (heisst: irgendwas
+        # hat sie mit example ersetzt), Snapshot zurueckspielen.
+        if ini_snapshot is not None:
+            example_path = os.path.join(_REPO_ROOT, 'caoxt',
+                                          'caoxt.ini.example')
+            example_bytes = b''
+            if os.path.isfile(example_path):
+                try:
+                    with open(example_path, 'rb') as f:
+                        example_bytes = f.read()
+                except OSError:
+                    pass
+
+            ini_jetzt = None
+            if os.path.isfile(ini_path):
+                try:
+                    with open(ini_path, 'rb') as f:
+                        ini_jetzt = f.read()
+                except OSError:
+                    pass
+
+            verloren     = ini_jetzt is None
+            ist_vorlage  = (ini_jetzt is not None and example_bytes
+                            and ini_jetzt == example_bytes)
+            if verloren or ist_vorlage:
+                _log("  ⚠  caoxt.ini wurde durch den Pull veraendert "
+                     "(geloescht oder mit Vorlage ersetzt). Stelle "
+                     "Snapshot vor dem Pull wieder her.")
+                try:
+                    os.makedirs(os.path.dirname(ini_path), exist_ok=True)
+                    with open(ini_path, 'wb') as f:
+                        f.write(ini_snapshot)
+                    _log("  ✓  caoxt.ini aus Snapshot wiederhergestellt.")
+                except OSError as exc:
+                    _log(f"  ✗  Snapshot-Restore fehlgeschlagen: {exc}")
 
         _ensure_caoxt_ini()
 
