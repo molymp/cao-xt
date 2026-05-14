@@ -380,6 +380,132 @@ def _login_required(f):
     return _wrapper
 
 
+# ── Permission-Guard (Dorfkern v2, Phase 6) ──────────────────────
+#
+# Analog zur Orga-App: vor jedem Request pruefen wir Pfad-Prefix gegen
+# Permission-Objekte. ``LESE_PFLEGE``-Objekte trennen GET (Lesen) von
+# anderen Methoden (Pflegen). Bei nicht-Match faellt der Check auf
+# ``admin.zugriff`` (Default-Zugriff Admin-App) zurueck.
+#
+# Reihenfolge: spezifische Pfade vor allgemeineren. First-match wins.
+_ADMIN_PERMISSION_MAP: list[tuple[str, str]] = [
+    # System (technische Wartung)
+    ('/system/apps',                 'admin.system.apps'),
+    ('/system/haccp-poller',         'admin.system.haccp_poller'),
+    ('/system/einkauf-poller',       'admin.system.einkauf_poller'),
+    ('/system/mitarbeiter',          'admin.system.mitarbeiter'),
+    ('/system/updates',              'admin.system.updates'),
+    ('/drucker',                     'admin.system.drucker'),
+    ('/api/drucker',                 'admin.system.drucker'),
+    ('/terminals',                   'admin.system.terminals'),
+    ('/api/terminals',               'admin.system.terminals'),
+    ('/tse',                         'admin.system.tse'),
+    ('/api/tse',                     'admin.system.tse'),
+    ('/db-config',                   'admin.system.db_config'),
+    # Dorfkern-Konfiguration
+    ('/dorfkern/konfig',             'admin.dorfkern.konfig'),
+    ('/dorfkern/terminals',          'admin.dorfkern.terminals'),
+    ('/dorfkern/aktivierungen',      'admin.dorfkern.aktivierungen'),
+    ('/rechte',                      'admin.dorfkern.rechte'),
+    ('/api/rechte',                  'admin.dorfkern.rechte'),
+    ('/einstellungen',               'admin.dorfkern.einstellungen'),
+    ('/api/einstellungen',           'admin.dorfkern.einstellungen'),
+    ('/feiertage',                   'admin.dorfkern.feiertage'),
+    ('/api/feiertage',               'admin.dorfkern.feiertage'),
+    ('/benachrichtigungen',          'admin.dorfkern.benachrichtigungen'),
+    ('/api/benachrichtigungen',      'admin.dorfkern.benachrichtigungen'),
+    ('/funktionen',                  'admin.dorfkern.funktionen'),
+    ('/admin/handbuch',              'admin.dorfkern.handbuch'),
+    ('/admin/doku',                  'admin.dorfkern.handbuch'),
+    # Stammdaten — Mittagstisch eigenes Recht, alles andere Sammel
+    ('/stammdaten/mittagstisch',     'admin.stammdaten.mittagstisch'),
+    ('/api/stammdaten/mittagstisch', 'admin.stammdaten.mittagstisch'),
+    ('/stammdaten',                  'admin.stammdaten'),
+    ('/api/stammdaten',              'admin.stammdaten'),
+    # Artikel
+    ('/artikel',                     'admin.artikel'),
+    ('/api/artikel',                 'admin.artikel'),
+    # Einkauf
+    ('/einkauf/oauth',               'admin.einkauf.oauth'),
+    ('/api/einkauf/oauth',           'admin.einkauf.oauth'),
+    ('/einkauf/bestellungen',        'admin.einkauf.bestellungen'),
+    ('/api/einkauf/bestellungen',    'admin.einkauf.bestellungen'),
+    ('/einkauf/lieferanten',         'admin.einkauf.lieferanten'),
+    ('/api/einkauf/lieferanten',     'admin.einkauf.lieferanten'),
+    ('/api/einkauf',                 'admin.einkauf.bestellungen'),
+    ('/einkauf',                     'admin.einkauf.bestellungen'),
+]
+
+# Objekte mit LESE_PFLEGE-Unterscheidung. GET → LESEN, sonst → PFLEGEN.
+_ADMIN_LESE_PFLEGE_KEYS = {key for _, key in _ADMIN_PERMISSION_MAP}
+
+# Pfade ohne Permission-Check (Login, statische Ressourcen, Health).
+# /produktbilder + /binaer absichtlich offen — Bilder werden vom
+# Orga-/Kiosk-Frontend nachgeladen.
+_ADMIN_PERMISSION_WHITELIST: tuple[str, ...] = (
+    '/login', '/logout',
+    '/brand/', '/static/', '/favicon',
+    '/produktbilder/', '/binaer/',
+    '/api/status',
+    '/coming-soon',
+)
+
+
+def _admin_verweigern(path: str, key: str, is_basis: bool = False):
+    """Berechtigung verweigert. is_basis=True → admin.zugriff fehlt,
+    dann direkt zum Login (sonst Endless-Redirect aufs Dashboard,
+    das selbst auch geschuetzt ist)."""
+    from flask import request as _r, redirect, url_for, flash, jsonify
+    if path.startswith('/api/') or \
+            'application/json' in (_r.headers.get('Accept', '') or ''):
+        return jsonify(ok=False,
+                       msg=f'Keine Berechtigung fuer {key}'), 403
+    if is_basis:
+        session.clear()
+        flash(f'Keine Berechtigung fuer die Admin-App ({key}). '
+              f'Bitte melde dich mit einem berechtigten Konto an.',
+              'error')
+        return redirect(url_for('login'))
+    flash(f'Keine Berechtigung ({key}).', 'error')
+    try:
+        return redirect(url_for('dashboard'))
+    except Exception:
+        return redirect('/')
+
+
+@app.before_request
+def _admin_permission_guard():
+    path = request.path or ''
+    # Whitelist (Login, Static, etc.)
+    if any(path.startswith(w) for w in _ADMIN_PERMISSION_WHITELIST):
+        return None
+    ma_id = session.get('ma_id')
+    if not ma_id:
+        # Nicht eingeloggt → @_login_required leitet einzeln um.
+        return None
+    try:
+        from common import permission as _p
+    except Exception as exc:
+        log.warning("Permission-Modul fehlt: %s — Guard passiv.", exc)
+        return None
+    is_read = request.method in ('GET', 'HEAD', 'OPTIONS')
+
+    # Spezifische Pfade first-match
+    for prefix, key in _ADMIN_PERMISSION_MAP:
+        if path.startswith(prefix):
+            if key in _ADMIN_LESE_PFLEGE_KEYS:
+                recht = 'LESEN' if is_read else 'PFLEGEN'
+            else:
+                recht = 'BEIDES'
+            if _p.hat_recht(ma_id, key, recht):
+                return None
+            return _admin_verweigern(path, f'{key} ({recht})')
+    # Default: jeder angemeldete MA braucht admin.zugriff
+    if _p.hat_recht(ma_id, 'admin.zugriff'):
+        return None
+    return _admin_verweigern(path, 'admin.zugriff', is_basis=True)
+
+
 # ── Context-Processor ────────────────────────────────────────────
 
 @app.context_processor
