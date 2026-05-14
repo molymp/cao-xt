@@ -401,6 +401,7 @@ _ADMIN_PERMISSION_MAP: list[tuple[str, str]] = [
     ('/system/einkauf-poller',       'admin.system.einkauf_poller'),
     ('/system/mitarbeiter',          'admin.system.mitarbeiter'),
     ('/system/updates',              'admin.system.updates'),
+    ('/system/power',                'admin.system.power'),
     ('/drucker',                     'admin.system.drucker'),
     ('/api/drucker',                 'admin.system.drucker'),
     ('/terminals',                   'admin.system.terminals'),
@@ -2266,6 +2267,58 @@ def api_system_restart_all():
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
     return jsonify({'ok': True, 'log': restart_log})
+
+
+# ── Power-Steuerung (Feierabend-Knopf, Reboot) ──────────────────
+
+@app.route('/system/power')
+@_login_required
+def system_power():
+    return render_template('system_power.html')
+
+
+def _trigger_poweroff(args: list[str]) -> tuple[bool, str]:
+    """Fuehrt 'sudo -n <args>' detached aus. Liefert (ok, errstr).
+
+    start_new_session=True kapppt den Subprozess vom Flask-Worker ab,
+    sodass die HTTP-Antwort noch rausgeht bevor systemd anfaengt,
+    Services abzuwuerg en.
+    """
+    try:
+        subprocess.Popen(['sudo', '-n'] + args,
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        return True, ''
+    except Exception as exc:
+        return False, str(exc)
+
+
+@app.route('/api/system/shutdown', methods=['POST'])
+@_login_required
+def api_system_shutdown():
+    """Faehrt den Rechner sofort herunter (Feierabend-Knopf).
+
+    Voraussetzung: /etc/sudoers.d/dorfkern-shutdown erlaubt dem
+    dorfkern-User '/sbin/shutdown -h now' passwortfrei. Wird vom
+    Installer (host_setup.install_system) angelegt.
+    """
+    ok, err = _trigger_poweroff(['/sbin/shutdown', '-h', 'now'])
+    if not ok:
+        return jsonify({'ok': False, 'error': err}), 500
+    return jsonify({'ok': True})
+
+
+@app.route('/api/system/reboot', methods=['POST'])
+@_login_required
+def api_system_reboot():
+    """Startet den Rechner neu (z.B. nach Update das einen vollen Boot
+    braucht — Kernel-Update, Treiber, etc.). Im Gegensatz zu
+    /api/system/restart-all (das nur die Apps neu startet)."""
+    ok, err = _trigger_poweroff(['/sbin/shutdown', '-r', 'now'])
+    if not ok:
+        return jsonify({'ok': False, 'error': err}), 500
+    return jsonify({'ok': True})
 
 
 # ── Zeiten-CSV Import (ShiftJuggler Attendance-Export) ───────────

@@ -310,6 +310,58 @@ def _ensure_system_dirs(user: str, group: str, instance_name: str,
     return True
 
 
+# /etc/sudoers.d/dorfkern-shutdown — passwortfreies Shutdown/Reboot fuer den
+# dorfkern-Service-User. Der "Feierabend"-Knopf in der Admin-App ruft
+# 'sudo -n /sbin/shutdown -h now'. Wird ueber alle Instanzen genutzt
+# (nicht instanz-suffigiert), da der User immer 'dorfkern' ist.
+_SUDOERS_SHUTDOWN_PATH = '/etc/sudoers.d/dorfkern-shutdown'
+_SUDOERS_SHUTDOWN_CONTENT = (
+    "# Auto-generiert von installer/systemd/host_setup.py\n"
+    "# Erlaubt dem dorfkern-Service-User, den Rechner herunterzufahren\n"
+    "# oder neu zu starten — ohne Passwort, aber strikt nur diese Befehle.\n"
+    "dorfkern ALL=(root) NOPASSWD: /sbin/shutdown -h now, "
+    "/sbin/shutdown -r now, /sbin/poweroff, /sbin/reboot\n"
+)
+
+
+def _ensure_shutdown_sudoers(*, print_fn: PrintFn) -> bool:
+    """Legt /etc/sudoers.d/dorfkern-shutdown an (idempotent).
+
+    Wenn die Datei schon den richtigen Inhalt hat: nichts tun.
+    Sonst neu schreiben via 'sudo install' (atomar + Mode 0440, das ist
+    der pflichtige Mode fuer sudoers-Snippets — sudo lehnt andere ab).
+    """
+    if (os.path.isfile(_SUDOERS_SHUTDOWN_PATH)
+        and os.access(_SUDOERS_SHUTDOWN_PATH, os.R_OK)):
+        try:
+            with open(_SUDOERS_SHUTDOWN_PATH, 'r', encoding='utf-8') as f:
+                if f.read() == _SUDOERS_SHUTDOWN_CONTENT:
+                    print_fn(f"  ✓  {_SUDOERS_SHUTDOWN_PATH} aktuell")
+                    return True
+        except OSError:
+            pass
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.sudoers',
+                                     delete=False, encoding='utf-8') as f:
+        f.write(_SUDOERS_SHUTDOWN_CONTENT)
+        tmp_path = f.name
+    try:
+        r = _run(_maybe_sudo(
+            ['install', '-m', '0440', '-o', 'root', '-g', 'root',
+             tmp_path, _SUDOERS_SHUTDOWN_PATH]))
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+    if r.returncode != 0:
+        print_fn(f"  ✗  sudoers-Snippet nicht installiert: {_err(r)}")
+        return False
+    print_fn(f"  ✓  {_SUDOERS_SHUTDOWN_PATH} (Mode 0440)")
+    return True
+
+
 def install_system(install_root: str, *,
                    instance_name: str = '',
                    base_port: int = units.DEFAULT_BASE_PORT,
@@ -341,6 +393,12 @@ def install_system(install_root: str, *,
         return False
     if not _ensure_system_dirs(user, group, instance_name, print_fn=print_fn):
         return False
+    # Sudoers fuer den Feierabend-Shutdown-Knopf — nicht-blockend, falls
+    # die Installation auf einer Box ohne sudo laeuft (sehr ungewoehnlich
+    # im System-Mode, aber theoretisch moeglich).
+    if not _ensure_shutdown_sudoers(print_fn=print_fn):
+        print_fn("  ⚠  Shutdown-Sudoers fehlgeschlagen — "
+                 "der Feierabend-Knopf wird ohne 'sudo'-Pass nicht funktionieren.")
 
     # Ownership von install_root sicherstellen — Code muss vom Service-
     # User lesbar/ausfuehrbar sein. Idempotent.

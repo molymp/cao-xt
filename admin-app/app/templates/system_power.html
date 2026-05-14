@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}System – Ein/Aus{% endblock %}
+
+{% block extra_style %}
+<style>
+.power-card {
+  max-width: 760px;
+}
+.power-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 20px 0 30px;
+}
+.power-btn {
+  flex: 1 1 280px;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  border: 2px solid transparent;
+  border-radius: var(--radius-klein);
+  cursor: pointer;
+  transition: transform 0.06s, border-color 0.12s;
+}
+.power-btn:hover { transform: translateY(-1px); }
+.power-btn:active { transform: translateY(1px); }
+.power-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.power-btn .pwr-icon { font-size: 32px; line-height: 1; }
+.power-btn .pwr-sub { font-size: 12px; font-weight: 500; opacity: 0.85; }
+
+.power-btn.shutdown {
+  background: rgba(192,64,64,0.15);
+  color: #f08080;
+  border-color: rgba(192,64,64,0.35);
+}
+.power-btn.shutdown:hover { border-color: #f08080; }
+
+.power-btn.reboot {
+  background: rgba(58,124,189,0.15);
+  color: var(--akzent-hell);
+  border-color: rgba(58,124,189,0.30);
+}
+.power-btn.reboot:hover { border-color: var(--akzent-hell); }
+
+#status-box {
+  background: var(--bg-dunkel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-klein);
+  padding: 14px 18px;
+  font-size: 14px;
+  display: none;
+}
+#status-box.aktiv { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">⚡ Ein/Aus</h1>
+<p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;">
+  Feierabend-Knopf für die Box. Fährt das ganze Betriebssystem herunter
+  bzw. startet es neu. Apps werden vor dem Shutdown durch systemd
+  geordnet gestoppt.
+</p>
+
+<div class="card power-card">
+
+  <div class="power-row">
+    <button class="power-btn shutdown" id="btn-shutdown" onclick="confirmShutdown()">
+      <span class="pwr-icon">⏻</span>
+      <span>Herunterfahren</span>
+      <span class="pwr-sub">Sofort, kein Vorlauf</span>
+    </button>
+    <button class="power-btn reboot" id="btn-reboot" onclick="confirmReboot()">
+      <span class="pwr-icon">🔄</span>
+      <span>Neu starten</span>
+      <span class="pwr-sub">Voller Reboot</span>
+    </button>
+  </div>
+
+  <div id="status-box"></div>
+
+  <p style="font-size:12px;color:var(--text-dim);margin-top:14px;">
+    Hinweis: <em>Neu starten</em> ist für volle System-Reboots gedacht
+    (z. B. nach Kernel-Update). Wenn nur die Apps reagieren sollen, ist
+    <a href="/system/updates" style="color:var(--akzent-hell);">Updates</a>
+    → „Alle Apps neu starten" der richtige Knopf.
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+async function confirmShutdown() {
+  if (!confirm('Wirklich JETZT herunterfahren?\n\n' +
+               'Die Box geht sofort aus, alle Apps werden gestoppt.\n' +
+               'Vor dem Drücken sicherstellen, dass:\n' +
+               '  - keine Verkäufe in der Kasse offen sind\n' +
+               '  - der Tagesabschluss gemacht wurde')) return;
+  await triggerPower('/api/system/shutdown',
+                     '⏻ Wird heruntergefahren … Verbindung bricht ab.');
+}
+
+async function confirmReboot() {
+  if (!confirm('Wirklich JETZT neu starten?\n\n' +
+               'Die Box rebootet, Apps brauchen 1–2 Minuten zum Hochkommen.')) return;
+  await triggerPower('/api/system/reboot',
+                     '🔄 Wird neu gestartet … Verbindung bricht ab. ' +
+                     'Seite in ca. 2 Min neu laden.');
+}
+
+async function triggerPower(url, statusMsg) {
+  const sd = document.getElementById('btn-shutdown');
+  const rb = document.getElementById('btn-reboot');
+  sd.disabled = true;
+  rb.disabled = true;
+
+  const box = document.getElementById('status-box');
+  box.textContent = '⏳ wird ausgelöst …';
+  box.classList.add('aktiv');
+
+  try {
+    const r = await fetch(url, { method: 'POST' });
+    const data = await r.json();
+    if (!data.ok) {
+      box.textContent = '✗ Fehler: ' + (data.error || 'unbekannt');
+      sd.disabled = false;
+      rb.disabled = false;
+      return;
+    }
+    box.textContent = statusMsg;
+  } catch (e) {
+    // Verbindungsabbruch kann hier passieren weil Flask waehrend des
+    // Shutdowns wegbricht — das ist der Erfolgsfall.
+    box.textContent = statusMsg;
+  }
+}
+</script>
+{% endblock %}
