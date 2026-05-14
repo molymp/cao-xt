@@ -124,8 +124,23 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function rechteZellenInhalt(r) {
-  const apps = ['KIOSK', 'KASSE', 'ORGA'];
+// Apps werden dynamisch aus den Backend-Daten ermittelt — so taucht
+// jedes neue Permission-App (z.B. ADMIN) automatisch hier auf, sobald
+// Objekte dafuer im DORFKERN_PERMISSION_OBJEKT-Katalog stehen.
+function appsAusDaten() {
+  const set = new Set();
+  for (const m of _alle) {
+    for (const a of Object.keys(m.rechte_pro_app || {})) {
+      if ((m.rechte_pro_app[a]?.gesamt || 0) > 0) set.add(a);
+    }
+  }
+  // stabile Reihenfolge: KIOSK, KASSE, ORGA, ADMIN, dann Rest alphabetisch
+  const vorzug = ['KIOSK', 'KASSE', 'ORGA', 'ADMIN'];
+  const rest = [...set].filter(a => !vorzug.includes(a)).sort();
+  return [...vorzug.filter(a => set.has(a)), ...rest];
+}
+
+function rechteZellenInhalt(r, apps) {
   return apps.map(app => {
     const e = r.rechte_pro_app[app];
     if (!e) return '';
@@ -156,6 +171,7 @@ function render(filter) {
       text-align:center;">Keine Mitarbeiter${f ? ' (Filter)' : ''}.</div>`;
     return;
   }
+  const apps = appsAusDaten();
   box.innerHTML = `
     <table class="ma">
       <thead>
@@ -186,7 +202,7 @@ function render(filter) {
             <td class="rechte-zelle">
               ${m.ist_admin
                 ? '<span class="app-block voll"><span class="app-name">ALLES</span></span>'
-                : rechteZellenInhalt(m)}
+                : rechteZellenInhalt(m, apps)}
             </td>
           </tr>`).join('')}
       </tbody>
