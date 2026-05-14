@@ -157,11 +157,14 @@
         <span id="restart-detail" style="margin-left:6px;"></span>
         <div style="margin-top:10px;">
           <button class="btn btn-primary btn-sm" id="btn-restart"
-                  onclick="restartAdmin()">
-            🔄 Admin-App neu starten
+                  onclick="restartAll()">
+            🔄 Alle Apps neu starten
           </button>
           <span style="margin-left:8px;font-size:12px;color:var(--text-dim);">
-            Verbindung bricht für ca. 5 Sekunden ab; Seite lädt sich automatisch neu.
+            Alle Apps werden in Reihenfolge neu gestartet. Die Admin-Verbindung
+            bricht für ca. 5 Sekunden ab; die Seite lädt sich automatisch neu.
+            (Nur Admin neu zu starten würde die anderen Apps mit altem Code
+            weiterlaufen lassen.)
           </span>
         </div>
       </div>
@@ -298,24 +301,26 @@ async function checkUpdates() {
       (!data.available && !rNeeded) ? '' : 'none';
   if (rNeeded) {
     const rd = document.getElementById('restart-detail');
-    rd.textContent = `Working-Tree ist auf ${data.local_commit}, der Admin-Prozess läuft noch auf ${data.running_commit}.`;
+    rd.textContent = `Working-Tree ist auf ${data.local_commit}, der Admin-Prozess läuft noch auf ${data.running_commit}. Andere Apps vermutlich ebenfalls.`;
   }
 
   document.getElementById('result').style.display = '';
 }
 
-async function restartAdmin() {
+async function restartAll() {
   const btn = document.getElementById('btn-restart');
   btn.disabled = true;
-  btn.textContent = '⏳ Wird neu gestartet …';
+  btn.textContent = '⏳ Alle Apps werden neu gestartet …';
 
   try {
-    await fetch('/api/system/restart-admin', { method: 'POST' });
+    await fetch('/api/system/restart-all', { method: 'POST' });
   } catch (e) {
     // Verbindungsabbruch ist hier erwartet, sobald der Restart greift.
   }
-  // Auto-Reload nach 8s (5s reichen typisch, aber Margin schadet nicht).
-  setTimeout(() => window.location.reload(), 8000);
+  // dorfkern-ctl iteriert durch alle Apps; Admin kommt früh dran, sodass
+  // die Verbindung schnell stirbt — die anderen Apps werden im Hintergrund
+  // nacheinander durchgekurbelt. 15 s Reload-Delay gibt dem Vorgang Zeit.
+  setTimeout(() => window.location.reload(), 15000);
 }
 
 async function startUpdate() {

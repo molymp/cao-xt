@@ -2212,17 +2212,24 @@ def api_system_update():
     return jsonify({'ok': True, 'log': '/tmp/caoxt-update.log'})
 
 
-@app.route('/api/system/restart-admin', methods=['POST'])
+@app.route('/api/system/restart-all', methods=['POST'])
 @_login_required
-def api_system_restart_admin():
-    """Startet die Admin-App neu, damit ein bereits aktualisierter
-    Working-Tree wirksam wird (Fall: ``restart_required=True``).
+def api_system_restart_all():
+    """Startet ALLE Apps neu, damit ein bereits aktualisierter Working-Tree
+    wirksam wird (Fall: ``restart_required=True``).
+
+    Wichtig: nicht nur Admin neustarten. Wenn der Working-Tree neuer ist
+    als der laufende Prozess, betrifft das in der Regel alle Apps —
+    z. B. weil sich gemeinsame Module unter ``common/`` geaendert haben.
+    Nur Admin frisch zu starten wuerde die anderen Apps mit dem alten
+    Code weiterlaufen lassen und ergibt inkonsistente Sicht.
 
     Wir loesen den Restart ueber ``dorfkern-ctl`` aus, damit dieselbe
     Stop/Start-Logik wie bei einem regulaeren Update genutzt wird
-    (PID-File, App-Manager). Der Prozess wird in einer neuen Session
-    abgekoppelt – bevor er den eigenen ``admin``-Service killt, hat
-    Flask die HTTP-Antwort bereits ausgeliefert.
+    (PID-File / systemd, je nach Modus). Der Subprozess wird in einer
+    neuen Session abgekoppelt – bevor er den eigenen Admin-Service
+    killt, hat Flask die HTTP-Antwort bereits ausgeliefert. dorfkern-ctl
+    iteriert dann durch alle Apps in der definierten Reihenfolge.
     """
     repo_root = os.path.normpath(os.path.join(BASE_DIR, '..', '..'))
     ctl = os.path.join(repo_root, 'dorfkern-ctl')
@@ -2231,7 +2238,7 @@ def api_system_restart_admin():
                         'error': 'dorfkern-ctl nicht gefunden'}), 500
     try:
         subprocess.Popen(
-            [ctl, 'restart', 'admin'],
+            [ctl, 'restart'],   # kein App-Arg = alle Apps
             cwd=repo_root,
             stdout=open('/tmp/caoxt-restart.log', 'a'),
             stderr=subprocess.STDOUT,
