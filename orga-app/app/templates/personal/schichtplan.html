@@ -272,6 +272,7 @@
       Planung läuft – Zuordnungen änderbar.
     {% endif %}
   </span>
+  {% if kann_pflegen %}
   <button type="button" class="btn btn-secondary"
           onclick="oeffneKopieren()">Kopieren…</button>
   <button type="button" class="btn btn-secondary"
@@ -290,6 +291,11 @@
       <button type="submit" class="btn">Freigeben</button>
     {% endif %}
   </form>
+  {% else %}
+  <span class="status-meta" style="font-style: italic; color: var(--grau-mitte);">
+    (Nur-Lesen-Modus – keine Pflege-Berechtigung)
+  </span>
+  {% endif %}
 </div>
 
 <div id="freigabe-loading" style="display:none; position:fixed; inset:0;
@@ -342,6 +348,7 @@ function freigabeAbsenden(form, istGesperrt) {
 }
 </script>
 
+{% if kann_pflegen %}
 <div id="kopieren-overlay" class="overlay-bg" onclick="if(event.target===this)schliesseKopieren()">
   <div class="overlay-sheet" style="max-width: 460px;">
     <div class="handle"></div>
@@ -516,6 +523,7 @@ function setVorlageZielRelativ(tage) {
     </div>
   </div>
 </div>
+{% endif %}{# /kann_pflegen Overlays #}
 
 {% if woche_log %}
 <details style="margin-bottom: 14px;">
@@ -579,7 +587,7 @@ function setVorlageZielRelativ(tage) {
                           else ('sonntag' if tag.weekday() == 6 else '') %}
         <td class="tag-cell {{ cls }} {{ heute_cls }} {{ kal_cls }}"
             {% if ft_name %}title="{{ ft_name }}"{% endif %}
-            {% if not ustat and not atyp and not woche_gesperrt %}
+            {% if kann_pflegen and not ustat and not atyp and not woche_gesperrt %}
             data-pers="{{ ma.PERS_ID }}"
             data-vname="{{ ma.VNAME }}"
             data-name="{{ ma.NAME }}"
@@ -606,6 +614,7 @@ function setVorlageZielRelativ(tage) {
               {% else %}
                 {{ z.KUERZEL }} · Aufgabe
               {% endif %}
+              {% if kann_pflegen %}
               <form method="post"
                     action="{{ url_for('orga_personal.schichtplan_zuordnung_loeschen',
                                        rec_id=z.REC_ID) }}"
@@ -614,6 +623,7 @@ function setVorlageZielRelativ(tage) {
                 <input type="hidden" name="woche" value="{{ montag.isoformat() }}">
                 <button type="submit" class="del-btn" title="Entfernen">×</button>
               </form>
+              {% endif %}
             </span>
             {% endfor %}
           {% endif %}
@@ -657,6 +667,7 @@ function setVorlageZielRelativ(tage) {
 </table>
 
 <!-- ── Bottom-Sheet Zuordnung ──────────────────────────────────────────── -->
+{% if kann_pflegen %}
 <div id="zuordnung-overlay" class="overlay-bg" onclick="if (event.target === this) closeZuordnung()">
   <form method="post" action="{{ url_for('orga_personal.schichtplan_zuordnung_anlegen') }}"
         class="overlay-sheet" onsubmit="return zuordnungPruefen(event)">
@@ -717,7 +728,9 @@ function setVorlageZielRelativ(tage) {
     </div>
   </form>
 </div>
+{% endif %}{# /kann_pflegen Zuordnung-Overlay #}
 
+{% if kann_pflegen %}
 <script>
   const overlay = document.getElementById('zuordnung-overlay');
   const flexBox = document.getElementById('ovl-flex');
@@ -788,4 +801,5 @@ function setVorlageZielRelativ(tage) {
     if (e.key === 'Escape') closeZuordnung();
   });
 </script>
+{% endif %}{# /kann_pflegen overlay-script #}
 {% endblock %}
