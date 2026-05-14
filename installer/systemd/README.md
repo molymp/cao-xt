@@ -212,7 +212,8 @@ Was sich pro Instanz unterscheidet (Suffix = der gewählte Instanz-Name):
 | Service-Units | `dorfkern-admin.service`, … | `dorfkern-prod-admin.service`, … | `dorfkern-dev-admin.service`, … |
 | `/var/log` | `/var/log/dorfkern` | `/var/log/dorfkern-prod` | `/var/log/dorfkern-dev` |
 | `/var/backups` | `/var/backups/dorfkern` | `/var/backups/dorfkern-prod` | `/var/backups/dorfkern-dev` |
-| Update-Log | `/tmp/dorfkern-update.log` | `/tmp/dorfkern-prod-update.log` | `/tmp/dorfkern-dev-update.log` |
+| Update-Log (System-Mode) | `/var/log/dorfkern/update.log` | `/var/log/dorfkern-prod/update.log` | `/var/log/dorfkern-dev/update.log` |
+| Update-Log (Ad-hoc-Fallback) | `/tmp/dorfkern-update.log` | `/tmp/dorfkern-prod-update.log` | `/tmp/dorfkern-dev-update.log` |
 | Update-Lock | `/var/lock/dorfkern-update.lock` | `/var/lock/dorfkern-prod-update.lock` | `/var/lock/dorfkern-dev-update.lock` |
 | Port admin | 5004 (Base 5000) | 5004 (Base 5000) | 5104 (Base 5100) |
 | Port kiosk | 5001 | 5001 | 5101 |

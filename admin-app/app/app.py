@@ -2247,12 +2247,13 @@ def api_system_restart_all():
                         'error': 'dorfkern-ctl nicht gefunden'}), 500
 
     # Restart-Log instanz-suffigiert (passend zur Updater-Konvention).
+    # log_path() bevorzugt /var/log/<prefix>/restart.log, fallback /tmp.
     try:
-        from common.config import load_instance_config
-        prefix = load_instance_config()['systemd_prefix']
+        from common.config import load_instance_config, log_path
+        inst = load_instance_config().get('instance_name', '')
+        restart_log = log_path('restart', inst)
     except Exception:
-        prefix = 'dorfkern'
-    restart_log = f'/tmp/{prefix}-restart.log'
+        restart_log = '/tmp/dorfkern-restart.log'
 
     try:
         subprocess.Popen(

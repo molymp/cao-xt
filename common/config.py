@@ -95,6 +95,39 @@ def app_port(app_name: str, base_port: int) -> int:
     return base_port + offset
 
 
+def log_dir(instance_name: str = '') -> str:
+    """Bester verfuegbarer Log-Pfad fuer die gegebene Instanz.
+
+    Bevorzugt ``/var/log/<prefix>/`` (wird im System-Mode-Install vom
+    host_setup angelegt, gehoert dem Service-User). Faellt auf ``/tmp``
+    zurueck, wenn das Verzeichnis nicht existiert oder der aufrufende
+    User nicht reinschreiben kann (typisch im Ad-hoc-Mode).
+
+    Faengt mit os.access(W_OK) bewusst die haeufige Permission-Falle ab
+    statt erst beim ersten open() zu sterben.
+    """
+    candidate = f'/var/log/{systemd_prefix(instance_name)}'
+    if os.path.isdir(candidate) and os.access(candidate, os.W_OK):
+        return candidate
+    return '/tmp'
+
+
+def log_path(name: str, instance_name: str = '') -> str:
+    """Konkreter Pfad fuer ein bestimmtes Log (App, 'update', 'restart').
+
+    Wenn der Log-Ordner bereits den Praefix als letzten Pfadteil traegt
+    (typisch: ``/var/log/dorfkern[-<inst>]/``), bleibt der Filename
+    schlicht (``admin.log``). Sonst (z.B. ``/tmp``-Fallback) wird der
+    Praefix in den Filename mit reingezogen, damit fremde Tools sich
+    da nicht reinpfuschen.
+    """
+    base = log_dir(instance_name)
+    prefix = systemd_prefix(instance_name)
+    if os.path.basename(base) == prefix:
+        return os.path.join(base, f'{name}.log')
+    return os.path.join(base, f'{prefix}-{name}.log')
+
+
 def load_instance_config() -> dict:
     """Liest instance_name + base_port (Bootstrap-Konfig vor App-Start).
 

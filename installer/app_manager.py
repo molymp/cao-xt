@@ -180,25 +180,36 @@ def log_info(log_path: str) -> dict:
 # PID-/Log-File.
 try:
     from common.config import load_instance_config as _load_inst
+    from common.config import log_path as _log_path_for
     _INST = _load_inst()
 except Exception:  # pragma: no cover - falls common.config nicht importierbar
     _INST = {'instance_name': '', 'base_port': 5000, 'systemd_prefix': 'dorfkern'}
+    def _log_path_for(name, inst=''):
+        return f'/tmp/dorfkern{("-" + inst) if inst else ""}-{name}.log'
+
 _BASE_PORT     = _INST['base_port']
 _INSTANCE_NAME = _INST['instance_name']
 _PREFIX        = _INST['systemd_prefix']
 
 # PID-File pro Instanz, sonst stoeren sich DEV und PROD beim Tracken der
-# Popen-PIDs gegenseitig. Bei leerer Instanz Bleibt der historische
+# Popen-PIDs gegenseitig. Bei leerer Instanz bleibt der historische
 # Pfad /tmp/caoxt-pids.json erhalten.
 PID_FILE = (f'/tmp/caoxt-pids-{_INSTANCE_NAME}.json'
             if _INSTANCE_NAME else '/tmp/caoxt-pids.json')
 
 
 def _log_path(app: str) -> str:
-    """Tmp-Logpfad fuer den Dev-Mode. Im systemd-Mode (systemd_manager)
-    wird das ohnehin durch ``journalctl -u …`` ersetzt. Suffix mit Instanz-
-    Namen, damit parallele Instanzen sich nicht ueberschreiben."""
-    return os.path.join(LOG_DIR, f'{_PREFIX}-{app}.log')
+    """Logpfad fuer den Dev-Mode (Popen pipet stdout/stderr dort hin).
+
+    Bevorzugt /var/log/<prefix>/<app>.log, falls dieses Verzeichnis
+    existiert + beschreibbar ist (typisch im System-Mode mit dorfkern-
+    User). Faellt sonst auf /tmp/<prefix>-<app>.log zurueck.
+
+    Im systemd-Mode wird dieses Feld vom systemd_manager.status_app
+    durch einen journalctl-Hinweis ueberschrieben — die App selbst
+    schreibt dort ihre Logs per StandardOutput=journal.
+    """
+    return _log_path_for(app, _INSTANCE_NAME)
 
 
 APPS = {

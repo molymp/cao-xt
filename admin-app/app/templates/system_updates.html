@@ -201,9 +201,10 @@
     ./install.sh --update
   </code>
   <p style="font-size:12px;color:var(--text-dim);margin-top:8px;">
-    Das Script schreibt den Fortschritt nach <code>/tmp/&lt;prefix&gt;-update.log</code>
-    (per Default <code>/tmp/dorfkern-update.log</code>; bei Multi-Instanz mit
-    Suffix, z. B. <code>/tmp/dorfkern-prod-update.log</code>).
+    Das Script schreibt den Fortschritt nach
+    <code>/var/log/&lt;prefix&gt;/update.log</code> (System-Mode mit dorfkern-
+    User) bzw. <code>/tmp/&lt;prefix&gt;-update.log</code> (Ad-hoc-Fallback,
+    wenn <code>/var/log/&lt;prefix&gt;/</code> nicht beschreibbar ist).
   </p>
 </div>
 {% endblock %}

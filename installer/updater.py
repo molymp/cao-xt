@@ -25,23 +25,28 @@ _VERSION_FILE  = os.path.join(_REPO_ROOT, 'VERSION.json')
 _DORFKERN_CTL  = os.path.join(_REPO_ROOT, 'dorfkern-ctl')
 
 
-# Instanz-Konfig laden (instance_name + base_port), damit Lock-, Log- und
-# Backup-Pfade pro Instanz separat sind. So koennen DEV- und PROD-Updates
-# auf demselben Host parallel oder verschachtelt laufen, ohne sich
-# gegenseitig den Lock oder das Backup wegzuziehen.
-def _load_prefix() -> str:
+# Instanz-Konfig laden (instance_name + systemd_prefix), damit Lock-,
+# Log- und Backup-Pfade pro Instanz separat sind. So koennen DEV- und
+# PROD-Updates auf demselben Host parallel oder verschachtelt laufen,
+# ohne sich gegenseitig den Lock oder das Backup wegzuziehen.
+def _load_instance() -> tuple:
     try:
         from common.config import load_instance_config
-        return load_instance_config()['systemd_prefix']
+        cfg = load_instance_config()
+        return cfg['instance_name'], cfg['systemd_prefix']
     except Exception:
-        return 'dorfkern'
+        return '', 'dorfkern'
 
 
-_PREFIX = _load_prefix()
+_INSTANCE_NAME, _PREFIX = _load_instance()
 
-# Update-Log: pro Instanz separat, damit DEV/PROD-Update-Verlaeufe
-# unterscheidbar sind.
-_LOG_FILE = os.path.join(os.sep, 'tmp', f'{_PREFIX}-update.log')
+# Update-Log: pro Instanz separat. Im System-Mode landet das in
+# /var/log/<prefix>/update.log (persistent ueber Reboot), sonst /tmp.
+try:
+    from common.config import log_path as _log_path_for
+    _LOG_FILE = _log_path_for('update', _INSTANCE_NAME)
+except Exception:
+    _LOG_FILE = os.path.join(os.sep, 'tmp', f'{_PREFIX}-update.log')
 
 # Update-Lock: verhindert parallele Update-Laeufe DERSELBEN Instanz.
 # Standardpfad /var/lock; bei fehlenden Rechten faellt _acquire_lock()
