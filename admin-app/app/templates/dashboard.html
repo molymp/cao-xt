@@ -110,5 +110,104 @@ async function dashConfirmPower(action) {
   }
 }
 </script>
+
+{# ── Wartungs-Modus-Widget ──────────────────────────────────
+   Schaltet LightDM zwischen Auto-Kiosk und Greeter (manueller
+   Login). Wirkt nur am physischen Bildschirm der Box; der
+   Admin-Browser bleibt unberuehrt. #}
+<div class="card" style="margin-top:16px;max-width:760px;">
+  <h3 style="margin-bottom:10px;font-size:18px;">🛠️ Wartungs-Modus</h3>
+  <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px;">
+    Schaltet die Box zwischen Auto-Kiosk (boot direkt in Vollbild-Browser)
+    und Wartung (Login-Bildschirm mit User-/Session-Wahl). Wirkt nur am
+    physischen Bildschirm — der Admin-Browser bleibt unberührt.
+  </p>
+
+  <div id="dash-maint-status"
+       style="margin-bottom:14px;padding:10px 14px;
+              background:var(--bg-dunkel);border:1px solid var(--border);
+              border-radius:var(--radius-klein);font-size:14px;">
+    <span style="color:var(--text-dim);">Modus wird ermittelt …</span>
+  </div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <button class="btn btn-neutral" id="dash-btn-maint-on"
+            onclick="dashSetMaintenance('maintenance')"
+            style="flex:1 1 220px;min-height:56px;font-size:15px;font-weight:700;">
+      🛠️ Wartungs-Modus aktivieren
+    </button>
+    <button class="btn btn-success" id="dash-btn-maint-kiosk"
+            onclick="dashSetMaintenance('kiosk')"
+            style="flex:1 1 220px;min-height:56px;font-size:15px;font-weight:700;">
+      🎯 Zurück zum Kiosk
+    </button>
+  </div>
+</div>
+<script>
+async function dashLoadMaintStatus() {
+  const box = document.getElementById('dash-maint-status');
+  const onBtn   = document.getElementById('dash-btn-maint-on');
+  const offBtn  = document.getElementById('dash-btn-maint-kiosk');
+  try {
+    const r = await fetch('/api/system/maintenance');
+    const data = await r.json();
+    if (!data.ok) {
+      box.innerHTML = '<span style="color:#f08080;">✗ Status nicht ermittelbar: '
+                    + (data.error || 'unbekannt') + '</span>';
+      return;
+    }
+    const mode = data.mode;
+    if (mode === 'kiosk') {
+      box.innerHTML = '🎯 <strong>Aktuell: KIOSK</strong> '
+                    + '(Box bootet automatisch in Vollbild-Chromium)';
+      onBtn.disabled = false; offBtn.disabled = true;
+    } else if (mode === 'maintenance') {
+      box.innerHTML = '🛠️ <strong>Aktuell: WARTUNG</strong> '
+                    + '(LightDM-Greeter wird am Display gezeigt — '
+                    + 'User + Session manuell wählbar)';
+      onBtn.disabled = true; offBtn.disabled = false;
+    } else {
+      box.innerHTML = '⚠ Status unbekannt — Skript-Output: ' +
+                    (data.message || '');
+    }
+  } catch (e) {
+    box.innerHTML = '<span style="color:#f08080;">✗ ' + e.message + '</span>';
+  }
+}
+
+async function dashSetMaintenance(mode) {
+  const onBtn   = document.getElementById('dash-btn-maint-on');
+  const offBtn  = document.getElementById('dash-btn-maint-kiosk');
+  const box     = document.getElementById('dash-maint-status');
+  const verb = mode === 'kiosk' ? 'Kiosk' : 'Wartung';
+  if (!confirm('Box wirklich in den Modus "' + verb + '" schalten?\n\n' +
+               'LightDM wird neu gestartet — am Bildschirm der Box wird das ' +
+               'kurz sichtbar. Der Admin-Browser bleibt unberührt.')) return;
+  onBtn.disabled = true; offBtn.disabled = true;
+  box.innerHTML = '<span style="color:var(--text-dim);">⏳ wird umgeschaltet …</span>';
+  try {
+    const r = await fetch('/api/system/maintenance', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode: mode})
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      box.innerHTML = '<span style="color:#f08080;">✗ Fehler: '
+                    + (data.error || 'unbekannt') + '</span>';
+      onBtn.disabled = false; offBtn.disabled = false;
+      return;
+    }
+    // Kurz warten, dann Status neu laden
+    setTimeout(dashLoadMaintStatus, 1500);
+  } catch (e) {
+    box.innerHTML = '<span style="color:#f08080;">✗ ' + e.message + '</span>';
+    onBtn.disabled = false; offBtn.disabled = false;
+  }
+}
+
+// Beim Laden des Dashboards: aktuellen Status holen
+document.addEventListener('DOMContentLoaded', dashLoadMaintStatus);
+</script>
 {% endif %}
 {% endblock %}

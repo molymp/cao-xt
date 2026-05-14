@@ -2321,6 +2321,77 @@ def api_system_reboot():
     return jsonify({'ok': True})
 
 
+# ── Wartungs-Modus (Kiosk ↔ Greeter Toggle) ──────────────────
+
+_MAINTENANCE_SCRIPT = '/usr/local/bin/dorfkern-maintenance-mode'
+
+
+def _run_maintenance(args: list[str]) -> tuple[bool, str, str]:
+    """Ruft das maintenance-mode-Skript via sudo synchron.
+
+    Liefert (ok, stdout, stderr_or_err). Synchron weil der LightDM-
+    Restart nur ~1s dauert und wir das Ergebnis dem Frontend
+    zurueckmelden wollen (Frontend zeigt aktualisierten Status an).
+    """
+    try:
+        r = subprocess.run(['sudo', '-n', _MAINTENANCE_SCRIPT] + args,
+                           capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        return False, '', f'Skript fehlt: {_MAINTENANCE_SCRIPT}'
+    except Exception as exc:
+        return False, '', str(exc)
+    out = (r.stdout or '').strip()
+    err = (r.stderr or '').strip()
+    return r.returncode == 0, out, err or f'exit {r.returncode}'
+
+
+@app.route('/api/system/maintenance', methods=['GET'])
+@_login_required
+def api_system_maintenance_status():
+    """Liefert den aktuellen Wartungs-Modus.
+
+    Returns: {'ok': True, 'mode': 'kiosk'|'maintenance'|'unknown',
+              'message': str}
+    """
+    ok, out, err = _run_maintenance(['--status'])
+    if not ok:
+        return jsonify({'ok': False, 'error': err}), 500
+    mode = 'unknown'
+    low = out.lower()
+    if 'kiosk' in low and 'auto-login' in low:
+        mode = 'kiosk'
+    elif 'maintenance' in low or 'greeter' in low:
+        mode = 'maintenance'
+    return jsonify({'ok': True, 'mode': mode, 'message': out})
+
+
+@app.route('/api/system/maintenance', methods=['POST'])
+@_login_required
+def api_system_maintenance_set():
+    """Setzt den Wartungs-Modus.
+
+    Body (JSON oder Form): mode=maintenance|kiosk
+    Default ohne Argument: maintenance (= Greeter zeigen).
+
+    Achtung: Wirkt am Bildschirm der Box (LightDM-Restart). Die
+    Apps und damit der Admin-Browser laufen weiter; der Aufrufer
+    sieht keinen Verbindungsabbruch.
+    """
+    payload = request.get_json(silent=True) or request.form
+    target = (payload.get('mode', '') if payload else '').strip().lower()
+    if target == 'kiosk':
+        args = ['--kiosk']
+    elif target in ('maintenance', 'wartung', ''):
+        args = []   # Default des Skripts: Wartungs-Modus
+    else:
+        return jsonify({'ok': False,
+                        'error': f"Unbekannter Mode {target!r}"}), 400
+    ok, out, err = _run_maintenance(args)
+    if not ok:
+        return jsonify({'ok': False, 'error': err, 'output': out}), 500
+    return jsonify({'ok': True, 'output': out})
+
+
 # ── Zeiten-CSV Import (ShiftJuggler Attendance-Export) ───────────
 
 @app.route('/zeiten-import', methods=['GET', 'POST'])

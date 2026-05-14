@@ -310,17 +310,23 @@ def _ensure_system_dirs(user: str, group: str, instance_name: str,
     return True
 
 
-# /etc/sudoers.d/dorfkern-shutdown — passwortfreies Shutdown/Reboot fuer den
-# dorfkern-Service-User. Der "Feierabend"-Knopf in der Admin-App ruft
-# 'sudo -n /sbin/shutdown -h now'. Wird ueber alle Instanzen genutzt
-# (nicht instanz-suffigiert), da der User immer 'dorfkern' ist.
+# /etc/sudoers.d/dorfkern-shutdown — passwortfreies Shutdown/Reboot +
+# Wartungs-Toggle fuer den dorfkern-Service-User. Der "Feierabend"-Knopf
+# in der Admin-App ruft 'sudo -n /sbin/shutdown -h now', das Wartungs-
+# Widget ruft 'sudo -n /usr/local/bin/dorfkern-maintenance-mode'. Wird
+# ueber alle Instanzen genutzt (nicht instanz-suffigiert), da der User
+# immer 'dorfkern' ist.
 _SUDOERS_SHUTDOWN_PATH = '/etc/sudoers.d/dorfkern-shutdown'
 _SUDOERS_SHUTDOWN_CONTENT = (
     "# Auto-generiert von installer/systemd/host_setup.py\n"
-    "# Erlaubt dem dorfkern-Service-User, den Rechner herunterzufahren\n"
-    "# oder neu zu starten — ohne Passwort, aber strikt nur diese Befehle.\n"
+    "# Erlaubt dem dorfkern-Service-User, den Rechner herunterzufahren,\n"
+    "# neu zu starten oder den Wartungs-Modus zu toggeln — ohne Passwort,\n"
+    "# aber strikt nur diese Befehle.\n"
     "dorfkern ALL=(root) NOPASSWD: /sbin/shutdown -h now, "
-    "/sbin/shutdown -r now, /sbin/poweroff, /sbin/reboot\n"
+    "/sbin/shutdown -r now, /sbin/poweroff, /sbin/reboot, "
+    "/usr/local/bin/dorfkern-maintenance-mode, "
+    "/usr/local/bin/dorfkern-maintenance-mode --kiosk, "
+    "/usr/local/bin/dorfkern-maintenance-mode --status\n"
 )
 
 
