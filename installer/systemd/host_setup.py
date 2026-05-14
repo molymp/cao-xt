@@ -528,6 +528,8 @@ _KIOSK_LIGHTDM_CONF      = f'{_KIOSK_LIGHTDM_DIR}/50-dorfkern-kiosk.conf'
 _KIOSK_SESSION_DESKTOP   = '/usr/share/xsessions/dorfkern-kiosk.desktop'
 _KIOSK_SESSION_SCRIPT    = '/usr/local/bin/dorfkern-kiosk-session'
 _KIOSK_MAINTENANCE_SCRIPT = '/usr/local/bin/dorfkern-maintenance-mode'
+_KIOSK_CHROMIUM_POLICY_DIR  = '/etc/chromium/policies/managed'
+_KIOSK_CHROMIUM_POLICY_FILE = f'{_KIOSK_CHROMIUM_POLICY_DIR}/dorfkern-kiosk.json'
 
 _KIOSK_APT_PKGS_PRIMARY  = ['lightdm', 'xorg', 'chromium', 'openbox']
 # Auf aelteren/Debian-Stretch-Boxen heisst das Paket 'chromium-browser'
@@ -596,6 +598,32 @@ exec chromium --kiosk \\
               --no-first-run \\
               --password-store=basic \\
               {url}
+"""
+
+# Chromium-Managed-Policy fuer den Kiosk-Mode. Wird unter
+# /etc/chromium/policies/managed/ abgelegt — wirkt systemweit fuer
+# alle Chromium-Instanzen (auch Wartungs-Desktop-Chromium), aber das
+# ist erwuenscht: auf einer Kiosk-Box soll der Browser KEIN Passwort
+# speichern, KEIN Autofill anbieten, KEIN Translate-Popup zeigen.
+#
+# Spezifisch fuer den User-Bug: PasswordManagerEnabled=false killt
+# den "Passwort speichern?"-Dialog komplett. Damit gibt es auch
+# keinen Link zum Passwort-Manager mehr, der einen neuen Tab oeffnen
+# wuerde (was im --kiosk-Mode keine Zurueck-Navigation hat).
+_KIOSK_CHROMIUM_POLICY_CONTENT = """\
+{
+  "_comment": "Auto-generiert von installer/systemd/host_setup.py — Kiosk-Defaults",
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "TranslateEnabled": false,
+  "PromptForDownloadLocation": false,
+  "DefaultBrowserSettingEnabled": false,
+  "DefaultPopupsSetting": 1,
+  "BackgroundModeEnabled": false,
+  "ImportAutofillFormData": false,
+  "ImportSavedPasswords": false
+}
 """
 
 
@@ -787,6 +815,20 @@ def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
                                mode='0644', print_fn=print_fn):
         return False
 
+    # ── 2a) Chromium-Managed-Policy (Passwort-Manager etc. aus) ─
+    # Verzeichnis-Hierarchie kann auf frischen Boxen fehlen.
+    r = _run(_maybe_sudo(['install', '-d', '-m', '0755',
+                          '-o', 'root', '-g', 'root',
+                          _KIOSK_CHROMIUM_POLICY_DIR]))
+    if r.returncode != 0:
+        print_fn(f"  ⚠  Konnte {_KIOSK_CHROMIUM_POLICY_DIR} nicht anlegen: {_err(r)}")
+    else:
+        if not _install_file_sudo(_KIOSK_CHROMIUM_POLICY_FILE,
+                                   _KIOSK_CHROMIUM_POLICY_CONTENT,
+                                   mode='0644', print_fn=print_fn):
+            print_fn("  ⚠  Chromium-Policy nicht installiert (Passwort-Dialog "
+                     "wird weiterhin angezeigt).")
+
     # ── 2b) Maintenance-Toggle-Skript ──────────────────────────
     # Wechselt LightDM zwischen Auto-Kiosk und Greeter (manueller
     # Login fuer Wartung), ohne Reboot. Aufrufbar via SSH oder
@@ -877,7 +919,8 @@ def uninstall_kiosk(*, print_fn: PrintFn = print) -> bool:
     """
     for path in (_KIOSK_LIGHTDM_CONF, f'{_KIOSK_LIGHTDM_CONF}.off',
                  _KIOSK_SESSION_DESKTOP, _KIOSK_SESSION_SCRIPT,
-                 _KIOSK_MAINTENANCE_SCRIPT):
+                 _KIOSK_MAINTENANCE_SCRIPT,
+                 _KIOSK_CHROMIUM_POLICY_FILE):
         if not os.path.exists(path):
             continue
         r = _run(_maybe_sudo(['rm', '-f', path]))
