@@ -477,10 +477,71 @@ def _reload_app_manager() -> None:
     importlib.reload(_am)
 
 
-# ─── Phase 5: Abschlussbericht ────────────────────────────────────────
+# ─── Phase 5: Kiosk-Terminal (optional, nur service_system) ───────────
 
-def phase5_report(selected_apps: list[str], type_cfg: dict, ok: bool) -> None:
-    """Phase 5: Status + Adressen + Logs ausgeben."""
+def phase5_kiosk_setup(type_cfg: dict, non_interactive: bool = False) -> None:
+    """Phase 5: Box als Kiosk-Terminal konfigurieren (LightDM-Autologin
+    in Vollbild-Chromium auf die Kiosk-App).
+
+    Sinnvoll nur bei ``service_system`` (sonst hat 'dorfkern' keine
+    Login-Faehigkeit). Bei service_user/ad_hoc wird die Phase still
+    uebersprungen.
+
+    Im non-interactive Modus aktiviert ``XT_KIOSK=1`` das Setup.
+    """
+    if type_cfg['install_type'] != 'service_system':
+        return  # bei User/Ad-hoc-Mode macht das keinen Sinn
+
+    _section("Phase 5: Kiosk-Terminal (optional)")
+
+    schon_da = host_setup.is_kiosk_installed()
+    if schon_da:
+        print("  ✓  Kiosk-Setup bereits konfiguriert "
+              f"({host_setup._KIOSK_LIGHTDM_CONF}).")
+        if non_interactive:
+            return
+        if not _ask_yes_no("Neu generieren (z.B. nach Port-/App-Aenderung)?", False):
+            return
+    else:
+        if non_interactive:
+            flag = os.environ.get('XT_KIOSK', '').strip().lower()
+            if flag not in ('1', 'true', 'yes', 'ja'):
+                print("  ↷  Uebersprungen (XT_KIOSK nicht gesetzt).")
+                return
+        else:
+            kiosk_port = type_cfg['base_port'] + 1
+            print("  Soll diese Box als Kiosk-Terminal booten?")
+            print(f"  Bei freier Box: 5-Sek-Autologin-Countdown im LightDM →")
+            print(f"  Chromium-Vollbild auf http://localhost:{kiosk_port}. Wer")
+            print(f"  in den 5 Sek eine Taste/Klick macht, kommt in den regulaeren")
+            print(f"  Login-Bildschirm fuer Wartung.")
+            print()
+            print("  Setup ist ADDITIV — bestehende Admin-Konfiguration wird")
+            print("  respektiert:")
+            print("    - LightDM-Autologin nur, wenn nicht bereits ein anderer")
+            print("      User dort konfiguriert ist")
+            print("    - chsh dorfkern nur, wenn er noch nologin-Shell hat")
+            print("    - systemctl enable lightdm nur, wenn kein anderer DM aktiv")
+            print()
+            print("  Immer ausgefuehrt:")
+            print("    - apt install lightdm/xorg/chromium/openbox")
+            print("    - dorfkern-kiosk-Session als Wahl im Login-Greeter")
+            print()
+            if not _ask_yes_no("Kiosk-Setup einrichten?", False):
+                return
+
+    ok = host_setup.install_kiosk(
+        base_port=type_cfg['base_port'],
+        app='kiosk',
+    )
+    if not ok:
+        print("  ✗ Kiosk-Setup fehlgeschlagen — siehe Meldungen oben.")
+
+
+# ─── Phase 6: Abschlussbericht ────────────────────────────────────────
+
+def phase6_report(selected_apps: list[str], type_cfg: dict, ok: bool) -> None:
+    """Phase 6: Status + Adressen + Logs ausgeben."""
     install_type  = type_cfg['install_type']
     instance_name = type_cfg['instance_name']
     base_port     = type_cfg['base_port']
@@ -589,7 +650,8 @@ def main() -> None:
         )
         print(f"  ✓ caoxt.ini gespeichert: {_INI_PATH}")
         ok = phase4_install_and_start(selected_apps, type_cfg)
-        phase5_report(selected_apps, type_cfg, ok)
+        phase5_kiosk_setup(type_cfg, non_interactive=True)
+        phase6_report(selected_apps, type_cfg, ok)
         return
 
     # ── Admin-Rolle (Vollinstallation, Default) ──────────────
@@ -613,7 +675,8 @@ def main() -> None:
     print(f"  ✓ caoxt.ini gespeichert: {_INI_PATH}")
 
     ok = phase4_install_and_start(selected_apps, type_cfg)
-    phase5_report(selected_apps, type_cfg, ok)
+    phase5_kiosk_setup(type_cfg, non_interactive=args.non_interactive)
+    phase6_report(selected_apps, type_cfg, ok)
 
 
 if __name__ == '__main__':

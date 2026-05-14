@@ -498,3 +498,337 @@ def uninstall_system(*, instance_name: str = '',
     print_fn("  → systemctl daemon-reload …")
     _run(_maybe_sudo(['systemctl', 'daemon-reload']))
     return True
+
+
+# ─── Kiosk-Terminal-Setup ─────────────────────────────────────────────
+#
+# Boot → LightDM (5-Sek-Autologin-Countdown) → Chromium-Vollbild auf eine
+# Dorfkern-App. Wer in den 5 Sekunden ESC oder Maus benutzt, bekommt
+# den normalen Login-Bildschirm und kann mit beliebigem User in einen
+# regulaeren Desktop (Openbox/XFCE/…) — fuer Wartung.
+#
+# Voraussetzung: 'dorfkern' ist Login-faehiger User (chsh /bin/bash).
+# Die Pakete (lightdm, xorg, chromium, openbox) installiert dieser
+# Helper ueber apt. Andere Distros sind erstmal nicht unterstuetzt;
+# wer fedora/arch nutzt, muss das manuell nachziehen.
+
+_KIOSK_LIGHTDM_DIR     = '/etc/lightdm/lightdm.conf.d'
+_KIOSK_LIGHTDM_CONF    = f'{_KIOSK_LIGHTDM_DIR}/50-dorfkern-kiosk.conf'
+_KIOSK_SESSION_DESKTOP = '/usr/share/xsessions/dorfkern-kiosk.desktop'
+_KIOSK_SESSION_SCRIPT  = '/usr/local/bin/dorfkern-kiosk-session'
+
+_KIOSK_APT_PKGS_PRIMARY  = ['lightdm', 'xorg', 'chromium', 'openbox']
+# Auf aelteren/Debian-Stretch-Boxen heisst das Paket 'chromium-browser'
+# statt 'chromium'. Fallback wenn primary fehlschlaegt.
+_KIOSK_APT_PKGS_FALLBACK = ['lightdm', 'xorg', 'chromium-browser', 'openbox']
+
+_KIOSK_LIGHTDM_TEMPLATE = """\
+# Auto-generiert von installer/systemd/host_setup.py
+# 5-Sek-Autologin-Timeout: ohne Tastendruck bootet die Box direkt in die
+# Kiosk-Session. Wer in dem Fenster klickt/ESC drueckt, bekommt den
+# normalen Login-Bildschirm fuer Wartung.
+[Seat:*]
+autologin-user=dorfkern
+autologin-session=dorfkern-kiosk
+autologin-user-timeout=5
+greeter-show-manual-login=true
+"""
+
+_KIOSK_SESSION_DESKTOP_TEMPLATE = """\
+[Desktop Entry]
+Name=Dorfkern Kiosk
+Comment=Chromium im Vollbildmodus auf {url}
+Exec={script}
+TryExec={script}
+Type=Application
+"""
+
+_KIOSK_SESSION_SCRIPT_TEMPLATE = """\
+#!/bin/bash
+# Auto-generiert von installer/systemd/host_setup.py
+# Dorfkern-Kiosk-Session: nur Chromium im Kiosk-Mode, sonst nichts.
+# Wird von LightDM als X-Session gestartet (siehe dorfkern-kiosk.desktop).
+xset s off       # Bildschirmschoner aus
+xset -dpms       # DPMS / Stromsparen aus
+xset s noblank   # kein Blanking
+
+exec chromium --kiosk \\
+              --noerrdialogs \\
+              --disable-infobars \\
+              --disable-features=TranslateUI \\
+              --check-for-update-interval=31536000 \\
+              --no-first-run \\
+              {url}
+"""
+
+
+def is_kiosk_installed() -> bool:
+    """True wenn die Kiosk-Session-Files bereits installiert sind.
+
+    Geprueft wird das .desktop-File, weil das immer geschrieben wird —
+    die LightDM-Autologin-Config kann bewusst weggelassen worden sein
+    (siehe install_kiosk: existierende Autologin-Konfig wird respektiert).
+    """
+    return os.path.isfile(_KIOSK_SESSION_DESKTOP)
+
+
+def _install_file_sudo(path: str, content: str, *,
+                       mode: str = '0644',
+                       owner: str = 'root',
+                       group: str = 'root',
+                       print_fn: PrintFn) -> bool:
+    """Schreibt eine Datei mit gegebenem Mode via 'sudo install'.
+
+    Idempotent: vergleicht vorhandenen Inhalt, schreibt nur wenn anders.
+    Legt das Parent-Verzeichnis bei Bedarf via 'sudo mkdir -p' an.
+    """
+    if os.path.isfile(path) and os.access(path, os.R_OK):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                if f.read() == content:
+                    print_fn(f"  ✓  {path} aktuell")
+                    return True
+        except OSError:
+            pass
+
+    parent = os.path.dirname(path)
+    r0 = _run(_maybe_sudo(['mkdir', '-p', parent]))
+    if r0.returncode != 0:
+        print_fn(f"  ✗  mkdir {parent}: {_err(r0)}")
+        return False
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', delete=False,
+                                     encoding='utf-8') as f:
+        f.write(content)
+        tmp = f.name
+    try:
+        r = _run(_maybe_sudo(['install', '-m', mode,
+                              '-o', owner, '-g', group, tmp, path]))
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    if r.returncode != 0:
+        print_fn(f"  ✗  install {path}: {_err(r)}")
+        return False
+    print_fn(f"  ✓  {path} (Mode {mode})")
+    return True
+
+
+def _get_user_shell(user: str) -> Optional[str]:
+    """Aktuelle Login-Shell eines Users, oder None wenn nicht existent."""
+    try:
+        import pwd
+        return pwd.getpwnam(user).pw_shell
+    except KeyError:
+        return None
+
+
+def _is_nologin_shell(shell: Optional[str]) -> bool:
+    """Heuristik: Shell verbietet Login (nologin, false, ...).
+
+    pwd liefert den absoluten Pfad; wir matchen am Basename, weil das
+    von Distro zu Distro variiert (/usr/sbin/nologin vs. /sbin/nologin
+    vs. /usr/bin/false).
+    """
+    if not shell:
+        return True
+    base = os.path.basename(shell)
+    return base in ('nologin', 'false', 'true')
+
+
+def _existing_autologin() -> Optional[str]:
+    """Sucht nach bereits konfiguriertem LightDM-Autologin auf der Box.
+
+    Returns den User-Namen wenn gefunden (z.B. 'marc'), sonst None.
+    Sucht in /etc/lightdm/lightdm.conf UND in allen Dateien unter
+    /etc/lightdm/lightdm.conf.d/ AUSSER unserer eigenen — sodass ein
+    erneuter Installer-Lauf nicht den eigenen Autologin als "fremd"
+    interpretiert.
+    """
+    import re
+    candidates = []
+    main = '/etc/lightdm/lightdm.conf'
+    if os.path.isfile(main):
+        candidates.append(main)
+    if os.path.isdir(_KIOSK_LIGHTDM_DIR):
+        for fn in sorted(os.listdir(_KIOSK_LIGHTDM_DIR)):
+            full = os.path.join(_KIOSK_LIGHTDM_DIR, fn)
+            if full == _KIOSK_LIGHTDM_CONF:
+                continue   # unsere eigene Config ist hier irrelevant
+            if os.path.isfile(full):
+                candidates.append(full)
+
+    pat = re.compile(r'^\s*autologin-user\s*=\s*(\S+)\s*$', re.MULTILINE)
+    for path in candidates:
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+        except OSError:
+            continue
+        m = pat.search(content)
+        if m and m.group(1):
+            return m.group(1)
+    return None
+
+
+def _active_display_manager() -> Optional[str]:
+    """Liefert den Namen des aktuell enabled Display-Managers (gdm/sddm/
+    lightdm/...) oder None wenn keiner aktiv ist.
+
+    Pruefung: was zeigt /etc/systemd/system/display-manager.service hin?
+    (Das ist der konventionelle Mechanismus, mit dem update-alternatives
+    bzw. Distros den Default-DM festlegen.)
+    """
+    link = '/etc/systemd/system/display-manager.service'
+    if not os.path.islink(link):
+        return None
+    try:
+        target = os.readlink(link)
+    except OSError:
+        return None
+    base = os.path.basename(target)
+    # 'gdm.service', 'sddm.service', 'lightdm.service' -> 'gdm'/'sddm'/'lightdm'
+    if base.endswith('.service'):
+        return base[:-len('.service')]
+    return base
+
+
+def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
+                  app: str = 'kiosk',
+                  print_fn: PrintFn = print) -> bool:
+    """Konfiguriert die Box als Kiosk-Terminal — additiv.
+
+    Macht IMMER:
+      - apt install lightdm xorg chromium openbox  (idempotent — wer
+        die Pakete schon hat, kriegt nichts neues)
+      - dorfkern-kiosk-session-Wrapper-Script + .desktop-Entry, sodass
+        die Session im LightDM-Greeter waehlbar ist
+
+    Macht NUR WENN sinnvoll:
+      - chsh /bin/bash dorfkern: nur wenn dorfkern-Shell aktuell nologin
+        (sonst war's vom Operator bewusst gesetzt — nicht ueberschreiben)
+      - LightDM-Autologin-Config: nur wenn KEINE andere Autologin-Konfig
+        existiert (sonst hat der Box-Besitzer bewusst einen Admin-User
+        konfiguriert — nicht ueberschreiben). Wer auf Kiosk umstellen
+        will, passt die existierende Config manuell an.
+      - systemctl enable lightdm: nur wenn KEIN anderer DM (gdm/sddm)
+        aktiv ist.
+
+    So bleibt eine bestehende Admin-Setup-Konfiguration (z.B. dauerhaft
+    eingeloggter Box-Besitzer mit GNOME-Desktop) komplett unberuehrt;
+    der Kiosk wird "additiv" als zusaetzliche Session-Option angeboten.
+    """
+    url = f'http://localhost:{units.app_port(app, base_port)}'
+
+    # ── 1) Pakete via apt ────────────────────────────────────
+    print_fn("  → apt install lightdm xorg chromium openbox …")
+    r = _run(_maybe_sudo(['apt-get', 'install', '-y'] + _KIOSK_APT_PKGS_PRIMARY),
+             timeout=600)
+    if r.returncode != 0:
+        print_fn("  → Fallback: chromium-browser statt chromium …")
+        r = _run(_maybe_sudo(['apt-get', 'install', '-y']
+                             + _KIOSK_APT_PKGS_FALLBACK),
+                 timeout=600)
+    if r.returncode != 0:
+        print_fn(f"  ✗  apt install: {_err(r)}")
+        print_fn("     Andere Distro? Pakete bitte manuell installieren:")
+        print_fn(f"     {' '.join(_KIOSK_APT_PKGS_PRIMARY)}")
+        return False
+    print_fn("  ✓  Pakete installiert")
+
+    # ── 2) Session-Wrapper-Script + Desktop-Entry (immer additiv) ─
+    if not _install_file_sudo(_KIOSK_SESSION_SCRIPT,
+                               _KIOSK_SESSION_SCRIPT_TEMPLATE.format(url=url),
+                               mode='0755', print_fn=print_fn):
+        return False
+    if not _install_file_sudo(_KIOSK_SESSION_DESKTOP,
+                               _KIOSK_SESSION_DESKTOP_TEMPLATE.format(
+                                   url=url, script=_KIOSK_SESSION_SCRIPT),
+                               mode='0644', print_fn=print_fn):
+        return False
+
+    # ── 3) dorfkern Login-Shell nur wenn nologin ────────────────
+    shell = _get_user_shell('dorfkern')
+    if shell is None:
+        print_fn("  ⚠  User 'dorfkern' existiert nicht — wurde er per "
+                 "install_system angelegt?")
+    elif _is_nologin_shell(shell):
+        print_fn(f"  → dorfkern-Shell ({shell}) auf /bin/bash umstellen …")
+        r = _run(_maybe_sudo(['chsh', '-s', '/bin/bash', 'dorfkern']))
+        if r.returncode != 0:
+            print_fn(f"  ⚠  chsh: {_err(r)} — Login wird ggf. nicht funktionieren")
+        else:
+            print_fn("  ✓  dorfkern hat jetzt Login-Shell /bin/bash")
+    else:
+        print_fn(f"  ✓  dorfkern hat bereits Login-Shell ({shell}) — unveraendert")
+
+    # ── 4) LightDM-Autologin nur wenn nicht schon ein anderer User
+    #       konfiguriert ist ─────────────────────────────────────
+    existing_user = _existing_autologin()
+    if existing_user:
+        print_fn(f"  ↷  LightDM-Autologin ist bereits auf User "
+                 f"'{existing_user}' konfiguriert — nicht ueberschrieben.")
+        print_fn("     Falls du auf Kiosk umstellen willst:")
+        print_fn(f"       Datei in {_KIOSK_LIGHTDM_DIR}/ anpassen:")
+        print_fn("         autologin-user=dorfkern")
+        print_fn("         autologin-session=dorfkern-kiosk")
+        print_fn("     Oder die Session 'Dorfkern Kiosk' manuell im "
+                 "Login-Bildschirm waehlen.")
+    else:
+        if not _install_file_sudo(_KIOSK_LIGHTDM_CONF,
+                                   _KIOSK_LIGHTDM_TEMPLATE,
+                                   mode='0644', print_fn=print_fn):
+            return False
+
+    # ── 5) lightdm enablen nur wenn kein anderer DM aktiv ──────
+    active_dm = _active_display_manager()
+    if active_dm and active_dm != 'lightdm':
+        print_fn(f"  ↷  {active_dm} ist als Display-Manager aktiv — "
+                 "lightdm wird NICHT umgeschaltet.")
+        print_fn("     Wenn du wirklich auf lightdm umsteigen willst:")
+        print_fn(f"       sudo systemctl disable {active_dm}")
+        print_fn("       sudo systemctl enable lightdm")
+    else:
+        print_fn("  → systemctl enable lightdm …")
+        r = _run(_maybe_sudo(['systemctl', 'enable', 'lightdm']))
+        if r.returncode != 0:
+            print_fn(f"  ⚠  systemctl enable lightdm: {_err(r)}")
+        else:
+            print_fn("  ✓  lightdm wird beim naechsten Boot gestartet")
+
+    print_fn("")
+    print_fn(f"  Kiosk-URL: {url}")
+    print_fn("  Die Dorfkern-Kiosk-Session ist im LightDM-Greeter waehlbar.")
+    if existing_user is None and (not active_dm or active_dm == 'lightdm'):
+        print_fn("  Beim naechsten Reboot booted die Box automatisch in den")
+        print_fn("  Kiosk (5-Sek-Countdown, dann Chromium-Vollbild).")
+    else:
+        print_fn("  Manuelle Auswahl im Login-Bildschirm noetig "
+                 "(siehe Hinweise oben).")
+    return True
+
+
+def uninstall_kiosk(*, print_fn: PrintFn = print) -> bool:
+    """Entfernt LightDM-Config + Dorfkern-Session-Files.
+
+    Belaesst:
+      - apt-Pakete (lightdm, xorg, chromium, openbox) — koennten anderswo
+        gebraucht werden
+      - dorfkern-Login-Shell — User koennte sich anderweitig einloggen
+        muessen
+    """
+    for path in (_KIOSK_LIGHTDM_CONF, _KIOSK_SESSION_DESKTOP,
+                 _KIOSK_SESSION_SCRIPT):
+        if not os.path.exists(path):
+            continue
+        r = _run(_maybe_sudo(['rm', '-f', path]))
+        if r.returncode == 0:
+            print_fn(f"  ✓  geloescht: {path}")
+        else:
+            print_fn(f"  ✗  rm {path}: {_err(r)}")
+    print_fn("  Hinweis: lightdm bleibt enabled; bei Bedarf manuell")
+    print_fn("    sudo systemctl disable lightdm")
+    return True
