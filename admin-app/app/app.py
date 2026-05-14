@@ -2358,10 +2358,12 @@ def api_system_maintenance_status():
         return jsonify({'ok': False, 'error': err}), 500
     mode = 'unknown'
     low = out.lower()
-    if 'kiosk' in low and 'auto-login' in low:
+    if 'kiosk' in low:
         mode = 'kiosk'
-    elif 'maintenance' in low or 'greeter' in low:
+    elif 'maintenance' in low:
         mode = 'maintenance'
+    elif 'greeter' in low:
+        mode = 'greeter'
     return jsonify({'ok': True, 'mode': mode, 'message': out})
 
 
@@ -2381,8 +2383,10 @@ def api_system_maintenance_set():
     target = (payload.get('mode', '') if payload else '').strip().lower()
     if target == 'kiosk':
         args = ['--kiosk']
+    elif target == 'greeter':
+        args = ['--greeter']
     elif target in ('maintenance', 'wartung', ''):
-        args = []   # Default des Skripts: Wartungs-Modus
+        args = ['--maintenance']
     else:
         return jsonify({'ok': False,
                         'error': f"Unbekannter Mode {target!r}"}), 400

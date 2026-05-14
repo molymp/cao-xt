@@ -326,7 +326,12 @@ _SUDOERS_SHUTDOWN_CONTENT = (
     "/sbin/shutdown -r now, /sbin/poweroff, /sbin/reboot, "
     "/usr/local/bin/dorfkern-maintenance-mode, "
     "/usr/local/bin/dorfkern-maintenance-mode --kiosk, "
+    "/usr/local/bin/dorfkern-maintenance-mode --maintenance, "
+    "/usr/local/bin/dorfkern-maintenance-mode --greeter, "
     "/usr/local/bin/dorfkern-maintenance-mode --status\n"
+    "# Plus: kasse-User darf das Skript ohne Passwort rufen — fuer das\n"
+    "# Desktop-Icon 'Zurueck zum Kiosk' im Wartungs-Desktop.\n"
+    "kasse ALL=(root) NOPASSWD: /usr/local/bin/dorfkern-maintenance-mode --kiosk\n"
 )
 
 

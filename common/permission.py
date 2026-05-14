@@ -230,6 +230,10 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Admin – System: Ein/Aus',
      'Rechner herunterfahren oder neu starten (Feierabend-Knopf).',
      'LESE_PFLEGE'),
+    ('admin.system.maintenance', 'ADMIN',
+     'Admin – System: Wartungs-Modus',
+     'Box zwischen Kiosk-Vollbild und Wartungs-Desktop umschalten.',
+     'LESE_PFLEGE'),
 
     # Dorfkern-Konfiguration
     ('admin.dorfkern.konfig',  'ADMIN',
