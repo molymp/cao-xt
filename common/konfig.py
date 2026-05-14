@@ -253,9 +253,6 @@ _SEED_MAPPING: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
         'smtp_tls':  'BOOL',
         'dev_mode':  'BOOL',
     }, {}),
-    'Umgebung': ('UMGEBUNG', {}, {
-        'xt_environment': 'umgebung.modus',
-    }),
     'Installation': ('INSTALLATION', {}, {}),
 }
 

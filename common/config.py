@@ -5,8 +5,7 @@ Laedt DB-Parameter in der Prioritaet:
   app_prefix-Env-Vars > generische Env-Vars > caoxt.ini > Fallbacks
 
 Beispiel:
-    from common.config import load_db_config, load_environment
-    env = load_environment()   # 'produktion' | 'training'
+    from common.config import load_db_config
     cfg = load_db_config("KASSE")   # prueft KASSE_DB_LOC, dann DB_LOC, dann caoxt.ini
 
 caoxt.ini ist nicht im Git getrackt (siehe .gitignore). Bei einer
@@ -50,30 +49,6 @@ def _bootstrap_ini() -> None:
 
 # Beim ersten Import des Moduls die Bootstrap-Pruefung anstossen.
 _bootstrap_ini()
-
-_VALID_ENVIRONMENTS = {'produktion', 'training'}
-
-
-def load_environment() -> str:
-    """Laedt die aktuelle Betriebsumgebung der Kasse.
-
-    Prioritaet: ``XT_ENVIRONMENT`` Env-Var > ``[Umgebung] xt_environment`` in caoxt.ini > ``'produktion'``
-
-    Returns:
-        ``'produktion'`` (Normalbetrieb) oder ``'training'`` (Trainingsmodus).
-        Unbekannte Werte werden auf ``'produktion'`` normalisiert (fail-safe).
-
-    Hinweis: Alle Apps nutzen dieselbe Datenbank – dieser Wert steuert nur
-    den Kasse-Betriebsmodus, nicht die DB-Auswahl.
-    """
-    val = os.environ.get('XT_ENVIRONMENT', '').strip().lower()
-    if val in _VALID_ENVIRONMENTS:
-        return val
-
-    cfg = configparser.ConfigParser()
-    cfg.read(_INI_PATH)
-    val = cfg.get('Umgebung', 'xt_environment', fallback='produktion').strip().lower()
-    return val if val in _VALID_ENVIRONMENTS else 'produktion'
 
 
 def load_security_config() -> dict:

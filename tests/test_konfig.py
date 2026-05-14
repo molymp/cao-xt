@@ -187,9 +187,6 @@ db_user = cao
 db_pass = geheim
 db_pref = XT_
 
-[Umgebung]
-xt_environment = produktion
-
 [Email]
 smtp_host = smtp.example
 smtp_port = 587
@@ -209,8 +206,8 @@ dev_mode = 0
         with patch.object(konfig, 'get_db_transaction', _ctxmgr_fuer(cur)):
             n = konfig.seed_aus_ini(self.tmp.name)
 
-        # 11 Werte in der Test-INI (6 DB, 1 Umgebung, 4 Email)
-        self.assertEqual(n, 11)
+        # 10 Werte in der Test-INI (6 DB, 4 Email)
+        self.assertEqual(n, 10)
         # Extrahiere die uebergebenen (schluessel, wert, typ, kategorie, besch)
         anrufe = [c.args[1] for c in cur.execute.call_args_list]
         per_schluessel = {a[0]: a for a in anrufe}
@@ -225,8 +222,6 @@ dev_mode = 0
         # Email-Mapping: generische <kategorie>.<key>-Namen
         self.assertEqual(per_schluessel['email.smtp_port'][2], 'INT')
         self.assertEqual(per_schluessel['email.smtp_tls'][2], 'BOOL')
-        # Umgebung: expliziter Rename
-        self.assertEqual(per_schluessel['umgebung.modus'][1], 'produktion')
 
     def test_fehlende_ini_liefert_0(self):
         self.assertEqual(konfig.seed_aus_ini('/nicht/vorhanden.ini'), 0)
