@@ -19,9 +19,6 @@ db_user=[database-user]
 db_pass=[database-password]
 db_pref=XT_
 
-[Umgebung]
-xt_environment=produktion
-
 [Module]
 ini_navstyle=web
 ini_editsn=
