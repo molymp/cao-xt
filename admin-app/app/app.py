@@ -382,6 +382,17 @@ def _login_required(f):
     def _wrapper(*args, **kwargs):
         if not session.get('ma_id'):
             return redirect(url_for('login'))
+        # DB-Stempel pruefen: nach einem DB-Wechsel (Admin → Datenbank)
+        # zeigt die alte Session auf eine ma_id der ALTEN DB. Ohne
+        # diesen Check haengt der User in der Permission-Hoelle
+        # (alles ausgegraut, Logout greift nicht). Hartes Invalidieren.
+        try:
+            from common.auth import session_db_ok
+            if not session_db_ok():
+                session.clear()
+                return redirect(url_for('login'))
+        except Exception:
+            pass
         return f(*args, **kwargs)
     return _wrapper
 
@@ -494,6 +505,18 @@ def _admin_permission_guard():
     if not ma_id:
         # Nicht eingeloggt → @_login_required leitet einzeln um.
         return None
+    # DB-Stempel: passt die Session nicht zur aktuell konfigurierten
+    # DB (DB-Wechsel oder Alt-Session ohne Stempel) → hart invalidieren
+    # und zum Login. Verhindert den "alles ausgegraut, kein Weg raus"-
+    # Zustand nach einem DB-Wechsel.
+    try:
+        from common.auth import session_db_ok
+        if not session_db_ok():
+            session.clear()
+            from flask import redirect as _rd, url_for as _uf
+            return _rd(_uf('login'))
+    except Exception:
+        pass
     try:
         from common import permission as _p
     except Exception as exc:
@@ -575,6 +598,13 @@ def login_post():
         session['login_name'] = ma['LOGIN_NAME']
         session['vname']      = ma['VNAME']
         session['ma_name']    = ma['NAME']
+        # DB-Stempel: bindet die Session an die DB, gegen die gerade
+        # authentifiziert wurde (siehe common.auth.session_db_ok).
+        try:
+            from common.auth import db_signatur
+            session['db_sig'] = db_signatur()
+        except Exception:
+            pass
         return redirect(url_for('dashboard'))
     return render_template('login.html', fehler='Ungültige Zugangsdaten.')
 
@@ -591,6 +621,13 @@ def login_karte():
         session['login_name'] = ma['LOGIN_NAME']
         session['vname']      = ma['VNAME']
         session['ma_name']    = ma['NAME']
+        # DB-Stempel: bindet die Session an die DB, gegen die gerade
+        # authentifiziert wurde (siehe common.auth.session_db_ok).
+        try:
+            from common.auth import db_signatur
+            session['db_sig'] = db_signatur()
+        except Exception:
+            pass
         return redirect(url_for('dashboard'))
     return render_template('login.html',
                            fehler='Karte nicht erkannt oder keine Mitarbeiterkarte.')

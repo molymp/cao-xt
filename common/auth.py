@@ -13,8 +13,41 @@ from functools import wraps
 from flask import session, redirect, url_for
 
 
+def db_signatur() -> str:
+    """Kurzer Fingerprint der aktuell konfigurierten DB (host+name).
+
+    Wird in die Session geschrieben (``db_sig``) und bei jedem Request
+    gegen den aktuellen Wert geprueft. Aendert sich die DB (z.B. via
+    Admin → Datenbank), passt der gespeicherte Wert nicht mehr → die
+    Session wird invalidiert und der User muss sich neu anmelden, statt
+    mit einer ma_id der ALTEN DB in der Permission-Hoelle festzuhaengen
+    (alle Funktionen ausgegraut, kein Weg raus).
+
+    Bewusst nur host+name (nicht User/Passwort): ein reiner Passwort-
+    Wechsel auf derselben DB soll keine Sessions wegwerfen.
+    """
+    try:
+        from common.config import load_db_config
+        cfg = load_db_config()
+        roh = f"{cfg.get('host', '')}:{cfg.get('port', '')}/{cfg.get('name', '')}"
+    except Exception:
+        roh = 'unbekannt'
+    return hashlib.sha256(roh.encode('utf-8')).hexdigest()[:16]
+
+
+def session_db_ok() -> bool:
+    """True wenn die Session zur aktuell konfigurierten DB passt.
+
+    False, wenn ``db_sig`` fehlt (Alt-Session aus der Zeit vor diesem
+    Mechanismus → einmaliger Re-Login nach Deploy, akzeptabel) ODER
+    nicht zur aktuellen DB passt (echter DB-Wechsel).
+    """
+    return session.get('db_sig') == db_signatur()
+
+
 def login_required(f):
-    """Decorator: leitet auf die Route ``'login'`` um, wenn kein MA eingeloggt.
+    """Decorator: leitet auf die Route ``'login'`` um, wenn kein MA eingeloggt
+    ODER die Session zu einer anderen DB gehoert (DB wurde gewechselt).
 
     Identisch mit dem frueher app-lokalen ``_login_required``::
 
@@ -26,6 +59,12 @@ def login_required(f):
     @wraps(f)
     def _wrapper(*args, **kwargs):
         if not session.get('ma_id'):
+            return redirect(url_for('login'))
+        if not session_db_ok():
+            # DB hat sich geaendert (oder Alt-Session ohne Stempel):
+            # harte Invalidierung, sonst landet der User in einem
+            # Zustand wo nichts klickbar ist und Logout nicht greift.
+            session.clear()
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return _wrapper
@@ -59,6 +98,10 @@ def login_user(ma: dict) -> None:
     session['login_name'] = ma['LOGIN_NAME']
     session['vname']      = ma['VNAME']
     session['ma_name']    = ma['NAME']
+    # DB-Stempel: bindet die Session an die DB, gegen die gerade
+    # authentifiziert wurde. Wechselt die DB, wird die Session beim
+    # naechsten Request via session_db_ok() invalidiert.
+    session['db_sig']     = db_signatur()
 
 
 def logout_user() -> None:

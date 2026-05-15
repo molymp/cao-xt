@@ -61,6 +61,17 @@
       </label>
     </div>
 
+    <div style="margin-top:14px;padding:10px 14px;border-radius:var(--radius-klein);
+                background:rgba(200,120,10,0.12);border:1px solid rgba(200,120,10,0.35);
+                font-size:13px;color:var(--gold-hell);">
+      ⚠ <strong>Wichtig:</strong> Nach einem DB-Wechsel werden <em>alle
+      angemeldeten Benutzer automatisch abgemeldet</em> (auch du selbst).
+      Die Sessions sind an die alte DB gebunden — beim nächsten Klick
+      landest du auf der Login-Seite und musst dich mit einem Konto der
+      <em>neuen</em> DB neu anmelden. Das ist gewollt und verhindert den
+      Zustand „eingeloggt, aber alles ausgegraut".
+    </div>
+
     <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
       <button type="button" class="btn btn-neutral" onclick="testCurrent()">
         🔌 Aktuelle Verbindung testen
@@ -135,6 +146,8 @@ async function save() {
                + '• caoxt.ini wird überschrieben\n'
                + '• DB-Init läuft falls nötig (idempotent)\n'
                + '• ALLE APPS werden neu gestartet (orga/kasse/kiosk/Poller)\n'
+               + '• ALLE Benutzer (auch du) werden abgemeldet — danach\n'
+               + '  Neu-Anmeldung mit einem Konto der NEUEN DB nötig\n'
                + '• Browser-Verbindung zur Admin-App kann kurz abreißen.\n\n'
                + 'Bitte sicherstellen, dass keine offenen Kasse-Vorgänge laufen.')) return;
   }
