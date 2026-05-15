@@ -80,6 +80,16 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   Eintrag dauerhaft ausgegraut.
 - `install.sh`: interne `PYTHON`-Variable überschrieb die user-facing
   `PYTHON`-Env-Var.
+- „Update durchführen" aus dem Admin-UI killte sich selbst: der Updater
+  lief als Kindprozess der Admin-App, stoppte als ersten Schritt das
+  Target (inkl. Admin) und wurde mit Admins cgroup mitgekillt — Admin
+  blieb unten (ERR_CONNECTION_REFUSED), Update halb/gar nicht
+  durchgeführt. Update läuft jetzt als dedizierte Oneshot-Unit
+  `dorfkern-update.service` mit eigener cgroup (kein `PartOf`), die das
+  Stoppen von Admin/Target überlebt.
+- Updater gibt bei fehlenden Schreibrechten in `.git/objects` (Folge von
+  `git pull/fetch` als root) eine umsetzbare Meldung mit `chown`-Befehl
+  statt des rohen git-Fehlers (Preflight vor fetch und pull).
 
 ## [2.0.0] – Dorfkern v2 (Multi-Shop-Vorbereitung)
 

@@ -50,6 +50,51 @@ def _unit_for(name: str) -> str:
     return units.unit_name(name, _instance_name())
 
 
+def _update_unit() -> str:
+    return units.update_unit_name(_instance_name())
+
+
+def trigger_update() -> tuple:
+    """Startet den Update-Lauf als eigene Oneshot-Unit (eigene cgroup).
+
+    WARUM nicht einfach Popen aus der Admin-App: der Updater stoppt
+    waehrend des Laufs das Target und damit die Admin-App selbst. Ein
+    als Kindprozess von Admin gestarteter Updater haengt in Admins
+    cgroup und wird von 'systemctl stop' mitgekillt -> Update bricht ab,
+    Admin bleibt unten (ERR_CONNECTION_REFUSED). Die dedizierte Unit
+    ``dorfkern-update.service`` hat ihre eigene cgroup und ueberlebt.
+
+    Fire-and-forget: wir warten NICHT auf den oneshot (``systemctl
+    start`` wuerde sonst bis Update-Ende blockieren). Der gestartete
+    Job gehoert systemd (PID 1), nicht diesem Client-Prozess — wird der
+    Client gekillt, laeuft die Unit weiter.
+
+    Returns:
+        (ok: bool, info: str) — info ist der Unit-Name bei Erfolg,
+        sonst eine Kurzbegruendung ('no-systemd', Fehlertext).
+    """
+    mode = systemd_mode()
+    if mode is None:
+        return False, 'no-systemd'
+    unit = _update_unit()
+    cmd = ['systemctl']
+    if mode == 'user':
+        cmd.append('--user')
+    cmd += ['start', unit]
+    if mode != 'user' and os.geteuid() != 0:
+        cmd = ['sudo', '-n'] + cmd
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - Fehler an Aufrufer geben
+        return False, str(exc)
+    return True, unit
+
+
 def _systemctl_available() -> bool:
     """True wenn ``systemctl`` ueberhaupt im PATH ist."""
     try:

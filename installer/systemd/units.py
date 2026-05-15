@@ -130,6 +130,30 @@ Wants={wants}
 WantedBy={target_install_target}
 """
 
+# Oneshot-Unit fuer den Update-Lauf. BEWUSST kein PartOf=<target> und
+# kein [Install] — der Updater stoppt waehrend des Laufs selbst das
+# Target (und damit die Admin-App, aus der er getriggert wurde). Laege
+# er in derselben cgroup wie Admin oder waere PartOf des Targets, wuerde
+# 'systemctl stop' ihn mitten im Lauf killen (genau dieser Bug:
+# ERR_CONNECTION_REFUSED, Update halb durchgefuehrt). Als eigene Unit
+# hat er seine eigene cgroup und ueberlebt das Stoppen von Admin/Target.
+_UPDATE_TEMPLATE = """\
+[Unit]
+Description=Dorfkern Update-Lauf{instance_label}
+{after_block}
+
+[Service]
+Type=oneshot
+{owner_block}WorkingDirectory={install_root}
+ExecStart={install_root}/.venv/bin/python3 -m installer.updater --update
+Environment=PYTHONUNBUFFERED=1
+TimeoutStartSec=1800
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={prefix}-update
+"""
+
 
 _MODES = ('system', 'user')
 
@@ -160,6 +184,11 @@ def unit_name(app: str, instance_name: str = '') -> str:
 def target_name(instance_name: str = '') -> str:
     """Target-Unit-Name. Default 'dorfkern.target', sonst 'dorfkern-<inst>.target'."""
     return f'{systemd_prefix(instance_name)}.target'
+
+
+def update_unit_name(instance_name: str = '') -> str:
+    """Name der Oneshot-Update-Unit. Default 'dorfkern-update.service'."""
+    return f'{systemd_prefix(instance_name)}-update.service'
 
 
 def all_app_names() -> List[str]:
@@ -303,6 +332,24 @@ def render_target(*, mode: str = 'system',
     )
 
 
+def render_update_unit(*, mode: str = 'system',
+                       instance_name: str = '',
+                       install_root: str = DEFAULT_INSTALL_ROOT,
+                       user: str = DEFAULT_USER,
+                       group: str = DEFAULT_GROUP) -> str:
+    """Rendert die Oneshot-Update-Unit (eigene cgroup, kein PartOf)."""
+    if mode not in _MODES:
+        raise ValueError(f'Unbekannter mode: {mode!r}, erwartet einen von {_MODES}')
+    instance_label = f" [{instance_name}]" if instance_name else ''
+    return _UPDATE_TEMPLATE.format(
+        instance_label=instance_label,
+        after_block=_render_after_block(mode),
+        owner_block=_render_owner_block(mode, user, group),
+        install_root=install_root,
+        prefix=systemd_prefix(instance_name),
+    )
+
+
 def render_all(*, mode: str = 'system',
                instance_name: str = '',
                base_port: int = DEFAULT_BASE_PORT,
@@ -332,6 +379,13 @@ def render_all(*, mode: str = 'system',
             instance_name=instance_name, base_port=base_port,
             install_root=install_root, user=user, group=group,
         )
+    # Oneshot-Update-Unit gehoert NICHT in START_ORDER und nicht ins
+    # Target-Wants — sie wird ausschliesslich on-demand getriggert.
+    # Aber sie wird bei install/regenerate immer mit-geschrieben.
+    rendered[update_unit_name(instance_name)] = render_update_unit(
+        mode=mode, instance_name=instance_name,
+        install_root=install_root, user=user, group=group,
+    )
     if include_target:
         rendered[target_name(instance_name)] = render_target(
             mode=mode, instance_name=instance_name, apps=apps,

@@ -2374,6 +2374,25 @@ def api_system_update():
     except Exception:
         log_path = '/tmp/dorfkern-update.log'
 
+    # Bevorzugt: Update als dedizierte Oneshot-Unit starten. Der Updater
+    # stoppt waehrend des Laufs das Target (und damit DIESE Admin-App).
+    # Ein als Admin-Kindprozess gestarteter Updater haengt in Admins
+    # cgroup und wird von 'systemctl stop' mitgekillt -> Update bricht
+    # ab, Admin bleibt unten. Die eigene Unit hat ihre eigene cgroup.
+    try:
+        from installer.systemd import manager as _mgr
+        ok, info = _mgr.trigger_update()
+    except Exception as e:  # Import-/Laufzeitfehler -> Fallback unten
+        ok, info = False, str(e)
+
+    if ok:
+        return jsonify({'ok': True, 'log': log_path, 'unit': info})
+
+    # Fallback (kein systemd, z. B. Dev-Ad-hoc): direkter Popen.
+    # Hier gibt es keine Admin-cgroup, die uns killt.
+    if info != 'no-systemd':
+        app.logger.warning("trigger_update fehlgeschlagen (%s) — "
+                           "fallback auf Popen", info)
     try:
         subprocess.Popen(
             [venv_python, '-m', 'installer.updater', '--update'],
