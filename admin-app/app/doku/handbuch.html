@@ -425,7 +425,8 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <div><h1>Dashboard</h1><div class="untertitel">Startseite nach der Anmeldung</div></div>
   </div>
 
-  <p>Das Dashboard zeigt eine Übersicht der wichtigsten Verwaltungsbereiche als Kacheln:</p>
+  <p>Das Dashboard zeigt eine Übersicht der wichtigsten Verwaltungsbereiche als Kacheln.
+     Es werden nur Kacheln angezeigt, für die das angemeldete Konto berechtigt ist:</p>
   <table>
     <tr><th>Kachel</th><th>Funktion</th></tr>
     <tr><td>🗄️ Datenbank</td><td>DB-Verbindung konfigurieren und testen</td></tr>
@@ -435,6 +436,33 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <tr><td>🥐 Backwaren</td><td>Artikel für den Kiosk verwalten</td></tr>
     <tr><td>🔧 Funktionen</td><td>Feature-Toggles für Kiosk und Kasse</td></tr>
   </table>
+
+  <h2 id="kap2-power">⚡ Ein/Aus (Feierabend-Knopf)</h2>
+  <p>Oben auf dem Dashboard. Zwei große Buttons:</p>
+  <ul>
+    <li><b>Herunterfahren</b> – fährt die Box sofort herunter. Vorher
+        kommt ein Bestätigungs-Dialog mit Checkliste (keine offenen
+        Kasse-Vorgänge, Tagesabschluss erledigt).</li>
+    <li><b>Neu starten</b> – voller Reboot der Box (z. B. nach Update).</li>
+  </ul>
+  <p>Nicht zu verwechseln mit <b>Updates → „Alle Apps neu starten"</b> –
+     das startet nur die Apps neu, nicht das ganze Gerät.</p>
+
+  <h2 id="kap2-wartung">🛠️ Wartungs-Modus</h2>
+  <p>Nur auf Kiosk-Terminals relevant. Schaltet die Box zwischen
+     Vollbild-Kiosk und einem normalen Wartungs-Desktop um – <b>ohne
+     Neustart</b>. Der aktuelle Modus (KIOSK / WARTUNG) wird angezeigt.
+     Die Umschaltung wirkt nur am Bildschirm der Box; dein Admin-Browser
+     bleibt verbunden. Zurück zum Kiosk geht per Button hier, per
+     Desktop-Icon „Zurück zum Kiosk" am Gerät, oder von selbst nach
+     einem Reboot.</p>
+
+  <h2 id="kap2-zoom">🔍 Anzeige vergrößern/verkleinern</h2>
+  <p>In der oberen Menüleiste (jeder App) gibt es drei kleine Knöpfe
+     <b>−</b> / Prozentanzeige / <b>+</b> sowie <b>↺</b> (zurück auf
+     100 %). Damit lässt sich die ganze Seite in 10 %-Schritten skalieren
+     – praktisch an Touch-Terminals. Die Einstellung wird pro Gerät
+     gespeichert und bleibt auch nach einem Neuladen erhalten.</p>
 </section>
 
 <hr>
@@ -447,11 +475,30 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
   </div>
 
   <p>Zeigt die aktuelle Datenbankverbindung aus <code>caoxt.ini</code> an (Passwort ausgeblendet).
-  Über die Schaltfläche <strong>„Verbindung testen"</strong> wird ein Ping zur Datenbank durchgeführt.</p>
+  Drei Schaltflächen:</p>
+  <ul>
+    <li><strong>Aktuelle Verbindung testen</strong> – Ping zur derzeit
+        konfigurierten DB.</li>
+    <li><strong>Eingaben prüfen</strong> – testet die <em>neu eingegebenen</em>
+        Zugangsdaten und erkennt den DB-Typ (CAO-Faktura / leer /
+        unbekannt). Schreibt noch nichts.</li>
+    <li><strong>Speichern</strong> – schreibt <code>caoxt.ini</code>,
+        führt bei Bedarf die DB-Initialisierung aus und startet (Häkchen
+        gesetzt) alle Apps neu.</li>
+  </ul>
+  <p>Bei einer als leer erkannten DB erscheint zusätzlich die Option
+     „Auch leere DB initialisieren". Empfohlener Ablauf:
+     <em>Eingaben prüfen → bei grün/gelb → Speichern</em>.</p>
 
   <div class="achtung">
-    <div class="hinweis-titel">⚠️ Achtung</div>
-    Änderungen an der DB-Konfiguration erfordern einen Neustart aller Apps.
+    <div class="hinweis-titel">⚠️ Achtung — Abmeldung nach DB-Wechsel</div>
+    Nach einem DB-Wechsel werden <b>alle angemeldeten Benutzer
+    automatisch abgemeldet</b> (auch du selbst). Die Anmeldung ist an die
+    Datenbank gebunden – beim nächsten Klick landest du auf der
+    Login-Seite und meldest dich mit einem Konto der <b>neuen</b> DB an.
+    Das ist gewollt und verhindert den Zustand „angemeldet, aber alles
+    ausgegraut". Zusätzlich werden (Standard) alle Apps neu gestartet,
+    damit Kasse/Kiosk/Orga die neue DB sehen.
   </div>
 </section>
 

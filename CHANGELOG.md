@@ -7,6 +7,80 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **systemd-Service-Betrieb** (`installer/systemd/`): Apps laufen wahlweise
+  als systemd-Dienste statt als Popen-Kinder. Drei Installationstypen,
+  im Installer-Dialog (Phase 0) wählbar:
+  *Ad-hoc* (Popen, wie bisher), *Dienst pro Benutzer* (`systemctl --user`
+  + Lingering), *Dienst systemweit* (System-Units, Service-User
+  `dorfkern`, `/opt/dorfkern`). `dorfkern-ctl` und der Updater erkennen
+  den Modus automatisch (`is_systemd_managed()`).
+- **Parallele Instanzen + konfigurierbare Ports**: `[Installation]
+  instance_name` + `base_port` in `caoxt.ini`. Mehrere Dorfkern-
+  Installationen (z. B. `prod` + `dev`) laufen parallel auf einem Host —
+  je eigener Pfad, Unit-Name, Log-/Backup-Verzeichnis, Port-Block
+  (Default 5000 → 5001-5004). Service-User bleibt immer `dorfkern`.
+- **Einzeiler-Bootstrap** (`bootstrap.sh`): `curl … | sudo bash` klont
+  das Repo nach `/opt/dorfkern` (bzw. `~/dorfkern` ohne sudo) und startet
+  den Installer.
+- **Kiosk-Terminal-Setup** (Installer Phase 5, optional, nur System-Mode):
+  LightDM-Autologin in Vollbild-Chromium auf die Kiosk-App. Additiv —
+  bestehende Login-Konfiguration wird respektiert. Inkl. eigenem
+  Chromium-Profil, dynamischer Display-Auflösung, Chromium-Enterprise-
+  Policy (kein Passwort-Manager/Autofill/Translate).
+- **Wartungs-Modus**: Umschalten zwischen Auto-Kiosk und Auto-Login-
+  Wartungs-Desktop — über Admin-Dashboard-Widget, `dorfkern-maintenance-mode`-
+  Skript oder Desktop-Icon „Zurück zum Kiosk". Drei Modi
+  (`--kiosk`/`--maintenance`/`--greeter`).
+- **Feierabend-Knopf**: `/system/power` + Dashboard-Widget — Rechner
+  herunterfahren/neu starten aus der Admin-App (sudoers-gestützt).
+- **DB-Wechsel im Admin-UI** (Variante C): zweistufig — `/db-config/probe`
+  (testet + erkennt DB-Typ, schreibt nichts), dann Speichern mit
+  optionalem DB-Init (CAO/leer) + koordiniertem Neustart aller Apps.
+- **DB-gebundene Sessions** (`common/auth.db_signatur`): nach einem
+  DB-Wechsel werden alle Sessions automatisch ungültig → sauberer
+  Redirect zur Login-Seite statt „eingeloggt, aber alles ausgegraut".
+- **Zoom-Buttons** in der gemeinsamen Navbar (alle vier Apps),
+  Touch-freundlich, persistent in localStorage, 10 %-Schritte.
+- Updater-Härtung: Lockfile, Working-Tree-Sauberkeitscheck, DB-Dump
+  vor Migration (+ Restore bei Rollback), HTTP-Health-Check,
+  instanz-spezifische Lock-/Log-/Backup-Pfade, automatische
+  systemd-Unit-Regeneration.
+- App-Logs wandern im System-Mode nach `/var/log/<prefix>/` (Auto-
+  Fallback `/tmp` im Ad-hoc-Mode).
+- Permission-Objekte `admin.system.power` und `admin.system.maintenance`.
+- `install.sh`: `PYTHON`-Env-Var + Auto-Suche nach `python3.10+`
+  (pyenv-Boxen mit System-Python 3.9).
+
+### Geändert
+
+- `produktion`/`training`-Schalter (Installer-Phase 3 + `XT_ENVIRONMENT`
+  + `load_environment()` + `TRAININGSMODUS`-Konstante) **entfernt** —
+  war toter Code; Trainingsmodus läuft per Terminal über die DB.
+- System-Update-Button („Neustart erforderlich") startet jetzt **alle**
+  Apps neu, nicht nur die Admin-App (geänderte `common/`-Module
+  betreffen alle).
+- Admin-Dashboard: KPI-Cards mit Permission-Check (vorher allen
+  sichtbar), Ein/Aus-Widget an erster Stelle.
+
+### Behoben
+
+- Updater stoppte/startete die Apps in Wahrheit gar nicht
+  (`python -m installer.app_manager stop_all` war ein No-Op mangels
+  `__main__`-Block) — Apps liefen während `git pull` mit altem Code.
+- Updater überschrieb beim Pull über den `caoxt.ini`-Untracking-Commit
+  die echte `caoxt.ini` mit der Vorlage (Snapshot-Schutz + Restore).
+- `/system/apps` zeigte alle Apps fälschlich als gestoppt — read-only
+  `systemctl is-active` wurde unnötig per `sudo` gewrappt und scheiterte
+  am sudoers-Snippet.
+- `/db-config/test` warf 500 (`test_verbindung(force=True)` — Argument
+  existiert nur in `common/db.py`, nicht in der lokalen `db.py`).
+- `admin.system.power` fehlte als Seed-Permission-Objekt → Sidebar-
+  Eintrag dauerhaft ausgegraut.
+- `install.sh`: interne `PYTHON`-Variable überschrieb die user-facing
+  `PYTHON`-Env-Var.
+
 ## [2.0.0] – Dorfkern v2 (Multi-Shop-Vorbereitung)
 
 **Architektur- und Konfigurations-Release**, keine neuen Fachfunktionen.

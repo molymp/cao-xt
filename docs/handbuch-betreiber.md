@@ -53,30 +53,59 @@ Installationen werden nicht umgebaut.
 
 ## 3. Erstinstallation (Admin-Host)
 
+### Schnellster Weg — Einzeiler-Bootstrap
+
+Auf einer frischen Maschine genügt ein Befehl:
+
 ```bash
-git clone <repo-url> cao-xt
-cd cao-xt
-./install.sh
+# Produktivbetrieb (Repo → /opt/dorfkern, System-Dienst):
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/molymp/cao-xt/master/bootstrap.sh)"
+
+# Entwicklung / als normaler User (Repo → ~/dorfkern):
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/molymp/cao-xt/master/bootstrap.sh)"
 ```
 
-`install.sh` legt ein `venv` an, installiert alle App-Requirements
-und startet dann die interaktive Installations-Routine
-(`installer/install.py`). Phasen:
+`bootstrap.sh` prüft git + python3, klont an die passende Stelle und
+startet `install.sh`. Wer das Repo schon hat: direkt `./install.sh`.
 
-1. **Datenbank-Konfiguration** – Host/Port/Name/User/Passwort.
-   Verbindung wird getestet; bei Erfolg → weiter.
+### Installer-Dialog (`install.sh` → `installer/install.py`)
+
+`install.sh` legt ein `venv` an, installiert alle App-Requirements
+und startet die interaktive Routine. Phasen:
+
+0. **Installations-Typ** –
+   *1) Ad-hoc* (Popen, stirbt mit Login-Session — Dev),
+   *2) Dienst pro Benutzer* (`systemctl --user` + Lingering),
+   *3) Dienst systemweit* (System-Units, Service-User `dorfkern`,
+   `/opt/dorfkern` — Standard für Produktivbetrieb).
+   Zusätzlich abgefragt: **Instanz-Name** (leer = Default) und
+   **Port-Base** (Default 5000 → Apps 5001-5004). Mehrere Instanzen
+   (`prod`/`dev`) laufen so parallel auf einem Host.
+1. **Datenbank-Konfiguration** – Host/Port/Name/User/Passwort,
+   Verbindungstest.
 2. **DB-Init** – erkennt automatisch CAO vs. leer; legt fehlende
    `DORFKERN_*` / `XT_*`-Tabellen an (idempotent).
-3. **Umgebung** – `produktion` | `training`. Training = keine echten
-   TSE-Signierungen, Kennzeichnung im Bon.
-4. **App-Auswahl** – Admin immer aktiv. Orga/Kasse/Kiosk nach Wunsch.
+3. **App-Auswahl** – Admin immer aktiv. Orga/Kasse/Kiosk nach Wunsch.
    HACCP-Poller nur wenn `TFA_API_KEY` gesetzt.
-5. **Start + Bericht** – alle Apps werden gestartet, Health-Check,
-   Abschlussbericht mit URLs und Log-Pfaden.
+4. **Installieren + Starten** – je nach Typ Popen bzw. systemd-Units
+   schreiben, Service-User/Verzeichnisse anlegen, Target enablen.
+5. **Kiosk-Terminal (optional, nur Typ 3)** – siehe Kapitel 11.
+6. **Abschlussbericht** – Adressen, Log-Pfade, Steuerbefehle.
 
-Ergebnis: `caoxt/caoxt.ini` enthält Bootstrap-Konfig (nur DB-Verbindung
-+ Master-Key + Umgebung + aktive Apps). Alles andere liegt in
-`DORFKERN_KONFIG`.
+> **Hinweis Python**: Die Apps brauchen Python ≥ 3.10. Auf Debian 11 /
+> Raspberry Pi OS ist System-Python noch 3.9. `install.sh` sucht
+> automatisch nach `python3.11`/`3.10`-Binaries. Bei pyenv-Python (nicht
+> im sudo-PATH): `sudo PYTHON=/home/<user>/.pyenv/versions/3.11.x/bin/python3 ./install.sh`.
+> Falls `cryptography` am Rust-Build scheitert (alte Pi):
+> `.venv/bin/pip3 install "cryptography==3.3.2"`, dann erneut.
+
+Den `produktion`/`training`-Schalter gibt es **nicht mehr** — er war
+toter Code. Trainingsbetrieb wird pro Terminal über die DB
+(`TERMINAL.TRAININGS_MODUS`) gesteuert, nicht über die Installation.
+
+Ergebnis: `caoxt/caoxt.ini` enthält Bootstrap-Konfig (DB-Verbindung,
+`[Installation] instance_name`/`base_port`/`aktive_apps`). Alles andere
+liegt in `DORFKERN_KONFIG`.
 
 ---
 
@@ -134,9 +163,17 @@ Wrapper-Script im Repo-Root, steuert alle Apps auf dem lokalen Host:
 ./dorfkern-ctl stop kiosk             # Kiosk stoppen
 ```
 
-PIDs in `/tmp/caoxt-pids.json`, Logs in `/tmp/caoxt-<app>.log`.
+`dorfkern-ctl` erkennt den Modus automatisch (`is_systemd_managed()`):
 
-Für systemd-Autostart: siehe `installer/systemd/` (optional).
+- **Ad-hoc**: PIDs in `/tmp/caoxt-pids.json`, Logs `/tmp/dorfkern-<app>.log`.
+- **systemd (User/System)**: delegiert an `systemctl [--user] …`, Logs
+  via `journalctl [--user] -u dorfkern[-<inst>]-<app>` bzw.
+  `/var/log/dorfkern[-<inst>]/<app>.log`.
+
+systemd ist im Produktivbetrieb der **Standard** (Installer Typ 3, nicht
+mehr „optional"): `dorfkern.target` ist boot-persistent (`systemctl
+enable`), Apps starten ohne Login und nach Crash neu
+(`Restart=on-failure`). Details: `installer/systemd/README.md`.
 
 ---
 
@@ -295,11 +332,21 @@ müssen per SQL / Admin-UI (ab v2.1) pro Laden gesetzt werden —
 es gibt bewusst kein Default-Mapping, um Fail-closed-Semantik zu
 erhalten.
 
-### 9.4 Weiterführend
+### 9.4 DB-Wechsel: Benutzer hängen fest / alles ausgegraut
+
+Nach einem DB-Wechsel (Admin → Datenbank) sind alle Sessions an die
+**alte** DB gebunden. Seit dem `db_sig`-Mechanismus werden sie beim
+nächsten Klick automatisch ungültig → saubere Login-Seite. Bei einer
+Box mit einer Pre-`db_sig`-Session hilft einmaliges Logout bzw. ein
+App-Restart; danach greift der Auto-Logout zuverlässig.
+
+### 9.5 Weiterführend
 
 - `docs/handbuch-admin.md` — UI-/Rechte-Details.
+- `installer/systemd/README.md` — Service-Modi, Multi-Instanz, Kiosk.
 - `RELEASE_DORFKERN_V2.md` — technische Release-Entscheidungen.
-- Log-Pfade: alle `/tmp/caoxt-*.log`.
+- Log-Pfade: System-Mode `/var/log/dorfkern[-<inst>]/`, sonst
+  `/tmp/dorfkern-*.log`; Updater `journalctl`/`/tmp/dorfkern-update.log`.
 
 ---
 
@@ -308,3 +355,57 @@ erhalten.
 Version steht in `VERSION.json` (Repo-Root) und in `caoxt.ini [Version]`.
 Dorfkern v2 = **2.0.0**. Breaking Changes werden in `CHANGELOG.md`
 unter der jeweiligen Version dokumentiert, mit Migrationshinweisen.
+
+---
+
+## 11. Kiosk-Terminal & Wartungs-Modus
+
+### 11.1 Kiosk-Setup (Installer-Phase 5)
+
+Nur bei Installations-Typ 3 (System-Dienst). Macht die Box zum
+Touch-Terminal: beim Boot Auto-Login als GUI-User (Default: `SUDO_USER`
+bzw. `XT_KIOSK_USER`, **nicht** der `dorfkern`-Service-User) in eine
+Vollbild-Chromium-Session auf die Kiosk-App.
+
+**Additiv**: bestehende LightDM-Autologin-Konfiguration eines anderen
+Users wird nicht überschrieben, ein bereits aktiver anderer
+Display-Manager (gdm/sddm) nicht umgestellt — in dem Fall kommt eine
+klare Meldung mit dem manuellen Umstell-Befehl.
+
+Mit installiert werden:
+- `lightdm` + `lightdm-gtk-greeter` + `accountsservice` + `chromium`
+  + `openbox` (idempotent via apt)
+- `/usr/local/bin/dorfkern-kiosk-session` — Chromium mit eigenem Profil
+  (`~/.config/dorfkern-chromium-kiosk`, getrennt vom normalen Browser),
+  dynamischer Display-Auflösung, Vollbild
+- Chromium-Enterprise-Policy `/etc/chromium/policies/managed/dorfkern-kiosk.json`
+  — **kein** Passwort-Manager / Autofill / Translate-Popup
+- `/usr/local/bin/dorfkern-maintenance-mode` (siehe 11.2)
+- sudoers-Snippets für Shutdown/Reboot + Maintenance
+
+### 11.2 Wartungs-Modus
+
+Wechsel zwischen Kiosk und einem normalen Wartungs-Desktop — **ohne
+Reboot**, drei Wege:
+
+1. **Admin-App**: Dashboard → Widget „🛠️ Wartungs-Modus" (eigenes
+   Permission-Objekt `admin.system.maintenance`).
+2. **Desktop-Icon** „Zurück zum Kiosk" — liegt im Wartungs-Desktop,
+   schaltet per Doppelklick zurück (passwortfrei via sudoers).
+3. **SSH/Konsole**: `sudo dorfkern-maintenance-mode [--kiosk|--maintenance|--greeter|--status]`
+
+- `--maintenance` (Default): Auto-Login des GUI-Users in LXDE-Desktop,
+  **kein** Login-Prompt (Touch-freundlich).
+- `--kiosk`: zurück zu Vollbild-Chromium.
+- `--greeter`: klassischer LightDM-Login (User/Session/Passwort wählbar).
+
+Mechanik: tauscht `/etc/lightdm/lightdm.conf.d/50-dorfkern-kiosk.conf`
+um und macht `systemctl restart lightdm`. Der Admin-Browser bleibt
+unberührt (wirkt nur am physischen Display).
+
+### 11.3 Feierabend-Knopf
+
+Admin-App → Dashboard-Widget „⚡ Ein/Aus" bzw. `/system/power`
+(Permission `admin.system.power`): Herunterfahren / Neu starten direkt
+aus dem Browser. Backend ruft `sudo -n /sbin/shutdown` über das
+sudoers-Snippet.

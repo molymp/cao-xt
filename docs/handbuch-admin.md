@@ -193,6 +193,69 @@ Bei DB-Fehler / unbekannter Rolle / nicht-existentem Objekt → `False`.
 
 ---
 
+## 3a. System & Betrieb (Dashboard-Widgets)
+
+Die folgenden Funktionen sind nur sichtbar, wenn die jeweilige
+Berechtigung vorhanden ist (Administratoren implizit). Sie liegen auf
+dem **Dashboard** (Startseite) und unter **System** im Seitenmenü.
+
+### 3a.1 ⚡ Ein/Aus — `/system/power`
+
+Permission `admin.system.power`. Zwei Buttons:
+- **Herunterfahren** — fährt die Box sofort herunter (Feierabend-Knopf).
+- **Neu starten** — voller OS-Reboot (z. B. nach Kernel-Update).
+
+Vor dem Auslösen kommt ein Bestätigungs-Dialog mit Checkliste
+(keine offenen Kasse-Vorgänge, Tagesabschluss gemacht). Technisch:
+`sudo -n /sbin/shutdown` über ein vom Installer angelegtes
+sudoers-Snippet.
+
+Davon zu unterscheiden: **System → Updates → „Alle Apps neu starten"**
+— startet nur die Dorfkern-Apps neu (kein OS-Reboot), nötig wenn der
+Working-Tree aktueller ist als die laufenden Prozesse.
+
+### 3a.2 🛠️ Wartungs-Modus — Dashboard-Widget
+
+Permission `admin.system.maintenance` (eigenes Objekt — wer „Ein/Aus"
+darf, darf nicht automatisch auch Wartung). Nur relevant auf
+Kiosk-Terminals (System-Dienst + Kiosk-Setup).
+
+- **Wartungs-Modus aktivieren** — die Box bootet/loggt automatisch in
+  einen normalen LXDE-Desktop statt in den Vollbild-Kiosk (kein
+  Login-Prompt am Display). Auf dem Desktop liegt ein Icon
+  „Zurück zum Kiosk".
+- **Zurück zum Kiosk** — schaltet wieder auf Vollbild-Chromium.
+
+Das Widget zeigt den aktuellen Modus (KIOSK / WARTUNG / GREETER).
+Wirkt nur am **physischen Display** der Box; der Admin-Browser bleibt
+verbunden. Alternativ am Gerät: Desktop-Icon, oder per SSH
+`sudo dorfkern-maintenance-mode …`.
+
+### 3a.3 🗄️ Datenbank-Wechsel — `/db-config`
+
+Permission `admin.system.db_config`. Zwei-Stufen-Flow:
+
+1. **Eingaben prüfen** (`probe`) — testet die neuen Zugangsdaten und
+   erkennt den DB-Typ (CAO / leer / unbekannt). Schreibt **nichts**.
+2. **Speichern** — schreibt `caoxt.ini`, führt bei Bedarf die
+   DB-Initialisierung aus (bei leerer DB nur mit explizit gesetzter
+   Checkbox), und startet auf Wunsch **alle Apps** neu (Default an —
+   sonst sehen orga/kasse/kiosk weiter die alte DB).
+
+> ⚠ **Nach einem DB-Wechsel werden alle Benutzer automatisch
+> abgemeldet** (Sessions sind an die DB gebunden, `db_sig`). Du landest
+> auf der Login-Seite und meldest dich mit einem Konto der **neuen** DB
+> an. Das ist gewollt — verhindert den Zustand „eingeloggt, aber alles
+> ausgegraut".
+
+### 3a.4 🎛️ App-Steuerung — `/system/apps`
+
+Status + Start/Stop/Restart der einzelnen Apps. Im systemd-Modus über
+`systemctl` (Status read-only ohne sudo; Steuerbefehle über
+sudoers-Snippet). Zeigt PIDs/Ports und ob die jeweilige App läuft.
+
+---
+
 ## 4. Troubleshooting
 
 ### 4.1 Terminal wird nicht erkannt
@@ -224,15 +287,27 @@ Bei DB-Fehler / unbekannter Rolle / nicht-existentem Objekt → `False`.
 
 ### 4.5 Wo liegen die Logs?
 
-- Admin-App: `/tmp/caoxt-admin.log`
-- Orga-App: `/tmp/caoxt-orga.log`
-- Kasse-App: `/tmp/caoxt-kasse.log`
-- Kiosk-App: `/tmp/caoxt-kiosk.log`
-- HACCP-Poller: `/tmp/caoxt-haccp-poller.log`
+Abhängig vom Betriebsmodus (siehe Betreiber-Handbuch Kap. 5):
+
+- **System-Dienst**: `journalctl -u dorfkern[-<inst>]-<app>` bzw.
+  `/var/log/dorfkern[-<inst>]/<app>.log`
+- **Dienst pro Benutzer**: `journalctl --user -u dorfkern-<app>`
+- **Ad-hoc**: `/tmp/dorfkern-<app>.log` (admin/orga/kasse/kiosk/
+  haccp-poller/einkauf-poller)
+- Updater: `/tmp/dorfkern-update.log` bzw. `/var/log/dorfkern/update.log`
+
+### 4.6 Funktionen/Karten reagieren nicht, alles ausgegraut
+
+Fast immer Folge eines DB-Wechsels: die Session zeigt noch auf einen
+Mitarbeiter der alten DB. → Auf `/logout`, neu anmelden mit einem
+Konto der aktuellen DB. Seit dem `db_sig`-Mechanismus passiert dieser
+Logout automatisch beim nächsten Klick.
 
 ---
 
 ## 5. Siehe auch
 
-- `docs/handbuch-betreiber.md` — Installation & Deployment
+- `docs/handbuch-betreiber.md` — Installation, Service-Modi, Kiosk,
+  Wartungs-Modus, Multi-Instanz
+- `installer/systemd/README.md` — systemd-Details, Einzeiler-Bootstrap
 - `RELEASE_DORFKERN_V2.md` — technische Release-Notizen & Entscheidungen
