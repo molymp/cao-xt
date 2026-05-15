@@ -76,6 +76,7 @@ tr.open td { font-weight: 600; }
           <a href="{{ url_for('haccp.geraet_detail', geraet_id=a.GERAET_ID) }}">
             {{ a.GERAET_NAME }}
           </a>
+          <br><small style="font-family:monospace;opacity:0.75;">ID: {{ a.TFA_DEVICE_ID }}</small>
           {% if a.STANDORT %}<br><small>{{ a.STANDORT }}</small>{% endif %}
         </td>
         <td><span class="pill pill-{{ a.TYP }}">{{ a.TYP }}</span></td>
@@ -118,6 +119,7 @@ tr.open td { font-weight: 600; }
           <a href="{{ url_for('haccp.geraet_detail', geraet_id=a.GERAET_ID) }}">
             {{ a.GERAET_NAME }}
           </a>
+          <br><small style="font-family:monospace;opacity:0.75;">ID: {{ a.TFA_DEVICE_ID }}</small>
         </td>
         <td><span class="pill pill-{{ a.TYP }}">{{ a.TYP }}</span></td>
         <td>{{ a.START_AT.strftime('%d.%m.%Y %H:%M') }}</td>

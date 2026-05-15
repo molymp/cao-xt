@@ -285,7 +285,8 @@ def alarm_offen(geraet_id: int, typ: str) -> dict | None:
 def alarme_offen_alle() -> list[dict]:
     with get_db_ro() as cur:
         cur.execute(
-            """SELECT a.*, g.NAME AS GERAET_NAME, g.STANDORT, g.WARENGRUPPE
+            """SELECT a.*, g.NAME AS GERAET_NAME, g.TFA_DEVICE_ID,
+                      g.STANDORT, g.WARENGRUPPE
                  FROM XT_HACCP_ALARM a
                  JOIN XT_HACCP_GERAET g ON g.GERAET_ID = a.GERAET_ID
                 WHERE a.ENDE_AT IS NULL
@@ -365,7 +366,7 @@ def eskalation_loggen(alarm_id: int, stufe: int, empfaenger: str,
 
 def alarm_history(geraet_id: int | None = None, limit: int = 200) -> list[dict]:
     q = (
-        """SELECT a.*, g.NAME AS GERAET_NAME,
+        """SELECT a.*, g.NAME AS GERAET_NAME, g.TFA_DEVICE_ID,
                   (SELECT LOGIN_NAME FROM MITARBEITER
                     WHERE MA_ID = a.KORREKTUR_VON) AS KORREKTUR_VON_NAME
              FROM XT_HACCP_ALARM a

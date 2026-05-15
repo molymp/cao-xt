@@ -55,6 +55,11 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Geändert
 
+- HACCP: TFA-Geräte-ID (`TFA_DEVICE_ID`, z. B. `A52CED248`) als Feld in
+  Sichtkontrolle-Liste, Dashboard-Kacheln und Alarm-Tabellen ergänzt;
+  Detailseite-Label „Device-ID" → „Geräte-ID" (Konsistenz). Alarm-
+  Queries (`alarme_offen_alle`, `alarm_history`) liefern jetzt
+  zusätzlich `g.TFA_DEVICE_ID`.
 - `produktion`/`training`-Schalter (Installer-Phase 3 + `XT_ENVIRONMENT`
   + `load_environment()` + `TRAININGSMODUS`-Konstante) **entfernt** —
   war toter Code; Trainingsmodus läuft per Terminal über die DB.

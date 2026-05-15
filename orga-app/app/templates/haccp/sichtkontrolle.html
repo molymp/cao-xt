@@ -139,6 +139,9 @@
           {{ k.geraet.STANDORT or '—' }}
           {% if k.geraet.WARENGRUPPE %} · {{ k.geraet.WARENGRUPPE }}{% endif %}
         </div>
+        <div class="meta" style="font-family:monospace;opacity:0.75;">
+          ID: {{ k.geraet.TFA_DEVICE_ID }}
+        </div>
         <div class="wert {{ k.status }}">
           {% if k.letzter and k.letzter.TEMP_C is not none and not k.letzter.NO_CONNECTION %}
             {{ '%.1f'|format(k.letzter.TEMP_C) }} °C
