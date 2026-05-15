@@ -106,21 +106,40 @@ def invalidate_cache() -> None:
     _instance_name.cache_clear()
 
 
+# systemctl-Verben, die NUR lesen — die funktionieren fuer jeden
+# unprivilegierten User und brauchen KEIN sudo. Schreibende Verben
+# (start/stop/restart/enable/disable/daemon-reload/...) brauchen im
+# System-Mode root bzw. ein passwortfreies sudoers-Snippet.
+#
+# Bug-Hintergrund: vorher wrappte _systemctl im System-Mode ALLE
+# Aufrufe in 'sudo -n'. Da das sudoers-Snippet nur shutdown/
+# maintenance-mode erlaubt (nicht 'systemctl is-active'), scheiterten
+# die Status-Abfragen still -> /system/apps zeigte alle Apps als
+# gestoppt, obwohl sie liefen.
+_SYSTEMCTL_READONLY = {
+    'is-active', 'is-failed', 'is-enabled', 'show',
+    'status', 'cat', 'list-unit-files', 'list-units', 'show-environment',
+}
+
+
 def _systemctl(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
     """Ruft ``systemctl`` im erkannten Modus auf.
 
     - User-Mode: ``systemctl --user ...`` ohne sudo.
     - System-Mode als root: direkt.
-    - System-Mode als non-root: via ``sudo -n``.
+    - System-Mode als non-root:
+        * Read-only-Verb (is-active, show, …) -> direkt, KEIN sudo.
+        * Schreibend (start/stop/…) -> via ``sudo -n``.
     """
     mode = systemd_mode()
+    verb = args[0] if args else ''
     cmd = ['systemctl']
     if mode == 'user':
         cmd.append('--user')
         cmd.extend(args)
     else:
         cmd.extend(args)
-        if os.geteuid() != 0:
+        if os.geteuid() != 0 and verb not in _SYSTEMCTL_READONLY:
             cmd = ['sudo', '-n'] + cmd
     kwargs: Dict[str, object] = {'timeout': _SYSTEMCTL_TIMEOUT}
     if capture:
