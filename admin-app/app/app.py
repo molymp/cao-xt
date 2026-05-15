@@ -783,8 +783,14 @@ def db_config_save():
 @app.post('/db-config/test')
 @_login_required
 def db_config_test():
-    """Testet die aktuelle DB-Verbindung."""
-    ok = test_verbindung(force=True)
+    """Testet die aktuelle DB-Verbindung.
+
+    Die lokale admin-app/app/db.py:test_verbindung() macht ohnehin
+    immer einen frischen SELECT 1 ueber get_db() — ein force-Argument
+    gibt es dort nicht (nur in common/db.py). Der frueher uebergebene
+    force=True fuehrte zu TypeError -> 500 beim Klick.
+    """
+    ok = test_verbindung()
     return jsonify(ok=ok, msg='Verbindung erfolgreich.' if ok else 'Verbindung fehlgeschlagen.')
 
 
