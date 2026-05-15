@@ -99,6 +99,11 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - Update-Health-Check meldete fälschlich „Admin tot": Prüfung lief
   einmalig 5 s nach Start, Admin braucht aber ~15 s (DB-Migrationen).
   Jetzt Deadline-Poll bis 75 s, Zwischenläufe ohne Fehl-Logzeilen.
+- Kiosk → Mittagstisch warf „Internal Server Error", wenn Google-
+  Spreadsheet-ID oder Service-Account-Credentials fehlten. Fehlende
+  Konfiguration wird jetzt abgefangen (`MittagstischNichtKonfiguriert`)
+  und als freundlicher Hinweis statt 500 angezeigt; auch Sheets-/
+  Netz-Hänger führen nicht mehr zum 500er.
 
 ## [2.0.0] – Dorfkern v2 (Multi-Shop-Vorbereitung)
 

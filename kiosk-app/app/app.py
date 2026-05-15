@@ -1195,18 +1195,31 @@ def stornieren(journal_id):
 def mittagstisch_view():
     heute = date.today()
     wochen = []
-    for delta in range(3):   # aktuelle, nächste, übernächste Woche
-        montag = mt.montag_der_woche(heute) + timedelta(weeks=delta)
-        daten  = mt.woche_laden_oder_anlegen(montag)
-        wochen.append({
-            "montag":   montag.isoformat(),
-            "kw_name":  mt.kw_name(montag),
-            "kw_nr":    montag.isocalendar()[1],
-            "daten":    daten,
-        })
+    hinweis = None
+    try:
+        mt.pruefe_konfiguration()
+        for delta in range(3):   # aktuelle, nächste, übernächste Woche
+            montag = mt.montag_der_woche(heute) + timedelta(weeks=delta)
+            daten  = mt.woche_laden_oder_anlegen(montag)
+            wochen.append({
+                "montag":   montag.isoformat(),
+                "kw_name":  mt.kw_name(montag),
+                "kw_nr":    montag.isocalendar()[1],
+                "daten":    daten,
+            })
+    except mt.MittagstischNichtKonfiguriert as e:
+        wochen = []
+        hinweis = str(e)
+    except Exception as e:   # Sheets-/Netz-Hänger sollen den Kiosk nicht 500en
+        app.logger.error(f"mittagstisch_view: {e}")
+        wochen = []
+        hinweis = ("Der Mittagstisch ist momentan nicht erreichbar "
+                   "(Google Tabelle / Netzwerk). Bitte später erneut "
+                   "versuchen.")
     return render_template(
         "mittagstisch.html",
         wochen=wochen,
+        hinweis=hinweis,
         terminal_nr=get_terminal_nr(),
     )
 
@@ -1216,9 +1229,12 @@ def mittagstisch_view():
 def mittagstisch_speichern():
     data = request.get_json(force=True)
     try:
+        mt.pruefe_konfiguration()
         montag = date.fromisoformat(data["montag"])
         mt.woche_speichern(montag, data["daten"])
         return jsonify({"ok": True})
+    except mt.MittagstischNichtKonfiguriert as e:
+        return jsonify({"ok": False, "fehler": str(e)}), 200
     except Exception as e:
         app.logger.error(f"mittagstisch_speichern: {e}")
         return jsonify({"ok": False, "fehler": str(e)}), 500

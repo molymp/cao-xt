@@ -88,19 +88,56 @@ HINWEIS    = "Angebot immer nur solange der Vorrat reicht. Änderungen vorbehalt
 
 # ── Hilfsfunktionen ───────────────────────────────────────────
 
+class MittagstischNichtKonfiguriert(RuntimeError):
+    """Mittagstisch ist (noch) nicht eingerichtet.
+
+    Wird geworfen, wenn Spreadsheet-ID oder Google-Service-Account-
+    Credentials fehlen/ungueltig sind. Der Aufrufer (View) faengt das
+    ab und zeigt eine freundliche Meldung statt eines 500ers.
+    """
+
+
+def pruefe_konfiguration() -> None:
+    """Wirft MittagstischNichtKonfiguriert, wenn etwas Pflichtiges fehlt.
+
+    Zentral aufgerufen, BEVOR auf Google Sheets zugegriffen wird —
+    fehlende Konfig soll keinen Internal Server Error verursachen.
+    """
+    if not _aktive_spreadsheet_id():
+        raise MittagstischNichtKonfiguriert(
+            "Es ist keine Google-Tabelle (Spreadsheet-ID) hinterlegt. "
+            "Eintragen unter Admin → Stammdaten → Mittagstisch "
+            "(mittagstisch.spreadsheet_id).")
+    _, db_cred = _db_konfig()
+    if db_cred is None and not os.path.isfile(CREDENTIALS_FILE):
+        raise MittagstischNichtKonfiguriert(
+            "Es sind keine Google-Service-Account-Credentials hinterlegt. "
+            "Eintragen unter Admin → Stammdaten → Mittagstisch "
+            "(mittagstisch.credentials_json).")
+
+
 def _gc():
     """gspread-Client. Credentials-Prioritaet: DB > Datei (config_local).
 
     Aus der DB kommt ein dict (Service-Account-JSON parsed), verwendet
     per ``from_service_account_info``. Sonst Fallback auf
     ``from_service_account_file`` wie frueher.
+
+    Fehlende/ungueltige Credentials werden in
+    ``MittagstischNichtKonfiguriert`` uebersetzt — KEIN roher
+    FileNotFoundError/ValueError nach aussen.
     """
     _, db_cred = _db_konfig()
-    if db_cred is not None:
-        creds = Credentials.from_service_account_info(db_cred, scopes=SCOPES)
-    else:
-        creds = Credentials.from_service_account_file(
-            CREDENTIALS_FILE, scopes=SCOPES)
+    try:
+        if db_cred is not None:
+            creds = Credentials.from_service_account_info(
+                db_cred, scopes=SCOPES)
+        else:
+            creds = Credentials.from_service_account_file(
+                CREDENTIALS_FILE, scopes=SCOPES)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        raise MittagstischNichtKonfiguriert(
+            f"Google-Credentials fehlen oder sind ungueltig: {exc}") from exc
     return gspread.authorize(creds)
 
 
