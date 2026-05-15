@@ -40,6 +40,17 @@ from . import units
 SYSTEM_UNIT_DIR = '/etc/systemd/system'
 USER_UNIT_DIR   = os.path.expanduser('~/.config/systemd/user')
 
+# Festes Staging-Verzeichnis fuer den privilegierten Unit-Write.
+# Hintergrund: bei einem Update laeuft regenerate_system als
+# 'dorfkern' (non-root). 'sudo install <tmp> /etc/systemd/system/...'
+# ist im restriktiven sudoers-Snippet nicht erlaubt -> Unit-Aenderungen
+# aus Updates wurden nie wirksam. Loesung: dorfkern rendert die Units
+# als sich selbst in dieses feste, dorfkern-eigene Verzeichnis (kein
+# sudo noetig) und kopiert sie dann per EINER eng begrenzten sudoers-
+# Regel nach /etc/systemd/system/dorfkern*. Der feste Pfad macht die
+# sudoers-Regel praezise (kein Wildcard ueber zufaellige tmp-Namen).
+_UNIT_STAGE_DIR = '/tmp/dorfkern-units-stage'
+
 
 PrintFn = Callable[[str], None]
 
@@ -95,12 +106,26 @@ def _write_units(target_dir: str, rendered: dict,
     (Workaround dafuer, dass wir keinen Root-Open-Handle haben).
     """
     if sudo:
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp:
+        # Stage als aktueller User (bei Update: dorfkern) — KEIN sudo.
+        # Danach pro Datei EIN eng begrenztes 'sudo install' aus dem
+        # festen Stage-Verzeichnis. Siehe _UNIT_STAGE_DIR / sudoers.
+        import shutil
+        try:
+            shutil.rmtree(_UNIT_STAGE_DIR, ignore_errors=True)
+            os.makedirs(_UNIT_STAGE_DIR, exist_ok=True)
+            os.chmod(_UNIT_STAGE_DIR, 0o700)
+        except OSError as exc:
+            print_fn(f"  ✗  Stage-Verzeichnis {_UNIT_STAGE_DIR}: {exc}")
+            return False
+        try:
             for fname, content in rendered.items():
-                src = os.path.join(tmp, fname)
-                with open(src, 'w', encoding='utf-8') as f:
-                    f.write(content)
+                src = os.path.join(_UNIT_STAGE_DIR, fname)
+                try:
+                    with open(src, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                except OSError as exc:
+                    print_fn(f"  ✗  Stage {src}: {exc}")
+                    return False
                 dst = os.path.join(target_dir, fname)
                 r = _run(_maybe_sudo(
                     ['install', '-m', '0644', '-o', 'root', '-g', 'root',
@@ -109,6 +134,8 @@ def _write_units(target_dir: str, rendered: dict,
                     print_fn(f"  ✗  Konnte {dst} nicht schreiben: {_err(r)}")
                     return False
                 print_fn(f"  ✓  {dst}")
+        finally:
+            shutil.rmtree(_UNIT_STAGE_DIR, ignore_errors=True)
         return True
 
     os.makedirs(target_dir, exist_ok=True)
@@ -344,6 +371,16 @@ _SUDOERS_SHUTDOWN_CONTENT = (
     "/bin/systemctl stop dorfkern*, "
     "/bin/systemctl restart dorfkern*, "
     "/bin/systemctl daemon-reload\n"
+    "# Unit-Write bei Updates: dorfkern rendert Units als sich selbst\n"
+    "# nach /tmp/dorfkern-units-stage/ und kopiert sie hiermit nach\n"
+    "# /etc/systemd/system. Strikt begrenzt: Quelle nur aus dem festen\n"
+    "# Stage-Verzeichnis, Ziel nur 'dorfkern*'-Units. Ohne diese Regel\n"
+    "# bleiben systemd-Unit-Aenderungen aus Updates wirkungslos.\n"
+    "dorfkern ALL=(root) NOPASSWD: "
+    "/usr/bin/install -m 0644 -o root -g root "
+    "/tmp/dorfkern-units-stage/* /etc/systemd/system/dorfkern*, "
+    "/bin/install -m 0644 -o root -g root "
+    "/tmp/dorfkern-units-stage/* /etc/systemd/system/dorfkern*\n"
     "# Hinweis: der GUI-Login-User (z.B. 'kasse') bekommt das Recht\n"
     "# 'dorfkern-maintenance-mode --kiosk' separat via\n"
     "# /etc/sudoers.d/dorfkern-kiosk-user (von install_kiosk angelegt) —\n"

@@ -554,11 +554,16 @@ def _regenerate_systemd_units() -> None:
              "alte Units bleiben aktiv.")
 
 
-def _http_health_check(timeout: int = 3) -> Tuple[int, int]:
+def _http_health_check(timeout: int = 3,
+                       *, quiet: bool = False) -> Tuple[int, int]:
     """HTTP-GET / auf jeder Web-App. Liefert (ok_count, total).
 
     Eine App gilt als "lebt", sobald irgendein HTTP-Status zurueckkommt
     — auch 30x/4xx/5xx. Connection-Refused oder Timeout = tot.
+
+    quiet=True unterdrueckt die "keine Antwort"-Zeilen (fuer
+    Zwischen-Polls, die noch auf langsam startende Apps warten —
+    v.a. Admin braucht ~15 s wegen DB-Migrationen beim Start).
     """
     import urllib.error
     import urllib.request
@@ -579,7 +584,8 @@ def _http_health_check(timeout: int = 3) -> Tuple[int, int]:
             # 4xx/5xx = App antwortet, also lebt sie
             ok_count += 1
         except (urllib.error.URLError, OSError):
-            _log(f"  {name} (Port {port}): keine Antwort")
+            if not quiet:
+                _log(f"  {name} (Port {port}): keine Antwort")
     return ok_count, len(apps)
 
 
@@ -765,9 +771,20 @@ def perform_update(branch: str = '') -> bool:
         _run([_DORFKERN_CTL, 'start'], check=False, timeout=180)
 
         # ── Schritt 7: HTTP-Health-Check ────────────────────────
+        # Admin braucht beim Start ~15 s (DB-Migrationen laufen vor dem
+        # Listen auf 5004). Darum nicht einmalig nach 5 s pruefen,
+        # sondern bis zu 75 s pollen — sonst falscher "Admin tot"-Alarm.
         _log("Schritt 7: HTTP-Health-Check …")
-        time.sleep(5)
-        ok_count, total = _http_health_check()
+        health_deadline = time.time() + 75
+        ok_count, total = 0, 4
+        while True:
+            ok_count, total = _http_health_check(quiet=True)
+            if ok_count >= total or time.time() >= health_deadline:
+                break
+            time.sleep(3)
+        if ok_count < total:
+            # Finaler Lauf NICHT quiet — die echten Ausfaelle loggen.
+            ok_count, total = _http_health_check(quiet=False)
         _log(f"  {ok_count}/{total} Apps antworten via HTTP.")
         if ok_count < total:
             _log(f"  WARNUNG: Nicht alle Apps antworten. Logs pruefen mit "

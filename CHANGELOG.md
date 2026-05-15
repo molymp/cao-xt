@@ -90,6 +90,15 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - Updater gibt bei fehlenden Schreibrechten in `.git/objects` (Folge von
   `git pull/fetch` als root) eine umsetzbare Meldung mit `chown`-Befehl
   statt des rohen git-Fehlers (Preflight vor fetch und pull).
+- systemd-Unit-Regeneration bei Updates scheiterte still unter dem
+  restriktiven `dorfkern`-sudoers (`sudo install` nicht erlaubt) — Unit-
+  Änderungen aus Updates (ExecStart, neue Apps/Units) wurden nie
+  wirksam. `_write_units` staged jetzt als `dorfkern` nach
+  `/tmp/dorfkern-units-stage/` und kopiert via eng begrenzter sudoers-
+  Regel (`install … /etc/systemd/system/dorfkern*`).
+- Update-Health-Check meldete fälschlich „Admin tot": Prüfung lief
+  einmalig 5 s nach Start, Admin braucht aber ~15 s (DB-Migrationen).
+  Jetzt Deadline-Poll bis 75 s, Zwischenläufe ohne Fehl-Logzeilen.
 
 ## [2.0.0] – Dorfkern v2 (Multi-Shop-Vorbereitung)
 
