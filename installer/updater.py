@@ -95,6 +95,43 @@ def _git(*args) -> subprocess.CompletedProcess:
     return _run(['git'] + list(args), capture=True)
 
 
+def _git_writable() -> Optional[str]:
+    """Prueft, ob der aktuelle Prozess-User in .git/objects schreiben kann.
+
+    Typischer Stolperstein: irgendwann lief 'git pull'/'git fetch' als
+    root (oder via sudo) im Repo — dann liegen Objekte als root:root in
+    .git/objects, und der als Service-User (dorfkern) laufende Updater
+    bekommt beim naechsten fetch ein 'Unzureichende Berechtigung'.
+    Wir fangen das hier ab und geben eine umsetzbare Meldung statt des
+    rohen git-Fehlers zurueck.
+
+    Returns:
+        None wenn schreibbar, sonst ein erklaerender Fehlertext.
+    """
+    objects = os.path.join(_REPO_ROOT, '.git', 'objects')
+    if not os.path.isdir(objects):
+        return None  # kein git-Checkout — anderer Fehler, nicht unser Fall
+    if os.access(objects, os.W_OK | os.X_OK):
+        return None
+    try:
+        owner_uid = os.stat(objects).st_uid
+        import pwd
+        owner = pwd.getpwuid(owner_uid).pw_name
+    except (OSError, KeyError):
+        owner = '?'
+    try:
+        import getpass
+        me = getpass.getuser()
+    except Exception:
+        me = f'uid={os.geteuid()}'
+    return (
+        f"Keine Schreibrechte in {objects} "
+        f"(gehoert '{owner}', Updater laeuft als '{me}'). "
+        f"Vermutlich lief einmal 'git pull/fetch' als root im Repo. "
+        f"Einmalig auf der Box ausfuehren:  "
+        f"sudo chown -R dorfkern:dorfkern {_REPO_ROOT}/.git")
+
+
 # ─── Versionsabfrage ──────────────────────────────────────────────────
 
 def load_local_version() -> Optional[dict]:
@@ -179,6 +216,11 @@ def check_for_updates(branch: str = '') -> dict:
     head = _git('rev-parse', '--short', 'HEAD')
     if head.returncode == 0:
         result['local_commit'] = head.stdout.strip()
+
+    perm_err = _git_writable()
+    if perm_err:
+        result['error'] = perm_err
+        return result
 
     fetch = _git('fetch', 'origin', branch)
     if fetch.returncode != 0:
@@ -576,6 +618,11 @@ def perform_update(branch: str = '') -> bool:
         return False
 
     try:
+        perm_err = _git_writable()
+        if perm_err:
+            _log(f"FEHLER: {perm_err}")
+            return False
+
         clean, dirty = _working_tree_clean()
         if not clean:
             _log("FEHLER: Working Tree ist nicht sauber.")
