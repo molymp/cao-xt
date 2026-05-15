@@ -40,6 +40,22 @@ def _use_systemd() -> bool:
     """
     return _systemd is not None and _systemd.is_systemd_managed()
 
+
+# Werkzeug-Reloader-Env-Variablen, die NIE in Child-Prozessen landen
+# duerfen: wenn der Updater aus einem Admin-App-Reloader-Prozess
+# gestartet wird, vererben sich WERKZEUG_SERVER_FD (=alter Socket-FD)
+# und WERKZEUG_RUN_MAIN. Die neu gestarteten Apps versuchen dann
+# socket.fromfd(<stale_fd>) und crashen mit "Bad file descriptor".
+_WERKZEUG_ENV_KEYS = ('WERKZEUG_SERVER_FD', 'WERKZEUG_RUN_MAIN')
+
+
+def _saubere_child_env() -> dict:
+    """Liefert os.environ-Kopie ohne Werkzeug-Reloader-Hinterlassenschaften."""
+    env = os.environ.copy()
+    for k in _WERKZEUG_ENV_KEYS:
+        env.pop(k, None)
+    return env
+
 # Repo-Root aus diesem Dateiverzeichnis ableiten
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -371,6 +387,7 @@ def _start_web_app(name: str, cfg: dict, *, print_fn=print) -> bool:
             stdout=log_file,
             stderr=log_file,
             start_new_session=True,
+            env=_saubere_child_env(),
         )
     except Exception as e:
         print_fn(f"  ✗  {name}: Start fehlgeschlagen: {e}")
@@ -442,6 +459,7 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
             stdout=log_file,
             stderr=log_file,
             start_new_session=True,
+            env=_saubere_child_env(),
         )
     except Exception as e:
         print_fn(f"  ✗  {name}: Start fehlgeschlagen: {e}")
