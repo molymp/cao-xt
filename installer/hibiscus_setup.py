@@ -447,7 +447,40 @@ def schreibe_xmlrpc_sharing(userdata: str) -> str:
                 'sepasammellastschrift'):
         eintraege[f'hibiscus.xmlrpc.{svc}.shared'] = 'true'
     eintraege['jameica.webadmin.listener.http.shared'] = 'true'
+    # Hibiscus-CORE-Service (kein hibiscus.xmlrpc): read-only Status der
+    # automatischen Synchronisierung (letzter/naechster Lauf, Status).
+    eintraege['hibiscus.synchronizescheduler.shared'] = 'true'
     _schreibe_properties(pfad, eintraege)
+    return pfad
+
+
+def schreibe_sync_scheduler(userdata: str, *, interval_min: int = 180,
+                            start_hour: int = 6, end_hour: int = 23,
+                            stop_on_error: bool = True) -> str:
+    """Aktiviert Hibiscus' interne automatische Synchronisierung.
+
+    Read-only-Scope (Saldo/Umsaetze/Banknachrichten) ist in Hibiscus
+    pro Konto bereits Default-an (``sync.konto.default.{saldo,
+    kontoauszug,messages}=true``); was fehlt, ist der Zeit-Scheduler.
+    Keys: ``de.willuhn.jameica.hbci.SynchronizeSchedulerSettings``
+    (Quelle: SynchronizeSchedulerSettings.java).
+
+    Args:
+        interval_min: Abstand zwischen Laeufen (Default 180 = 3 h).
+        start_hour/end_hour: Nur in diesem Stundenfenster syncen
+            (Default 6..23 — kein Sync nachts).
+        stop_on_error: Bei Fehler die Restlaeufe stoppen (Default an).
+    """
+    pfad = os.path.join(
+        userdata, 'cfg',
+        'de.willuhn.jameica.hbci.SynchronizeSchedulerSettings.properties')
+    _schreibe_properties(pfad, {
+        'enabled':          'true',
+        'interval.minutes': str(int(interval_min)),
+        'start.hour':       str(int(start_hour)),
+        'end.hour':         str(int(end_hour)),
+        'stoponerror':      'true' if stop_on_error else 'false',
+    })
     return pfad
 
 
@@ -672,8 +705,10 @@ def setup(basis: str = DEFAULT_BASIS, *,
     # 3) Plaintext-Konfig
     wa = schreibe_webadmin_config(userdata)
     xr = schreibe_xmlrpc_sharing(userdata)
+    sc = schreibe_sync_scheduler(userdata)
     print_fn(f"    ✓ Webadmin-Listener konfiguriert ({os.path.basename(wa)})")
     print_fn(f"    ✓ XML-RPC-Sharing aktiviert ({os.path.basename(xr)})")
+    print_fn(f"    ✓ Auto-Sync-Scheduler aktiviert ({os.path.basename(sc)})")
 
     # 3b) MariaDB-Anbindung (statt H2) – damit "Config liegt in der DB"
     db_konfiguriert = False

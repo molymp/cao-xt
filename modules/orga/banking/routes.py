@@ -36,7 +36,8 @@ def _form_to_date(s: str | None) -> date | None:
 def uebersicht():
     _login_check()
     konten = m.konten_liste()
-    return render_template('banking.html', konten=konten)
+    return render_template('banking.html', konten=konten,
+                           sync=m.hibiscus_sync_status())
 
 
 @bp.get('/konto/<int:konto_id>')

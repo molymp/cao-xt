@@ -64,6 +64,26 @@
     </span>
 </div>
 
+<div class="bk-sync" style="margin:10px 0 16px; padding:10px 14px;
+     border:1px solid var(--creme-dunkel,#d9d2c4);
+     border-radius:8px; background:var(--creme,#f7f4ee);
+     font-size:0.88rem; display:flex; gap:24px; flex-wrap:wrap;
+     align-items:center;">
+  <strong>Auto-Sync</strong>
+  {% if sync and sync.verfuegbar %}
+    <span>Status:
+      <b>{{ sync.status_text }}</b></span>
+    <span>Letzter Abruf:
+      <b>{{ sync.letzter or '—' }}</b></span>
+    <span>Nächster:
+      <b>{{ sync.naechster or '—' }}</b></span>
+  {% else %}
+    <span style="color:var(--text-dim,#7a6a4a);">
+      ⏳ {{ (sync.hinweis if sync else 'Status nicht verfügbar') }}
+    </span>
+  {% endif %}
+</div>
+
 <div class="bk-aktionen">
     <a href="{{ url_for('orga_banking.reconcile') }}" class="bk-aktion-btn">
         🔁 Reconcile (Belege ↔ Bankumsätze)

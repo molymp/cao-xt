@@ -26,6 +26,30 @@ FLAG_GEPRUEFT  = 1   # User hat den Umsatz "abgehakt" (Bit 0)
 FLAG_NOTBOOKED = 2   # Vormerkung der Bank, noch nicht endgueltig (Bit 1)
 
 
+def hibiscus_sync_status() -> dict[str, Any]:
+    """Read-only Status des Hibiscus-Auto-Sync-Schedulers.
+
+    Degradiert sauber: liefert immer ein dict. ``verfuegbar=False`` +
+    ``hinweis`` wenn Jameica/Zugang noch nicht da ist (kein Fehler in
+    der UI, nur Hinweis).
+    """
+    try:
+        from common.hibiscus_client import aus_konfig, HibiscusError
+    except Exception as e:
+        return {'verfuegbar': False, 'hinweis': f'Client n/a: {e}'}
+    try:
+        st = aus_konfig(timeout=8).sync_status()
+        st['verfuegbar'] = True
+        return st
+    except HibiscusError as e:
+        return {'verfuegbar': False,
+                'hinweis': 'Jameica/Bank-Zugang nicht erreichbar – '
+                           'Auto-Sync läuft erst nach FinTS-Einrichtung '
+                           f'im Jameica-GUI. ({str(e)[:120]})'}
+    except Exception as e:
+        return {'verfuegbar': False, 'hinweis': str(e)[:160]}
+
+
 def konten_liste() -> list[dict[str, Any]]:
     """Alle Bank-Konten + Saldo + 30-Tage-Umsatz-Statistik.
 

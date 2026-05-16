@@ -62,6 +62,23 @@ class TestPropertiesMerge(unittest.TestCase):
             self.assertIn('xmlrpc.useinterfacenames=false', txt)
             self.assertIn('hibiscus.xmlrpc.konto.shared=true', txt)
             self.assertIn('hibiscus.xmlrpc.umsatz.shared=true', txt)
+            # Status-Read der Auto-Sync (Hibiscus-CORE-Service)
+            self.assertIn(
+                'hibiscus.synchronizescheduler.shared=true', txt)
+
+    def test_sync_scheduler_keys(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = hs.schreibe_sync_scheduler(
+                d, interval_min=90, start_hour=7, end_hour=21)
+            self.assertTrue(p.endswith(
+                'de.willuhn.jameica.hbci.'
+                'SynchronizeSchedulerSettings.properties'))
+            txt = open(p, encoding='iso-8859-1').read()
+            self.assertIn('enabled=true', txt)
+            self.assertIn('interval.minutes=90', txt)
+            self.assertIn('start.hour=7', txt)
+            self.assertIn('end.hour=21', txt)
+            self.assertIn('stoponerror=true', txt)
 
 
 class TestPlattform(unittest.TestCase):
@@ -420,6 +437,25 @@ class TestHibiscusClientGuard(unittest.TestCase):
         # ServerProxy haelt die URL intern; Passwort muss URL-codiert sein
         uri = c._proxy.__dict__['_ServerProxy__host']
         self.assertIn('p%40ss%2Fwort', uri)
+
+    def test_sync_status_mappt_scheduler_antworten(self):
+        c = HibiscusClient('https://127.0.0.1:8080/xmlrpc', 'u', 'pw')
+        antworten = {
+            'hibiscus.synchronizescheduler.getLastExecution':
+                '2026-05-16 09:00:00',
+            'hibiscus.synchronizescheduler.getNextExecution':
+                '2026-05-16 12:00:00',
+            'hibiscus.synchronizescheduler.getStatus': 2,
+        }
+        c._proxy = type('P', (), {
+            '__getattr__': staticmethod(
+                lambda name: (lambda *a: antworten[name]))
+        })()
+        st = c.sync_status()
+        self.assertEqual(st['letzter'], '2026-05-16 09:00:00')
+        self.assertEqual(st['naechster'], '2026-05-16 12:00:00')
+        self.assertEqual(st['status'], 2)
+        self.assertEqual(st['status_text'], 'OK')
 
 
 if __name__ == '__main__':

@@ -129,14 +129,19 @@ class HibiscusClient:
 
     # ---- read-only -------------------------------------------------
 
-    def _ruf(self, methode: str, *args):
-        """Ruft ``hibiscus.xmlrpc.<methode>`` am Root-Endpoint."""
-        m = getattr(self._proxy, self._PRAEFIX + methode)
+    def _ruf_abs(self, voll_methode: str, *args):
+        """Ruft eine voll-qualifizierte XML-RPC-Methode am Root-Endpoint
+        (handler-id = ``<manifest>.<service>``, useinterfacenames=false)."""
+        m = getattr(self._proxy, voll_methode)
         try:
             return m(*args)
         except (xmlrpc.client.Fault, OSError) as e:
             raise HibiscusError(
-                f"{self._PRAEFIX}{methode} fehlgeschlagen: {e}") from e
+                f"{voll_methode} fehlgeschlagen: {e}") from e
+
+    def _ruf(self, methode: str, *args):
+        """Ruft ``hibiscus.xmlrpc.<methode>`` am Root-Endpoint."""
+        return self._ruf_abs(self._PRAEFIX + methode, *args)
 
     def konto_list(self) -> list[dict[str, Any]]:
         return list(self._ruf('konto.list') or [])
@@ -149,6 +154,42 @@ class HibiscusClient:
         return list(
             self._ruf('umsatz.find', int(konto_id), von or '', bis or '')
             or [])
+
+    # Status der automatischen Synchronisierung. Hibiscus-CORE-Service
+    # → handler-id 'hibiscus.synchronizescheduler' (NICHT hibiscus.xmlrpc).
+    _SYNC_STATUS = {
+        0: 'noch nie', 1: 'läuft', 2: 'OK', 3: 'Fehler', 4: 'abgebrochen',
+    }
+
+    def sync_status(self) -> dict[str, Any]:
+        """Liest den read-only Status des Auto-Sync-Schedulers:
+        ``letzter``/``naechster`` Lauf (ISO-String oder None) +
+        ``status``/``status_text``. Wirft ``HibiscusError`` wenn der
+        Service nicht erreichbar/freigegeben ist."""
+        praefix = 'hibiscus.synchronizescheduler.'
+
+        def _dt(v):
+            # xmlrpc.client liefert DateTime; robust nach ISO wandeln.
+            if v in (None, '', 0):
+                return None
+            try:
+                return str(v)
+            except Exception:
+                return None
+
+        letzter = _dt(self._ruf_abs(praefix + 'getLastExecution'))
+        naechster = _dt(self._ruf_abs(praefix + 'getNextExecution'))
+        st = self._ruf_abs(praefix + 'getStatus')
+        try:
+            st = int(st)
+        except (TypeError, ValueError):
+            st = -1
+        return {
+            'letzter':     letzter,
+            'naechster':   naechster,
+            'status':      st,
+            'status_text': self._SYNC_STATUS.get(st, f'Code {st}'),
+        }
 
 
 # ── Factory: aus Dorfkern-Konfiguration ─────────────────────────────
