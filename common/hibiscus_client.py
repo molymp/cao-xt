@@ -93,10 +93,16 @@ class _PinnedTransport(xmlrpc.client.Transport):
 class HibiscusClient:
     """Dünner Wrapper um den Hibiscus-XML-RPC-Endpoint.
 
-    Methodennamen sind kurz (``konto.list``), weil
-    ``xmlrpc.useinterfacenames=false`` gesetzt ist (siehe
-    hibiscus_setup.schreibe_xmlrpc_sharing).
+    Methodenname = ``<manifest>.<service>.<methode>`` weil
+    ``xmlrpc.useinterfacenames=false`` (Quelle: jameica.xmlrpc
+    ``XmlRpcServiceDescriptorImpl.getID() = manifest.getName()+"."+
+    service.getName()``). Für Hibiscus also Präfix
+    ``hibiscus.xmlrpc.`` → ``hibiscus.xmlrpc.konto.list`` usw.
+    Live gegen Jameica 2.12/hibiscus.xmlrpc-2.11-nightly verifiziert
+    (2026-05-16). Alles am Root-``/xmlrpc``-Endpoint (NICHT je Service).
     """
+
+    _PRAEFIX = 'hibiscus.xmlrpc.'
 
     def __init__(self, url: str, user: str, password: str,
                  cert_sha256: str | None = None, timeout: int = 30):
@@ -123,22 +129,26 @@ class HibiscusClient:
 
     # ---- read-only -------------------------------------------------
 
-    def konto_list(self) -> list[dict[str, Any]]:
+    def _ruf(self, methode: str, *args):
+        """Ruft ``hibiscus.xmlrpc.<methode>`` am Root-Endpoint."""
+        m = getattr(self._proxy, self._PRAEFIX + methode)
         try:
-            res = self._proxy.konto.list()
+            return m(*args)
         except (xmlrpc.client.Fault, OSError) as e:
-            raise HibiscusError(f"konto.list fehlgeschlagen: {e}") from e
-        return list(res or [])
+            raise HibiscusError(
+                f"{self._PRAEFIX}{methode} fehlgeschlagen: {e}") from e
+
+    def konto_list(self) -> list[dict[str, Any]]:
+        return list(self._ruf('konto.list') or [])
 
     def umsatz_find(self, konto_id: int, von: str = '',
                     bis: str = '') -> list[dict[str, Any]]:
-        """``umsatz.find`` – Umsätze eines Kontos. Datumsformat wie von
-        Hibiscus erwartet (``dd.mm.yyyy``); leer = keine Grenze."""
-        try:
-            res = self._proxy.umsatz.find(int(konto_id), von or '', bis or '')
-        except (xmlrpc.client.Fault, OSError) as e:
-            raise HibiscusError(f"umsatz.find fehlgeschlagen: {e}") from e
-        return list(res or [])
+        """``hibiscus.xmlrpc.umsatz.find`` – Umsätze eines Kontos.
+        Datumsformat wie von Hibiscus erwartet (``dd.mm.yyyy``);
+        leer = keine Grenze."""
+        return list(
+            self._ruf('umsatz.find', int(konto_id), von or '', bis or '')
+            or [])
 
 
 # ── Factory: aus Dorfkern-Konfiguration ─────────────────────────────
