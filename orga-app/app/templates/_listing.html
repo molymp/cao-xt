@@ -43,9 +43,12 @@
   color:var(--gruen-dunkel,#2e6e1a);background:var(--creme,#f7f4ec)}
 .cx-pager a:hover{background:var(--bg-hell,#ece3cc)}
 .cx-pager-info{font-weight:600}
-a.cx-sort{color:inherit;text-decoration:none;cursor:pointer;
-  white-space:nowrap}
-a.cx-sort:hover{text-decoration:underline}
-a.cx-sort-aktiv{color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+/* Tabellenkopf ist dunkelgrün/creme → Sortlinks IMMER hell halten,
+   aktiver Zustand nur durch Unterstrich + Pfeil, nie durch Grün. */
+th a.cx-sort{color:var(--creme,#f0eee9);text-decoration:none;
+  cursor:pointer;white-space:nowrap}
+th a.cx-sort:hover{text-decoration:underline}
+th a.cx-sort-aktiv{color:#fff;font-weight:800;
+  text-decoration:underline}
 </style>
 {%- endmacro -%}
