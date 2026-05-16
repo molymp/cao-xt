@@ -116,6 +116,23 @@ def _einen_zyklus(host: str) -> None:
         )
 
 
+def _reconcile_zyklus() -> None:
+    """Phase E.3: SEPA-Vormerkungen gegen Bankumsätze abgleichen.
+    Best-effort — Fehler dürfen den Gmail-Poller nicht killen. Läuft
+    im selben Intervall mit (Settlement dauert Stunden/Tage; das
+    Gmail-Intervall ist mehr als eng genug)."""
+    try:
+        from modules.orga.bestellwesen import hibiscus_reconcile as hr
+        r = hr.reconcile_vormerkungen()
+        if r.get('gebucht') or r.get('zurueckgesetzt') or r.get('fehler'):
+            log.info('Reconcile · %s gebucht, %s zurückgesetzt, '
+                     '%s offen, %s Fehler', r.get('gebucht'),
+                     r.get('zurueckgesetzt'), r.get('offen'),
+                     r.get('fehler'))
+    except Exception:
+        log.exception('Reconcile-Zyklus crashed (Poller läuft weiter)')
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -146,6 +163,7 @@ def main() -> int:
     while _LAUFT:
         start = time.monotonic()
         _einen_zyklus(host)
+        _reconcile_zyklus()
 
         # Konfig-Wert pro Zyklus neu lesen (Admin kann das Intervall
         # anpassen, ohne den Daemon zu restarten).

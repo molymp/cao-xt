@@ -137,6 +137,19 @@
 </div>
 
 <div class="karte">
+  <h2>Abgleich Bank ↔ Vormerkungen</h2>
+  <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">
+    Bucht für vorgemerkte Überweisungen, deren Bankumsatz eingegangen
+    ist, automatisch die Zahlung (EndToEndId-Treffer) und setzt
+    gelöschte/abgelehnte Vormerkungen zurück. Läuft sonst im
+    Einkauf-Poller-Intervall mit.
+  </p>
+  <button class="btn sek" id="btn-rec">Jetzt abgleichen</button>
+  <div id="rec-msg" class="hinweis-box" style="display:none;margin-top:10px;"></div>
+  <div id="rec-fehler" class="fehler-box" style="display:none;margin-top:10px;"></div>
+</div>
+
+<div class="karte">
   <h2>Automatische Synchronisierung</h2>
   <div class="fehler-box" style="margin:0 0 10px;">
     🛑 <b>Wichtig bei pushTAN-Banken (Sparkasse S-pushTAN):</b>
@@ -375,6 +388,37 @@ _e('btn-dk-save').addEventListener('click', async () => {
     toast('Fehler: ' + e.message, 'err');
   } finally {
     _e('btn-dk-save').disabled = false;
+  }
+});
+
+_e('btn-rec').addEventListener('click', async () => {
+  _e('btn-rec').disabled = true;
+  _e('rec-fehler').style.display = 'none';
+  _e('rec-msg').style.display = 'none';
+  try {
+    const d = await (await fetch('/api/system/banking/reconcile',
+      {method: 'POST'})).json();
+    if (!d.ok && d.msg) {
+      _e('rec-fehler').textContent = d.msg;
+      _e('rec-fehler').style.display = '';
+      return;
+    }
+    const m = _e('rec-msg');
+    m.textContent = `Geprüft ${d.geprueft||0} · gebucht ${d.gebucht||0}`
+      + ` · zurückgesetzt ${d.zurueckgesetzt||0} · offen ${d.offen||0}`
+      + ` · Fehler ${d.fehler||0}`;
+    m.style.display = '';
+    if ((d.details||[]).length) {
+      const f = _e('rec-fehler');
+      f.textContent = d.details.join('  ·  ');
+      f.style.display = '';
+    }
+    toast('Abgleich fertig.', d.fehler ? 'err' : 'ok');
+  } catch (e) {
+    _e('rec-fehler').textContent = 'Fehler: ' + e.message;
+    _e('rec-fehler').style.display = '';
+  } finally {
+    _e('btn-rec').disabled = false;
   }
 });
 

@@ -921,5 +921,109 @@ class TestVormerkungZuruecknehmen(unittest.TestCase):
         self.assertIn('nicht gelöscht', res['hinweis'])
 
 
+class TestReconciler(unittest.TestCase):
+    """Phase E.3: reconcile_vormerkungen + Helfer."""
+
+    def _ctx(self, cur):
+        import contextlib
+
+        @contextlib.contextmanager
+        def _g():
+            yield cur
+        return _g
+
+    def test_umsatz_match_genau_einer(self):
+        from modules.orga.bestellwesen import hibiscus_reconcile as R
+        from unittest.mock import MagicMock
+        cur = MagicMock()
+        cur.fetchall.return_value = [{'id': 9, 'betrag': -100.0}]
+        self.assertEqual(R._umsatz_match(cur, 'DK-EK1-AB', 48)['id'], 9)
+        cur.fetchall.return_value = []                    # noch nicht da
+        self.assertIsNone(R._umsatz_match(cur, 'DK-EK1-AB', 48))
+        cur.fetchall.return_value = [{'id': 9}, {'id': 10}]  # mehrdeutig
+        self.assertIsNone(R._umsatz_match(cur, 'DK-EK1-AB', 48))
+
+    def test_auftrag_zustand(self):
+        from modules.orga.bestellwesen import hibiscus_reconcile as R
+        from unittest.mock import MagicMock
+        cur = MagicMock()
+        cur.fetchone.return_value = None
+        self.assertEqual(R._auftrag_zustand(cur, '5'), 'weg')
+        cur.fetchone.return_value = {'ausgefuehrt': 0}
+        self.assertEqual(R._auftrag_zustand(cur, '5'), 'offen')
+        cur.fetchone.return_value = {'ausgefuehrt': 1}
+        self.assertEqual(R._auftrag_zustand(cur, '5'), 'gesendet')
+        # Schema-Fehler → None (defensiv, NIE Reset)
+        cur.execute.side_effect = Exception('no such table')
+        self.assertIsNone(R._auftrag_zustand(cur, '5'))
+        self.assertIsNone(R._auftrag_zustand(cur, ''))
+
+    def _reconcile(self, *, vm, umsatz=None, zustand_row='__none__',
+                   debit='48'):
+        from modules.orga.bestellwesen import hibiscus_reconcile as R
+        from unittest.mock import MagicMock, patch
+        cur = MagicMock()
+        # fetchall: [vm-Liste, umsatz-Match]; fetchone: aueberweisung
+        cur.fetchall.side_effect = [[vm], (umsatz or [])]
+        cur.fetchone.side_effect = [
+            None if zustand_row == '__none__' else zustand_row]
+        with patch.object(R.ek, '_hibiscus_vormerkung_schema'), \
+             patch.object(R.ek, '_journal_op_rebuild_qu5'), \
+             patch.object(R.ek, 'bankumsatz_uebernehmen',
+                          return_value={'ok': True}) as bub, \
+             patch.object(R, 'get_db', self._ctx(cur)), \
+             patch.object(R, 'get_db_transaction', self._ctx(cur)), \
+             patch('common.konfig.get',
+                   side_effect=lambda k, d=None:
+                       debit if k == 'hibiscus.debit_konto_id' else d):
+            res = R.reconcile_vormerkungen()
+        return res, bub, cur
+
+    def _vm(self, **kw):
+        base = {'REC_ID': 1, 'REFERENZ_ID': 555, 'ENDTOENDID': 'DK-EK555-AA',
+                'HIBISCUS_AUFTRAG_ID': '77', 'BETRAG': 100.0,
+                'alter_tage': 5}
+        base.update(kw)
+        return base
+
+    def test_e2e_treffer_bucht(self):
+        res, bub, _ = self._reconcile(
+            vm=self._vm(), umsatz=[{'id': 9, 'betrag': -100.0}])
+        bub.assert_called_once()
+        self.assertEqual(bub.call_args.args[0], 555)   # rec_id
+        self.assertEqual(bub.call_args.args[1], 9)      # umsatz_id
+        self.assertEqual(res['gebucht'], 1)
+
+    def test_kein_debit_konto_skip(self):
+        res, bub, _ = self._reconcile(vm=self._vm(), debit='')
+        bub.assert_not_called()
+        self.assertFalse(res['ok'])
+        self.assertEqual(res['offen'], 1)
+
+    def test_auftrag_weg_alt_reset(self):
+        # kein Umsatz, aueberweisung-Zeile weg, alt genug → Reset
+        res, bub, cur = self._reconcile(
+            vm=self._vm(alter_tage=5), umsatz=[], zustand_row='__none__')
+        bub.assert_not_called()
+        self.assertEqual(res['zurueckgesetzt'], 1)
+        sql = ' '.join(c.args[0] for c in cur.execute.call_args_list
+                       if c.args)
+        self.assertIn('STADIUM=2', sql)
+        self.assertIn("STATUS='zurueckgesetzt'", sql)
+
+    def test_auftrag_offen_kein_reset(self):
+        res, bub, _ = self._reconcile(
+            vm=self._vm(), umsatz=[], zustand_row={'ausgefuehrt': 0})
+        bub.assert_not_called()
+        self.assertEqual(res['zurueckgesetzt'], 0)
+        self.assertEqual(res['offen'], 1)
+
+    def test_auftrag_weg_aber_zu_jung_kein_reset(self):
+        res, _, _ = self._reconcile(
+            vm=self._vm(alter_tage=1), umsatz=[], zustand_row='__none__')
+        self.assertEqual(res['zurueckgesetzt'], 0)
+        self.assertEqual(res['offen'], 1)
+
+
 if __name__ == '__main__':
     unittest.main()

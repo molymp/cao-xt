@@ -3705,6 +3705,20 @@ def api_system_banking_debit_konto():
         return jsonify(ok=False, msg=str(e)), 500
 
 
+@app.post('/api/system/banking/reconcile')
+@_login_required
+def api_system_banking_reconcile():
+    """Phase E.3: SEPA-Vormerkungen jetzt gegen Bankumsätze abgleichen
+    (manueller Anstoß — läuft sonst im Einkauf-Poller-Intervall mit)."""
+    try:
+        from modules.orga.bestellwesen import hibiscus_reconcile as hr
+        r = hr.reconcile_vormerkungen()
+        return jsonify(ok=bool(r.get('ok', True)), **r)
+    except Exception as e:
+        log.exception('reconcile fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 def _hibiscus_userdata() -> str:
     from installer import hibiscus_setup as _hs
     return os.path.join(_hs.DEFAULT_BASIS, 'userdata')
