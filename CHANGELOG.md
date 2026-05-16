@@ -56,11 +56,13 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 ### Geändert
 
 - systemd-Units: wirkungsloses `After=mariadb.service` entfernt (DB
-  läuft remote, kein lokales MariaDB). Stattdessen
-  `ExecStartPre=… -m common.wait_for_db` (wartet bis zu 120 s auf
-  TCP-Erreichbarkeit der DB, Exit 0 auch bei Timeout),
-  `Environment=PYTHONPATH=<install_root>`, `TimeoutStartSec=180`.
-  Glättet den Boot (kein Poller-Fehlstart, keine Redirect-Schleife).
+  läuft remote, kein lokales MariaDB). **Daemon-Units** (haccp-/
+  einkauf-poller) bekommen `ExecStartPre=… -m common.wait_for_db`
+  (wartet bis 120 s auf DB-TCP, Exit 0 auch bei Timeout) +
+  `TimeoutStartSec=180` → kein Exit-2-Crash-Loop mehr beim Boot.
+  **Web-Apps bewusst OHNE** `wait_for_db`: sonst Port beim Boot
+  ~20–30 s zu (connection refused); stattdessen schneller Start +
+  `common.db_gate`-Warteseite bis die DB steht.
 - HACCP: TFA-Geräte-ID (`TFA_DEVICE_ID`, z. B. `A52CED248`) als Feld in
   Sichtkontrolle-Liste, Dashboard-Kacheln und Alarm-Tabellen ergänzt;
   Detailseite-Label „Device-ID" → „Geräte-ID" (Konsistenz). Alarm-

@@ -88,15 +88,15 @@ PartOf={target_unit}
 [Service]
 Type=simple
 {owner_block}WorkingDirectory={install_root}/{app_dir}
-Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH={install_root}
-ExecStartPre={install_root}/.venv/bin/python3 -m common.wait_for_db
 ExecStart={install_root}/.venv/bin/python3 app.py
+Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=5s
-# >= common.wait_for_db MAX_WAIT_S (120s) + App-Start, sonst killt
-# systemd den Start bei langsamer DB als Timeout.
-TimeoutStartSec=180
+# Web-Apps starten BEWUSST ohne wait_for_db: sonst ist der Port beim
+# Boot ~20-30s zu (connection refused) statt offen. Die DB-Wartezeit
+# faengt common.db_gate ab (freundliche Warteseite, sobald die App
+# lauscht). wait_for_db nur fuer Daemons (kein HTTP, sonst Exit-2-Loop).
+TimeoutStartSec=60
 
 # Logs gehen nach journald — Abruf via:
 #   journalctl{journal_user_flag} -u {full_name} -f
