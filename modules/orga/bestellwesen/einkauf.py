@@ -157,14 +157,19 @@ EINKAUF_DEFAULT_ORDER = 'j.RDATUM DESC, j.REC_ID DESC'
 def einkauf_liste(*, suche: str = '', stadium: int | None = None,
                   zahlart_id: int | None = None,
                   storno_aus: bool = True,
+                  bezahlt: str = 'alle',
+                  von_datum: date | None = None,
+                  bis_datum: date | None = None,
                   sort_sql: str = EINKAUF_DEFAULT_ORDER,
-                  limit: int = 100, offset: int = 0
-                  ) -> dict[str, Any]:
-    """Einkäufe (QUELLE 5/15). Serverseitig gefiltert, sortiert,
-    paginiert. Returns ``{'rows': [...], 'total': int}``.
+                  limit: int = 2000) -> dict[str, Any]:
+    """Einkäufe (QUELLE 5/15) eines Zeitraums (RDATUM von/bis),
+    serverseitig gefiltert + sortiert. Returns
+    ``{'rows': [...], 'total': int, 'gekuerzt': bool}``.
 
-    ``storno_aus`` (Default True) blendet stornierte Belege
-    (STADIUM 125/126/127) aus.
+    - ``storno_aus`` (Default True): STADIUM 125/126/127 ausblenden.
+    - ``bezahlt``: ``'alle'`` | ``'bezahlt'`` (STADIUM 8/9) |
+      ``'unbezahlt'`` (alles andere = noch offener Betrag).
+    - ``limit``: Sicherheits-Cap; ``gekuerzt`` = total > limit.
     """
     _hibiscus_vormerkung_schema()
     soll_zahlart = _ek_zahlart_ueberweisung_id()
@@ -181,6 +186,16 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
         params.append(int(zahlart_id))
     if storno_aus:
         where.append('j.STADIUM NOT IN (125, 126, 127)')
+    if bezahlt == 'bezahlt':
+        where.append('j.STADIUM IN (8, 9)')
+    elif bezahlt == 'unbezahlt':
+        where.append('j.STADIUM NOT IN (8, 9)')
+    if von_datum is not None:
+        where.append('j.RDATUM >= %s')
+        params.append(von_datum)
+    if bis_datum is not None:
+        where.append('j.RDATUM <= %s')
+        params.append(bis_datum)
     where_sql = ' AND '.join(where)
 
     with get_db() as cur:
@@ -222,9 +237,9 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
             LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
             WHERE {where_sql}
             ORDER BY {sort_sql}
-            LIMIT %s OFFSET %s
+            LIMIT %s
             """,
-            params + [int(limit), int(offset)],
+            params + [int(limit)],
         )
         rows = cur.fetchall()
     for r in rows:
@@ -234,7 +249,7 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
             r.get('quelle'), r.get('stadium'), r.get('zahlart_id'),
             r.get('lief_iban'), bool(r.get('hat_vormerkung')),
             soll_zahlart)
-    return {'rows': rows, 'total': total}
+    return {'rows': rows, 'total': total, 'gekuerzt': total > int(limit)}
 
 
 def einkauf_detail(rec_id: int) -> dict[str, Any] | None:

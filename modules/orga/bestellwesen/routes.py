@@ -434,8 +434,8 @@ def api_we_buchen(rec_id: int) -> Any:
 
 @bp.get('/einkauf/')
 def einkauf_uebersicht():
-    """Liste aller Einkaufs-Belege (in Bearbeitung + verbucht).
-    Serverseitig gefiltert, sortiert, paginiert."""
+    """Liste der Einkaufs-Belege eines Zeitraums (Monat/Quartal/Jahr),
+    serverseitig gefiltert + sortiert."""
     _login_check()
     from common import listing
     suche = (request.args.get('q') or '').strip()
@@ -445,28 +445,34 @@ def einkauf_uebersicht():
     zahlart_id = int(zahlart_raw) if zahlart_raw.isdigit() else None
     # Default: stornierte ausblenden; nur zeigen wenn explizit gewünscht.
     storno_aus = request.args.get('storno') != '1'
+    bezahlt = request.args.get('bezahlt') or 'alle'
+    if bezahlt not in ('alle', 'bezahlt', 'unbezahlt'):
+        bezahlt = 'alle'
 
+    pz = listing.periode(request.args.get('gran') or 'monat',
+                         request.args.get('periode'))
     order_sql, sort_key, sort_dir = listing.parse_sort(
         request.args, ek.EINKAUF_SORT, ek.EINKAUF_DEFAULT_ORDER)
-    page, per_page = listing.parse_paging(request.args,
-                                          default_per_page=100)
 
     daten = ek.einkauf_liste(
         suche=suche, stadium=stadium, zahlart_id=zahlart_id,
-        storno_aus=storno_aus, sort_sql=order_sql,
-        limit=per_page, offset=(page - 1) * per_page)
-    pg = listing.pager(daten['total'], page, per_page)
+        storno_aus=storno_aus, bezahlt=bezahlt,
+        von_datum=pz['von'], bis_datum=pz['bis'],
+        sort_sql=order_sql)
 
     return render_template(
         'einkauf.html',
         eintraege=daten['rows'],
-        pager=pg,
+        total=daten['total'],
+        gekuerzt=daten.get('gekuerzt', False),
+        periode=pz,
         sort_key=sort_key,
         sort_dir=sort_dir,
         suche=suche,
         stadium=stadium,
         zahlart_id=zahlart_id,
         storno_aus=storno_aus,
+        bezahlt=bezahlt,
         zahlungsarten=ek.zahlungsarten_filter(),
         stadium_label=ek.STADIUM_LABEL,
         banking_konfiguriert=ek.banking_konfiguriert(),

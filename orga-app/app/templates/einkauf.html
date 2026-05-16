@@ -92,7 +92,7 @@
 <div class="ek-kopf">
     <h1>🧾 Einkäufe – Übersicht</h1>
     <div style="display:flex; gap:10px; align-items:center;">
-        <span class="ek-trefferzahl">{{ pager.total }} Treffer{% if pager.seiten > 1 %} · Seite {{ pager.page }}/{{ pager.seiten }}{% endif %}</span>
+        <span class="ek-trefferzahl">{{ total }} Treffer · {{ periode.label }}{% if gekuerzt %} · ⚠ gekürzt – Zeitraum eingrenzen{% endif %}</span>
         <button type="button" class="btn-primary" onclick="ekNeu()">+ Neuer Einkauf</button>
     </div>
 </div>
@@ -126,15 +126,28 @@
             {% endfor %}
         </select>
     </label>
+    <label>
+        Bezahlt
+        <select name="bezahlt">
+            <option value="alle" {% if bezahlt == 'alle' %}selected{% endif %}>alle</option>
+            <option value="bezahlt" {% if bezahlt == 'bezahlt' %}selected{% endif %}>nur bezahlte</option>
+            <option value="unbezahlt" {% if bezahlt == 'unbezahlt' %}selected{% endif %}>nur unbezahlte</option>
+        </select>
+    </label>
     <label style="flex-direction:row;align-items:center;gap:6px;">
         <input type="checkbox" name="storno" value="1"
                {% if not storno_aus %}checked{% endif %}>
         stornierte anzeigen
     </label>
+    {# Granularität/Zeitraum als hidden mitführen, damit „Filtern“ sie behält #}
+    <input type="hidden" name="gran" value="{{ periode.gran }}">
+    <input type="hidden" name="periode" value="{{ periode.anchor }}">
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset"
             onclick="window.location='{{ url_for('orga_bestellwesen.einkauf_uebersicht') }}'">Zurücksetzen</button>
 </form>
+
+{{ L.zeitnav(periode) }}
 
 <script>
 // Neuen Einkauf anlegen via Lieferanten-Picker (analog Wareneingang)
@@ -267,7 +280,6 @@ async function ekVormerkungZurueck(recId) {
     {% endfor %}
     </tbody>
 </table>
-{{ L.pager(pager) }}
 {% else %}
 <div class="ek-leer">Keine Einkäufe gefunden.</div>
 {% endif %}

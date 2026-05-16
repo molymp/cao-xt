@@ -85,5 +85,45 @@ class TestPager(unittest.TestCase):
                          (0, 0, 0, 1))
 
 
+class TestPeriode(unittest.TestCase):
+    from datetime import date as _d
+    H = _d(2026, 5, 16)
+
+    def test_monat_default_und_grenzen(self):
+        p = listing.periode('monat', None, self.H)
+        self.assertEqual(p['label'], 'Mai 2026')
+        self.assertEqual((p['von'].isoformat(), p['bis'].isoformat()),
+                         ('2026-05-01', '2026-05-31'))
+        self.assertEqual((p['prev'], p['next']), ('2026-04', '2026-06'))
+
+    def test_monat_jahreswechsel(self):
+        self.assertEqual(
+            listing.periode('monat', '2026-01', self.H)['prev'],
+            '2025-12')
+        self.assertEqual(
+            listing.periode('monat', '2026-12', self.H)['next'],
+            '2027-01')
+
+    def test_quartal(self):
+        p = listing.periode('quartal', '2026-Q2', self.H)
+        self.assertEqual((p['von'].isoformat(), p['bis'].isoformat()),
+                         ('2026-04-01', '2026-06-30'))
+        self.assertEqual((p['prev'], p['next']),
+                         ('2026-Q1', '2026-Q3'))
+
+    def test_jahr(self):
+        p = listing.periode('jahr', '2024', self.H)
+        self.assertEqual((p['von'].isoformat(), p['bis'].isoformat()),
+                         ('2024-01-01', '2024-12-31'))
+
+    def test_ungueltig_faellt_auf_aktuell(self):
+        p = listing.periode('quatsch', 'xx', self.H)
+        self.assertEqual(p['gran'], 'monat')
+        self.assertEqual(p['label'], 'Mai 2026')
+        self.assertEqual(
+            listing.periode('quartal', 'kaputt', self.H)['label'],
+            'Q2 2026')
+
+
 if __name__ == '__main__':
     unittest.main()
