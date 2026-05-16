@@ -265,12 +265,39 @@ APPS = {
         'cwd': _REPO_ROOT,
         'log': _log_path('einkauf-poller'),
     },
+    'jameica': {
+        'type': 'daemon',
+        # Externer Prozess (kein python -m): argv erst zur Startzeit
+        # bauen (Plattform + Installations-Check + PW-Kommando).
+        'argv_factory': lambda: _jameica_daemon_argv(),
+        'cwd': _REPO_ROOT,
+        'log': os.path.join(LOG_DIR, 'caoxt-jameica.log'),
+    },
 }
 
 # Start-Reihenfolge: Admin zuerst (Stammdaten-Basis), danach Orga
-# (legt HACCP-Tabellen an), dann Poller, dann Kasse, Kiosk zuletzt.
+# (legt HACCP-Tabellen an), dann Poller, Jameica (Banking-Backend),
+# dann Kasse, Kiosk zuletzt.
 START_ORDER = ['admin', 'orga', 'haccp-poller', 'einkauf-poller',
-               'kasse', 'kiosk']
+               'jameica', 'kasse', 'kiosk']
+
+
+def _jameica_daemon_argv():
+    """Baut das headless-Jameica-argv (oder None, wenn nicht
+    installiert → Daemon wird sauber übersprungen).
+
+    Master-Passwort via ``-P``-Kommando aus DORFKERN_KONFIG (kein
+    Passwort auf der Platte). Quote-sicher als ein String, da Jameica
+    das passwordcommand über die Shell ausführt.
+    """
+    from installer import hibiscus_setup as _hs
+    basis = os.path.join(_REPO_ROOT, '.hibiscus')
+    if not _hs.ist_installiert(basis):
+        return None
+    pw_script = os.path.join(_REPO_ROOT, 'installer', 'hibiscus_pw.py')
+    pw_cmd = f'"{_APP_PYTHON}" "{pw_script}"'
+    return _hs.jameica_start_cmd(basis, headless=True,
+                                 passwordcommand=pw_cmd)
 
 # Legacy-Aliase: `app_manager verwaltung start` / `app_manager wawi start`
 # werden auf die neuen Namen gemappt. Soll in Dorfkern v2.1 entfernt werden.
@@ -422,15 +449,34 @@ def _start_web_app(name: str, cfg: dict, *, print_fn=print) -> bool:
 
 
 def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
-    """Startet einen port-losen Hintergrund-Daemon via ``python -m <module>``.
+    """Startet einen port-losen Hintergrund-Daemon.
+
+    Standard: ``python -m <module>``. Für externe Prozesse (z.B.
+    Jameica) liefert ``cfg['argv']`` (Liste) oder ``cfg['argv_factory']``
+    (Callable → Liste) das vollständige argv; ``argv_factory`` wird zur
+    Startzeit ausgewertet (z.B. um Konfig/Plattform frisch zu lesen).
+    Liefert die Factory ``None`` → Start wird sauber abgelehnt.
 
     Health-Check: kurz warten und pruefen, dass der Prozess nicht sofort
-    abgestuerzt ist. Fuer echten Gesundheitscheck dient die Logdatei bzw.
-    der app-eigene Heartbeat (z.B. ``XT_HACCP_POLLER_STATUS`` beim Poller).
+    abgestuerzt ist (Logdatei / app-eigener Heartbeat fuer echten Check).
     """
-    module = cfg['module']
     cwd    = cfg.get('cwd', _REPO_ROOT)
     log_path = cfg['log']
+    if cfg.get('argv'):
+        argv = list(cfg['argv'])
+    elif cfg.get('argv_factory'):
+        try:
+            argv = cfg['argv_factory']()
+        except Exception as e:
+            print_fn(f"  ✗  {name}: nicht startbar: {e}")
+            return False
+        if not argv:
+            print_fn(f"  –  {name}: nicht konfiguriert/installiert "
+                     f"– übersprungen.")
+            return False
+        argv = list(argv)
+    else:
+        argv = [_APP_PYTHON, '-m', cfg['module']]
 
     # Alten Prozess ueber PID-Datei stoppen (kein Port zum Checken)
     pids = _load_pids()
@@ -454,7 +500,7 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
     log_file = open(log_path, 'a')
     try:
         proc = subprocess.Popen(
-            [_APP_PYTHON, '-m', module],
+            argv,
             cwd=cwd,
             stdout=log_file,
             stderr=log_file,

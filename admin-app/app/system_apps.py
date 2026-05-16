@@ -65,6 +65,9 @@ def _beschreibung(name: str) -> str:
         'kasse':        'Kassen-App (TSE, EC, Bondruck)',
         'kiosk':        'Kiosk-App (Touch-Selbstbedienung)',
         'haccp-poller': 'HACCP-Poller (TFA-API, zyklisch)',
+        'einkauf-poller': 'Einkauf-Poller (Gmail, zyklisch)',
+        'jameica':      'Jameica/Hibiscus (Onlinebanking-Backend, '
+                        'headless XML-RPC)',
     }.get(name, '')
 
 

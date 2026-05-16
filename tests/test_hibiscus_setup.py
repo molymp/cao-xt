@@ -156,6 +156,65 @@ class TestJava(unittest.TestCase):
         self.assertIn('Paketmanager', r['msg'])
 
 
+class TestDaemon(unittest.TestCase):
+    def test_passwordcommand_vor_passwordfile(self):
+        p = hs.aktuelle_plattform('Linux', 'x86_64')
+        cmd = hs.jameica_start_cmd('/b', headless=True,
+                                   passwordfile='/b/pw',
+                                   passwordcommand='PWCMD', plat=p)
+        self.assertIn('-P', cmd)
+        self.assertIn('PWCMD', cmd)
+        self.assertNotIn('-w', cmd)            # -P hat Vorrang
+        self.assertNotIn('-d', cmd)            # Linux server.sh
+
+    def test_macos_daemon_dn_und_P(self):
+        p = hs.aktuelle_plattform('Darwin', 'arm64')
+        cmd = hs.jameica_start_cmd('/b', headless=True,
+                                   passwordcommand='X', plat=p)
+        self.assertEqual(
+            cmd, ['/b/jameica.app/jameica-macos-aarch64.sh', '-f',
+                  '/b/userdata', '-d', '-n', '-P', 'X'])
+
+    def test_ist_installiert(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = hs.aktuelle_plattform('Darwin', 'arm64')
+            self.assertFalse(hs.ist_installiert(d, plat=p))
+            launcher = os.path.join(d, 'jameica.app',
+                                    'jameica-macos-aarch64.sh')
+            os.makedirs(os.path.dirname(launcher))
+            open(launcher, 'w').close()
+            self.assertTrue(hs.ist_installiert(d, plat=p))
+
+    def test_app_manager_jameica_skip_ohne_install(self):
+        from installer import app_manager as am
+        self.assertIn('jameica', am.APPS)
+        self.assertIn('jameica', am.START_ORDER)
+        with patch('installer.hibiscus_setup.ist_installiert',
+                   return_value=False):
+            self.assertIsNone(am._jameica_daemon_argv())
+
+    def test_hibiscus_pw_stdout(self):
+        import importlib
+        m = importlib.import_module('installer.hibiscus_pw')
+        with patch('common.konfig.get', return_value='S3cret'):
+            buf = io.StringIO()
+            with patch('sys.stdout', buf):
+                rc = m.main()
+        self.assertEqual(rc, 0)
+        self.assertEqual(buf.getvalue(), 'S3cret')   # kein \n
+
+    def test_hibiscus_pw_fehlt(self):
+        import importlib
+        m = importlib.import_module('installer.hibiscus_pw')
+        with patch('common.konfig.get', return_value=''):
+            buf = io.StringIO()
+            with patch('sys.stdout', buf), patch('sys.stderr',
+                                                 io.StringIO()):
+                rc = m.main()
+        self.assertEqual(rc, 1)
+        self.assertEqual(buf.getvalue(), '')
+
+
 class TestDbConfig(unittest.TestCase):
     def test_db_config_setzt_mysql_treiber_und_url(self):
         with tempfile.TemporaryDirectory() as d:
