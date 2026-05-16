@@ -2657,8 +2657,7 @@ def _hibiscus_vormerkung_schema() -> None:
               KEY idx_status (STATUS),
               KEY idx_auftrag (HIBISCUS_AUFTRAG_ID)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-              COMMENT='Dorfkern→Hibiscus SEPA-Vormerkungen (generisch, '
-                      'modulübergreifend; Phase E.2/E.3)'
+              COMMENT='Dorfkern-Hibiscus SEPA-Vormerkungen generisch (E.2/E.3)'
         """)
 
 
