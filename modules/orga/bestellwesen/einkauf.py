@@ -2561,6 +2561,68 @@ def _verwendungszweck_ek(vrenum: str, orgnum: str,
     return ' '.join(teile)[:140]
 
 
+# Generische Verknüpfung Dorfkern-Vorgang ↔ Hibiscus-SEPA-Auftrag.
+# Bewusst modulübergreifend (MODUL/REFERENZ_ID), damit später auch
+# Lohn/VK/… andocken können, OHNE dass JOURNAL.STADIUM die Wahrheit
+# trägt. Diese Tabelle IST zugleich die Sicherheitsgrenze des
+# (späteren) E.3-Reconcilers: er fasst NUR Aufträge an, die hier
+# stehen — manuell in Jameica erfasste SEPA-Aufträge bleiben unberührt.
+def _hibiscus_vormerkung_schema() -> None:
+    """Legt ``XT_HIBISCUS_VORMERKUNG`` an. Idempotent."""
+    with get_db() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS XT_HIBISCUS_VORMERKUNG (
+              REC_ID               BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              MODUL                VARCHAR(32)   NOT NULL,
+              REFERENZ_ID          BIGINT        NOT NULL,
+              RICHTUNG             CHAR(1)       NOT NULL DEFAULT 'A',
+              HIBISCUS_AUFTRAG_ID  VARCHAR(64)   NULL,
+              ENDTOENDID           VARCHAR(35)   NOT NULL,
+              IBAN                 VARCHAR(34)   NULL,
+              BIC                  VARCHAR(11)   NULL,
+              EMPFAENGER           VARCHAR(140)  NULL,
+              BETRAG               DECIMAL(13,2) NOT NULL,
+              STATUS               ENUM('vorgemerkt','bezahlt',
+                                        'zurueckgesetzt','fehler')
+                                     NOT NULL DEFAULT 'vorgemerkt',
+              ANGELEGT_AM          DATETIME      NOT NULL
+                                     DEFAULT CURRENT_TIMESTAMP,
+              ANGELEGT_VON         VARCHAR(50)   NULL,
+              AKTUALISIERT_AM      DATETIME      NOT NULL
+                                     DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+              NOTIZ                VARCHAR(255)  NULL,
+              UNIQUE KEY uq_endtoendid (ENDTOENDID),
+              KEY idx_modul_ref (MODUL, REFERENZ_ID),
+              KEY idx_status (STATUS),
+              KEY idx_auftrag (HIBISCUS_AUFTRAG_ID)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+              COMMENT='Dorfkern→Hibiscus SEPA-Vormerkungen (generisch, '
+                      'modulübergreifend; Phase E.2/E.3)'
+        """)
+
+
+# Modul → Kurzpräfix für die EndToEndId (SEPA: ≤35 Zeichen,
+# Zeichensatz hier bewusst auf [A-Z0-9-] beschränkt — manche Banken
+# filtern Sonderzeichen).
+_MODUL_KUERZEL = {'einkauf': 'EK'}
+
+
+def _dorfkern_endtoendid(modul: str, referenz_id: int) -> str:
+    """Dorfkern-genamespacte, eindeutige SEPA-EndToEndId.
+
+    Schema ``DK-<KUERZEL><REF>-<RAND6>`` (≤35). Dient als
+    deterministischer Korrelationsschlüssel für den späteren
+    Bankumsatz-Abgleich (camt.05x trägt die EndToEndId zurück) und
+    ist durch das ``DK-``-Präfix automatisch von Fremd-/Manuell-
+    Aufträgen abgegrenzt.
+    """
+    import secrets
+    kuerzel = _MODUL_KUERZEL.get(modul, modul[:4].upper() or 'XX')
+    rand = secrets.token_hex(3).upper()          # 6 Hex-Zeichen
+    return f"DK-{kuerzel}{int(referenz_id)}-{rand}"[:35]
+
+
 def vormerken_via_hibiscus(rec_id: int, *,
                             ma_id: int | None = None,
                             ma_name: str = '') -> dict[str, Any]:
@@ -2574,17 +2636,22 @@ def vormerken_via_hibiscus(rec_id: int, *,
     project_zahlungsmanagement_hibiscus). Hier wird der Auftrag nur in
     die Hibiscus-Warteschlange gelegt.
 
-    Idempotenz (MyISAM, kein Rollback): ``STADIUM=11`` ist „sticky" —
-    ein erneuter Aufruf wird mit :class:`PermissionError` abgelehnt,
-    damit keine Doppel-Überweisung entsteht. Es wird **keine**
-    ``ZAHLUNGEN``-Zeile geschrieben (das passiert erst beim späteren
-    Bank-Umsatz-Abgleich, Phase E.3).
+    Idempotenz (MyISAM, kein Rollback): ``STADIUM=11`` ist „sticky"
+    UND es darf keine aktive ``XT_HIBISCUS_VORMERKUNG``-Zeile
+    (STATUS='vorgemerkt') für den Beleg geben — sonst
+    :class:`PermissionError` (keine Doppel-Überweisung). Es wird
+    **keine** ``ZAHLUNGEN``-Zeile geschrieben (das passiert erst beim
+    späteren Bank-Umsatz-Abgleich, Phase E.3). Persistiert die von
+    Hibiscus zurückgegebene Auftrags-ID + eine Dorfkern-eigene
+    EndToEndId in ``XT_HIBISCUS_VORMERKUNG`` (generisch, = Scoping-
+    Grenze + Korrelationsschlüssel für den E.3-Reconciler).
     """
     from common import konfig
     from common.hibiscus_client import aus_konfig, HibiscusError
 
     rec_id = int(rec_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:50]
+    _hibiscus_vormerkung_schema()
 
     with get_db() as cur:
         cur.execute(
@@ -2613,6 +2680,21 @@ def vormerken_via_hibiscus(rec_id: int, *,
             raise PermissionError('Beleg ist bereits voll bezahlt')
         if st in (125, 126, 127):
             raise PermissionError('Beleg ist storniert')
+
+        # Generischer Doppel-Schutz (unabhängig von STADIUM, damit der
+        # Pfad auch für künftige Nicht-Einkauf-Module korrekt ist):
+        # keine zweite Vormerkung solange eine aktive existiert.
+        cur.execute(
+            "SELECT REC_ID FROM XT_HIBISCUS_VORMERKUNG "
+            "WHERE MODUL='einkauf' AND REFERENZ_ID=%s "
+            "  AND STATUS='vorgemerkt' LIMIT 1",
+            (rec_id,)
+        )
+        if cur.fetchone():
+            raise PermissionError(
+                'Für diesen Beleg existiert bereits eine aktive '
+                'Hibiscus-Vormerkung. In der Jameica-GUI senden bzw. '
+                'den Auftrag dort löschen.')
 
         bsumme = float(kopf.get('BSUMME') or 0)
         s_betrag, s_skonto = _zahlungssumme_und_skonto(cur, rec_id)
@@ -2647,7 +2729,7 @@ def vormerken_via_hibiscus(rec_id: int, *,
             "(DORFKERN_KONFIG 'hibiscus.debit_konto_id').")
 
     zweck = _verwendungszweck_ek(vrenum, orgnum, lief_name)
-    endtoendid = (vrenum or orgnum or '')[:35]
+    endtoendid = _dorfkern_endtoendid('einkauf', rec_id)
 
     try:
         client = aus_konfig()
@@ -2660,10 +2742,24 @@ def vormerken_via_hibiscus(rec_id: int, *,
     except HibiscusError as e:
         raise RuntimeError(f'Hibiscus: {e}') from e
 
-    # SEPA-Auftrag liegt jetzt in Hibiscus. STADIUM=11 setzen —
+    # SEPA-Auftrag liegt jetzt in Hibiscus. Verknüpfung persistieren
+    # (Scoping-Grenze + Korrelationsschlüssel), dann STADIUM=11 —
     # idempotent (nur 2→11, nie 11 überschreiben). Keine ZAHLUNGEN-
-    # Zeile (kommt erst beim Bank-Umsatz-Abgleich, E.3).
+    # Zeile (kommt erst beim Bank-Umsatz-Abgleich, Phase E.3).
     with get_db_transaction() as cur:
+        cur.execute(
+            """INSERT INTO XT_HIBISCUS_VORMERKUNG
+                 (MODUL, REFERENZ_ID, RICHTUNG, HIBISCUS_AUFTRAG_ID,
+                  ENDTOENDID, IBAN, BIC, EMPFAENGER, BETRAG,
+                  STATUS, ANGELEGT_VON)
+               VALUES ('einkauf', %s, 'A', %s,
+                       %s, %s, %s, %s, %s,
+                       'vorgemerkt', %s)""",
+            (rec_id, str(hibiscus_id)[:64], endtoendid,
+             lief_iban[:34], lief_bic[:11],
+             (lief_name or 'Lieferant')[:140], offen, ma_name_safe)
+        )
+        vormerkung_id = int(cur.lastrowid)
         cur.execute(
             "UPDATE JOURNAL SET STADIUM=11 "
             "WHERE REC_ID=%s AND QUELLE=5 AND STADIUM<>11",
@@ -2672,12 +2768,15 @@ def vormerken_via_hibiscus(rec_id: int, *,
         _journal_op_rebuild_qu5(cur)
 
     logging.getLogger(__name__).info(
-        'EK-Beleg %s via Hibiscus vorgemerkt (Auftrag %s, %.2f €, %s)',
-        rec_id, hibiscus_id, offen, ma_name_safe)
+        'EK-Beleg %s via Hibiscus vorgemerkt (Auftrag %s, E2E %s, '
+        '%.2f €, %s)', rec_id, hibiscus_id, endtoendid, offen,
+        ma_name_safe)
     return {
         'ok': True,
         'rec_id': rec_id,
+        'vormerkung_id': vormerkung_id,
         'hibiscus_id': str(hibiscus_id),
+        'endtoendid': endtoendid,
         'betrag': offen,
         'stadium': 11,
         'hinweis': 'In Hibiscus vorgemerkt. Senden mit S-pushTAN '

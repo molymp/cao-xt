@@ -639,14 +639,18 @@ class TestVormerkenViaHibiscus(unittest.TestCase):
         return _g
 
     def _run(self, *, kopf, sums=(0.0, 0.0), debit='48',
-             client_exc=None):
+             client_exc=None, aktive_vormerkung=None):
         import modules.orga.bestellwesen.einkauf as E
         import common.hibiscus_client as hc
         from unittest.mock import MagicMock
 
         cur = MagicMock()
+        cur.lastrowid = 99
+        # Reihenfolge der fetchone(): Header → aktive-Vormerkung-Guard
+        # → Zahlungssumme.
         cur.fetchone.side_effect = [
             kopf,
+            aktive_vormerkung,
             {'s_betrag': sums[0], 's_skonto': sums[1]},
         ]
         fake_client = MagicMock()
@@ -727,6 +731,41 @@ class TestVormerkenViaHibiscus(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self._run(kopf=self._kopf(),
                       client_exc=HibiscusError('boom'))
+
+    def test_aktive_vormerkung_wirft(self):
+        # Generischer Doppel-Schutz: existiert bereits eine aktive
+        # XT_HIBISCUS_VORMERKUNG-Zeile → PermissionError.
+        with self.assertRaises(PermissionError):
+            self._run(kopf=self._kopf(),
+                      aktive_vormerkung={'REC_ID': 7})
+
+    def test_persistiert_vormerkung_und_endtoendid(self):
+        res, cur, client = self._run(kopf=self._kopf())
+        # EndToEndId Dorfkern-genamespact + im Ergebnis + an Client
+        e2e = res['endtoendid']
+        self.assertTrue(e2e.startswith('DK-EK123-'), e2e)
+        self.assertLessEqual(len(e2e), 35)
+        self.assertEqual(
+            client.sepa_ueberweisung_anlegen.call_args.kwargs['endtoendid'],
+            e2e)
+        self.assertEqual(res['vormerkung_id'], 99)
+        # INSERT in die generische Verknüpfungstabelle (Status
+        # 'vorgemerkt', modulübergreifend keyed).
+        sql = ' '.join(c.args[0] for c in cur.execute.call_args_list
+                       if c.args)
+        self.assertIn('XT_HIBISCUS_VORMERKUNG', sql)
+        self.assertIn("'vorgemerkt'", sql)
+        self.assertIn("'einkauf'", sql)
+
+    def test_endtoendid_format_und_eindeutig(self):
+        import modules.orga.bestellwesen.einkauf as E
+        a = E._dorfkern_endtoendid('einkauf', 555811)
+        b = E._dorfkern_endtoendid('einkauf', 555811)
+        for x in (a, b):
+            self.assertTrue(x.startswith('DK-EK555811-'), x)
+            self.assertLessEqual(len(x), 35)
+            self.assertRegex(x, r'^[A-Z0-9-]+$')
+        self.assertNotEqual(a, b)   # Zufallsanteil → kollisionsarm
 
 
 if __name__ == '__main__':
