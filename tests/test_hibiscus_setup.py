@@ -69,7 +69,8 @@ class TestPropertiesMerge(unittest.TestCase):
     def test_sync_scheduler_keys(self):
         with tempfile.TemporaryDirectory() as d:
             p = hs.schreibe_sync_scheduler(
-                d, interval_min=90, start_hour=7, end_hour=21)
+                d, interval_min=90, start_hour=7, end_hour=21,
+                enabled=True, stop_on_error=True)
             self.assertTrue(p.endswith(
                 'de.willuhn.jameica.hbci.'
                 'SynchronizeSchedulerSettings.properties'))
@@ -90,6 +91,10 @@ class TestPropertiesMerge(unittest.TestCase):
             self.assertIn('interval.minutes=360', txt)
             self.assertIn('start.hour=7', txt)
             self.assertIn('end.hour=19', txt)
+            # Default AUS: headless-Auto-Sync ist mit pushTAN bewiesen
+            # nicht möglich → bewusst per Admin-UI einzuschalten.
+            self.assertIn('enabled=false', txt)
+            self.assertIn('stoponerror=false', txt)
             fenster_h = (hs.SYNC_DEFAULT_END_HOUR
                          - hs.SYNC_DEFAULT_START_HOUR)
             laeufe = fenster_h * 60 // hs.SYNC_DEFAULT_INTERVAL_MIN + 1

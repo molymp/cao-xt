@@ -118,12 +118,20 @@
 
 <div class="karte">
   <h2>Automatische Synchronisierung</h2>
+  <div class="fehler-box" style="margin:0 0 10px;">
+    🛑 <b>Wichtig bei pushTAN-Banken (Sparkasse S-pushTAN):</b>
+    Headless-Auto-Sync funktioniert hier <b>nicht</b> — Hibiscus
+    signiert HBCI-Nachrichten nur mit GUI (bewiesen: „signing failed"
+    headless, auch mit gespeicherter PIN + frischer SCA). <b>Bank-Sync
+    manuell im Jameica-GUI</b> ausführen (pushTAN am Handy bestätigen);
+    Dorfkern zeigt das Ergebnis read-only (Panel „Bank-Sync" in der
+    Kontenübersicht). Daher hier per Default <b>AUS</b>.
+  </div>
   <div class="hinweis-box" style="margin:0 0 12px;">
-    ⚠️ <b>Frequenz beachten:</b> Konto-Abruf ohne frische SCA ist
-    bankseitig begrenzt (typisch <b>~4×/Tag</b>) und unabhängig davon
-    erzwingt die Bank <b>mind. alle 90 Tage</b> eine S-pushTAN-Freigabe
-    (Mensch am Handy — kann keine App). Zu häufig ⇒ ständige pushTAN.
-    Konservativ lassen (~3/Tag).
+    Einschalten nur sinnvoll für Banken/TAN-Verfahren <i>ohne</i>
+    interaktive Signatur. Dann Frequenz beachten: Abruf ohne frische
+    SCA ist bankseitig begrenzt (typisch <b>~4×/Tag</b>), zusätzlich
+    <b>alle 90 Tage</b> Pflicht-SCA. Konservativ (~3/Tag).
   </div>
   <div class="zeile"><span class="lbl">Aktiv</span>
     <span class="val"><input type="checkbox" id="sc-enabled"></span></div>

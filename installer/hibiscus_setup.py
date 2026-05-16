@@ -471,16 +471,24 @@ def schreibe_sync_scheduler(userdata: str, *,
                             interval_min: int = SYNC_DEFAULT_INTERVAL_MIN,
                             start_hour: int = SYNC_DEFAULT_START_HOUR,
                             end_hour: int = SYNC_DEFAULT_END_HOUR,
-                            enabled: bool = True,
-                            stop_on_error: bool = True) -> str:
+                            enabled: bool = False,
+                            stop_on_error: bool = False) -> str:
     """Konfiguriert Hibiscus' interne automatische Synchronisierung.
 
-    Read-only-Scope (Saldo/Umsaetze/Banknachrichten) ist in Hibiscus
-    pro Konto bereits Default-an; was fehlt, ist der Zeit-Scheduler.
-    Keys: ``de.willuhn.jameica.hbci.SynchronizeSchedulerSettings``.
+    Default **enabled=False**: bewiesen (2026-05-16, mehrfach
+    reproduziert) — ein headless Jameica (`-d -n`) kann KEINEN
+    PIN/TAN-signierten Bank-Sync ausführen. Die HBCI-Nachrichten-
+    Signatur läuft immer über ``PassportHandleImpl.callback``, das
+    eine GUI braucht (Log: ``signing failed`` + ``GUI.gui is null``)
+    — auch bei gespeicherter PIN und frischer SCA (90-Tage-Fenster
+    hilft nicht, da auch Saldo/Umsatz signiert werden müssen). Bei
+    pushTAN-Banken MUSS der Sync manuell im Jameica-GUI laufen;
+    Dorfkern zeigt das Ergebnis read-only (protokoll).
+    Der Scheduler ist nur für Banken/TAN-Verfahren OHNE interaktive
+    Signatur sinnvoll → bewusst per Admin-UI einzuschalten.
 
-    ACHTUNG Frequenz: zu viele Abrufe/Tag → Bank erzwingt SCA
-    (S-pushTAN, manuell). Default bewusst konservativ (~3/Tag).
+    ``stop_on_error=False``: ein Konto ohne FinTS-Medium (PayPal,
+    Fremdbank) darf nicht den ganzen Lauf abwürgen.
     """
     pfad = os.path.join(userdata, 'cfg', _SYNC_SCHED_PROPS)
     _schreibe_properties(pfad, {
