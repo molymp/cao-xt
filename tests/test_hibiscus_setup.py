@@ -670,12 +670,18 @@ class TestVormerkenViaHibiscus(unittest.TestCase):
 
     def _kopf(self, **kw):
         base = {'QUELLE': 5, 'STADIUM': 2, 'BSUMME': 100.0,
+                'ZAHLART': 2,  # 2 = „Überweisung Bank" (Gate)
                 'VRENUM': 'EDI-000123', 'ORGNUM': 'RE-77',
                 'lief_name': 'Müller GmbH',
                 'lief_iban': 'DE89 3704 0044 0532 0130 00',
                 'lief_bic': 'cobadeffxxx'}
         base.update(kw)
         return base
+
+    def test_zahlart_kein_ueberweisung_wirft(self):
+        # Lastschrift (ZAHLART=9) → kein Vormerken (Doppelzahlung).
+        with self.assertRaises(PermissionError):
+            self._run(kopf=self._kopf(ZAHLART=9))
 
     def test_happy_path_setzt_stadium_11(self):
         res, cur, client = self._run(kopf=self._kopf())
@@ -766,6 +772,112 @@ class TestVormerkenViaHibiscus(unittest.TestCase):
             self.assertLessEqual(len(x), 35)
             self.assertRegex(x, r'^[A-Z0-9-]+$')
         self.assertNotEqual(a, b)   # Zufallsanteil → kollisionsarm
+
+
+class TestUeberweisungZustand(unittest.TestCase):
+    """_ueberweisung_zustand: harter Zahlart-Gate + Lagen."""
+
+    def _z(self, **kw):
+        import modules.orga.bestellwesen.einkauf as E
+        d = dict(quelle=5, stadium=2, zahlart_id=2, iban='DE1',
+                 hat_vormerkung=False, soll_zahlart=2)
+        d.update(kw)
+        return E._ueberweisung_zustand(
+            d['quelle'], d['stadium'], d['zahlart_id'], d['iban'],
+            d['hat_vormerkung'], d['soll_zahlart'])
+
+    def test_lastschrift_gibt_none(self):
+        self.assertIsNone(self._z(zahlart_id=9))   # Lastschrift
+
+    def test_kein_ek_gibt_none(self):
+        self.assertIsNone(self._z(quelle=3))
+
+    def test_offen_mit_iban_vorbereiten(self):
+        self.assertEqual(self._z(stadium=2), 'vorbereiten')
+        self.assertEqual(self._z(stadium=7), 'vorbereiten')
+
+    def test_offen_ohne_iban_iban_fehlt(self):
+        self.assertEqual(self._z(stadium=2, iban=''), 'iban_fehlt')
+
+    def test_stadium11_oder_vormerkung_zuruecknehmen(self):
+        self.assertEqual(self._z(stadium=11), 'zuruecknehmen')
+        self.assertEqual(self._z(stadium=2, hat_vormerkung=True),
+                         'zuruecknehmen')
+
+    def test_bezahlt_gibt_none(self):
+        self.assertIsNone(self._z(stadium=9))
+
+
+class TestSepaUeberweisungLoeschen(unittest.TestCase):
+    def test_delete_ruft_richtige_methode(self):
+        c = HibiscusClient('https://127.0.0.1:8080/xmlrpc', 'u', 'pw')
+        calls = []
+        c._proxy = type('P', (), {'__getattr__': staticmethod(
+            lambda n: (lambda *a: calls.append((n, a))))})()
+        self.assertTrue(c.sepa_ueberweisung_loeschen('HIB-7'))
+        self.assertEqual(
+            calls[0][0], 'hibiscus.xmlrpc.sepaueberweisung.delete')
+        self.assertEqual(calls[0][1], ('HIB-7',))
+
+
+class TestVormerkungZuruecknehmen(unittest.TestCase):
+    def _ctx(self, cur):
+        import contextlib
+
+        @contextlib.contextmanager
+        def _g():
+            yield cur
+        return _g
+
+    def _run(self, *, vm, ub_count=0, auftrag_del_exc=None):
+        import modules.orga.bestellwesen.einkauf as E
+        import common.hibiscus_client as hc
+        from unittest.mock import MagicMock
+        cur = MagicMock()
+        # fetchone: aktive Vormerkung → UB-Zähler
+        cur.fetchone.side_effect = [vm, {'n': ub_count}]
+        fake = MagicMock()
+        if auftrag_del_exc:
+            fake.sepa_ueberweisung_loeschen.side_effect = auftrag_del_exc
+        else:
+            fake.sepa_ueberweisung_loeschen.return_value = True
+        with patch.object(E, 'get_db', self._ctx(cur)), \
+             patch.object(E, 'get_db_transaction', self._ctx(cur)), \
+             patch.object(hc, 'aus_konfig', return_value=fake):
+            return E.vormerkung_zuruecknehmen(123, ma_name='T'), cur, fake
+
+    def test_happy_loescht_in_hibiscus_und_resetet(self):
+        res, cur, fake = self._run(
+            vm={'REC_ID': 5, 'HIBISCUS_AUFTRAG_ID': 'HIB-9',
+                'BETRAG': 100.0})
+        self.assertTrue(res['ok'])
+        self.assertEqual(res['stadium'], 2)
+        self.assertTrue(res['hibiscus_geloescht'])
+        fake.sepa_ueberweisung_loeschen.assert_called_once_with('HIB-9')
+        sql = ' '.join(c.args[0] for c in cur.execute.call_args_list
+                       if c.args)
+        self.assertIn("STATUS='zurueckgesetzt'", sql)
+        self.assertIn('STADIUM=2', sql)
+        self.assertIn('STADIUM=11', sql)   # idempotenter WHERE-Schutz
+
+    def test_keine_aktive_vormerkung_lookup(self):
+        with self.assertRaises(LookupError):
+            self._run(vm=None)
+
+    def test_bereits_ub_zahlung_blockt(self):
+        with self.assertRaises(PermissionError):
+            self._run(vm={'REC_ID': 5, 'HIBISCUS_AUFTRAG_ID': 'X',
+                          'BETRAG': 1.0}, ub_count=1)
+
+    def test_hibiscus_delete_fehler_resetet_trotzdem(self):
+        from common.hibiscus_client import HibiscusError
+        res, _, _ = self._run(
+            vm={'REC_ID': 5, 'HIBISCUS_AUFTRAG_ID': 'HIB-9',
+                'BETRAG': 1.0},
+            auftrag_del_exc=HibiscusError('weg'))
+        self.assertTrue(res['ok'])
+        self.assertFalse(res['hibiscus_geloescht'])
+        self.assertIn('nicht gelöscht', res['hinweis'])
 
 
 if __name__ == '__main__':

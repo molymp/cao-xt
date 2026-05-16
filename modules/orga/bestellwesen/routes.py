@@ -446,6 +446,7 @@ def einkauf_uebersicht():
         suche=suche,
         stadium=stadium,
         stadium_label=ek.STADIUM_LABEL,
+        banking_konfiguriert=ek.banking_konfiguriert(),
     )
 
 
@@ -604,6 +605,23 @@ def api_ek_vormerken_hibiscus(rec_id: int) -> Any:
     ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
     try:
         result = ek.vormerken_via_hibiscus(
+            rec_id, ma_id=ma_id, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 502
+    return jsonify(result)
+
+
+@bp.post('/einkauf/<int:rec_id>/api/vormerkung-zuruecknehmen')
+def api_ek_vormerkung_zuruecknehmen(rec_id: int) -> Any:
+    """Nimmt die aktive SEPA-Vormerkung zurück (löscht den Auftrag in
+    Hibiscus + setzt STADIUM 11→2). Sicherheitsklappe vor E.3."""
+    _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.vormerkung_zuruecknehmen(
             rec_id, ma_id=ma_id, ma_name=ma_name)
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400

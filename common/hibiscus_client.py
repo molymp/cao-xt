@@ -199,6 +199,15 @@ class HibiscusClient:
         res = self._ruf('sepaueberweisung.create', params)
         return str(res)
 
+    def sepa_ueberweisung_loeschen(self, auftrag_id: str) -> bool:
+        """Löscht einen NOCH NICHT gesendeten SEPA-Auftrag in Hibiscus
+        (``sepaueberweisung.delete``). Reines Queue-Delete — braucht
+        **kein** Signieren. Gibt ``True`` zurück, wenn Hibiscus den
+        Aufruf ohne Fehler quittiert.
+        """
+        self._ruf('sepaueberweisung.delete', str(auftrag_id))
+        return True
+
     # Status der automatischen Synchronisierung. Hibiscus-CORE-Service
     # → handler-id 'hibiscus.synchronizescheduler' (NICHT hibiscus.xmlrpc).
     _SYNC_STATUS = {

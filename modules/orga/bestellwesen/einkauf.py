@@ -106,10 +106,45 @@ def _next_edi_belegnum(cur) -> str:
     return f'EDI-{n + 1:06d}'
 
 
+def _ueberweisung_zustand(quelle: int, stadium: int, zahlart_id: int,
+                           iban: str, hat_vormerkung: bool,
+                           soll_zahlart: int) -> str | None:
+    """UI-Zustand des Überweisungs-Knopfs pro EK-Beleg.
+
+    Returns einen von ``None`` (nichts anzeigen), ``'vorbereiten'``,
+    ``'iban_fehlt'``, ``'zuruecknehmen'``. Harter Gate: nur Zahlart
+    „Überweisung Bank" (sonst None — verhindert Lastschrift-Doppel-
+    zahlung).
+    """
+    if int(quelle or 0) != 5:
+        return None
+    if int(zahlart_id or -1) != int(soll_zahlart):
+        return None
+    st = int(stadium or 0)
+    if st == 11 or hat_vormerkung:
+        return 'zuruecknehmen'
+    if st in (2, 7):
+        return 'vorbereiten' if (iban or '').strip() else 'iban_fehlt'
+    return None
+
+
+def banking_konfiguriert() -> bool:
+    """True, wenn ein Hibiscus-Belastungskonto hinterlegt ist
+    (Voraussetzung für die Überweisungs-Buttons)."""
+    from common import konfig
+    try:
+        v = konfig.get('hibiscus.debit_konto_id')
+        return bool(v) and int(v) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def einkauf_liste(*, suche: str = '', stadium: int | None = None,
                   limit: int = 200) -> list[dict[str, Any]]:
     """Liste aller Einkäufe (QUELLE in (5, 15) — also in-Bearbeitung
     und verbuchte EK-Rechnungen)."""
+    _hibiscus_vormerkung_schema()
+    soll_zahlart = _ek_zahlart_ueberweisung_id()
     where = ['j.QUELLE IN (5, 15)']
     params: list[Any] = []
     if suche:
@@ -134,10 +169,17 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
             j.MSUMME                            AS msumme,
             j.BSUMME                            AS bsumme,
             j.ZAHLART_NAME                      AS zahlart_name,
+            j.ZAHLART                           AS zahlart_id,
+            COALESCE(a.IBAN, '')                AS lief_iban,
             (
                 SELECT COUNT(*) FROM JOURNALPOS p
                  WHERE p.JOURNAL_ID = j.REC_ID AND p.TOP_POS_ID = -1
-            )                                   AS pos_anzahl
+            )                                   AS pos_anzahl,
+            (
+                SELECT COUNT(*) FROM XT_HIBISCUS_VORMERKUNG v
+                 WHERE v.MODUL = 'einkauf' AND v.REFERENZ_ID = j.REC_ID
+                   AND v.STATUS = 'vorgemerkt'
+            )                                   AS hat_vormerkung
         FROM JOURNAL j
         LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
         WHERE {' AND '.join(where)}
@@ -150,6 +192,10 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
     for r in rows:
         r['stadium_label'] = _stadium_label(r.get('stadium'))
         r['ist_offen'] = (int(r.get('stadium') or 0) == 0)
+        r['ueberweisung_zustand'] = _ueberweisung_zustand(
+            r.get('quelle'), r.get('stadium'), r.get('zahlart_id'),
+            r.get('lief_iban'), bool(r.get('hat_vormerkung')),
+            soll_zahlart)
     return rows
 
 
@@ -187,6 +233,20 @@ def einkauf_detail(rec_id: int) -> dict[str, Any] | None:
             (rec_id,),
         )
         positionen = cur.fetchall()
+
+        # Überweisungs-Zustand (gleiche Logik wie in der Übersicht).
+        _hibiscus_vormerkung_schema()
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM XT_HIBISCUS_VORMERKUNG "
+            " WHERE MODUL='einkauf' AND REFERENZ_ID=%s "
+            "   AND STATUS='vorgemerkt'",
+            (rec_id,)
+        )
+        hat_vm = int((cur.fetchone() or {}).get('n') or 0) > 0
+    kopf['ueberweisung_zustand'] = _ueberweisung_zustand(
+        kopf.get('QUELLE'), kopf.get('STADIUM'), kopf.get('ZAHLART'),
+        kopf.get('lief_iban'), hat_vm, _ek_zahlart_ueberweisung_id())
+    kopf['banking_konfiguriert'] = banking_konfiguriert()
     return {'kopf': kopf, 'positionen': positionen}
 
 
@@ -2623,6 +2683,21 @@ def _dorfkern_endtoendid(modul: str, referenz_id: int) -> str:
     return f"DK-{kuerzel}{int(referenz_id)}-{rand}"[:35]
 
 
+# ZAHLART-Gate: nur Belege mit Zahlart „Überweisung Bank" dürfen
+# vorgemerkt werden. WICHTIG (Praxis-Fehlerfall): bei Lastschrift
+# zieht die Bank selbst ein — eine zusätzliche Überweisung wäre eine
+# Doppelzahlung. ZAHLUNGSARTEN live verifiziert: id 2 = „Überweisung
+# Bank", id 9 = „Lastschrift". ID NICHT hartkodiert → konfigurierbar,
+# Default = 2.
+def _ek_zahlart_ueberweisung_id() -> int:
+    from common import konfig
+    try:
+        v = konfig.get('hibiscus.ek_zahlart_ueberweisung_id')
+        return int(v) if v not in (None, '') else 2
+    except (TypeError, ValueError):
+        return 2
+
+
 def vormerken_via_hibiscus(rec_id: int, *,
                             ma_id: int | None = None,
                             ma_name: str = '') -> dict[str, Any]:
@@ -2656,6 +2731,7 @@ def vormerken_via_hibiscus(rec_id: int, *,
     with get_db() as cur:
         cur.execute(
             """SELECT j.QUELLE, j.STADIUM, j.BSUMME, j.VRENUM, j.ORGNUM,
+                      j.ZAHLART,
                       COALESCE(a.NAME1, j.KUN_NAME1, '') AS lief_name,
                       COALESCE(a.IBAN, '')  AS lief_iban,
                       COALESCE(a.SWIFT, '') AS lief_bic
@@ -2670,6 +2746,14 @@ def vormerken_via_hibiscus(rec_id: int, *,
         if int(kopf.get('QUELLE') or 0) != 5:
             raise PermissionError(
                 f"QUELLE={kopf.get('QUELLE')} — kein gebuchter Einkauf")
+        # ZAHLART-Gate (Server-seitig, Defense-in-Depth gegen direkte
+        # Route-Aufrufe / Lastschrift-Doppelzahlung).
+        zahlart_soll = _ek_zahlart_ueberweisung_id()
+        if int(kopf.get('ZAHLART') or -1) != zahlart_soll:
+            raise PermissionError(
+                'Zahlart ist nicht „Überweisung Bank" — keine '
+                'Vormerkung (bei Lastschrift zieht die Bank selbst '
+                'ein; eine Überweisung wäre eine Doppelzahlung).')
         st = int(kopf.get('STADIUM') or 0)
         if st == 11:
             raise PermissionError(
@@ -2781,6 +2865,101 @@ def vormerken_via_hibiscus(rec_id: int, *,
         'stadium': 11,
         'hinweis': 'In Hibiscus vorgemerkt. Senden mit S-pushTAN '
                    'erfolgt manuell in der Jameica-GUI.',
+    }
+
+
+def vormerkung_zuruecknehmen(rec_id: int, *,
+                              ma_id: int | None = None,
+                              ma_name: str = '') -> dict[str, Any]:
+    """Nimmt eine aktive SEPA-Vormerkung zurück: löscht den (noch
+    nicht gesendeten) Auftrag in Hibiscus, setzt
+    ``XT_HIBISCUS_VORMERKUNG.STATUS='zurueckgesetzt'`` und
+    ``JOURNAL.STADIUM 11→2``.
+
+    Sicherheitsklappe bis zum E.3-Reconciler. **Nur** anbieten/
+    aufrufen, solange in Jameica noch nicht freigegeben/gesendet —
+    das kann headless nicht zuverlässig erkannt werden, daher: keine
+    verbuchte UB-Zahlung als Vorbedingung + UI-Warnung. Idempotent
+    (kein aktiver Eintrag → LookupError).
+    """
+    from common.hibiscus_client import aus_konfig, HibiscusError
+
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:50]
+    _hibiscus_vormerkung_schema()
+
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, HIBISCUS_AUFTRAG_ID, BETRAG "
+            "  FROM XT_HIBISCUS_VORMERKUNG "
+            " WHERE MODUL='einkauf' AND REFERENZ_ID=%s "
+            "   AND STATUS='vorgemerkt' "
+            " ORDER BY REC_ID DESC LIMIT 1",
+            (rec_id,)
+        )
+        vm = cur.fetchone()
+        if not vm:
+            raise LookupError(
+                'Keine aktive Vormerkung zu diesem Beleg.')
+        # Bereits eine aktive (gebuchte, nicht stornierte) UB-Zahlung?
+        # Dann ist Geld geflossen → NICHT zurücksetzen.
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM ZAHLUNGEN "
+            " WHERE JOURNAL_ID=%s AND QUELLE=5 AND ART='UB' "
+            "   AND STORNO=0 AND GEBUCHT='Y'",
+            (rec_id,)
+        )
+        if int((cur.fetchone() or {}).get('n') or 0) > 0:
+            raise PermissionError(
+                'Es ist bereits eine Bank-Zahlung verbucht — '
+                'Vormerkung kann nicht zurückgenommen werden.')
+
+    auftrag_id = (vm.get('HIBISCUS_AUFTRAG_ID') or '').strip()
+    hibiscus_geloescht = False
+    loesch_hinweis = ''
+    if auftrag_id:
+        try:
+            aus_konfig().sepa_ueberweisung_loeschen(auftrag_id)
+            hibiscus_geloescht = True
+        except HibiscusError as e:
+            # Auftrag evtl. schon weg/gesendet — Reset trotzdem
+            # zulassen, aber transparent vermerken.
+            loesch_hinweis = (f'Hibiscus-Auftrag {auftrag_id} nicht '
+                              f'gelöscht ({e}). Bitte in Jameica '
+                              f'prüfen.')
+            logging.getLogger(__name__).warning(
+                'Vormerkung %s: Hibiscus-delete fehlgeschlagen: %s',
+                rec_id, e)
+
+    with get_db_transaction() as cur:
+        cur.execute(
+            "UPDATE XT_HIBISCUS_VORMERKUNG "
+            "   SET STATUS='zurueckgesetzt', "
+            "       NOTIZ=CONCAT_WS(' | ', NOTIZ, %s) "
+            " WHERE REC_ID=%s AND STATUS='vorgemerkt'",
+            (f'zurückgenommen von {ma_name_safe}'
+             + (f'; {loesch_hinweis}' if loesch_hinweis else ''),
+             int(vm['REC_ID']))
+        )
+        cur.execute(
+            "UPDATE JOURNAL SET STADIUM=2 "
+            " WHERE REC_ID=%s AND QUELLE=5 AND STADIUM=11",
+            (rec_id,)
+        )
+        _journal_op_rebuild_qu5(cur)
+
+    logging.getLogger(__name__).info(
+        'Vormerkung Beleg %s zurückgenommen (Auftrag %s, Hibiscus-'
+        'delete=%s, %s)', rec_id, auftrag_id or '–',
+        hibiscus_geloescht, ma_name_safe)
+    return {
+        'ok': True,
+        'rec_id': rec_id,
+        'stadium': 2,
+        'hibiscus_geloescht': hibiscus_geloescht,
+        'hinweis': loesch_hinweis or
+                   'Vormerkung zurückgenommen, Auftrag in Hibiscus '
+                   'gelöscht.',
     }
 
 

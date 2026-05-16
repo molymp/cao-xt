@@ -151,6 +151,44 @@ function ekNeu() {
         },
     });
 }
+
+// ── Phase E.2: Überweisung vorbereiten / zurücknehmen (Listenzeile)
+async function _ekPost(recId, pfad) {
+    try {
+        const r = await fetch(
+            `/orga/bestellwesen/einkauf/${recId}/api/${pfad}`,
+            {method: 'POST', headers: {'Content-Type': 'application/json'},
+             body: '{}'});
+        return await r.json();
+    } catch (e) { return {ok: false, fehler: 'Verbindungsfehler'}; }
+}
+async function ekVormerken(recId) {
+    if (!confirm(
+        'SEPA-Überweisung für den offenen Betrag in Hibiscus vormerken?\n\n' +
+        'Es wird NICHT gesendet — den Auftrag danach in der Jameica-GUI ' +
+        'mit S-pushTAN freigeben. Der Beleg wird auf „angewiesen" gesetzt.'
+    )) return;
+    cxLadenZeigen('Lege Überweisung in Hibiscus an …');
+    const res = await _ekPost(recId, 'vormerken-hibiscus');
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    alert('In Hibiscus vorgemerkt.\n\nJetzt in der Jameica-GUI mit S-pushTAN senden.');
+    window.location.reload();
+}
+async function ekVormerkungZurueck(recId) {
+    if (!confirm(
+        'Vormerkung zurücknehmen?\n\n' +
+        'Der Auftrag wird in Hibiscus gelöscht und der Beleg wieder ' +
+        'auf „offen" gesetzt. NUR machen, wenn in Jameica noch NICHT ' +
+        'mit S-pushTAN freigegeben/gesendet wurde.'
+    )) return;
+    cxLadenZeigen('Nehme Vormerkung zurück …');
+    const res = await _ekPost(recId, 'vormerkung-zuruecknehmen');
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    alert(res.hinweis || 'Vormerkung zurückgenommen.');
+    window.location.reload();
+}
 </script>
 
 {% if eintraege %}
@@ -166,6 +204,7 @@ function ekNeu() {
             <th class="zahl-rechts">Brutto €</th>
             <th>Zahlart</th>
             <th title="Zahlungs-Status — nur fuer gebuchte Belege relevant">Zahl-Stadium</th>
+            <th title="SEPA-Überweisung vorbereiten (nur Zahlart „Überweisung Bank")">Überweisung</th>
         </tr>
     </thead>
     <tbody>
@@ -187,6 +226,25 @@ function ekNeu() {
               <span style="color:#aaa;">–</span>
             {% else %}
               <span class="ek-pille ek-pille-{{ e.stadium or 0 }}">{{ e.stadium_label }}</span>
+            {% endif %}
+        </td>
+        <td onclick="event.stopPropagation();">
+            {% set uz = e.ueberweisung_zustand %}
+            {% if uz == 'vorbereiten' and banking_konfiguriert %}
+              <button type="button" class="btn-aktion"
+                onclick="ekVormerken({{ e.rec_id }})"
+                title="SEPA-Überweisung in Hibiscus vorbereiten">🏦 Vorbereiten</button>
+            {% elif uz == 'vorbereiten' and not banking_konfiguriert %}
+              <span style="color:#b83030;" title="Belastungskonto in Admin → System → Banking hinterlegen">Banking aus</span>
+            {% elif uz == 'iban_fehlt' %}
+              <span style="color:#b83030; font-weight:600;"
+                title="Lieferanten-IBAN in den Stammdaten ergänzen">⚠ IBAN fehlt!</span>
+            {% elif uz == 'zuruecknehmen' %}
+              <button type="button" class="btn-danger"
+                onclick="ekVormerkungZurueck({{ e.rec_id }})"
+                title="Auftrag in Hibiscus löschen, Beleg zurück auf offen">↩ Zurücknehmen</button>
+            {% else %}
+              <span style="color:#ccc;">–</span>
             {% endif %}
         </td>
     </tr>
