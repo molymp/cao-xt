@@ -3516,6 +3516,7 @@ def _banking_status() -> dict:
     from common import konfig
     pw = konfig.get('hibiscus.master_passwort') or ''
     cert = konfig.get('hibiscus.cert_sha256') or ''
+    debit = konfig.get('hibiscus.debit_konto_id')
     ini_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__)))), 'caoxt', 'caoxt.ini')
@@ -3530,7 +3531,22 @@ def _banking_status() -> dict:
         'aktiv':        hib.get('aktiv', '') in ('1', 'true', 'True'),
         'cert_gepinnt': bool(cert),
         'cert_sha256':  (cert[:16] + '…') if cert else '',
+        'debit_konto_id': int(debit) if str(debit or '').lstrip('-').isdigit()
+                          else None,
     }
+
+
+def _cao_standard_bankkonto() -> dict | None:
+    """Das in CAO als „Standard" markierte Firmen-Bankkonto
+    (FIBU_KONTEN KONTOART=20, STANDARD='Y'). Für den Default der
+    Belastungskonto-Auswahl."""
+    try:
+        import stammdaten_firmenbank as fb
+        eintraege = (fb.liste() or {}).get('eintraege') or []
+    except Exception:
+        return None
+    std = [e for e in eintraege if e.get('standard')]
+    return std[0] if std else None
 
 
 @app.get('/api/system/banking')
@@ -3606,6 +3622,86 @@ def api_system_banking_cert_reset():
                            '„Verbindung testen" pinnt neu.')
     except Exception as e:
         log.exception('cert-reset fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.get('/api/system/banking/konten')
+@_login_required
+def api_system_banking_konten():
+    """Liste der Hibiscus-Konten für die Belastungskonto-Auswahl.
+    Markiert das CAO-„Standard"-Firmenbankkonto (Default) und das
+    aktuell gewählte (``hibiscus.debit_konto_id``)."""
+    try:
+        from common import konfig
+        from common.hibiscus_client import aus_konfig, HibiscusError
+        try:
+            konten = aus_konfig(timeout=20).konto_list_parsed()
+        except HibiscusError as he:
+            return jsonify(ok=False, erreichbar=False, msg=str(he))
+        std = _cao_standard_bankkonto() or {}
+        std_blz = (std.get('blz') or '').strip()
+        std_kto = (std.get('ktonr') or '').strip()
+        default_id = None
+        out = []
+        for k in konten:
+            if not isinstance(k, dict) or 'id' not in k:
+                continue
+            ist_std = bool(std_blz and std_kto
+                           and str(k.get('blz') or '').strip() == std_blz
+                           and str(k.get('kontonummer') or '').strip()
+                               == std_kto)
+            if ist_std:
+                default_id = k.get('id')
+            out.append({
+                'id':          k.get('id'),
+                'bezeichnung': k.get('bezeichnung'),
+                'kontonummer': k.get('kontonummer'),
+                'blz':         k.get('blz'),
+                'ist_cao_standard': ist_std,
+            })
+        sel = konfig.get('hibiscus.debit_konto_id')
+        sel = int(sel) if str(sel or '').lstrip('-').isdigit() else None
+        return jsonify(ok=True, erreichbar=True, konten=out,
+                       default_id=default_id, gewaehlt=sel,
+                       cao_standard=std.get('kurzbez') or std.get('bank')
+                                    or '')
+    except Exception as e:
+        log.exception('banking konten fehlgeschlagen')
+        return jsonify(ok=False, erreichbar=False, msg=str(e)), 500
+
+
+@app.post('/api/system/banking/debit-konto')
+@_login_required
+def api_system_banking_debit_konto():
+    """Setzt das Hibiscus-Belastungskonto für SEPA-Vormerkungen
+    (``hibiscus.debit_konto_id``). Validiert gegen die echten
+    Hibiscus-Konten."""
+    body = request.get_json(silent=True) or {}
+    try:
+        kid = int(body.get('konto_id'))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, msg='konto_id ungültig.'), 400
+    try:
+        from common import konfig
+        from common.hibiscus_client import aus_konfig, HibiscusError
+        try:
+            konten = aus_konfig(timeout=20).konto_list_parsed()
+        except HibiscusError as he:
+            return jsonify(ok=False, msg=str(he)), 502
+        gueltig = {k.get('id') for k in konten if isinstance(k, dict)}
+        if kid not in gueltig:
+            return jsonify(
+                ok=False,
+                msg='Kein Hibiscus-Konto mit dieser ID.'), 400
+        konfig.set('hibiscus.debit_konto_id', kid, typ='INT',
+                   kategorie='HIBISCUS',
+                   beschreibung='Hibiscus-konto.id des Belastungs'
+                                'kontos für SEPA-Vormerkungen.',
+                   ma_id=session.get('ma_id'))
+        konfig.invalidate('hibiscus.debit_konto_id')
+        return jsonify(ok=True, gewaehlt=kid, **_banking_status())
+    except Exception as e:
+        log.exception('debit-konto speichern fehlgeschlagen')
         return jsonify(ok=False, msg=str(e)), 500
 
 

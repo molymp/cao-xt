@@ -146,6 +146,39 @@ class HibiscusClient:
     def konto_list(self) -> list[dict[str, Any]]:
         return list(self._ruf('konto.list') or [])
 
+    # `hibiscus.xmlrpc.konto.list` liefert KEINE Maps, sondern Doppel-
+    # punkt-Strings (live verifiziert 2026-05-16):
+    #   id:kontonummer:blz:bezeichnung:kundennummer:name:saldo:datum
+    # (8 Felder; `bezeichnung` kann ':' enthalten → von rechts parsen).
+    @staticmethod
+    def _parse_konto_zeile(s: str) -> dict[str, Any]:
+        teile = str(s).split(':')
+        if len(teile) < 8:
+            return {'roh': s}
+        def _f(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return None
+        return {
+            'id':           int(teile[0]) if teile[0].lstrip('-').isdigit()
+                            else teile[0],
+            'kontonummer':  teile[1],
+            'blz':          teile[2],
+            'bezeichnung':  ':'.join(teile[3:-4]),
+            'kundennummer': teile[-4],
+            'name':         teile[-3],
+            'saldo':        _f(teile[-2]),
+            'saldo_datum':  teile[-1],
+        }
+
+    def konto_list_parsed(self) -> list[dict[str, Any]]:
+        """Wie :meth:`konto_list`, aber die Doppelpunkt-Strings in
+        stabile Dicts geparst (id/kontonummer/blz/bezeichnung/
+        kundennummer/name/saldo/saldo_datum)."""
+        return [self._parse_konto_zeile(z)
+                for z in (self._ruf('konto.list') or [])]
+
     def umsatz_find(self, konto_id: int, von: str = '',
                     bis: str = '') -> list[dict[str, Any]]:
         """``hibiscus.xmlrpc.umsatz.find`` – Umsätze eines Kontos.

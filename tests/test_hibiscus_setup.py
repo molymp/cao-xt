@@ -820,6 +820,47 @@ class TestSepaUeberweisungLoeschen(unittest.TestCase):
         self.assertEqual(calls[0][1], ('HIB-7',))
 
 
+class TestKontoListParsed(unittest.TestCase):
+    """konto.list liefert Doppelpunkt-Strings → stabile Dicts."""
+
+    _ZEILEN = [
+        '35:428078:70093200:HabaDola VRSTA:600906027:'
+        'Habacher Dorfladen UG (mbH):-1.5:28.01.2026',
+        '48:33035130:70351030:HabaDola Sparkasse Oberland:7815945853:'
+        'HABACHER DORFLADEN UG  HAFT:12484.03:16.05.2026',
+        '52:12345:12345:PayPal:12345:Marc Ledermann:0.0:10.05.2026',
+    ]
+
+    def _client(self):
+        c = HibiscusClient('https://127.0.0.1:8080/xmlrpc', 'u', 'pw')
+        c._proxy = type('P', (), {'__getattr__': staticmethod(
+            lambda n: (lambda *a: list(self._ZEILEN)))})()
+        return c
+
+    def test_parst_acht_felder(self):
+        rows = self._client().konto_list_parsed()
+        self.assertEqual(len(rows), 3)
+        spk = next(r for r in rows if r['id'] == 48)
+        self.assertEqual(spk['kontonummer'], '33035130')
+        self.assertEqual(spk['blz'], '70351030')
+        self.assertEqual(spk['bezeichnung'], 'HabaDola Sparkasse Oberland')
+        self.assertEqual(spk['saldo'], 12484.03)
+        self.assertEqual(spk['saldo_datum'], '16.05.2026')
+        self.assertIsInstance(spk['id'], int)
+
+    def test_bezeichnung_mit_doppelpunkt_robust(self):
+        c = HibiscusClient('https://127.0.0.1:8080/xmlrpc', 'u', 'pw')
+        c._proxy = type('P', (), {'__getattr__': staticmethod(
+            lambda n: (lambda *a: [
+                '7:111:222:Konto: Spezial:333:Inhaber X:5.0:01.01.2026'
+            ]))})()
+        r = c.konto_list_parsed()[0]
+        self.assertEqual(r['id'], 7)
+        self.assertEqual(r['bezeichnung'], 'Konto: Spezial')
+        self.assertEqual(r['saldo'], 5.0)
+        self.assertEqual(r['saldo_datum'], '01.01.2026')
+
+
 class TestVormerkungZuruecknehmen(unittest.TestCase):
     def _ctx(self, cur):
         import contextlib

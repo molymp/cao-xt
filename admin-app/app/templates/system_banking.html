@@ -117,6 +117,26 @@
 </div>
 
 <div class="karte">
+  <h2>Belastungskonto für Überweisungen</h2>
+  <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">
+    Von diesem Hibiscus-Konto werden SEPA-Vormerkungen (Einkauf →
+    „Überweisung vorbereiten") angewiesen. Vorbelegt mit dem in CAO
+    als <em>Standard</em> markierten Firmen-Bankkonto.
+  </p>
+  <div class="zeile">
+    <span class="lbl">Konto</span>
+    <span class="val">
+      <select id="dk-sel" style="min-width:280px;">
+        <option value="">– lädt …</option>
+      </select>
+      <button class="btn" id="btn-dk-save" disabled>Speichern</button>
+    </span>
+  </div>
+  <div id="dk-msg" class="hinweis-box" style="display:none;margin-top:10px;"></div>
+  <div id="dk-fehler" class="fehler-box" style="display:none;margin-top:10px;"></div>
+</div>
+
+<div class="karte">
   <h2>Automatische Synchronisierung</h2>
   <div class="fehler-box" style="margin:0 0 10px;">
     🛑 <b>Wichtig bei pushTAN-Banken (Sparkasse S-pushTAN):</b>
@@ -297,7 +317,69 @@ _e('btn-sc-save').addEventListener('click', async () => {
   }
 });
 
+// ── Belastungskonto-Auswahl ───────────────────────────────────────
+async function ladeKonten(){
+  const sel = _e('dk-sel');
+  const fb  = _e('dk-fehler');
+  fb.style.display = 'none';
+  try {
+    const d = await (await fetch('/api/system/banking/konten')).json();
+    if (!d.ok || !d.erreichbar) {
+      sel.innerHTML = '<option value="">– Hibiscus nicht erreichbar –</option>';
+      fb.textContent = d.msg || 'Konten konnten nicht geladen werden '
+        + '(läuft Jameica? Master-Passwort gesetzt?).';
+      fb.style.display = '';
+      _e('btn-dk-save').disabled = true;
+      return;
+    }
+    const aktiv = (d.gewaehlt != null) ? d.gewaehlt : d.default_id;
+    sel.innerHTML = '';
+    (d.konten || []).forEach(k => {
+      const o = document.createElement('option');
+      o.value = k.id;
+      o.textContent = `${k.bezeichnung} (Kto ${k.kontonummer}/`
+        + `BLZ ${k.blz})` + (k.ist_cao_standard ? '  ★ CAO-Standard' : '');
+      if (String(k.id) === String(aktiv)) o.selected = true;
+      sel.appendChild(o);
+    });
+    _e('btn-dk-save').disabled = false;
+    if (d.gewaehlt == null && d.default_id != null) {
+      const m = _e('dk-msg');
+      m.textContent = 'Noch nicht gespeichert — Vorauswahl: '
+        + 'CAO-Standard (' + (d.cao_standard || '–') + '). '
+        + 'Mit „Speichern" bestätigen.';
+      m.style.display = '';
+    }
+  } catch (e) {
+    fb.textContent = 'Fehler: ' + e.message;
+    fb.style.display = '';
+  }
+}
+
+_e('btn-dk-save').addEventListener('click', async () => {
+  const kid = _e('dk-sel').value;
+  if (!kid) { toast('Bitte ein Konto wählen.', 'err'); return; }
+  _e('btn-dk-save').disabled = true;
+  try {
+    const r = await fetch('/api/system/banking/debit-konto', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({konto_id: parseInt(kid, 10)}),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+    const m = _e('dk-msg');
+    m.textContent = 'Belastungskonto gespeichert.';
+    m.style.display = '';
+    toast('Belastungskonto gespeichert.', 'ok');
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err');
+  } finally {
+    _e('btn-dk-save').disabled = false;
+  }
+});
+
 laden();
 ladeScheduler();
+ladeKonten();
 </script>
 {% endblock %}
