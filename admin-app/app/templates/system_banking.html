@@ -108,6 +108,9 @@
     voraus.
   </p>
   <button class="btn sek" id="btn-test">Jetzt testen</button>
+  <button class="btn sek" id="btn-cert-reset"
+          title="Nur bei bewusster Jameica-/Keystore-Neuanlage. Loopback heilt sich sonst selbst.">
+    Cert-Pin zurücksetzen</button>
   <div class="zeile" style="margin-top:10px;"><span class="lbl">Ergebnis</span>
     <span class="val"><span id="t-pill" class="status-pill grau">–</span></span></div>
   <div id="t-fehler" class="fehler-box" style="display:none;"></div>
@@ -214,6 +217,24 @@ _e('btn-test').addEventListener('click', async () => {
     f.textContent = e.message; f.style.display = '';
   } finally {
     _e('btn-test').disabled = false;
+  }
+});
+
+_e('btn-cert-reset').addEventListener('click', async () => {
+  if (!confirm('Cert-Pin zurücksetzen? Nur bei bewusster Jameica-/'
+    + 'Keystore-Neuanlage nötig. Nächster Test pinnt automatisch neu.'))
+    return;
+  _e('btn-cert-reset').disabled = true;
+  try {
+    const d = await (await fetch('/api/system/banking/cert-reset',
+      {method: 'POST'})).json();
+    if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+    toast(d.msg || 'Cert-Pin zurückgesetzt.', 'ok');
+    laden();
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err');
+  } finally {
+    _e('btn-cert-reset').disabled = false;
   }
 });
 

@@ -3586,6 +3586,29 @@ def api_system_banking_test():
         return jsonify(ok=False, erreichbar=False, msg=str(e)), 500
 
 
+@app.post('/api/system/banking/cert-reset')
+@_login_required
+def api_system_banking_cert_reset():
+    """Setzt den gepinnten Hibiscus-TLS-Fingerprint zurück. Nächster
+    Aufruf re-pinnt automatisch (TOFU). Nur bei bewusster Jameica-/
+    Keystore-Neuanlage nötig — bei Loopback heilt der Client das
+    inzwischen selbst, der Button bleibt als manuelle Option."""
+    try:
+        from common import konfig
+        alt = konfig.get('hibiscus.cert_sha256') or ''
+        konfig.set('hibiscus.cert_sha256', '', typ='STRING',
+                   kategorie='HIBISCUS',
+                   beschreibung='Cert-Pin manuell zurückgesetzt '
+                                '(re-pin beim nächsten Call).')
+        konfig.invalidate('hibiscus.cert_sha256')
+        return jsonify(ok=True, alt=(alt or '')[:16],
+                       msg='Cert-Pin zurückgesetzt – nächster '
+                           '„Verbindung testen" pinnt neu.')
+    except Exception as e:
+        log.exception('cert-reset fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 def _hibiscus_userdata() -> str:
     from installer import hibiscus_setup as _hs
     return os.path.join(_hs.DEFAULT_BASIS, 'userdata')

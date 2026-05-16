@@ -493,5 +493,45 @@ class TestHibiscusClientGuard(unittest.TestCase):
         self.assertEqual(st['status_text'], 'OK')
 
 
+class TestCertPinLoopback(unittest.TestCase):
+    def test_ist_loopback(self):
+        from common.hibiscus_client import _ist_loopback
+        for u in ('https://127.0.0.1:8080/xmlrpc',
+                  'https://localhost:8080/x', 'https://[::1]:8080/x'):
+            self.assertTrue(_ist_loopback(u), u)
+        for u in ('https://bank.example.com/xmlrpc',
+                  'https://192.168.1.5:8080/x'):
+            self.assertFalse(_ist_loopback(u), u)
+
+    def test_loopback_auto_repin_kein_hardfail(self):
+        # Loopback + geänderter Cert → kein HibiscusError, Pin wird
+        # automatisch neu geschrieben (Audit/auto-heal).
+        import common.hibiscus_client as hc
+        kset = {}
+
+        def _get(k, d=None):
+            return {'hibiscus.master_passwort': 'pw',
+                    'hibiscus.cert_sha256': 'a' * 64}.get(k, d)
+
+        def _set(k, v, **kw):
+            kset[k] = v
+
+        with patch.object(hc, '_ini_hibiscus',
+                          return_value={'aktiv': '1',
+                                        'xmlrpc_url':
+                                        'https://127.0.0.1:8080/xmlrpc',
+                                        'xmlrpc_user': 'u'}), \
+             patch('common.konfig.get', side_effect=_get), \
+             patch('common.konfig.set', side_effect=_set), \
+             patch('common.konfig.invalidate'), \
+             patch.object(hc.HibiscusClient, 'konto_list',
+                          return_value=[]), \
+             patch.object(hc.HibiscusClient, 'gesehener_cert_sha256',
+                          new_callable=lambda: property(
+                              lambda self: 'b' * 64)):
+            c = hc.aus_konfig(timeout=5)   # darf NICHT werfen
+        self.assertEqual(kset.get('hibiscus.cert_sha256'), 'b' * 64)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -208,13 +208,33 @@ def _ini_hibiscus() -> dict[str, str]:
     return {}
 
 
+_LOOPBACK_HOSTS = {'127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0'}
+
+
+def _ist_loopback(url: str) -> bool:
+    """True, wenn die XML-RPC-URL auf den lokalen Rechner zeigt."""
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(url).hostname or '').lower()
+        return host in _LOOPBACK_HOSTS
+    except Exception:
+        return False
+
+
 def aus_konfig(timeout: int = 30) -> HibiscusClient:
     """Baut einen :class:`HibiscusClient` aus caoxt.ini + DORFKERN_KONFIG.
 
-    Pin-Logik (TOFU): ist ``hibiscus.cert_sha256`` noch nicht gesetzt,
-    wird der beim ersten erfolgreichen Call gesehene Fingerprint
-    persistiert. Danach wird er erzwungen.
+    Cert-Pin-Logik:
+    - **Remote-Host**: striktes TOFU — erster Fingerprint wird
+      festgeschrieben, danach hart erzwungen (MITM-Schutz).
+    - **Loopback** (127.0.0.1/localhost): KEIN harter Pin. Jameica
+      erzeugt sein selbstsigniertes Cert bei Keystore-Neuanlage neu;
+      ein Loopback-MITM setzt lokalen Root voraus (dann ist ohnehin
+      alles kompromittiert) → der harte Pin brächte nur wiederkehrende
+      Störung. Wir zeichnen den Fingerprint weiter auf (Audit) und
+      re-pinnen automatisch bei Änderung, mit Warn-Log.
     """
+    import logging
     from common import konfig
 
     ini = _ini_hibiscus()
@@ -224,16 +244,35 @@ def aus_konfig(timeout: int = 30) -> HibiscusClient:
     user = ini.get('xmlrpc_user') or 'dorfkern'
     pw   = konfig.get('hibiscus.master_passwort') or ''
     pin  = konfig.get('hibiscus.cert_sha256') or None
+    loopback = _ist_loopback(url)
 
-    client = HibiscusClient(url, user, pw, cert_sha256=pin, timeout=timeout)
+    # Bei Loopback den Pin NICHT scharf schalten (Transport wirft sonst
+    # bei jeder Keystore-Neuanlage). Remote: Pin erzwingen.
+    erzwinge = None if loopback else pin
+    client = HibiscusClient(url, user, pw, cert_sha256=erzwinge,
+                            timeout=timeout)
 
-    if pin is None:
-        # TOFU: ersten Call machen, Fingerprint festschreiben.
+    if loopback:
+        # Aufzeichnen + auto-re-pin (Audit), kein Hard-Fail.
+        client.konto_list()
+        fp = client.gesehener_cert_sha256
+        if fp and fp != pin:
+            if pin:
+                logging.getLogger(__name__).warning(
+                    "Hibiscus-Loopback-Cert geändert (%s… → %s…) — "
+                    "auto-re-pin (Keystore-Neuanlage, erwartet bei "
+                    "localhost).", (pin or '')[:16], fp[:16])
+            konfig.set('hibiscus.cert_sha256', fp, typ='STRING',
+                       kategorie='HIBISCUS',
+                       beschreibung='Loopback-Cert-SHA-256 (Audit; '
+                                    'auto-re-pin bei Keystore-Neuanlage).')
+    elif pin is None:
+        # Remote, noch kein Pin: striktes TOFU festschreiben.
         client.konto_list()
         fp = client.gesehener_cert_sha256
         if fp:
             konfig.set('hibiscus.cert_sha256', fp, typ='STRING',
                        kategorie='HIBISCUS',
                        beschreibung='TOFU-gepinnter SHA-256 des Jameica-'
-                                    'TLS-Zertifikats.')
+                                    'TLS-Zertifikats (Remote, strikt).')
     return client
