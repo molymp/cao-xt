@@ -454,34 +454,81 @@ def schreibe_xmlrpc_sharing(userdata: str) -> str:
     return pfad
 
 
-def schreibe_sync_scheduler(userdata: str, *, interval_min: int = 180,
-                            start_hour: int = 6, end_hour: int = 23,
+_SYNC_SCHED_PROPS = ('de.willuhn.jameica.hbci.'
+                     'SynchronizeSchedulerSettings.properties')
+
+# Konservativer Default: PSD2/FinTS erlaubt Konto-Info-Abruf ohne
+# frische SCA nur begrenzt (typisch ~4×/24 h, bankabhängig) UND
+# erzwingt unabhängig davon mind. alle 90 Tage eine SCA (S-pushTAN,
+# Mensch am Handy — kann KEINE App). 360 min über 07–19 Uhr ≈ 3
+# Läufe/Tag → bleibt unter dem Limit.
+SYNC_DEFAULT_INTERVAL_MIN = 360
+SYNC_DEFAULT_START_HOUR   = 7
+SYNC_DEFAULT_END_HOUR     = 19
+
+
+def schreibe_sync_scheduler(userdata: str, *,
+                            interval_min: int = SYNC_DEFAULT_INTERVAL_MIN,
+                            start_hour: int = SYNC_DEFAULT_START_HOUR,
+                            end_hour: int = SYNC_DEFAULT_END_HOUR,
+                            enabled: bool = True,
                             stop_on_error: bool = True) -> str:
-    """Aktiviert Hibiscus' interne automatische Synchronisierung.
+    """Konfiguriert Hibiscus' interne automatische Synchronisierung.
 
     Read-only-Scope (Saldo/Umsaetze/Banknachrichten) ist in Hibiscus
-    pro Konto bereits Default-an (``sync.konto.default.{saldo,
-    kontoauszug,messages}=true``); was fehlt, ist der Zeit-Scheduler.
-    Keys: ``de.willuhn.jameica.hbci.SynchronizeSchedulerSettings``
-    (Quelle: SynchronizeSchedulerSettings.java).
+    pro Konto bereits Default-an; was fehlt, ist der Zeit-Scheduler.
+    Keys: ``de.willuhn.jameica.hbci.SynchronizeSchedulerSettings``.
 
-    Args:
-        interval_min: Abstand zwischen Laeufen (Default 180 = 3 h).
-        start_hour/end_hour: Nur in diesem Stundenfenster syncen
-            (Default 6..23 — kein Sync nachts).
-        stop_on_error: Bei Fehler die Restlaeufe stoppen (Default an).
+    ACHTUNG Frequenz: zu viele Abrufe/Tag → Bank erzwingt SCA
+    (S-pushTAN, manuell). Default bewusst konservativ (~3/Tag).
     """
-    pfad = os.path.join(
-        userdata, 'cfg',
-        'de.willuhn.jameica.hbci.SynchronizeSchedulerSettings.properties')
+    pfad = os.path.join(userdata, 'cfg', _SYNC_SCHED_PROPS)
     _schreibe_properties(pfad, {
-        'enabled':          'true',
+        'enabled':          'true' if enabled else 'false',
         'interval.minutes': str(int(interval_min)),
         'start.hour':       str(int(start_hour)),
         'end.hour':         str(int(end_hour)),
         'stoponerror':      'true' if stop_on_error else 'false',
     })
     return pfad
+
+
+def lies_sync_scheduler(userdata: str) -> dict:
+    """Liest die aktuelle Auto-Sync-Scheduler-Konfig (für die Admin-UI).
+
+    Fehlt die Datei → Defaults (deaktiviert-Annahme nur fürs Anzeigen;
+    Hibiscus-Default von ``enabled`` ist ohnehin false).
+    """
+    pfad = os.path.join(userdata, 'cfg', _SYNC_SCHED_PROPS)
+    werte = {
+        'enabled': False,
+        'interval_min': SYNC_DEFAULT_INTERVAL_MIN,
+        'start_hour': SYNC_DEFAULT_START_HOUR,
+        'end_hour': SYNC_DEFAULT_END_HOUR,
+        'stop_on_error': True,
+        'vorhanden': False,
+    }
+    if not os.path.isfile(pfad):
+        return werte
+    werte['vorhanden'] = True
+    with open(pfad, encoding='iso-8859-1') as fh:
+        for zeile in fh:
+            zeile = zeile.strip()
+            if not zeile or zeile.startswith('#') or '=' not in zeile:
+                continue
+            k, _, v = zeile.partition('=')
+            k, v = k.strip(), v.strip()
+            if k == 'enabled':
+                werte['enabled'] = v.lower() == 'true'
+            elif k == 'interval.minutes' and v.isdigit():
+                werte['interval_min'] = int(v)
+            elif k == 'start.hour' and v.isdigit():
+                werte['start_hour'] = int(v)
+            elif k == 'end.hour' and v.isdigit():
+                werte['end_hour'] = int(v)
+            elif k == 'stoponerror':
+                werte['stop_on_error'] = v.lower() == 'true'
+    return werte
 
 
 # Letzter Fallback, wenn der Aufrufer KEIN Schema übergibt. Der reale

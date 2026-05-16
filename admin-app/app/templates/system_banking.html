@@ -112,6 +112,37 @@
     <span class="val"><span id="t-pill" class="status-pill grau">–</span></span></div>
   <div id="t-fehler" class="fehler-box" style="display:none;"></div>
 </div>
+
+<div class="karte">
+  <h2>Automatische Synchronisierung</h2>
+  <div class="hinweis-box" style="margin:0 0 12px;">
+    ⚠️ <b>Frequenz beachten:</b> Konto-Abruf ohne frische SCA ist
+    bankseitig begrenzt (typisch <b>~4×/Tag</b>) und unabhängig davon
+    erzwingt die Bank <b>mind. alle 90 Tage</b> eine S-pushTAN-Freigabe
+    (Mensch am Handy — kann keine App). Zu häufig ⇒ ständige pushTAN.
+    Konservativ lassen (~3/Tag).
+  </div>
+  <div class="zeile"><span class="lbl">Aktiv</span>
+    <span class="val"><input type="checkbox" id="sc-enabled"></span></div>
+  <div class="zeile"><span class="lbl">Intervall (Minuten)</span>
+    <span class="val"><input type="number" id="sc-interval" min="30"
+      max="1440" step="30" style="width:90px"></span></div>
+  <div class="zeile"><span class="lbl">Zeitfenster (Std von–bis)</span>
+    <span class="val">
+      <input type="number" id="sc-start" min="0" max="23" style="width:60px">
+      – <input type="number" id="sc-end" min="0" max="23" style="width:60px">
+    </span></div>
+  <div class="zeile"><span class="lbl">≈ Läufe / Tag</span>
+    <span class="val"><b id="sc-laeufe">–</b>
+      <span id="sc-warn" style="color:var(--status-rot);display:none">
+        ⚠️ über ~4/Tag — provoziert pushTAN</span></span></div>
+  <div style="margin-top:10px;">
+    <button class="btn" id="btn-sc-save">Speichern</button>
+    <span style="font-size:12px;color:var(--text-dim);margin-left:8px;">
+      Wirkt nach Jameica-Daemon-Neustart (App-Steuerung).</span>
+  </div>
+  <div id="sc-msg" class="hinweis-box" style="display:none;margin-top:10px;"></div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -186,6 +217,58 @@ _e('btn-test').addEventListener('click', async () => {
   }
 });
 
+// ---- Auto-Sync-Scheduler ----
+function _scLaeufe(){
+  const iv = parseInt(_e('sc-interval').value, 10) || 0;
+  const sh = parseInt(_e('sc-start').value, 10) || 0;
+  const eh = parseInt(_e('sc-end').value, 10) || 0;
+  const fenster = Math.max(0, eh - sh) * 60;
+  const n = iv > 0 ? Math.floor(fenster / iv) + 1 : 0;
+  _e('sc-laeufe').textContent = n;
+  _e('sc-warn').style.display = n > 4 ? '' : 'none';
+}
+['sc-interval','sc-start','sc-end'].forEach(id =>
+  _e(id).addEventListener('input', _scLaeufe));
+
+async function ladeScheduler(){
+  try {
+    const d = await (await fetch('/api/system/banking/scheduler')).json();
+    if (!d.ok) return;
+    _e('sc-enabled').checked = !!d.enabled;
+    _e('sc-interval').value  = d.interval_min;
+    _e('sc-start').value     = d.start_hour;
+    _e('sc-end').value       = d.end_hour;
+    _scLaeufe();
+  } catch (e) { /* Scheduler-Status optional */ }
+}
+
+_e('btn-sc-save').addEventListener('click', async () => {
+  _e('btn-sc-save').disabled = true;
+  try {
+    const r = await fetch('/api/system/banking/scheduler', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        enabled:      _e('sc-enabled').checked,
+        interval_min: parseInt(_e('sc-interval').value, 10),
+        start_hour:   parseInt(_e('sc-start').value, 10),
+        end_hour:     parseInt(_e('sc-end').value, 10),
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+    const m = _e('sc-msg');
+    m.textContent = d.hinweis || 'Gespeichert.';
+    m.style.display = '';
+    toast('Scheduler gespeichert.', 'ok');
+    ladeScheduler();
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err');
+  } finally {
+    _e('btn-sc-save').disabled = false;
+  }
+});
+
 laden();
+ladeScheduler();
 </script>
 {% endblock %}

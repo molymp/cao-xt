@@ -3586,6 +3586,62 @@ def api_system_banking_test():
         return jsonify(ok=False, erreichbar=False, msg=str(e)), 500
 
 
+def _hibiscus_userdata() -> str:
+    from installer import hibiscus_setup as _hs
+    return os.path.join(_hs.DEFAULT_BASIS, 'userdata')
+
+
+@app.get('/api/system/banking/scheduler')
+@_login_required
+def api_system_banking_scheduler_get():
+    """Aktuelle Auto-Sync-Scheduler-Konfig (read)."""
+    try:
+        from installer import hibiscus_setup as _hs
+        cfg = _hs.lies_sync_scheduler(_hibiscus_userdata())
+        # grobe Lauf/Tag-Schätzung für den SCA-Hinweis in der UI
+        fenster_h = max(0, cfg['end_hour'] - cfg['start_hour'])
+        laeufe = (fenster_h * 60 // cfg['interval_min'] + 1
+                  if cfg['interval_min'] > 0 else 0)
+        return jsonify(ok=True, laeufe_pro_tag=laeufe, **cfg)
+    except Exception as e:
+        log.exception('banking scheduler get fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/system/banking/scheduler')
+@_login_required
+def api_system_banking_scheduler_set():
+    """Speichert die Auto-Sync-Scheduler-Konfig (Jameica-Properties).
+    Wirkt nach Jameica-Daemon-Neustart (App-Steuerung)."""
+    b = request.get_json(silent=True) or {}
+    try:
+        interval = int(b.get('interval_min', 360))
+        sh = int(b.get('start_hour', 7))
+        eh = int(b.get('end_hour', 19))
+        enabled = bool(b.get('enabled', True))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, msg='Ungültige Zahlenwerte.'), 400
+    if not (30 <= interval <= 1440):
+        return jsonify(ok=False,
+                       msg='Intervall muss 30–1440 Minuten sein.'), 400
+    if not (0 <= sh <= 23 and 0 <= eh <= 23 and sh < eh):
+        return jsonify(ok=False,
+                       msg='Stunden 0–23, Start < Ende.'), 400
+    try:
+        from installer import hibiscus_setup as _hs
+        _hs.schreibe_sync_scheduler(
+            _hibiscus_userdata(), interval_min=interval,
+            start_hour=sh, end_hour=eh, enabled=enabled)
+        cfg = _hs.lies_sync_scheduler(_hibiscus_userdata())
+        return jsonify(ok=True,
+                       hinweis='Gespeichert. Wirkt nach Jameica-'
+                               'Daemon-Neustart (App-Steuerung).',
+                       **cfg)
+    except Exception as e:
+        log.exception('banking scheduler set fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
 @app.post('/api/einkauf/bestellungen/abrufen')
 @_login_required
 def api_einkauf_bestellungen_abrufen():

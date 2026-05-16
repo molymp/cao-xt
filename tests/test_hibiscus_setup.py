@@ -80,6 +80,41 @@ class TestPropertiesMerge(unittest.TestCase):
             self.assertIn('end.hour=21', txt)
             self.assertIn('stoponerror=true', txt)
 
+    def test_sync_scheduler_konservativer_default(self):
+        # PSD2: ≤ ~4 Abrufe/Tag ohne SCA. Default muss konservativ
+        # sein (360 min / 07–19 ≈ 3 Läufe/Tag).
+        with tempfile.TemporaryDirectory() as d:
+            hs.schreibe_sync_scheduler(d)
+            txt = open(os.path.join(d, 'cfg', hs._SYNC_SCHED_PROPS),
+                       encoding='iso-8859-1').read()
+            self.assertIn('interval.minutes=360', txt)
+            self.assertIn('start.hour=7', txt)
+            self.assertIn('end.hour=19', txt)
+            fenster_h = (hs.SYNC_DEFAULT_END_HOUR
+                         - hs.SYNC_DEFAULT_START_HOUR)
+            laeufe = fenster_h * 60 // hs.SYNC_DEFAULT_INTERVAL_MIN + 1
+            self.assertLessEqual(laeufe, 4)
+
+    def test_sync_scheduler_disabled_flag(self):
+        with tempfile.TemporaryDirectory() as d:
+            hs.schreibe_sync_scheduler(d, enabled=False)
+            txt = open(os.path.join(d, 'cfg', hs._SYNC_SCHED_PROPS),
+                       encoding='iso-8859-1').read()
+            self.assertIn('enabled=false', txt)
+
+    def test_lies_sync_scheduler_roundtrip(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(hs.lies_sync_scheduler(d)['vorhanden'])
+            hs.schreibe_sync_scheduler(
+                d, interval_min=240, start_hour=8, end_hour=18,
+                enabled=True)
+            r = hs.lies_sync_scheduler(d)
+            self.assertTrue(r['vorhanden'])
+            self.assertTrue(r['enabled'])
+            self.assertEqual(r['interval_min'], 240)
+            self.assertEqual(r['start_hour'], 8)
+            self.assertEqual(r['end_hour'], 18)
+
 
 class TestPlattform(unittest.TestCase):
     def test_linux_x86_kein_jre_serverlauncher(self):
