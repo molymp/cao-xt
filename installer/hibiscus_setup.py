@@ -39,17 +39,25 @@ if _REPO_ROOT not in sys.path:
 
 # ── Artefakt-Definitionen (gepinnt) ─────────────────────────────────
 #
-# Die SHA-256 wurden einmalig vom offiziellen Download gezogen und hier
-# fest verdrahtet. Aktualisiert willuhn.de eine Nightly, schlägt die
-# Prüfung LAUT fehl → bewusster Versions-Bump nötig (kein stilles
-# Mitziehen unsignierter Builds). Für ``hibiscus`` matcht der Hash
-# zusätzlich das offizielle ``.zip.SHA-256``-Sidecar.
+# Integritäts-Strategie (wichtig):
+# Nur ``hibiscus`` ist ein versioniertes, unveränderliches Artefakt mit
+# einem offiziellen ``.SHA-256``-Sidecar → dagegen verifizieren wir
+# autoritativ (überlebt Patch-Bumps innerhalb der Linie nicht, aber der
+# Sidecar wird ja mitgezogen). Jameica (``current``-Symlink) und die
+# drei Nischen-Plugins existieren NUR als ständig neu gebaute Nightly
+# bzw. bewegliche ``current``-URL OHNE Sidecar/Signatur. Ein statisch
+# verdrahteter Hash wäre dort binnen Tagen veraltet und würde den
+# Installer dauernd brechen → kein Sinn. Für diese Artefakte ist die
+# CA-validierte HTTPS-Verbindung zu willuhn.de der Integritätsanker;
+# der beobachtete SHA-256 wird geloggt (Admin-auditierbar).
 
 @dataclass(frozen=True)
 class _Artefakt:
     name: str
     url: str
-    sha256: str
+    # URL des offiziellen ``.SHA-256``-Sidecars, oder None wenn es
+    # keinen autoritativen Hash gibt (dann HTTPS-Trust + Log).
+    sha256_sidecar: str | None
     # 'app'    → entpackt nach <install_root>/        (enthält jameica.app/)
     # 'plugin' → entpackt nach <userdata>/plugins/    (enthält <name>/)
     ziel: str
@@ -59,39 +67,40 @@ JAMEICA_MACOS_AARCH64 = _Artefakt(
     name='jameica',
     url='https://www.willuhn.de/products/jameica/releases/current/'
         'jameica/jameica-macos-aarch64.zip',
-    sha256='0d01567ae868e3f4c73a03c809bf5f0379c37e1cd408563f5cab4b12c47feb20',
+    sha256_sidecar=None,   # bewegliche current-URL, kein Sidecar
     ziel='app',
 )
 
-# hibiscus hat eine stabile Release-Linie; xmlrpc/webadmin/xmlrpc-base
-# existieren nur als Nightly (Nischen-Plugins).
+# hibiscus hat eine stabile Release-Linie + Sidecar; xmlrpc/webadmin/
+# xmlrpc-base existieren nur als Nightly (Nischen-Plugins, kein Sidecar).
 PLUGINS = (
     _Artefakt(
         name='hibiscus',
         url='https://www.willuhn.de/products/hibiscus/releases/2.12/'
             'hibiscus-2.12.4.zip',
-        sha256='d3ef83bbb58297dbf46bd530e0961596aa302f6375dd59c8df846e4a37d8c3f6',
+        sha256_sidecar='https://www.willuhn.de/products/hibiscus/'
+                       'releases/2.12/hibiscus-2.12.4.zip.SHA-256',
         ziel='plugin',
     ),
     _Artefakt(
         name='jameica.webadmin',
         url='https://www.willuhn.de/products/jameica/releases/nightly/'
             'jameica.webadmin-2.11.0-nightly.zip',
-        sha256='d575bba44b4e518614e06bd12aa668b6c11435c0d1b4270bde84c1f29c5bfd7a',
+        sha256_sidecar=None,
         ziel='plugin',
     ),
     _Artefakt(
         name='jameica.xmlrpc',
         url='https://www.willuhn.de/products/jameica/releases/nightly/'
             'jameica.xmlrpc-2.11.0-nightly.zip',
-        sha256='d375ea4fbc1f1a75d1c8418d1c8c0f5dd5ad6c891a60194307915045fe647c0c',
+        sha256_sidecar=None,
         ziel='plugin',
     ),
     _Artefakt(
         name='hibiscus.xmlrpc',
         url='https://www.willuhn.de/products/hibiscus/releases/nightly/'
             'hibiscus.xmlrpc-2.11.0-nightly.zip',
-        sha256='302fc3d72d07f9b631f49647d34d056af917431481b1385d26a8d78288019e06',
+        sha256_sidecar=None,
         ziel='plugin',
     ),
 )
@@ -112,10 +121,33 @@ def _sha256_datei(pfad: str) -> str:
     return h.hexdigest()
 
 
-def download_und_pruefe(art: _Artefakt, ziel_zip: str, print_fn=print) -> None:
-    """Lädt ``art`` nach ``ziel_zip`` und verifiziert die SHA-256.
+def _hole_sidecar_hash(url: str) -> str:
+    """Lädt eine ``.SHA-256``-Sidecar-Datei und extrahiert den Hash.
 
-    Wirft ``RuntimeError`` bei Hash-Mismatch (Datei wird gelöscht).
+    Format (GNU coreutils): ``<hex>  <dateiname>`` bzw. ``<hex> *<name>``.
+    """
+    req = urllib.request.Request(
+        url, headers={'User-Agent': 'cao-xt-installer'})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        txt = resp.read().decode('utf-8', 'replace').strip()
+    h = txt.split()[0].lower() if txt else ''
+    if len(h) != 64 or any(c not in '0123456789abcdef' for c in h):
+        raise RuntimeError(f"Sidecar {url}: kein gültiger SHA-256 "
+                           f"({txt[:60]!r})")
+    return h
+
+
+def download_und_pruefe(art: _Artefakt, ziel_zip: str, print_fn=print) -> str:
+    """Lädt ``art`` nach ``ziel_zip``.
+
+    Hat das Artefakt einen offiziellen Sidecar (``art.sha256_sidecar``),
+    wird der heruntergeladene Hash autoritativ dagegen geprüft und bei
+    Mismatch ``RuntimeError`` geworfen (Datei gelöscht). Ohne Sidecar
+    ist die CA-validierte HTTPS-Verbindung der Integritätsanker; der
+    beobachtete SHA-256 wird nur geloggt (kein Hard-Fail – statisches
+    Pinnen beweglicher Nightly/current-URLs ist sinnlos).
+
+    Returns den beobachteten SHA-256 (für Audit/Logging).
     """
     print_fn(f"    ↓ {art.name} … ")
     req = urllib.request.Request(
@@ -124,27 +156,46 @@ def download_und_pruefe(art: _Artefakt, ziel_zip: str, print_fn=print) -> None:
             open(ziel_zip, 'wb') as out:
         shutil.copyfileobj(resp, out)
     ist = _sha256_datei(ziel_zip)
-    if ist != art.sha256:
-        os.remove(ziel_zip)
-        raise RuntimeError(
-            f"{art.name}: SHA-256-Mismatch.\n"
-            f"      erwartet: {art.sha256}\n"
-            f"      erhalten: {ist}\n"
-            f"      → willuhn.de hat die Datei geändert. Version im "
-            f"Installer bewusst nachziehen (hibiscus_setup.PLUGINS).")
-    print_fn(f"      ✓ verifiziert ({os.path.getsize(ziel_zip)//1024} KB)")
+    kb = os.path.getsize(ziel_zip) // 1024
+
+    if art.sha256_sidecar:
+        erwartet = _hole_sidecar_hash(art.sha256_sidecar)
+        if ist != erwartet:
+            os.remove(ziel_zip)
+            raise RuntimeError(
+                f"{art.name}: SHA-256-Mismatch gegen offiziellen "
+                f"Sidecar.\n      erwartet: {erwartet}\n"
+                f"      erhalten: {ist}\n"
+                f"      → Download korrupt oder Version geändert.")
+        print_fn(f"      ✓ verifiziert gg. Sidecar ({kb} KB)")
+    else:
+        print_fn(f"      ✓ via HTTPS geladen ({kb} KB) "
+                 f"sha256={ist[:16]}…")
+    return ist
 
 
 def _entpacke(zip_pfad: str, ziel_dir: str) -> None:
+    """Entpackt mit Zip-Slip-Schutz UND erhaltenen Unix-Permissions.
+
+    ``ZipFile.extractall`` verwirft das Exec-Bit — fatal für das
+    Jameica-Bundle (JRE-``java``, ``*.sh``). Wir stellen den in
+    ``ZipInfo.external_attr`` gespeicherten Unix-Mode wieder her.
+    """
     os.makedirs(ziel_dir, exist_ok=True)
+    basis = os.path.abspath(ziel_dir)
     with zipfile.ZipFile(zip_pfad) as zf:
-        # Zip-Slip-Schutz: keine absoluten/.. Pfade zulassen.
-        for n in zf.namelist():
-            p = os.path.normpath(os.path.join(ziel_dir, n))
-            if not p.startswith(os.path.abspath(ziel_dir) + os.sep) \
-                    and p != os.path.abspath(ziel_dir):
-                raise RuntimeError(f"Unsicherer Zip-Eintrag: {n!r}")
-        zf.extractall(ziel_dir)
+        for info in zf.infolist():
+            p = os.path.normpath(os.path.join(ziel_dir, info.filename))
+            if not p.startswith(basis + os.sep) and p != basis:
+                raise RuntimeError(
+                    f"Unsicherer Zip-Eintrag: {info.filename!r}")
+            zf.extract(info, ziel_dir)
+            # Oberes 16-Bit-Wort von external_attr = Unix-st_mode.
+            mode = (info.external_attr >> 16) & 0o7777
+            if mode:
+                ziel = os.path.join(ziel_dir, info.filename)
+                if not info.is_dir():
+                    os.chmod(ziel, mode)
 
 
 # ── Plaintext-Konfiguration (keine Wallet) ──────────────────────────
@@ -270,6 +321,27 @@ def schreibe_caoxt_ini_block(ini_path: str, *, user: str = 'dorfkern',
         cfg.write(fh)
 
 
+def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
+                       passwordfile: str | None = None) -> list[str]:
+    """Liefert das argv zum Start des Dorfkern-gemanagten Jameica.
+
+    Kern: ``-f <userdata>`` zeigt Jameica auf unser ``.hibiscus/
+    userdata`` (sonst läge die Config in ``~/Library/jameica``).
+    GUI-Default (Standalone) für die Bank-/Master-PW-Ersteinrichtung;
+    ``headless`` (= Server-Mode, abgekoppelt) für den späteren Daemon,
+    dann mit ``passwordfile`` (``-w``) fürs Master-PW (Datei mit
+    600-Rechten, vom Aufrufer verwaltet — NICHT vom Installer).
+    """
+    sh = os.path.join(basis, 'jameica.app', 'jameica-macos-aarch64.sh')
+    userdata = os.path.join(basis, 'userdata')
+    cmd = [sh, '-f', userdata]
+    if headless:
+        cmd += ['-d', '-n']
+        if passwordfile:
+            cmd += ['-w', passwordfile]
+    return cmd
+
+
 def speichere_master_passwort(pw: str, ma_id: int | None = None) -> bool:
     """Legt das Jameica-Master-Passwort in DORFKERN_KONFIG ab
     (TYP=SECRET, Kategorie HIBISCUS).
@@ -371,4 +443,5 @@ def setup(basis: str = DEFAULT_BASIS, *,
         'plugins':   [a.name for a in PLUGINS],
         'pw_gespeichert': pw_ok,
         'db_konfiguriert': db_konfiguriert,
+        'start_cmd': jameica_start_cmd(basis),
     }
