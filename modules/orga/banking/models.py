@@ -120,6 +120,17 @@ def konto_holen(konto_id: int) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+UMSATZ_SORT = {
+    'datum':     'u.datum',
+    'betrag':    'u.betrag',
+    'empfaenger': 'u.empfaenger_name',
+    'zweck':     'u.zweck',
+    'art':       'u.art',
+    'saldo':     'u.saldo',
+}
+UMSATZ_DEFAULT_ORDER = 'u.datum DESC, u.id DESC'
+
+
 def umsaetze_liste(*, konto_id: int | None = None,
                     suche: str = '',
                     suche_regex: bool = False,
@@ -128,7 +139,9 @@ def umsaetze_liste(*, konto_id: int | None = None,
                     art_filter: str | None = None,
                     umsatztyp_id: int | None = None,
                     nur_ungeprueft: bool = False,
-                    limit: int = 200) -> list[dict[str, Any]]:
+                    sort_sql: str = UMSATZ_DEFAULT_ORDER,
+                    limit: int = 100, offset: int = 0
+                    ) -> dict[str, Any]:
     """Umsätze-Liste mit Filtern.
 
     suche: Substring (LIKE) oder regulaerer Ausdruck (REGEXP, wenn
@@ -172,28 +185,39 @@ def umsaetze_liste(*, konto_id: int | None = None,
     if nur_ungeprueft:
         # Bit 0 (FLAG_GEPRUEFT) NICHT gesetzt
         where.append('(u.flags IS NULL OR (u.flags & 1) = 0)')
-    params.append(int(limit))
+    where_sql = ' AND '.join(where)
 
-    sql = f"""
-        SELECT u.id, u.konto_id, u.datum, u.valuta, u.betrag, u.saldo,
-               u.empfaenger_name, u.empfaenger_name2,
-               u.empfaenger_konto, u.empfaenger_blz,
-               u.zweck, u.zweck2, u.zweck3,
-               u.art, u.primanota, u.gvcode, u.purposecode,
-               u.endtoendid, u.mandateid, u.creditorid, u.customerref,
-               u.umsatztyp_id, ut.name AS umsatztyp_name,
-               u.flags, u.kommentar,
-               k.bezeichnung AS konto_bez
-          FROM umsatz u
-     LEFT JOIN umsatztyp ut ON ut.id = u.umsatztyp_id
-     LEFT JOIN konto k      ON k.id  = u.konto_id
-         WHERE {' AND '.join(where)}
-         ORDER BY u.datum DESC, u.id DESC
-         LIMIT %s
-    """
     with get_db() as cur:
-        cur.execute(sql, params)
-        return list(cur.fetchall() or [])
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM umsatz u "
+            f"LEFT JOIN umsatztyp ut ON ut.id = u.umsatztyp_id "
+            f"LEFT JOIN konto k ON k.id = u.konto_id "
+            f"WHERE {where_sql}",
+            params,
+        )
+        total = int((cur.fetchone() or {}).get('n') or 0)
+
+        cur.execute(
+            f"""
+            SELECT u.id, u.konto_id, u.datum, u.valuta, u.betrag, u.saldo,
+                   u.empfaenger_name, u.empfaenger_name2,
+                   u.empfaenger_konto, u.empfaenger_blz,
+                   u.zweck, u.zweck2, u.zweck3,
+                   u.art, u.primanota, u.gvcode, u.purposecode,
+                   u.endtoendid, u.mandateid, u.creditorid, u.customerref,
+                   u.umsatztyp_id, ut.name AS umsatztyp_name,
+                   u.flags, u.kommentar,
+                   k.bezeichnung AS konto_bez
+              FROM umsatz u
+         LEFT JOIN umsatztyp ut ON ut.id = u.umsatztyp_id
+         LEFT JOIN konto k      ON k.id  = u.konto_id
+             WHERE {where_sql}
+             ORDER BY {sort_sql}
+             LIMIT %s OFFSET %s
+            """,
+            params + [int(limit), int(offset)],
+        )
+        return {'rows': list(cur.fetchall() or []), 'total': total}
 
 
 def umsatz_arten() -> list[dict[str, Any]]:

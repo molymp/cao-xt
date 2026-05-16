@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import '_listing.html' as L %}
 {% block title %}Banking – {{ konto.bezeichnung or konto.name }}{% endblock %}
 
 {% block extra_style %}
@@ -66,6 +67,7 @@
 .bk-trefferzahl { font-size:0.85rem; color:var(--text-dim,#5a7a3a);
   font-weight:700; }
 </style>
+{{ L.pager_css() }}
 {% endblock %}
 
 {% block content %}
@@ -173,19 +175,19 @@
             onclick="window.location='{{ url_for('orga_banking.konto_detail', konto_id=konto.id) }}'">
         Zurücksetzen
     </button>
-    <span class="bk-trefferzahl" style="margin-left:auto;">{{ umsaetze|length }} Treffer</span>
+    <span class="bk-trefferzahl" style="margin-left:auto;">{{ pager.total }} Treffer{% if pager.seiten > 1 %} · Seite {{ pager.page }}/{{ pager.seiten }}{% endif %}</span>
 </form>
 
 {% if umsaetze %}
 <table class="bk-tabelle">
     <thead>
         <tr>
-            <th>Datum</th>
-            <th>Empfänger</th>
-            <th>Verwendungszweck</th>
-            <th>Art</th>
-            <th class="zahl-rechts">Betrag €</th>
-            <th class="zahl-rechts">Saldo €</th>
+            <th>{{ L.sortlink('Datum', 'datum', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Empfänger', 'empfaenger', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Verwendungszweck', 'zweck', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Art', 'art', sort_key, sort_dir) }}</th>
+            <th class="zahl-rechts">{{ L.sortlink('Betrag €', 'betrag', sort_key, sort_dir) }}</th>
+            <th class="zahl-rechts">{{ L.sortlink('Saldo €', 'saldo', sort_key, sort_dir) }}</th>
             <th title="Geprüft (Hibiscus FLAG_GEPRUEFT)">✓</th>
             <th>Kategorie</th>
             <th>Notiz</th>
@@ -264,6 +266,7 @@
     {% endfor %}
     </tbody>
 </table>
+{{ L.pager(pager) }}
 {% else %}
 <div class="bk-card" style="text-align:center; color:var(--text-dim,#5a7a3a);">
     Keine Umsätze gefunden.

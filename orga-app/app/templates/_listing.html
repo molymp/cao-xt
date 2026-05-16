@@ -1,0 +1,51 @@
+{# Wiederverwendbare Listen-Bausteine: Tri-State-Sortheader + Pager.
+   Erhalten alle bestehenden Query-Parameter (Filter), setzen nur
+   sort/dir bzw. page um. #}
+
+{%- macro sortlink(label, key, sort_key, sort_dir) -%}
+  {%- set cur = (key == sort_key) -%}
+  {%- set nxt = 'asc' if not cur else ('desc' if sort_dir == 'asc' else '') -%}
+  {%- set a = request.args.to_dict() -%}
+  {%- set _ = a.pop('page', None) -%}
+  {%- if nxt -%}
+    {%- set _ = a.update({'sort': key, 'dir': nxt}) -%}
+  {%- else -%}
+    {%- set _ = a.pop('sort', None) -%}{%- set _ = a.pop('dir', None) -%}
+  {%- endif -%}
+  <a class="cx-sort{% if cur %} cx-sort-aktiv{% endif %}"
+     href="{{ url_for(request.endpoint, **dict(a, **(request.view_args or {}))) }}"
+     title="Sortieren (Klick: auf-/absteigend/aufheben)">{{ label }}{% if cur %}{{ ' ▲' if sort_dir == 'asc' else ' ▼' }}{% endif %}</a>
+{%- endmacro -%}
+
+{%- macro pager(pg) -%}
+  {%- if pg.total -%}
+  {%- set base = request.args.to_dict() -%}
+  {%- set _ = base.pop('page', None) -%}
+  <div class="cx-pager">
+    <span class="cx-pager-info">{{ pg.von }}–{{ pg.bis }} von {{ pg.total }}</span>
+    {%- if pg.hat_zurueck -%}
+      <a href="{{ url_for(request.endpoint, page=pg.page-1, **dict(base, **(request.view_args or {}))) }}">‹ zurück</a>
+    {%- endif -%}
+    <span class="cx-pager-seite">Seite {{ pg.page }} / {{ pg.seiten }}</span>
+    {%- if pg.hat_vor -%}
+      <a href="{{ url_for(request.endpoint, page=pg.page+1, **dict(base, **(request.view_args or {}))) }}">weiter ›</a>
+    {%- endif -%}
+  </div>
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro pager_css() -%}
+<style>
+.cx-pager{display:flex;gap:14px;align-items:center;justify-content:center;
+  margin:14px 0;flex-wrap:wrap;font-size:.92rem;color:var(--text-dim,#5a7a3a)}
+.cx-pager a{padding:4px 12px;border:1px solid var(--rand,#d8d2c0);
+  border-radius:var(--radius-klein,6px);text-decoration:none;
+  color:var(--gruen-dunkel,#2e6e1a);background:var(--creme,#f7f4ec)}
+.cx-pager a:hover{background:var(--bg-hell,#ece3cc)}
+.cx-pager-info{font-weight:600}
+a.cx-sort{color:inherit;text-decoration:none;cursor:pointer;
+  white-space:nowrap}
+a.cx-sort:hover{text-decoration:underline}
+a.cx-sort-aktiv{color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+</style>
+{%- endmacro -%}

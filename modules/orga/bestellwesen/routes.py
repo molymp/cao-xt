@@ -434,17 +434,40 @@ def api_we_buchen(rec_id: int) -> Any:
 
 @bp.get('/einkauf/')
 def einkauf_uebersicht():
-    """Liste aller Einkaufs-Belege (in Bearbeitung + verbucht)."""
+    """Liste aller Einkaufs-Belege (in Bearbeitung + verbucht).
+    Serverseitig gefiltert, sortiert, paginiert."""
     _login_check()
+    from common import listing
     suche = (request.args.get('q') or '').strip()
     stadium_raw = (request.args.get('stadium') or '').strip()
     stadium = int(stadium_raw) if stadium_raw.isdigit() else None
-    eintraege = ek.einkauf_liste(suche=suche, stadium=stadium)
+    zahlart_raw = (request.args.get('zahlart') or '').strip()
+    zahlart_id = int(zahlart_raw) if zahlart_raw.isdigit() else None
+    # Default: stornierte ausblenden; nur zeigen wenn explizit gewünscht.
+    storno_aus = request.args.get('storno') != '1'
+
+    order_sql, sort_key, sort_dir = listing.parse_sort(
+        request.args, ek.EINKAUF_SORT, ek.EINKAUF_DEFAULT_ORDER)
+    page, per_page = listing.parse_paging(request.args,
+                                          default_per_page=100)
+
+    daten = ek.einkauf_liste(
+        suche=suche, stadium=stadium, zahlart_id=zahlart_id,
+        storno_aus=storno_aus, sort_sql=order_sql,
+        limit=per_page, offset=(page - 1) * per_page)
+    pg = listing.pager(daten['total'], page, per_page)
+
     return render_template(
         'einkauf.html',
-        eintraege=eintraege,
+        eintraege=daten['rows'],
+        pager=pg,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
         suche=suche,
         stadium=stadium,
+        zahlart_id=zahlart_id,
+        storno_aus=storno_aus,
+        zahlungsarten=ek.zahlungsarten_filter(),
         stadium_label=ek.STADIUM_LABEL,
         banking_konfiguriert=ek.banking_konfiguriert(),
     )

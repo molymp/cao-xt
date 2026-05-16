@@ -139,10 +139,33 @@ def banking_konfiguriert() -> bool:
         return False
 
 
+# Sortierbare Spalten (UI-Key → erlaubter SQL-Ausdruck). Nur hier
+# Gelistetes kann in ORDER BY — Schutz gegen SQL-Injection.
+EINKAUF_SORT = {
+    'belegnr':   'j.VRENUM',
+    'eingangsnr': 'j.ORGNUM',
+    'datum':     'j.RDATUM',
+    'lieferant': "COALESCE(a.NAME1, j.KUN_NAME1, '')",
+    'netto':     'j.NSUMME',
+    'brutto':    'j.BSUMME',
+    'zahlart':   'j.ZAHLART_NAME',
+    'stadium':   'j.STADIUM',
+}
+EINKAUF_DEFAULT_ORDER = 'j.RDATUM DESC, j.REC_ID DESC'
+
+
 def einkauf_liste(*, suche: str = '', stadium: int | None = None,
-                  limit: int = 200) -> list[dict[str, Any]]:
-    """Liste aller Einkäufe (QUELLE in (5, 15) — also in-Bearbeitung
-    und verbuchte EK-Rechnungen)."""
+                  zahlart_id: int | None = None,
+                  storno_aus: bool = True,
+                  sort_sql: str = EINKAUF_DEFAULT_ORDER,
+                  limit: int = 100, offset: int = 0
+                  ) -> dict[str, Any]:
+    """Einkäufe (QUELLE 5/15). Serverseitig gefiltert, sortiert,
+    paginiert. Returns ``{'rows': [...], 'total': int}``.
+
+    ``storno_aus`` (Default True) blendet stornierte Belege
+    (STADIUM 125/126/127) aus.
+    """
     _hibiscus_vormerkung_schema()
     soll_zahlart = _ek_zahlart_ueberweisung_id()
     where = ['j.QUELLE IN (5, 15)']
@@ -153,41 +176,56 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
     if stadium is not None:
         where.append('j.STADIUM = %s')
         params.append(int(stadium))
-    params.append(int(limit))
+    if zahlart_id is not None:
+        where.append('j.ZAHLART = %s')
+        params.append(int(zahlart_id))
+    if storno_aus:
+        where.append('j.STADIUM NOT IN (125, 126, 127)')
+    where_sql = ' AND '.join(where)
 
-    sql = f"""
-        SELECT
-            j.REC_ID                            AS rec_id,
-            j.QUELLE                            AS quelle,
-            j.VRENUM                            AS vrenum,
-            j.ORGNUM                            AS orgnum,
-            j.RDATUM                            AS rdatum,
-            j.STADIUM                           AS stadium,
-            j.ADDR_ID                           AS addr_id,
-            COALESCE(a.NAME1, j.KUN_NAME1, '–') AS lief_name,
-            j.NSUMME                            AS nsumme,
-            j.MSUMME                            AS msumme,
-            j.BSUMME                            AS bsumme,
-            j.ZAHLART_NAME                      AS zahlart_name,
-            j.ZAHLART                           AS zahlart_id,
-            COALESCE(a.IBAN, '')                AS lief_iban,
-            (
-                SELECT COUNT(*) FROM JOURNALPOS p
-                 WHERE p.JOURNAL_ID = j.REC_ID AND p.TOP_POS_ID = -1
-            )                                   AS pos_anzahl,
-            (
-                SELECT COUNT(*) FROM XT_HIBISCUS_VORMERKUNG v
-                 WHERE v.MODUL = 'einkauf' AND v.REFERENZ_ID = j.REC_ID
-                   AND v.STATUS = 'vorgemerkt'
-            )                                   AS hat_vormerkung
-        FROM JOURNAL j
-        LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
-        WHERE {' AND '.join(where)}
-        ORDER BY j.RDATUM DESC, j.REC_ID DESC
-        LIMIT %s
-    """
     with get_db() as cur:
-        cur.execute(sql, params)
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM JOURNAL j "
+            f"LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID "
+            f"WHERE {where_sql}",
+            params,
+        )
+        total = int((cur.fetchone() or {}).get('n') or 0)
+
+        cur.execute(
+            f"""
+            SELECT
+                j.REC_ID                            AS rec_id,
+                j.QUELLE                            AS quelle,
+                j.VRENUM                            AS vrenum,
+                j.ORGNUM                            AS orgnum,
+                j.RDATUM                            AS rdatum,
+                j.STADIUM                           AS stadium,
+                j.ADDR_ID                           AS addr_id,
+                COALESCE(a.NAME1, j.KUN_NAME1, '–') AS lief_name,
+                j.NSUMME                            AS nsumme,
+                j.MSUMME                            AS msumme,
+                j.BSUMME                            AS bsumme,
+                j.ZAHLART_NAME                      AS zahlart_name,
+                j.ZAHLART                           AS zahlart_id,
+                COALESCE(a.IBAN, '')                AS lief_iban,
+                (
+                    SELECT COUNT(*) FROM JOURNALPOS p
+                     WHERE p.JOURNAL_ID = j.REC_ID AND p.TOP_POS_ID = -1
+                )                                   AS pos_anzahl,
+                (
+                    SELECT COUNT(*) FROM XT_HIBISCUS_VORMERKUNG v
+                     WHERE v.MODUL = 'einkauf' AND v.REFERENZ_ID = j.REC_ID
+                       AND v.STATUS = 'vorgemerkt'
+                )                                   AS hat_vormerkung
+            FROM JOURNAL j
+            LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
+            WHERE {where_sql}
+            ORDER BY {sort_sql}
+            LIMIT %s OFFSET %s
+            """,
+            params + [int(limit), int(offset)],
+        )
         rows = cur.fetchall()
     for r in rows:
         r['stadium_label'] = _stadium_label(r.get('stadium'))
@@ -196,7 +234,7 @@ def einkauf_liste(*, suche: str = '', stadium: int | None = None,
             r.get('quelle'), r.get('stadium'), r.get('zahlart_id'),
             r.get('lief_iban'), bool(r.get('hat_vormerkung')),
             soll_zahlart)
-    return rows
+    return {'rows': rows, 'total': total}
 
 
 def einkauf_detail(rec_id: int) -> dict[str, Any] | None:
@@ -2145,6 +2183,19 @@ def _zahlung_aus_cao_sepa(z: dict) -> bool:
 # project_kasse_zahlungsuebernahme.md). Wir filtern sie aus dem
 # Erfassungs-Dropdown.
 _KASSEN_ZAHLART_REC_IDS = {1, 5, 6, 7, -6}
+
+
+def zahlungsarten_filter() -> list[dict[str, Any]]:
+    """Schlanke Liste ``[{'id','name'}]`` aller aktiven Zahlungsarten
+    für das Filter-Dropdown der Einkaufs-Übersicht."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT REC_ID, NAME FROM ZAHLUNGSARTEN "
+            " WHERE AKTIV_FLAG='Y' ORDER BY NAME"
+        )
+        return [{'id': int(r['REC_ID']),
+                 'name': (r.get('NAME') or '').strip()}
+                for r in (cur.fetchall() or [])]
 
 
 def zahlungsarten_aktiv(*, ohne_kassen_relevant: bool = True

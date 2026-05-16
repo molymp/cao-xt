@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import '_listing.html' as L %}
 {% block title %}Einkäufe – Übersicht{% endblock %}
 
 {% block extra_style %}
@@ -84,13 +85,14 @@
 }
 .btn-primary:hover { background:var(--akzent-hell,#2e6e1a); }
 </style>
+{{ L.pager_css() }}
 {% endblock %}
 
 {% block content %}
 <div class="ek-kopf">
     <h1>🧾 Einkäufe – Übersicht</h1>
     <div style="display:flex; gap:10px; align-items:center;">
-        <span class="ek-trefferzahl">{{ eintraege|length }} Treffer</span>
+        <span class="ek-trefferzahl">{{ pager.total }} Treffer{% if pager.seiten > 1 %} · Seite {{ pager.page }}/{{ pager.seiten }}{% endif %}</span>
         <button type="button" class="btn-primary" onclick="ekNeu()">+ Neuer Einkauf</button>
     </div>
 </div>
@@ -114,6 +116,20 @@
                 <option value="{{ code }}" {% if stadium == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
+    </label>
+    <label>
+        Zahlart
+        <select name="zahlart">
+            <option value="">– alle –</option>
+            {% for z in zahlungsarten %}
+                <option value="{{ z.id }}" {% if zahlart_id == z.id %}selected{% endif %}>{{ z.name }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label style="flex-direction:row;align-items:center;gap:6px;">
+        <input type="checkbox" name="storno" value="1"
+               {% if not storno_aus %}checked{% endif %}>
+        stornierte anzeigen
     </label>
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset"
@@ -195,15 +211,15 @@ async function ekVormerkungZurueck(recId) {
 <table class="ek-tabelle">
     <thead>
         <tr>
-            <th>Beleg-Nr.</th>
-            <th title="Eingangsrechnungs-Nr (Lieferanten-eigene Beleg-Nr)">Eingangs-Nr.</th>
-            <th>Datum</th>
-            <th>Lieferant</th>
+            <th>{{ L.sortlink('Beleg-Nr.', 'belegnr', sort_key, sort_dir) }}</th>
+            <th title="Eingangsrechnungs-Nr (Lieferanten-eigene Beleg-Nr)">{{ L.sortlink('Eingangs-Nr.', 'eingangsnr', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Datum', 'datum', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Lieferant', 'lieferant', sort_key, sort_dir) }}</th>
             <th class="zahl-rechts">Pos.</th>
-            <th class="zahl-rechts">Netto €</th>
-            <th class="zahl-rechts">Brutto €</th>
-            <th>Zahlart</th>
-            <th title="Zahlungs-Status — nur fuer gebuchte Belege relevant">Zahl-Stadium</th>
+            <th class="zahl-rechts">{{ L.sortlink('Netto €', 'netto', sort_key, sort_dir) }}</th>
+            <th class="zahl-rechts">{{ L.sortlink('Brutto €', 'brutto', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Zahlart', 'zahlart', sort_key, sort_dir) }}</th>
+            <th title="Zahlungs-Status — nur fuer gebuchte Belege relevant">{{ L.sortlink('Zahl-Stadium', 'stadium', sort_key, sort_dir) }}</th>
             <th title="SEPA-Überweisung vorbereiten (nur Zahlart „Überweisung Bank")">Überweisung</th>
         </tr>
     </thead>
@@ -251,6 +267,7 @@ async function ekVormerkungZurueck(recId) {
     {% endfor %}
     </tbody>
 </table>
+{{ L.pager(pager) }}
 {% else %}
 <div class="ek-leer">Keine Einkäufe gefunden.</div>
 {% endif %}

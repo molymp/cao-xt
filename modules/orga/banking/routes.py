@@ -60,16 +60,24 @@ def konto_detail(konto_id: int):
             if p['key'] == preset_key:
                 von, bis = p['von'], p['bis']
                 break
-    umsaetze = m.umsaetze_liste(
+    from common import listing
+    order_sql, sort_key, sort_dir = listing.parse_sort(
+        request.args, m.UMSATZ_SORT, m.UMSATZ_DEFAULT_ORDER)
+    page, per_page = listing.parse_paging(request.args,
+                                          default_per_page=100)
+    daten = m.umsaetze_liste(
         konto_id=konto_id, suche=suche, suche_regex=suche_regex,
         von_datum=von, bis_datum=bis,
         art_filter=art_filter, umsatztyp_id=umsatztyp_id,
         nur_ungeprueft=nur_ungeprueft,
-        limit=500,
+        sort_sql=order_sql, limit=per_page,
+        offset=(page - 1) * per_page,
     )
+    pg = listing.pager(daten['total'], page, per_page)
     return render_template(
         'banking_konto.html',
-        konto=konto, umsaetze=umsaetze,
+        konto=konto, umsaetze=daten['rows'],
+        pager=pg, sort_key=sort_key, sort_dir=sort_dir,
         arten=m.umsatz_arten(),
         umsatztypen=m.umsatztypen_liste(),
         zeitraum_presets=m.zeitraum_presets(),
