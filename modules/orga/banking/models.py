@@ -26,28 +26,53 @@ FLAG_GEPRUEFT  = 1   # User hat den Umsatz "abgehakt" (Bit 0)
 FLAG_NOTBOOKED = 2   # Vormerkung der Bank, noch nicht endgueltig (Bit 1)
 
 
+def _fmt_dt(v) -> str:
+    return v.strftime('%d.%m.%Y %H:%M') if hasattr(v, 'strftime') else str(v)
+
+
 def hibiscus_sync_status() -> dict[str, Any]:
-    """Read-only Status des Hibiscus-Auto-Sync-Schedulers.
+    """Letzter Bank-Sync — aus Hibiscus' ``protokoll``-Tabelle (DB,
+    SSoT). Bewusst NICHT über den ``synchronizescheduler``-XML-RPC-
+    Service: der ist im Leerlauf nicht aufrufbar (Jameica-Lifecycle).
+    Die DB ist die verlässliche Quelle ("Saldo/Umsätze abgerufen" je
+    Konto mit Timestamp).
 
     Degradiert sauber: liefert immer ein dict. ``verfuegbar=False`` +
-    ``hinweis`` wenn Jameica/Zugang noch nicht da ist (kein Fehler in
-    der UI, nur Hinweis).
+    ``hinweis`` wenn noch kein Sync protokolliert ist.
     """
     try:
-        from common.hibiscus_client import aus_konfig, HibiscusError
+        with get_db() as cur:
+            cur.execute("SELECT MAX(datum) AS m, COUNT(*) AS n "
+                        "FROM protokoll")
+            row = cur.fetchone() or {}
+            letzter = row.get('m')
+            anzahl = int(row.get('n') or 0)
+            cur.execute("SELECT konto_id, MAX(datum) AS letzter "
+                        "FROM protokoll GROUP BY konto_id")
+            pro_konto = {r['konto_id']: _fmt_dt(r['letzter'])
+                         for r in (cur.fetchall() or [])}
+            kommentar = ''
+            if letzter is not None:
+                cur.execute("SELECT kommentar FROM protokoll "
+                            "WHERE datum = %s ORDER BY id DESC LIMIT 1",
+                            (letzter,))
+                kr = cur.fetchone()
+                kommentar = (kr or {}).get('kommentar', '') if kr else ''
     except Exception as e:
-        return {'verfuegbar': False, 'hinweis': f'Client n/a: {e}'}
-    try:
-        st = aus_konfig(timeout=8).sync_status()
-        st['verfuegbar'] = True
-        return st
-    except HibiscusError as e:
         return {'verfuegbar': False,
-                'hinweis': 'Jameica/Bank-Zugang nicht erreichbar – '
-                           'Auto-Sync läuft erst nach FinTS-Einrichtung '
-                           f'im Jameica-GUI. ({str(e)[:120]})'}
-    except Exception as e:
-        return {'verfuegbar': False, 'hinweis': str(e)[:160]}
+                'hinweis': f'protokoll nicht lesbar: {str(e)[:140]}'}
+    if letzter is None:
+        return {'verfuegbar': False,
+                'hinweis': 'Noch kein Bank-Sync protokolliert — läuft '
+                           'nach FinTS-Einrichtung beim ersten geplanten '
+                           'Lauf (S-pushTAN am Handy bestätigen).'}
+    return {
+        'verfuegbar':  True,
+        'letzter':     _fmt_dt(letzter),
+        'status_text': kommentar or 'protokolliert',
+        'eintraege':   anzahl,
+        'pro_konto':   pro_konto,
+    }
 
 
 def konten_liste() -> list[dict[str, Any]]:

@@ -533,5 +533,45 @@ class TestCertPinLoopback(unittest.TestCase):
         self.assertEqual(kset.get('hibiscus.cert_sha256'), 'b' * 64)
 
 
+class TestBankingSyncStatusAusProtokoll(unittest.TestCase):
+    """hibiscus_sync_status liest aus DB-protokoll (nicht XML-RPC)."""
+
+    def _db(self, cur):
+        import contextlib
+
+        @contextlib.contextmanager
+        def _g():
+            yield cur
+        return _g
+
+    def test_verfuegbar_aus_protokoll(self):
+        import datetime
+        import modules.orga.banking.models as M
+        from unittest.mock import MagicMock
+        cur = MagicMock()
+        d = datetime.datetime(2026, 5, 16, 15, 30)
+        cur.fetchone.side_effect = [{'m': d, 'n': 7},
+                                    {'kommentar': 'Saldo abgerufen'}]
+        cur.fetchall.return_value = [{'konto_id': 48, 'letzter': d}]
+        with patch.object(M, 'get_db', self._db(cur)):
+            r = M.hibiscus_sync_status()
+        self.assertTrue(r['verfuegbar'])
+        self.assertEqual(r['letzter'], '16.05.2026 15:30')
+        self.assertEqual(r['status_text'], 'Saldo abgerufen')
+        self.assertEqual(r['eintraege'], 7)
+        self.assertEqual(r['pro_konto'], {48: '16.05.2026 15:30'})
+
+    def test_leer_degradiert(self):
+        import modules.orga.banking.models as M
+        from unittest.mock import MagicMock
+        cur = MagicMock()
+        cur.fetchone.return_value = {'m': None, 'n': 0}
+        cur.fetchall.return_value = []
+        with patch.object(M, 'get_db', self._db(cur)):
+            r = M.hibiscus_sync_status()
+        self.assertFalse(r['verfuegbar'])
+        self.assertIn('protokoll', r['hinweis'].lower())
+
+
 if __name__ == '__main__':
     unittest.main()
