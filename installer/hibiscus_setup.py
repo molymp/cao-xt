@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import subprocess
 import platform
 import shutil
 import sys
@@ -107,6 +109,118 @@ _PLATTFORMEN: dict[tuple[str, str], _JameicaPlattform] = {
         'jameica/jameica.sh',
         'jameica/jameicaserver.sh', (), False),
 }
+
+
+JAVA_MIN_MAJOR = 21
+
+# Paketmanager → (Update-Cmd | None, Install-Cmd-Praefix, JRE-Paket).
+# Reihenfolge = Erkennungs-Reihenfolge. headless reicht: Jameica läuft
+# im Server-Mode (jameicaserver.sh), kein AWT/SWT nötig.
+_PKG_MANAGER = [
+    ('apt-get', ['apt-get', 'update'],
+     ['apt-get', 'install', '-y'], 'openjdk-21-jre-headless'),
+    ('dnf', None, ['dnf', 'install', '-y'], 'java-21-openjdk-headless'),
+    ('yum', None, ['yum', 'install', '-y'], 'java-21-openjdk-headless'),
+    ('zypper', None, ['zypper', '--non-interactive', 'install'],
+     'java-21-openjdk-headless'),
+]
+
+
+def java_major(java_bin: str = 'java') -> int | None:
+    """Major-Version des erreichbaren ``java`` (oder None).
+
+    Parst ``java -version`` (Ausgabe auf stderr). Formate:
+    ``"21.0.9"`` → 21, Legacy ``"1.8.0_xxx"`` → 8.
+    """
+    exe = shutil.which(java_bin)
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, '-version'], capture_output=True,
+                              text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    txt = (out.stderr or '') + (out.stdout or '')
+    m = re.search(r'version "(\d+)(?:\.(\d+))?', txt)
+    if not m:
+        return None
+    major = int(m.group(1))
+    if major == 1 and m.group(2):       # 1.8 → 8
+        return int(m.group(2))
+    return major
+
+
+def _ist_root() -> bool:
+    return hasattr(os, 'geteuid') and os.geteuid() == 0
+
+
+def _sudo_prefix() -> list[str]:
+    """``[]`` wenn root, sonst ``['sudo','-n']`` falls sudo da ist."""
+    if _ist_root():
+        return []
+    if shutil.which('sudo'):
+        return ['sudo', '-n']
+    return []
+
+
+def ensure_java(min_major: int = JAVA_MIN_MAJOR, *,
+                auto_install: bool = True, print_fn=print) -> dict:
+    """Stellt sicher, dass Java >= ``min_major`` verfügbar ist.
+
+    Linux-Jameica bringt kein JRE mit. Ist eine passende JVM bereits da
+    → nichts tun. Sonst (``auto_install``) per System-Paketmanager
+    installieren (apt/dnf/yum/zypper, sudo-aware). Best-effort:
+    schlägt sauber fehl mit klarer Anleitung statt Exception.
+
+    Returns ``{'status': 'ok'|'installiert'|'manuell', 'major': int|None,
+    'msg': str}``.
+    """
+    cur = java_major()
+    if cur is not None and cur >= min_major:
+        print_fn(f"    ✓ System-Java {cur} vorhanden (>= {min_major})")
+        return {'status': 'ok', 'major': cur, 'msg': ''}
+
+    if not auto_install:
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'Java {min_major}+ fehlt (gefunden: {cur}). '
+                       f'Manuell installieren.'}
+
+    pm = next(((name, upd, inst, pkg)
+               for name, upd, inst, pkg in _PKG_MANAGER
+               if shutil.which(name)), None)
+    if pm is None:
+        return {'status': 'manuell', 'major': cur,
+                'msg': 'Kein bekannter Paketmanager (apt/dnf/yum/'
+                       'zypper). Java 21+ bitte manuell installieren.'}
+    name, upd, inst, pkg = pm
+    sudo = _sudo_prefix()
+    if not _ist_root() and not sudo:
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'Java {min_major}+ fehlt und weder root noch '
+                       f'sudo verfügbar. Manuell: {name} install {pkg}'}
+    try:
+        if upd:
+            print_fn(f"    … {name} update")
+            subprocess.run(sudo + upd, check=True, timeout=300,
+                           capture_output=True)
+        print_fn(f"    … installiere {pkg} via {name}")
+        subprocess.run(sudo + inst + [pkg], check=True, timeout=600,
+                       capture_output=True)
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or b'').decode('utf-8', 'replace')[-300:]
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'{name}-Install fehlgeschlagen: {err.strip()} '
+                       f'→ manuell: {name} install {pkg}'}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'Paketmanager-Aufruf fehlgeschlagen: {e}'}
+    neu = java_major()
+    if neu is not None and neu >= min_major:
+        print_fn(f"    ✓ Java {neu} installiert ({pkg})")
+        return {'status': 'installiert', 'major': neu, 'msg': pkg}
+    return {'status': 'manuell', 'major': neu,
+            'msg': f'{pkg} installiert, aber java meldet weiter '
+                   f'{neu}. PATH/alternatives prüfen.'}
 
 
 def aktuelle_plattform(system: str | None = None,
@@ -451,6 +565,7 @@ def setup(basis: str = DEFAULT_BASIS, *,
           db_user: str | None = None,
           db_pass: str | None = None,
           plat: _JameicaPlattform | None = None,
+          java_autoinstall: bool = True,
           print_fn=print) -> dict:
     """Komplette optionale Hibiscus-Installation (plattformabhängig).
 
@@ -470,6 +585,13 @@ def setup(basis: str = DEFAULT_BASIS, *,
     userdata     = os.path.join(basis, 'userdata')
     plugins_dir  = os.path.join(userdata, 'plugins')
     os.makedirs(plugins_dir, exist_ok=True)
+
+    # Linux bringt keine JRE mit → System-Java sicherstellen (Auto-
+    # Install via Paketmanager). macOS-Bundle hat eine eigene JRE.
+    java_info = {'status': 'gebündelt', 'major': None, 'msg': ''}
+    if not plat.jre_bundled:
+        java_info = ensure_java(auto_install=java_autoinstall,
+                                print_fn=print_fn)
 
     with tempfile.TemporaryDirectory(prefix='cxhib-') as tmp:
         # 1) Jameica (plattformspezifisches Bundle)
@@ -517,15 +639,16 @@ def setup(basis: str = DEFAULT_BASIS, *,
                  "    ⚠  Master-Passwort konnte nicht gespeichert werden "
                  "(DB?) – später in der Admin-UI nachtragen")
 
-    if not plat.jre_bundled:
-        print_fn("    ⚠  Linux-Build ohne JRE: System-Java 21+ muss "
-                 "installiert sein (z.B. 'apt install openjdk-21-jre').")
+    if not plat.jre_bundled and java_info['status'] == 'manuell':
+        print_fn(f"    ⚠  System-Java nicht sichergestellt: "
+                 f"{java_info['msg']}")
 
     return {
         'app_dir':   app_dir,
         'userdata':  userdata,
         'plattform': plat.key,
         'jre_extern': not plat.jre_bundled,
+        'java':      java_info,
         'plugins':   [a.name for a in PLUGINS],
         'pw_gespeichert': pw_ok,
         'db_konfiguriert': db_konfiguriert,

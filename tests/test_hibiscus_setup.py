@@ -107,6 +107,55 @@ class TestPlattform(unittest.TestCase):
         self.assertIsNone(a.sha256_sidecar)
 
 
+class TestJava(unittest.TestCase):
+    def _run(self, stderr):
+        class R:
+            def __init__(s): s.stderr = stderr; s.stdout = ''
+        return R()
+
+    def test_java_major_parst_21_und_legacy_8(self):
+        with patch('shutil.which', return_value='/usr/bin/java'):
+            with patch('subprocess.run',
+                       return_value=self._run('openjdk version "21.0.9"')):
+                self.assertEqual(hs.java_major(), 21)
+            with patch('subprocess.run',
+                       return_value=self._run('java version "1.8.0_392"')):
+                self.assertEqual(hs.java_major(), 8)
+
+    def test_java_major_kein_java(self):
+        with patch('shutil.which', return_value=None):
+            self.assertIsNone(hs.java_major())
+
+    def test_ensure_java_vorhanden_ok(self):
+        with patch.object(hs, 'java_major', return_value=21):
+            r = hs.ensure_java(print_fn=lambda *a: None)
+        self.assertEqual(r['status'], 'ok')
+
+    def test_ensure_java_no_autoinstall_manuell(self):
+        with patch.object(hs, 'java_major', return_value=None):
+            r = hs.ensure_java(auto_install=False, print_fn=lambda *a: None)
+        self.assertEqual(r['status'], 'manuell')
+
+    def test_ensure_java_apt_install_erfolg(self):
+        # 1. java_major None (fehlt) → nach Install 21.
+        seq = [None, 21]
+        with patch.object(hs, 'java_major', side_effect=lambda *a: seq.pop(0)), \
+             patch('shutil.which', side_effect=lambda x: '/usr/bin/'+x
+                   if x in ('apt-get', 'sudo') else None), \
+             patch.object(hs.os, 'geteuid', create=True, return_value=0), \
+             patch('subprocess.run') as srun:
+            r = hs.ensure_java(print_fn=lambda *a: None)
+        self.assertEqual(r['status'], 'installiert')
+        self.assertTrue(srun.called)
+
+    def test_ensure_java_kein_pkgmanager(self):
+        with patch.object(hs, 'java_major', return_value=None), \
+             patch('shutil.which', return_value=None):
+            r = hs.ensure_java(print_fn=lambda *a: None)
+        self.assertEqual(r['status'], 'manuell')
+        self.assertIn('Paketmanager', r['msg'])
+
+
 class TestDbConfig(unittest.TestCase):
     def test_db_config_setzt_mysql_treiber_und_url(self):
         with tempfile.TemporaryDirectory() as d:
