@@ -212,6 +212,76 @@ def phase4_app_selection(non_interactive: bool = False) -> list[str]:
     return selected
 
 
+def phase4c_hibiscus(non_interactive: bool = False, *,
+                     db_host: str = '', db_port: int = 3306,
+                     db_user: str = '', db_pass: str = '') -> None:
+    """Phase 4c (nur Admin-Rolle): optionale Banking/Hibiscus-Installation.
+
+    Lädt Jameica + Hibiscus-Plugins von willuhn.de (gepinnt), schreibt
+    die Plaintext-Konfig (inkl. MariaDB-Anbindung statt H2, mit den
+    DB-Zugangsdaten aus Phase 1 → Frisch-Install hängt sofort an der
+    bestehenden DB) und legt – falls angegeben – das Jameica-Master-
+    Passwort in DORFKERN_KONFIG ab. Die Bank-/Konten-Erstkonfig
+    (PIN-TAN) bleibt manuell im Jameica-GUI.
+
+    Im non-interactive Mode nur aktiv, wenn ``XT_HIBISCUS=1``.
+    """
+    _section("Phase 4c: Banking / Hibiscus (optional)")
+
+    if non_interactive:
+        if os.environ.get('XT_HIBISCUS', '') != '1':
+            print("  –  Übersprungen (XT_HIBISCUS != 1)")
+            return
+        master_pw = os.environ.get('XT_HIBISCUS_MASTER_PW') or None
+    else:
+        print("  Hibiscus (Jameica) ermöglicht eigenes Onlinebanking")
+        print("  direkt aus Dorfkern (Konten, Umsätze, SEPA).")
+        print()
+        if not _ask_yes_no("Banking/Hibiscus jetzt mitinstallieren?", False):
+            print("  –  Übersprungen. Später nachrüstbar.")
+            return
+        print()
+        print("  Das Webadmin-/XML-RPC-Passwort IST das Jameica-Master-")
+        print("  Passwort (Benutzername wird ignoriert). Du vergibst es")
+        print("  bei der Jameica-Ersteinrichtung selbst – wenn du es")
+        print("  schon kennst, kann ich es jetzt in der Dorfkern-DB")
+        print("  ablegen, sonst später in der Admin-UI.")
+        import getpass
+        try:
+            master_pw = getpass.getpass(
+                "  Jameica-Master-Passwort (leer = später): ") or None
+        except (EOFError, KeyboardInterrupt):
+            print()
+            master_pw = None
+
+    try:
+        from installer.hibiscus_setup import setup as _hib_setup
+        db_schema = (os.environ.get('XT_HIBISCUS_DB_SCHEMA')
+                     or 'hibiscus')
+        ergebnis = _hib_setup(
+            ini_path=_INI_PATH, master_pw=master_pw,
+            db_host=db_host or None, db_port=db_port,
+            db_schema=db_schema,
+            db_user=db_user or None, db_pass=db_pass,
+            print_fn=print)
+        print()
+        print(f"  ✓ Jameica:  {ergebnis['app_dir']}")
+        print(f"  ✓ Userdata: {ergebnis['userdata']}")
+        print(f"  ✓ Plugins:  {', '.join(ergebnis['plugins'])}")
+        if ergebnis['db_konfiguriert']:
+            print(f"  ✓ DB:       MariaDB-Schema '{db_schema}' "
+                  f"(Frisch-Install hängt sofort an der bestehenden DB)")
+        print()
+        print("  Nächster Schritt (manuell, einmalig):")
+        print("    1. Jameica starten, Master-Passwort vergeben")
+        print("    2. In Hibiscus dein Bankkonto (PIN-TAN) einrichten")
+        print("    3. Falls Passwort hier nicht hinterlegt: Admin-UI →")
+        print("       System → Banking → Master-Passwort eintragen")
+    except Exception as e:
+        print(f"  ✗ Hibiscus-Setup fehlgeschlagen: {e}")
+        print("     Installation läuft ohne Banking weiter.")
+
+
 def phase5_start_and_report(selected_apps: list[str]) -> None:
     """Phase 5: Apps starten und Bericht ausgeben."""
     _section("Phase 5: Apps starten")
@@ -324,6 +394,14 @@ def main() -> None:
 
     # Phase 4: App-Auswahl
     selected_apps = phase4_app_selection(args.non_interactive)
+
+    # Phase 4c: optionale Banking/Hibiscus-Installation (nur Admin-Rolle;
+    # die Terminal-Rolle kehrt oben schon vor Phase 4 zurück). Läuft VOR
+    # write_ini, damit der [Hibiscus]-Block mit in die caoxt.ini kommt.
+    # DB-Parameter aus Phase 1 → Hibiscus hängt an dieselbe MariaDB.
+    phase4c_hibiscus(args.non_interactive,
+                     db_host=host, db_port=port,
+                     db_user=user, db_pass=password)
 
     # caoxt.ini schreiben
     _section("Konfiguration speichern")
