@@ -449,8 +449,31 @@ def einkauf_uebersicht():
     if bezahlt not in ('alle', 'bezahlt', 'unbezahlt'):
         bezahlt = 'alle'
 
-    pz = listing.periode(request.args.get('gran') or 'monat',
-                         request.args.get('periode'))
+    # Granularität + Zeitraum: aus Dropdowns (gran + jahr/monat/
+    # quartal) bzw. ?periode=; ohne Angabe → zuletzt gemerkter Stand
+    # aus der Session; sonst aktueller Monat.
+    gran = (request.args.get('gran')
+            or session.get('ek_gran') or 'monat')
+    if gran not in listing.GRAN:
+        gran = 'monat'
+    jahr = request.args.get('jahr', type=int)
+    monat = request.args.get('monat', type=int)
+    quartal = request.args.get('quartal', type=int)
+    if jahr and gran == 'monat' and monat:
+        anchor = f'{jahr}-{monat:02d}'
+    elif jahr and gran == 'quartal' and quartal:
+        anchor = f'{jahr}-Q{quartal}'
+    elif jahr and gran == 'jahr':
+        anchor = f'{jahr}'
+    else:
+        anchor = request.args.get('periode') or session.get('ek_periode')
+    pz = listing.periode(gran, anchor)
+    # Auswahl merken (kanonischer anchor).
+    session['ek_gran'] = pz['gran']
+    session['ek_periode'] = pz['anchor']
+    heute = date.today()
+    jahre = list(range(heute.year + 1, heute.year - 7, -1))
+
     order_sql, sort_key, sort_dir = listing.parse_sort(
         request.args, ek.EINKAUF_SORT, ek.EINKAUF_DEFAULT_ORDER)
 
@@ -466,6 +489,7 @@ def einkauf_uebersicht():
         total=daten['total'],
         gekuerzt=daten.get('gekuerzt', False),
         periode=pz,
+        jahre=jahre,
         sort_key=sort_key,
         sort_dir=sort_dir,
         suche=suche,

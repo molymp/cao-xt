@@ -34,33 +34,6 @@
   {%- endif -%}
 {%- endmacro -%}
 
-{%- macro _url(over) -%}
-  {%- set a = request.args.to_dict() -%}
-  {%- set _ = a.update(over) -%}
-  {%- for k, v in over.items() if v is none -%}{%- set _ = a.pop(k, None) -%}{%- endfor -%}
-  {{- url_for(request.endpoint, **dict(a, **(request.view_args or {}))) -}}
-{%- endmacro -%}
-
-{# Zeitraum-Navigation: Granularität (Monat/Quartal/Jahr) +
-   vor/zurück. pz = listing.periode(...). Erhält alle Filter. #}
-{%- macro zeitnav(pz) -%}
-<div class="cx-zeit">
-  <div class="cx-zeit-gran">
-    {%- for g, lbl in [('monat','Monat'),('quartal','Quartal'),('jahr','Jahr')] -%}
-      <a class="{{ 'aktiv' if pz.gran == g else '' }}"
-         href="{{ _url({'gran': g, 'periode': none, 'page': none}) }}">{{ lbl }}</a>
-    {%- endfor -%}
-  </div>
-  <div class="cx-zeit-nav">
-    <a href="{{ _url({'periode': pz.prev, 'page': none}) }}" title="vorheriger Zeitraum">‹</a>
-    <span class="cx-zeit-label">{{ pz.label }}</span>
-    <a href="{{ _url({'periode': pz.next, 'page': none}) }}" title="nächster Zeitraum">›</a>
-    <a class="cx-zeit-heute" href="{{ _url({'periode': none, 'page': none}) }}"
-       title="aktueller Zeitraum">heute</a>
-  </div>
-</div>
-{%- endmacro -%}
-
 {%- macro pager_css() -%}
 <style>
 .cx-pager{display:flex;gap:14px;align-items:center;justify-content:center;
@@ -77,18 +50,5 @@ th a.cx-sort{color:var(--creme,#f0eee9);text-decoration:none;
 th a.cx-sort:hover{text-decoration:underline}
 th a.cx-sort-aktiv{color:#fff;font-weight:800;
   text-decoration:underline}
-.cx-zeit{display:flex;gap:18px;align-items:center;flex-wrap:wrap;
-  margin:10px 0 14px}
-.cx-zeit-gran,.cx-zeit-nav{display:flex;gap:6px;align-items:center}
-.cx-zeit a{padding:4px 12px;border:1px solid var(--rand,#d8d2c0);
-  border-radius:var(--radius-klein,6px);text-decoration:none;
-  color:var(--gruen-dunkel,#2e6e1a);background:var(--creme,#f7f4ec);
-  font-size:.92rem}
-.cx-zeit a:hover{background:var(--bg-hell,#ece3cc)}
-.cx-zeit-gran a.aktiv{background:var(--gruen-dunkel,#2e6e1a);
-  color:#fff;border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
-.cx-zeit-label{font-weight:800;min-width:9rem;text-align:center;
-  color:var(--gruen-dunkel,#2e6e1a)}
-.cx-zeit-heute{font-size:.82rem!important}
 </style>
 {%- endmacro -%}

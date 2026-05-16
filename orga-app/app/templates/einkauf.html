@@ -139,15 +139,48 @@
                {% if not storno_aus %}checked{% endif %}>
         stornierte anzeigen
     </label>
-    {# Granularität/Zeitraum als hidden mitführen, damit „Filtern“ sie behält #}
-    <input type="hidden" name="gran" value="{{ periode.gran }}">
-    <input type="hidden" name="periode" value="{{ periode.anchor }}">
+    <label>
+        Ansicht
+        <select name="gran" onchange="this.form.submit()">
+            <option value="monat"   {% if periode.gran == 'monat' %}selected{% endif %}>Monat</option>
+            <option value="quartal" {% if periode.gran == 'quartal' %}selected{% endif %}>Quartal</option>
+            <option value="jahr"    {% if periode.gran == 'jahr' %}selected{% endif %}>Jahr</option>
+        </select>
+    </label>
+    {% if periode.gran == 'monat' %}
+    <label>
+        Monat
+        <select name="monat" onchange="this.form.submit()">
+            {% for mn in ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'] %}
+                <option value="{{ loop.index }}" {% if periode.monat == loop.index %}selected{% endif %}>{{ mn }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% elif periode.gran == 'quartal' %}
+    <label>
+        Quartal
+        <select name="quartal" onchange="this.form.submit()">
+            {% for qn in [1,2,3,4] %}
+                <option value="{{ qn }}" {% if periode.quartal == qn %}selected{% endif %}>Q{{ qn }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endif %}
+    <label>
+        Jahr
+        <select name="jahr" onchange="this.form.submit()">
+            {% for jr in jahre %}
+                <option value="{{ jr }}" {% if periode.jahr == jr %}selected{% endif %}>{{ jr }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {# Sortierung mitführen, damit „Filtern“/Zeitraumwechsel sie behält #}
+    {% if sort_key %}<input type="hidden" name="sort" value="{{ sort_key }}">
+    <input type="hidden" name="dir" value="{{ sort_dir }}">{% endif %}
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset"
             onclick="window.location='{{ url_for('orga_bestellwesen.einkauf_uebersicht') }}'">Zurücksetzen</button>
 </form>
-
-{{ L.zeitnav(periode) }}
 
 <script>
 // Neuen Einkauf anlegen via Lieferanten-Picker (analog Wareneingang)

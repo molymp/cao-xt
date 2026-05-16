@@ -86,6 +86,7 @@ def periode(gran: str, anchor: str | None,
         von, bis = date(y, 1, 1), date(y, 12, 31)
         label = f'{y}'
         prev, nxt = str(y - 1), str(y + 1)
+        m, q, canon = 0, 0, f'{y}'
 
     elif gran == 'quartal':
         try:
@@ -101,6 +102,7 @@ def periode(gran: str, anchor: str | None,
         pq, py = (4, y - 1) if q == 1 else (q - 1, y)
         nq, ny = (1, y + 1) if q == 4 else (q + 1, y)
         prev, nxt = f'{py}-Q{pq}', f'{ny}-Q{nq}'
+        m, canon = 0, f'{y}-Q{q}'
 
     else:  # monat
         try:
@@ -115,6 +117,8 @@ def periode(gran: str, anchor: str | None,
         pm, py = (12, y - 1) if m == 1 else (m - 1, y)
         nm, ny = (1, y + 1) if m == 12 else (m + 1, y)
         prev, nxt = f'{py}-{pm:02d}', f'{ny}-{nm:02d}'
+        q, canon = 0, f'{y}-{m:02d}'
 
-    return {'gran': gran, 'anchor': anchor or '', 'von': von,
-            'bis': bis, 'label': label, 'prev': prev, 'next': nxt}
+    return {'gran': gran, 'anchor': canon, 'von': von, 'bis': bis,
+            'label': label, 'prev': prev, 'next': nxt,
+            'jahr': y, 'monat': m, 'quartal': q}
