@@ -578,5 +578,156 @@ class TestBankingSyncStatusAusProtokoll(unittest.TestCase):
         self.assertIn('protokoll', r['hinweis'].lower())
 
 
+class TestSepaUeberweisungAnlegen(unittest.TestCase):
+    """HibiscusClient.sepa_ueberweisung_anlegen → sepaueberweisung.create."""
+
+    def _client_mit_capture(self):
+        c = HibiscusClient('https://127.0.0.1:8080/xmlrpc', 'u', 'pw')
+        calls = []
+
+        def _getattr(name):
+            def _m(*a):
+                calls.append((name, a))
+                return 'HIB-4711'
+            return _m
+
+        c._proxy = type('P', (), {
+            '__getattr__': staticmethod(_getattr)})()
+        return c, calls
+
+    def test_create_map_keys_und_normalisierung(self):
+        c, calls = self._client_mit_capture()
+        rid = c.sepa_ueberweisung_anlegen(
+            debit_konto_id=48,
+            iban='de89 3704 0044 0532 0130 00',
+            bic='cobadeffxxx',
+            name='Großhandel Müller GmbH',
+            betrag=123.456, zweck='Rechnung 4711',
+            endtoendid='EDI-000123')
+        self.assertEqual(rid, 'HIB-4711')
+        self.assertEqual(len(calls), 1)
+        name, args = calls[0]
+        self.assertEqual(name, 'hibiscus.xmlrpc.sepaueberweisung.create')
+        p = args[0]
+        self.assertEqual(p['konto'], 48)
+        # IBAN: ohne Leerzeichen, Großbuchstaben
+        self.assertEqual(p['kontonummer'], 'DE89370400440532013000')
+        self.assertEqual(p['blz'], 'COBADEFFXXX')
+        self.assertEqual(p['betrag'], 123.46)          # 2 NK gerundet
+        self.assertEqual(p['verwendungszweck'], 'Rechnung 4711')
+        self.assertEqual(p['endtoendid'], 'EDI-000123')
+
+    def test_kein_termin_kein_key(self):
+        c, calls = self._client_mit_capture()
+        c.sepa_ueberweisung_anlegen(
+            debit_konto_id=1, iban='DE12', bic='X', name='N',
+            betrag=1.0, zweck='z')
+        p = calls[0][1][0]
+        self.assertNotIn('termin', p)
+        self.assertNotIn('endtoendid', p)
+
+
+class TestVormerkenViaHibiscus(unittest.TestCase):
+    """einkauf.vormerken_via_hibiscus: Guards + Happy-Path."""
+
+    def _ctx(self, cur):
+        import contextlib
+
+        @contextlib.contextmanager
+        def _g():
+            yield cur
+        return _g
+
+    def _run(self, *, kopf, sums=(0.0, 0.0), debit='48',
+             client_exc=None):
+        import modules.orga.bestellwesen.einkauf as E
+        import common.hibiscus_client as hc
+        from unittest.mock import MagicMock
+
+        cur = MagicMock()
+        cur.fetchone.side_effect = [
+            kopf,
+            {'s_betrag': sums[0], 's_skonto': sums[1]},
+        ]
+        fake_client = MagicMock()
+        if client_exc:
+            fake_client.sepa_ueberweisung_anlegen.side_effect = client_exc
+        else:
+            fake_client.sepa_ueberweisung_anlegen.return_value = 'HIB-9'
+
+        with patch.object(E, 'get_db', self._ctx(cur)), \
+             patch.object(E, 'get_db_transaction', self._ctx(cur)), \
+             patch('common.konfig.get',
+                   side_effect=lambda k, d=None:
+                       debit if k == 'hibiscus.debit_konto_id' else d), \
+             patch.object(hc, 'aus_konfig', return_value=fake_client):
+            return E.vormerken_via_hibiscus(123, ma_name='Tester'), \
+                cur, fake_client
+
+    def _kopf(self, **kw):
+        base = {'QUELLE': 5, 'STADIUM': 2, 'BSUMME': 100.0,
+                'VRENUM': 'EDI-000123', 'ORGNUM': 'RE-77',
+                'lief_name': 'Müller GmbH',
+                'lief_iban': 'DE89 3704 0044 0532 0130 00',
+                'lief_bic': 'cobadeffxxx'}
+        base.update(kw)
+        return base
+
+    def test_happy_path_setzt_stadium_11(self):
+        res, cur, client = self._run(kopf=self._kopf())
+        self.assertTrue(res['ok'])
+        self.assertEqual(res['stadium'], 11)
+        self.assertEqual(res['betrag'], 100.0)
+        self.assertEqual(res['hibiscus_id'], 'HIB-9')
+        # SEPA mit normalisierter IBAN + offenem Betrag
+        kw = client.sepa_ueberweisung_anlegen.call_args.kwargs
+        self.assertEqual(kw['iban'], 'DE89370400440532013000')
+        self.assertEqual(kw['betrag'], 100.0)
+        self.assertEqual(kw['debit_konto_id'], 48)
+        # STADIUM-Update idempotent (STADIUM<>11)
+        sql = ' '.join(c.args[0] for c in cur.execute.call_args_list
+                       if c.args)
+        self.assertIn('STADIUM=11', sql)
+        self.assertIn('STADIUM<>11', sql)
+
+    def test_offener_betrag_minus_zahlungen(self):
+        res, _, client = self._run(kopf=self._kopf(BSUMME=100.0),
+                                    sums=(30.0, 0.0))
+        self.assertEqual(res['betrag'], 70.0)
+        self.assertEqual(
+            client.sepa_ueberweisung_anlegen.call_args.kwargs['betrag'],
+            70.0)
+
+    def test_bereits_stadium_11_wirft(self):
+        with self.assertRaises(PermissionError):
+            self._run(kopf=self._kopf(STADIUM=11))
+
+    def test_storniert_wirft(self):
+        with self.assertRaises(PermissionError):
+            self._run(kopf=self._kopf(STADIUM=127))
+
+    def test_voll_bezahlt_wirft(self):
+        with self.assertRaises(PermissionError):
+            self._run(kopf=self._kopf(STADIUM=9))
+
+    def test_ohne_iban_wirft_valueerror(self):
+        with self.assertRaises(ValueError):
+            self._run(kopf=self._kopf(lief_iban=''))
+
+    def test_ohne_debit_konto_wirft_valueerror(self):
+        with self.assertRaises(ValueError):
+            self._run(kopf=self._kopf(), debit='')
+
+    def test_nichts_offen_wirft(self):
+        with self.assertRaises(PermissionError):
+            self._run(kopf=self._kopf(BSUMME=100.0), sums=(100.0, 0.0))
+
+    def test_hibiscus_fehler_wird_runtimeerror(self):
+        from common.hibiscus_client import HibiscusError
+        with self.assertRaises(RuntimeError):
+            self._run(kopf=self._kopf(),
+                      client_exc=HibiscusError('boom'))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -164,7 +164,9 @@ def einkauf_detail(rec_id: int) -> dict[str, Any] | None:
                       COALESCE(a.HAUSNR, j.KUN_HAUSNR, '') AS lief_hausnr,
                       COALESCE(a.LAND, j.KUN_LAND, '') AS lief_land,
                       COALESCE(a.PLZ, j.KUN_PLZ, '') AS lief_plz,
-                      COALESCE(a.ORT, j.KUN_ORT, '') AS lief_ort
+                      COALESCE(a.ORT, j.KUN_ORT, '') AS lief_ort,
+                      COALESCE(a.IBAN, '')  AS lief_iban,
+                      COALESCE(a.SWIFT, '') AS lief_bic
                  FROM JOURNAL j
                  LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
                 WHERE j.REC_ID = %s
@@ -2537,6 +2539,150 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
         _journal_op_rebuild_qu5(cur)
 
     return {'ok': True, 'rec_id': new_id, 'stadium': neues_stadium}
+
+
+# ── Phase E.2: SEPA-Überweisung via Hibiscus vormerken ───────────
+
+
+def _verwendungszweck_ek(vrenum: str, orgnum: str,
+                          lief_name: str) -> str:
+    """Baut den SEPA-Verwendungszweck einer EK-Rechnung.
+
+    Bevorzugt die externe Rechnungs-Nr (ORGNUM, das was der Lieferant
+    auf SEINER Rechnung schreibt — danach sucht er beim Abgleich),
+    sonst die interne VRENUM. Plus Lieferantenname, hart auf 140
+    Zeichen (SEPA-Limit) gekürzt.
+    """
+    ref = (orgnum or '').strip() or (vrenum or '').strip()
+    name = (lief_name or '').strip()
+    teile = ['Rechnung', ref] if ref else ['Rechnung']
+    if name:
+        teile.append(name)
+    return ' '.join(teile)[:140]
+
+
+def vormerken_via_hibiscus(rec_id: int, *,
+                            ma_id: int | None = None,
+                            ma_name: str = '') -> dict[str, Any]:
+    """Phase E.2: legt für eine offene EK-Rechnung eine SEPA-Über­
+    weisung in Hibiscus an (Status „offen", **nicht** ausgeführt) und
+    setzt ``JOURNAL.STADIUM=11`` (angewiesen).
+
+    Bewusst getrennt: das **Signieren/Senden** (S-pushTAN) macht der
+    Mensch in der Jameica-GUI — headless kann Jameica nicht signieren
+    (TANDialog ist SWT-GUI-gebunden, siehe
+    project_zahlungsmanagement_hibiscus). Hier wird der Auftrag nur in
+    die Hibiscus-Warteschlange gelegt.
+
+    Idempotenz (MyISAM, kein Rollback): ``STADIUM=11`` ist „sticky" —
+    ein erneuter Aufruf wird mit :class:`PermissionError` abgelehnt,
+    damit keine Doppel-Überweisung entsteht. Es wird **keine**
+    ``ZAHLUNGEN``-Zeile geschrieben (das passiert erst beim späteren
+    Bank-Umsatz-Abgleich, Phase E.3).
+    """
+    from common import konfig
+    from common.hibiscus_client import aus_konfig, HibiscusError
+
+    rec_id = int(rec_id)
+    ma_name_safe = (ma_name or 'CAO-XT')[:50]
+
+    with get_db() as cur:
+        cur.execute(
+            """SELECT j.QUELLE, j.STADIUM, j.BSUMME, j.VRENUM, j.ORGNUM,
+                      COALESCE(a.NAME1, j.KUN_NAME1, '') AS lief_name,
+                      COALESCE(a.IBAN, '')  AS lief_iban,
+                      COALESCE(a.SWIFT, '') AS lief_bic
+                 FROM JOURNAL j
+            LEFT JOIN ADRESSEN a ON a.REC_ID = j.ADDR_ID
+                WHERE j.REC_ID = %s""",
+            (rec_id,)
+        )
+        kopf = cur.fetchone()
+        if not kopf:
+            raise LookupError(f'Beleg {rec_id} nicht gefunden')
+        if int(kopf.get('QUELLE') or 0) != 5:
+            raise PermissionError(
+                f"QUELLE={kopf.get('QUELLE')} — kein gebuchter Einkauf")
+        st = int(kopf.get('STADIUM') or 0)
+        if st == 11:
+            raise PermissionError(
+                'Beleg ist bereits vorgemerkt (angewiesen) — eine '
+                'erneute Überweisung würde doppelt zahlen. In der '
+                'Jameica-GUI senden bzw. den Auftrag dort löschen.')
+        if st in (8, 9):
+            raise PermissionError('Beleg ist bereits voll bezahlt')
+        if st in (125, 126, 127):
+            raise PermissionError('Beleg ist storniert')
+
+        bsumme = float(kopf.get('BSUMME') or 0)
+        s_betrag, s_skonto = _zahlungssumme_und_skonto(cur, rec_id)
+        offen = round(abs(bsumme) - s_betrag - s_skonto, 2)
+        if offen <= 0.01:
+            raise PermissionError(
+                'Kein offener Betrag — nichts vorzumerken')
+
+        lief_name = (kopf.get('lief_name') or '').strip()
+        lief_iban = (kopf.get('lief_iban') or '').replace(' ', '').upper()
+        lief_bic  = (kopf.get('lief_bic') or '').strip().upper()
+        vrenum    = (kopf.get('VRENUM') or '').strip()
+        orgnum    = (kopf.get('ORGNUM') or '').strip()
+        if not lief_iban:
+            raise ValueError(
+                'Lieferant hat keine IBAN hinterlegt (ADRESSEN.IBAN) — '
+                'Überweisung nicht möglich. IBAN in den Stammdaten '
+                'ergänzen.')
+
+    # Belastungskonto: Hibiscus-Konto-ID NICHT hartkodieren — aus der
+    # Konfiguration. Wenn nicht gesetzt → klare, handlungsweisende
+    # Fehlermeldung (Admin muss das einmalig festlegen).
+    debit_raw = konfig.get('hibiscus.debit_konto_id')
+    try:
+        debit_konto_id = int(debit_raw) if debit_raw not in (None, '') else 0
+    except (TypeError, ValueError):
+        debit_konto_id = 0
+    if debit_konto_id <= 0:
+        raise ValueError(
+            'Kein Belastungskonto konfiguriert. In Admin → System → '
+            'Banking das Hibiscus-Konto für Überweisungen festlegen '
+            "(DORFKERN_KONFIG 'hibiscus.debit_konto_id').")
+
+    zweck = _verwendungszweck_ek(vrenum, orgnum, lief_name)
+    endtoendid = (vrenum or orgnum or '')[:35]
+
+    try:
+        client = aus_konfig()
+        hibiscus_id = client.sepa_ueberweisung_anlegen(
+            debit_konto_id=debit_konto_id,
+            iban=lief_iban, bic=lief_bic,
+            name=lief_name or 'Lieferant',
+            betrag=offen, zweck=zweck,
+            endtoendid=endtoendid)
+    except HibiscusError as e:
+        raise RuntimeError(f'Hibiscus: {e}') from e
+
+    # SEPA-Auftrag liegt jetzt in Hibiscus. STADIUM=11 setzen —
+    # idempotent (nur 2→11, nie 11 überschreiben). Keine ZAHLUNGEN-
+    # Zeile (kommt erst beim Bank-Umsatz-Abgleich, E.3).
+    with get_db_transaction() as cur:
+        cur.execute(
+            "UPDATE JOURNAL SET STADIUM=11 "
+            "WHERE REC_ID=%s AND QUELLE=5 AND STADIUM<>11",
+            (rec_id,)
+        )
+        _journal_op_rebuild_qu5(cur)
+
+    logging.getLogger(__name__).info(
+        'EK-Beleg %s via Hibiscus vorgemerkt (Auftrag %s, %.2f €, %s)',
+        rec_id, hibiscus_id, offen, ma_name_safe)
+    return {
+        'ok': True,
+        'rec_id': rec_id,
+        'hibiscus_id': str(hibiscus_id),
+        'betrag': offen,
+        'stadium': 11,
+        'hinweis': 'In Hibiscus vorgemerkt. Senden mit S-pushTAN '
+                   'erfolgt manuell in der Jameica-GUI.',
+    }
 
 
 # ── Phase E.3: Auto-Match Bankumsatz ↔ EK-Zahlung ────────────────

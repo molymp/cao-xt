@@ -298,8 +298,19 @@
     {% if kopf.STADIUM not in (8, 9, 11) %}
     {# 8 = bezahlt mit Skonto, 9 = bezahlt, 11 = angewiesen (Ueberweisung
        laeuft, eine weitere Zahlung waere unsinnig) #}
-    <div style="margin-top:10px;">
+    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
         <button type="button" class="btn-primary" onclick="edZahlungErfassen()">💶 Zahlung erfassen …</button>
+        {% if kopf.lief_iban %}
+        <button type="button" class="btn-aktion" onclick="edVormerkenHibiscus()"
+                title="Legt eine SEPA-Überweisung in Hibiscus an. Das Senden mit S-pushTAN erfolgt manuell in der Jameica-GUI.">🏦 Vormerken via Hibiscus …</button>
+        {% endif %}
+    </div>
+    {% elif kopf.STADIUM == 11 %}
+    <div class="ed-rdo" style="margin-top:10px; padding:8px 12px;
+         background:rgba(60,120,200,0.07); border-left:3px solid #2a4a8a;
+         border-radius:var(--radius-klein);">
+        🏦 In Hibiscus vorgemerkt (angewiesen). Das Senden mit
+        S-pushTAN erfolgt manuell in der Jameica-GUI.
     </div>
     {% endif %}
     <div id="ed-bank-vorschlag" style="margin-top:14px;
@@ -537,6 +548,24 @@ async function edStorno() {
     const res = await _post(`${ED_API}/storno`, {});
     if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
     window.location = '/orga/bestellwesen/einkauf/';
+}
+
+// ── Phase E.2: SEPA via Hibiscus vormerken ──────────────────────
+async function edVormerkenHibiscus() {
+    if (!confirm(
+        'SEPA-Überweisung für den offenen Betrag in Hibiscus vormerken?\n\n' +
+        'Es wird NICHT gesendet — den Auftrag danach in der Jameica-GUI ' +
+        'mit S-pushTAN freigeben. Der Beleg wird auf „angewiesen" gesetzt.'
+    )) return;
+    cxLadenZeigen('Lege Überweisung in Hibiscus an …');
+    const res = await _post(`${ED_API}/vormerken-hibiscus`, {});
+    cxLadenAusblenden();
+    if (!res.ok) { alert('Fehler: ' + (res.fehler || 'unbekannt')); return; }
+    alert(
+        `In Hibiscus vorgemerkt: ${_eur(res.betrag)} €\n\n` +
+        'Jetzt in der Jameica-GUI mit S-pushTAN senden.'
+    );
+    window.location.reload();
 }
 
 // ── Storno/Kopieren fuer GEBUCHTE EK-Rechnungen ─────────────────

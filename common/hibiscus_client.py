@@ -155,6 +155,50 @@ class HibiscusClient:
             self._ruf('umsatz.find', int(konto_id), von or '', bis or '')
             or [])
 
+    # ---- SEPA-Write (queue-only) -----------------------------------
+    #
+    # ``hibiscus.xmlrpc.sepaueberweisung.create`` LEGT die Überweisung
+    # nur in Hibiscus an (Status "offen"). Das SIGNIEREN/AUSFÜHREN
+    # (PIN/TAN bzw. S-pushTAN) bleibt bewusst beim Menschen in der
+    # Jameica-GUI — headless kann Jameica nicht signieren (TANDialog
+    # ist SWT-GUI-gebunden, siehe project_zahlungsmanagement_hibiscus).
+    # Es gibt in hibiscus.xmlrpc KEINE execute/send/sign-Methode.
+    #
+    # Map-Variante (robust ggü. Positions-Signaturänderungen). SEPA:
+    # ``kontonummer`` = Empfänger-IBAN, ``blz`` = Empfänger-BIC.
+
+    def sepa_ueberweisung_anlegen(self, *, debit_konto_id: int,
+                                  iban: str, bic: str, name: str,
+                                  betrag: float, zweck: str,
+                                  termin: str = '',
+                                  endtoendid: str = '') -> str:
+        """Legt eine SEPA-Überweisung in Hibiscus an (Status „offen",
+        NICHT ausgeführt). Gibt die Hibiscus-ID des Auftrags zurück.
+
+        :param debit_konto_id: Hibiscus-Konto-ID des Belastungskontos.
+        :param iban:  Empfänger-IBAN.
+        :param bic:   Empfänger-BIC.
+        :param name:  Empfängername.
+        :param betrag: Betrag (EUR, > 0).
+        :param zweck: Verwendungszweck.
+        :param termin: Ausführungstermin ``dd.mm.yyyy`` (leer = sofort).
+        :param endtoendid: optionale SEPA End-to-End-ID.
+        """
+        params: dict[str, Any] = {
+            'konto':            int(debit_konto_id),
+            'kontonummer':      str(iban).replace(' ', '').upper(),
+            'blz':              str(bic).strip().upper(),
+            'name':             str(name)[:70],
+            'betrag':           round(float(betrag), 2),
+            'verwendungszweck': str(zweck)[:140],
+        }
+        if termin:
+            params['termin'] = termin
+        if endtoendid:
+            params['endtoendid'] = str(endtoendid)[:35]
+        res = self._ruf('sepaueberweisung.create', params)
+        return str(res)
+
     # Status der automatischen Synchronisierung. Hibiscus-CORE-Service
     # → handler-id 'hibiscus.synchronizescheduler' (NICHT hibiscus.xmlrpc).
     _SYNC_STATUS = {

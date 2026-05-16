@@ -594,6 +594,24 @@ def api_ek_zahlung_erfassen(rec_id: int) -> Any:
     return jsonify(result)
 
 
+@bp.post('/einkauf/<int:rec_id>/api/vormerken-hibiscus')
+def api_ek_vormerken_hibiscus(rec_id: int) -> Any:
+    """Phase E.2: legt für die offene EK-Rechnung eine SEPA-Über­
+    weisung in Hibiscus an (Status „offen") und setzt STADIUM=11.
+    Das Senden mit S-pushTAN macht der Mensch in der Jameica-GUI."""
+    _login_check()
+    ma_id = session.get('ma_id')
+    ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
+    try:
+        result = ek.vormerken_via_hibiscus(
+            rec_id, ma_id=ma_id, ma_name=ma_name)
+    except (LookupError, PermissionError, ValueError) as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 502
+    return jsonify(result)
+
+
 @bp.get('/einkauf/<int:rec_id>/api/bankumsatz-kandidaten')
 def api_ek_bankumsatz_kandidaten(rec_id: int) -> Any:
     """Hibiscus-Bankumsatz-Match-Kandidaten fuer offenen EK-Beleg."""
