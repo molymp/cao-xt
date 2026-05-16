@@ -52,7 +52,17 @@ def _db_erreichbar() -> bool:
             return _cache['ok']
     ok = False
     try:
-        cfg = load_db_config()
+        # WICHTIG: die EFFEKTIVE DB-Config nutzen (das, womit die App
+        # via init_pool/config_local wirklich verbunden ist), NICHT roh
+        # load_db_config(). Sonst prueft das Gate in config_local-
+        # basierten Umgebungen die Platzhalter-caoxt.ini → DB scheinbar
+        # nie erreichbar → ALLE Apps haengen dauerhaft im "System
+        # startet"-Splash.
+        try:
+            from common.db import effektive_db_config
+            cfg = effektive_db_config()
+        except Exception:
+            cfg = load_db_config()
         host = cfg['host']
         port = int(cfg['port'])
         with socket.create_connection((host, port), timeout=_TCP_TIMEOUT):
