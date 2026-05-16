@@ -504,14 +504,21 @@ def schreibe_caoxt_ini_block(ini_path: str, *, user: str = 'dorfkern',
 
 def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
                        passwordfile: str | None = None,
+                       passwordcommand: str | None = None,
                        plat: _JameicaPlattform | None = None) -> list[str]:
     """Liefert das argv zum Start des Dorfkern-gemanagten Jameica.
 
     Kern: ``-f <userdata>`` zeigt Jameica auf unser ``.hibiscus/
     userdata`` (sonst läge die Config im OS-Default-Verzeichnis).
     GUI-Default (Standalone) für die Bank-/Master-PW-Ersteinrichtung;
-    ``headless`` für den späteren Daemon, dann mit ``passwordfile``
-    (``-w``) fürs Master-PW.
+    ``headless`` für den Daemon-Betrieb.
+
+    Master-Passwort fürs headless-Unlock:
+    - ``passwordcommand`` (``-P``): Jameica ruft das Kommando und liest
+      dessen stdout — Bevorzugt, weil das Passwort NICHT als Datei auf
+      der Platte landet (Dorfkern: ``python -m installer.hibiscus_pw``).
+    - ``passwordfile`` (``-w``): Fallback, Datei mit 600-Rechten.
+    ``passwordcommand`` hat Vorrang, wenn beides gesetzt ist.
 
     Plattformabhängig: Linux hat einen eigenen ``jameicaserver.sh``
     (bereits Server-Mode → keine ``-d -n`` nötig), macOS startet das
@@ -524,9 +531,24 @@ def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
     cmd = [os.path.join(basis, *rel.split('/')), '-f', userdata]
     if headless:
         cmd += list(plat.headless_args)
-        if passwordfile:
+        if passwordcommand:
+            cmd += ['-P', passwordcommand]
+        elif passwordfile:
             cmd += ['-w', passwordfile]
     return cmd
+
+
+def ist_installiert(basis: str = DEFAULT_BASIS,
+                    plat: _JameicaPlattform | None = None) -> bool:
+    """True, wenn unter ``basis`` ein lauffähiges Jameica liegt
+    (Launcher-Skript vorhanden). Für die App-Steuerung, damit die
+    Kachel „nicht installiert" statt „abgestürzt" zeigt."""
+    try:
+        plat = plat or aktuelle_plattform()
+    except RuntimeError:
+        return False
+    launcher = os.path.join(basis, *plat.launcher_gui.split('/'))
+    return os.path.isfile(launcher)
 
 
 def speichere_master_passwort(pw: str, ma_id: int | None = None) -> bool:
