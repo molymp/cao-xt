@@ -68,25 +68,26 @@ def _db_erreichbar() -> bool:
 _WARTE_HTML = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="3">
+<meta http-equiv="refresh" content="4">
 <title>System startet …</title>
 <style>
  html,body{height:100%;margin:0}
  body{display:flex;align-items:center;justify-content:center;
-   font-family:'Nunito',system-ui,sans-serif;background:#f3efe6;color:#4a4233}
+   font-family:'Nunito',system-ui,sans-serif;background:#f0eee9;color:#141414}
  .box{text-align:center;max-width:30rem;padding:2rem}
- .sp{width:54px;height:54px;margin:0 auto 1.4rem;border:6px solid #ddd3bf;
-   border-top-color:#8a6d3b;border-radius:50%;animation:r 1s linear infinite}
- @keyframes r{to{transform:rotate(360deg)}}
- h1{font-size:1.4rem;margin:0 0 .5rem} p{margin:.3rem 0;line-height:1.5}
- small{color:#8a8164}
+ .logo{margin:0 auto 1.6rem;display:flex;justify-content:center}
+ p{margin:.4rem 0;line-height:1.5} small{color:#8a8164}
 </style></head><body><div class="box">
- <div class="sp"></div>
- <h1>System startet …</h1>
+ <div class="logo">
+   <span data-dorfkern-logo="vertical" data-size="132" data-theme="light"
+         data-tagline="System startet …"
+         data-autoplay="true" data-loop="900"></span>
+ </div>
  <p>Die Datenbank ist gerade nicht erreichbar (z.&nbsp;B. direkt nach
  einem Neustart). Diese Seite lädt sich automatisch neu, sobald alles
  bereit ist – bitte einen Moment warten.</p>
  <p><small>Kein Eingreifen nötig.</small></p>
+ <script src="/brand/dorfkern-logo.js" defer></script>
 </div></body></html>"""
 
 
