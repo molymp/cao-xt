@@ -411,15 +411,19 @@ def phase3_app_selection(non_interactive: bool = False) -> list[str]:
 
 def phase4c_hibiscus(non_interactive: bool = False, *,
                      db_host: str = '', db_port: int = 3306,
+                     db_name: str = '',
                      db_user: str = '', db_pass: str = '') -> None:
     """Phase 4c (nur Admin-Rolle): optionale Banking/Hibiscus-Installation.
 
-    Lädt Jameica + Hibiscus-Plugins von willuhn.de (gepinnt), schreibt
-    die Plaintext-Konfig (inkl. MariaDB-Anbindung statt H2, mit den
-    DB-Zugangsdaten aus Phase 1 → Frisch-Install hängt sofort an der
-    bestehenden DB) und legt – falls angegeben – das Jameica-Master-
+    Lädt Jameica + Hibiscus-Plugins von willuhn.de, schreibt die
+    Plaintext-Konfig und legt – falls angegeben – das Jameica-Master-
     Passwort in DORFKERN_KONFIG ab. Die Bank-/Konten-Erstkonfig
     (PIN-TAN) bleibt manuell im Jameica-GUI.
+
+    MariaDB-Anbindung statt H2: Jameica wird auf die Dorfkern-HAUPT-DB
+    (``db_name`` aus Phase 1) konfiguriert – dort liegen die Hibiscus-
+    Tabellen bereits (1:1-Spiegel), darum greift ein Frisch-Install
+    sofort auf die vorhandenen Daten zu (kein separates Schema).
 
     Im non-interactive Mode nur aktiv, wenn ``XT_HIBISCUS=1``.
     """
@@ -453,8 +457,12 @@ def phase4c_hibiscus(non_interactive: bool = False, *,
 
     try:
         from installer.hibiscus_setup import setup as _hib_setup
+        # Default = die Dorfkern-HAUPT-DB (db_name aus Phase 1): die
+        # Hibiscus-Tabellen liegen dort bereits (1:1-Spiegel), darum
+        # nutzt das Dorfkern-Jameica genau dieses Schema – NICHT ein
+        # separates 'hibiscus'. Override via XT_HIBISCUS_DB_SCHEMA.
         db_schema = (os.environ.get('XT_HIBISCUS_DB_SCHEMA')
-                     or 'hibiscus')
+                     or db_name or 'hibiscus')
         ergebnis = _hib_setup(
             ini_path=_INI_PATH, master_pw=master_pw,
             db_host=db_host or None, db_port=db_port,
@@ -470,7 +478,10 @@ def phase4c_hibiscus(non_interactive: bool = False, *,
                   f"(Frisch-Install hängt sofort an der bestehenden DB)")
         print()
         print("  Nächster Schritt (manuell, einmalig):")
-        print("    1. Jameica starten, Master-Passwort vergeben")
+        print(f"    1. Jameica starten:")
+        print(f"       {' '.join(ergebnis['start_cmd'])}")
+        print("       (Master-Passwort vergeben — das ist auch das")
+        print("        XML-RPC-Passwort)")
         print("    2. In Hibiscus dein Bankkonto (PIN-TAN) einrichten")
         print("    3. Falls Passwort hier nicht hinterlegt: Admin-UI →")
         print("       System → Banking → Master-Passwort eintragen")
@@ -741,7 +752,7 @@ def main() -> None:
     # write_ini, damit der [Hibiscus]-Block mit in die caoxt.ini kommt.
     # DB-Parameter aus Phase 1 → Hibiscus hängt an dieselbe MariaDB.
     phase4c_hibiscus(args.non_interactive,
-                     db_host=host, db_port=port,
+                     db_host=host, db_port=port, db_name=name,
                      db_user=user, db_pass=password)
 
     _section("Konfiguration speichern")

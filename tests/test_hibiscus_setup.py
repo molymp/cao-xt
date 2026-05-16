@@ -120,38 +120,58 @@ class TestCaoxtIniBlock(unittest.TestCase):
                 'DORFKERN_KONFIG:hibiscus.master_passwort')
 
 
+class _Resp(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
 class TestDownloadVerify(unittest.TestCase):
-    def test_hash_mismatch_loescht_datei_und_wirft(self):
+    def test_sidecar_mismatch_loescht_datei_und_wirft(self):
+        daten = b'inhalt'
         art = hs._Artefakt(name='x', url='http://example/x.zip',
-                            sha256='0' * 64, ziel='plugin')
+                            sha256_sidecar='http://example/x.zip.SHA-256',
+                            ziel='plugin')
         with tempfile.TemporaryDirectory() as d:
             ziel = os.path.join(d, 'x.zip')
-
-            class _Resp(io.BytesIO):
-                def __enter__(self): return self
-                def __exit__(self, *a): return False
-            with patch('urllib.request.urlopen',
-                       return_value=_Resp(b'inhalt')):
+            # 1. Call: ZIP-Bytes, 2. Call: Sidecar mit falschem Hash
+            seite = [_Resp(daten),
+                     _Resp(('0' * 64 + '  x.zip').encode())]
+            with patch('urllib.request.urlopen', side_effect=seite):
                 with self.assertRaises(RuntimeError) as ctx:
                     hs.download_und_pruefe(art, ziel, print_fn=lambda *a: None)
             self.assertIn('SHA-256-Mismatch', str(ctx.exception))
             self.assertFalse(os.path.exists(ziel))  # geloescht
 
-    def test_hash_match_behaelt_datei(self):
+    def test_sidecar_match_behaelt_datei(self):
         daten = b'genau-diese-bytes'
         h = hashlib.sha256(daten).hexdigest()
         art = hs._Artefakt(name='x', url='http://example/x.zip',
-                            sha256=h, ziel='plugin')
+                            sha256_sidecar='http://example/x.zip.SHA-256',
+                            ziel='plugin')
         with tempfile.TemporaryDirectory() as d:
             ziel = os.path.join(d, 'x.zip')
+            seite = [_Resp(daten),
+                     _Resp(f'{h} *x.zip'.encode())]
+            with patch('urllib.request.urlopen', side_effect=seite):
+                ret = hs.download_und_pruefe(art, ziel,
+                                             print_fn=lambda *a: None)
+            self.assertTrue(os.path.exists(ziel))
+            self.assertEqual(ret, h)
 
-            class _Resp(io.BytesIO):
-                def __enter__(self): return self
-                def __exit__(self, *a): return False
+    def test_ohne_sidecar_kein_hardfail(self):
+        # Bewegliche Nightly/current-URL: kein Sidecar → kein Mismatch,
+        # Datei bleibt, beobachteter Hash wird zurückgegeben.
+        daten = b'irgendein-nightly-build'
+        art = hs._Artefakt(name='nightly', url='http://example/n.zip',
+                            sha256_sidecar=None, ziel='plugin')
+        with tempfile.TemporaryDirectory() as d:
+            ziel = os.path.join(d, 'n.zip')
             with patch('urllib.request.urlopen',
                        return_value=_Resp(daten)):
-                hs.download_und_pruefe(art, ziel, print_fn=lambda *a: None)
+                ret = hs.download_und_pruefe(art, ziel,
+                                             print_fn=lambda *a: None)
             self.assertTrue(os.path.exists(ziel))
+            self.assertEqual(ret, hashlib.sha256(daten).hexdigest())
 
 
 class TestZipSlipSchutz(unittest.TestCase):
@@ -162,6 +182,19 @@ class TestZipSlipSchutz(unittest.TestCase):
                 zf.writestr('../../etc/pwn', 'x')
             with self.assertRaises(RuntimeError):
                 hs._entpacke(boese, os.path.join(d, 'out'))
+
+    def test_entpacke_erhaelt_exec_bit(self):
+        # Jameica-JRE-Binaries müssen ausführbar bleiben.
+        with tempfile.TemporaryDirectory() as d:
+            z = os.path.join(d, 'a.zip')
+            with zipfile.ZipFile(z, 'w') as zf:
+                zi = zipfile.ZipInfo('bin/java')
+                zi.external_attr = 0o755 << 16
+                zf.writestr(zi, '#!/bin/sh\n')
+            out = os.path.join(d, 'out')
+            hs._entpacke(z, out)
+            st = os.stat(os.path.join(out, 'bin', 'java'))
+            self.assertTrue(st.st_mode & 0o111, 'exec-Bit fehlt')
 
 
 class TestMasterPasswortSpeichern(unittest.TestCase):
