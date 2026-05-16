@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shlex
 import subprocess
 import platform
 import shutil
@@ -82,10 +83,24 @@ class _JameicaPlattform:
     zip_name: str          # Datei unter _JAMEICA_BASIS_URL
     root_dir: str          # entpacktes Wurzelverzeichnis im Bundle
     launcher_gui: str      # rel. zu <basis>: GUI/Standalone-Start
-    headless_launcher: str  # rel. zu <basis>: headless/Server-Start
-    headless_args: tuple   # zusätzl. Args für headless (macOS: -d -n)
     jre_bundled: bool
+    # Headless: macOS hat NUR ein GUI-.sh, das hart ``-o`` setzt
+    # (= „Master-PW via Cmdline ignorieren") → würde -P/-w aushebeln
+    # und Jameica auf die (im -n-Modus unmögliche) Konsole verweisen.
+    # Darum auf macOS java DIREKT starten (jre_java + jar). Linux hat
+    # ein dediziertes ``jameicaserver.sh`` (Server, kein -o) →
+    # headless_launcher nutzen.
+    headless_launcher: str  # Linux: rel. server.sh; macOS: '' (java-direkt)
+    jre_java: str          # macOS: rel. java-Binary; Linux: '' (System-java)
+    jar: str               # macOS: rel. Jameica-Jar; Linux: ''
+    headless_args: tuple   # macOS java-direkt: ('-d','-n'); Linux: ()
 
+
+# JVM-Flags fürs macOS-java-direkt (aus dem GUI-.sh übernommen, ohne
+# die GUI-only Flags -Xdock / -XstartOnFirstThread).
+_MAC_JVM = ('-Dsun.security.smartcardio.library=/System/Library/'
+            'Frameworks/PCSC.framework/Versions/Current/PCSC',
+            '-Xmx512m', '-Xss64m')
 
 # machine()-Normalisierung: amd64→x86_64; auf Darwin meldet arm64,
 # auf Linux aarch64 – wir mappen über (system, normalisierte machine).
@@ -94,20 +109,22 @@ _MACHINE_ALIASES = {'amd64': 'x86_64', 'x64': 'x86_64'}
 _PLATTFORMEN: dict[tuple[str, str], _JameicaPlattform] = {
     ('Darwin', 'arm64'): _JameicaPlattform(
         'macos-aarch64', 'jameica-macos-aarch64.zip', 'jameica.app',
-        'jameica.app/jameica-macos-aarch64.sh',
-        'jameica.app/jameica-macos-aarch64.sh', ('-d', '-n'), True),
+        'jameica.app/jameica-macos-aarch64.sh', True,
+        '', 'jameica.app/jre-macosaarch64/Contents/Home/bin/java',
+        'jameica.app/jameica-macos-aarch64.jar', ('-d', '-n')),
     ('Darwin', 'x86_64'): _JameicaPlattform(
         'macos64', 'jameica-macos64.zip', 'jameica.app',
-        'jameica.app/jameica-macos64.sh',
-        'jameica.app/jameica-macos64.sh', ('-d', '-n'), True),
+        'jameica.app/jameica-macos64.sh', True,
+        '', 'jameica.app/jre-macos64/Contents/Home/bin/java',
+        'jameica.app/jameica-macos64.jar', ('-d', '-n')),
     ('Linux', 'x86_64'): _JameicaPlattform(
         'linux64', 'jameica-linux64.zip', 'jameica',
-        'jameica/jameica.sh',
-        'jameica/jameicaserver.sh', (), False),
+        'jameica/jameica.sh', False,
+        'jameica/jameicaserver.sh', '', '', ()),
     ('Linux', 'aarch64'): _JameicaPlattform(
         'linuxarm64', 'jameica-linuxarm64.zip', 'jameica',
-        'jameica/jameica.sh',
-        'jameica/jameicaserver.sh', (), False),
+        'jameica/jameica.sh', False,
+        'jameica/jameicaserver.sh', '', '', ()),
 }
 
 
@@ -527,14 +544,38 @@ def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
     """
     plat = plat or aktuelle_plattform()
     userdata = os.path.join(basis, 'userdata')
-    rel = plat.headless_launcher if headless else plat.launcher_gui
-    cmd = [os.path.join(basis, *rel.split('/')), '-f', userdata]
-    if headless:
-        cmd += list(plat.headless_args)
+
+    if not headless:
+        sh = os.path.join(basis, *plat.launcher_gui.split('/'))
+        return [sh, '-f', userdata]
+
+    # ---- headless ----
+    if plat.jre_java:
+        # macOS: java DIREKT (GUI-.sh erzwingt -o, das -P/-w aushebelt).
+        # Jameica prüft inProgramDir gegen das Prozess-CWD → wir cd'en
+        # ins Programm-Verzeichnis (wie es das .sh täte), userdata liegt
+        # ausserhalb. Alles als ein `sh -c`, da CWD + exec nötig.
+        progdir = os.path.join(basis, *plat.root_dir.split('/'))
+        java = os.path.join(basis, *plat.jre_java.split('/'))
+        jar = os.path.join(basis, *plat.jar.split('/'))
+        teile = [f'cd {shlex.quote(progdir)} &&',
+                 'exec', shlex.quote(java), *_MAC_JVM,
+                 '-jar', shlex.quote(jar),
+                 *plat.headless_args,
+                 '-f', shlex.quote(userdata)]
         if passwordcommand:
-            cmd += ['-P', passwordcommand]
+            teile += ['-P', shlex.quote(passwordcommand)]
         elif passwordfile:
-            cmd += ['-w', passwordfile]
+            teile += ['-w', shlex.quote(passwordfile)]
+        return ['sh', '-c', ' '.join(teile)]
+
+    # Linux: dediziertes Server-Skript (kein -o, cd't selbst).
+    sh = os.path.join(basis, *plat.headless_launcher.split('/'))
+    cmd = [sh, '-f', userdata, *plat.headless_args]
+    if passwordcommand:
+        cmd += ['-P', passwordcommand]
+    elif passwordfile:
+        cmd += ['-w', passwordfile]
     return cmd
 
 

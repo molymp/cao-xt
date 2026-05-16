@@ -82,15 +82,31 @@ class TestPlattform(unittest.TestCase):
         p = hs.aktuelle_plattform('Linux', 'aarch64')
         self.assertEqual(p.zip_name, 'jameica-linuxarm64.zip')
 
-    def test_macos_arm64_jre_und_dn(self):
+    def test_macos_headless_java_direkt_kein_o(self):
+        # macOS headless MUSS java direkt starten (GUI-.sh erzwingt -o,
+        # das -P/-w aushebelt). Wrapper: sh -c 'cd <app> && exec java …'
         p = hs.aktuelle_plattform('Darwin', 'arm64')
         self.assertEqual(p.key, 'macos-aarch64')
         self.assertTrue(p.jre_bundled)
-        cmd = hs.jameica_start_cmd('/b', headless=True, plat=p)
-        self.assertIn('-d', cmd)
-        self.assertIn('-n', cmd)
-        self.assertTrue(cmd[0].endswith('jameica.app/'
-                                        'jameica-macos-aarch64.sh'))
+        cmd = hs.jameica_start_cmd('/b', headless=True,
+                                   passwordcommand='PW', plat=p)
+        self.assertEqual(cmd[0], 'sh')
+        self.assertEqual(cmd[1], '-c')
+        s = cmd[2]
+        self.assertIn('cd /b/jameica.app &&', s)
+        self.assertIn('jre-macosaarch64/Contents/Home/bin/java', s)
+        self.assertIn('-jar /b/jameica.app/jameica-macos-aarch64.jar', s)
+        self.assertIn('-d -n', s)
+        self.assertIn('-P PW', s)
+        self.assertNotIn(' -o ', s)               # NICHT das GUI-.sh
+        self.assertNotIn('jameica-macos-aarch64.sh', s)
+
+    def test_macos_gui_nutzt_sh(self):
+        p = hs.aktuelle_plattform('Darwin', 'arm64')
+        cmd = hs.jameica_start_cmd('/b', plat=p)
+        self.assertEqual(
+            cmd, ['/b/jameica.app/jameica-macos-aarch64.sh',
+                  '-f', '/b/userdata'])
 
     def test_amd64_alias(self):
         # 'amd64' (z.B. manche Linux/Docker) → x86_64
@@ -167,13 +183,15 @@ class TestDaemon(unittest.TestCase):
         self.assertNotIn('-w', cmd)            # -P hat Vorrang
         self.assertNotIn('-d', cmd)            # Linux server.sh
 
-    def test_macos_daemon_dn_und_P(self):
+    def test_macos_daemon_java_direkt(self):
+        # macOS Daemon = sh -c java-direkt (siehe
+        # test_macos_headless_java_direkt_kein_o). Hier nur: kein -o.
         p = hs.aktuelle_plattform('Darwin', 'arm64')
         cmd = hs.jameica_start_cmd('/b', headless=True,
                                    passwordcommand='X', plat=p)
-        self.assertEqual(
-            cmd, ['/b/jameica.app/jameica-macos-aarch64.sh', '-f',
-                  '/b/userdata', '-d', '-n', '-P', 'X'])
+        self.assertEqual(cmd[:2], ['sh', '-c'])
+        self.assertIn('-P X', cmd[2])
+        self.assertNotIn(' -o ', cmd[2])
 
     def test_ist_installiert(self):
         with tempfile.TemporaryDirectory() as d:
