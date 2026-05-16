@@ -203,6 +203,31 @@ class TestDaemon(unittest.TestCase):
             open(launcher, 'w').close()
             self.assertTrue(hs.ist_installiert(d, plat=p))
 
+    def test_jameica_daemon_env_aus_db_config(self):
+        from installer import app_manager as am
+        with patch('common.db.effektive_db_config',
+                   return_value={'host': 'h', 'port': 3333,
+                                 'name': 'cao_XT_DEV', 'user': 'cao',
+                                 'password': 'p'}):
+            e = am._jameica_daemon_env()
+        self.assertEqual(e['DB_LOC'], 'h')
+        self.assertEqual(e['DB_PORT'], '3333')
+        self.assertEqual(e['DB_NAME'], 'cao_XT_DEV')
+        self.assertEqual(e['DB_USER'], 'cao')
+        self.assertEqual(e['DB_PASS'], 'p')
+
+    def test_pw_cmd_ohne_quotes(self):
+        # Jameica führt -P via Runtime.exec(String) aus (Whitespace-
+        # Split, kein Shell-Quoting) → KEINE Anführungszeichen.
+        from installer import app_manager as am
+        with patch('installer.hibiscus_setup.ist_installiert',
+                   return_value=True), \
+             patch('installer.hibiscus_setup.jameica_start_cmd') as jsc:
+            am._jameica_daemon_argv()
+        pw = jsc.call_args.kwargs['passwordcommand']
+        self.assertNotIn('"', pw)
+        self.assertIn('hibiscus_pw.py', pw)
+
     def test_app_manager_jameica_skip_ohne_install(self):
         from installer import app_manager as am
         self.assertIn('jameica', am.APPS)
