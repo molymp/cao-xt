@@ -255,9 +255,11 @@ def schreibe_xmlrpc_sharing(userdata: str) -> str:
     return pfad
 
 
-# Default-Schema: dediziert (NICHT in die CAO-DB mischen). Auf dem
-# Dev-Mac liegen die Tabellen zwar in cao_XT_DEV (Shortcut), ein
-# Frisch-Install soll aber ein sauberes ``hibiscus``-Schema nutzen.
+# Letzter Fallback, wenn der Aufrufer KEIN Schema übergibt. Der reale
+# Default kommt aus install.py: die Dorfkern-HAUPT-DB (caoxt.ini
+# db_name, z.B. cao_XT_DEV) — dort liegen die Hibiscus-Tabellen bereits
+# als 1:1-Spiegel, das Dorfkern-Jameica nutzt also genau dieses Schema
+# (NICHT ein separates 'hibiscus' — das ist nur die Notfall-Vorgabe).
 DEFAULT_DB_SCHEMA = 'hibiscus'
 
 # Quelle: DBSupportMySqlImpl.getJdbcUrl()-Default (Hibiscus-Code).
