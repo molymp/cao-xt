@@ -206,6 +206,24 @@ def _get_conn() -> mysql.connector.MySQLConnection:
         return conn
 
 
+def effektive_db_config() -> dict:
+    """Liefert die tatsächlich genutzte DB-Konfiguration.
+
+    Bevorzugt das per :func:`init_pool` gesetzte ``_pool_config`` (= das,
+    womit die laufende App wirklich verbunden ist – z.B. aus
+    ``config_local.py``); sonst Fallback auf
+    :func:`common.config.load_db_config` (Env/caoxt.ini).
+
+    Zweck: Standalone-Helfer (z.B. der von Jameica via ``-P`` gestartete
+    ``installer.hibiscus_pw``) bekommen so die echten Zugangsdaten als
+    Env mit, ohne ein App-``config``-Modul importieren zu müssen.
+    """
+    if _pool_config is not None:
+        return dict(_pool_config)
+    from common.config import load_db_config
+    return load_db_config()
+
+
 @contextmanager
 def get_db():
     """Context-Manager fuer einfache DB-Operationen (autocommit=True).

@@ -197,6 +197,7 @@ APPS = {
         # Externer Prozess (kein python -m): argv erst zur Startzeit
         # bauen (Plattform + Installations-Check + PW-Kommando).
         'argv_factory': lambda: _jameica_daemon_argv(),
+        'env_factory': lambda: _jameica_daemon_env(),
         'cwd': _REPO_ROOT,
         'log': os.path.join(LOG_DIR, 'caoxt-jameica.log'),
     },
@@ -214,17 +215,41 @@ def _jameica_daemon_argv():
     installiert → Daemon wird sauber übersprungen).
 
     Master-Passwort via ``-P``-Kommando aus DORFKERN_KONFIG (kein
-    Passwort auf der Platte). Quote-sicher als ein String, da Jameica
-    das passwordcommand über die Shell ausführt.
+    Passwort auf der Platte). WICHTIG: Jameica führt das Kommando per
+    ``Runtime.exec(String)`` aus → reines Whitespace-Splitting, KEINE
+    Shell/Quote-Auswertung. Darum OHNE Anführungszeichen und in der
+    Annahme, dass Python-/Skriptpfad keine Leerzeichen enthalten
+    (Repo-/venv-Pfade tun das nicht).
     """
     from installer import hibiscus_setup as _hs
     basis = os.path.join(_REPO_ROOT, '.hibiscus')
     if not _hs.ist_installiert(basis):
         return None
     pw_script = os.path.join(_REPO_ROOT, 'installer', 'hibiscus_pw.py')
-    pw_cmd = f'"{_APP_PYTHON}" "{pw_script}"'
+    pw_cmd = f'{_APP_PYTHON} {pw_script}'
     return _hs.jameica_start_cmd(basis, headless=True,
                                  passwordcommand=pw_cmd)
+
+
+def _jameica_daemon_env() -> dict:
+    """Effektive DB-Config als Env fürs Jameica-Subprozess.
+
+    Jameica erbt sie und reicht sie an den ``-P``-Helfer
+    ``installer.hibiscus_pw`` weiter, der so – ohne App-``config``-
+    Modul – die echte DB erreicht (DORFKERN_KONFIG-Lesezugriff).
+    """
+    try:
+        from common.db import effektive_db_config
+        c = effektive_db_config()
+    except Exception:
+        return {}
+    return {
+        'DB_LOC':  c.get('host', ''),
+        'DB_PORT': str(c.get('port', '')),
+        'DB_NAME': c.get('name', ''),
+        'DB_USER': c.get('user', ''),
+        'DB_PASS': c.get('password', ''),
+    }
 
 # Legacy-Aliase: `app_manager verwaltung start` / `app_manager wawi start`
 # werden auf die neuen Namen gemappt. Soll in Dorfkern v2.1 entfernt werden.
@@ -414,6 +439,17 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
                 break
             time.sleep(1)
 
+    # Optionale Zusatz-Env (z.B. Jameica: effektive DB-Config, damit der
+    # von Jameica via -P gestartete hibiscus_pw die echte DB erreicht).
+    child_env = None
+    if cfg.get('env_factory'):
+        try:
+            extra = cfg['env_factory']() or {}
+        except Exception as e:
+            print_fn(f"  ✗  {name}: env_factory fehlgeschlagen: {e}")
+            return False
+        child_env = {**os.environ, **{k: str(v) for k, v in extra.items()}}
+
     # Pre-Start Log-Rotation (idempotent)
     if _rotate_log(log_path):
         print_fn(f"  ⤴  {name}: Log rotiert.")
@@ -426,6 +462,7 @@ def _start_daemon(name: str, cfg: dict, *, print_fn=print) -> bool:
             stdout=log_file,
             stderr=log_file,
             start_new_session=True,
+            env=child_env,
         )
     except Exception as e:
         print_fn(f"  ✗  {name}: Start fehlgeschlagen: {e}")
