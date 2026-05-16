@@ -32,6 +32,11 @@ app.config['JSON_ENSURE_ASCII'] = False
 # Firmennamen via current_app.config lesen moechten.
 app.config['FIRMA_NAME'] = config.FIRMA_NAME
 
+# DB-Gate als ERSTER before_request (vor dem Permission-Guard): bei
+# nicht erreichbarer DB freundliche Warteseite statt Redirect-Schleife.
+from common.db_gate import install_db_gate  # noqa: E402
+install_db_gate(app)
+
 # Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Widgets
 # (Touch-Numpad/Keyboard/Datepicker). Wird mit App-eigenen Templates
 # ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).

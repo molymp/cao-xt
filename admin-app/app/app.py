@@ -29,6 +29,11 @@ app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['JSON_ENSURE_ASCII'] = False
 
+# DB-Gate als ERSTER before_request (vor dem Permission-Guard): bei
+# nicht erreichbarer DB freundliche Warteseite statt Redirect-Schleife.
+from common.db_gate import install_db_gate  # noqa: E402
+install_db_gate(app)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DOKU_DIR = os.path.join(BASE_DIR, 'doku')
 

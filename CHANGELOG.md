@@ -55,6 +55,12 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Geändert
 
+- systemd-Units: wirkungsloses `After=mariadb.service` entfernt (DB
+  läuft remote, kein lokales MariaDB). Stattdessen
+  `ExecStartPre=… -m common.wait_for_db` (wartet bis zu 120 s auf
+  TCP-Erreichbarkeit der DB, Exit 0 auch bei Timeout),
+  `Environment=PYTHONPATH=<install_root>`, `TimeoutStartSec=180`.
+  Glättet den Boot (kein Poller-Fehlstart, keine Redirect-Schleife).
 - HACCP: TFA-Geräte-ID (`TFA_DEVICE_ID`, z. B. `A52CED248`) als Feld in
   Sichtkontrolle-Liste, Dashboard-Kacheln und Alarm-Tabellen ergänzt;
   Detailseite-Label „Device-ID" → „Geräte-ID" (Konsistenz). Alarm-
@@ -104,6 +110,13 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - Update-Health-Check meldete fälschlich „Admin tot": Prüfung lief
   einmalig 5 s nach Start, Admin braucht aber ~15 s (DB-Migrationen).
   Jetzt Deadline-Poll bis 75 s, Zwischenläufe ohne Fehl-Logzeilen.
+- Redirect-Schleife (`ERR_TOO_MANY_REDIRECTS`) bei nicht erreichbarer
+  DB (z. B. nach Box-Reboot, bis die LAN-Route zur Remote-DB steht):
+  Permission-Guard ist fail-closed → `hat_recht`=False → Redirect auf
+  `index` → derselbe Guard → Schleife. Neues `common.db_gate` hängt
+  sich als erster `before_request` in alle 4 Apps und liefert bei
+  toter DB eine freundliche, sich selbst neu ladende Warteseite
+  (HTTP 200; API → 503 JSON) statt der Schleife. Fail-closed bleibt.
 - Kiosk → Mittagstisch warf „Internal Server Error", wenn Google-
   Spreadsheet-ID oder Service-Account-Credentials fehlten. Fehlende
   Konfiguration wird jetzt abgefangen (`MittagstischNichtKonfiguriert`)

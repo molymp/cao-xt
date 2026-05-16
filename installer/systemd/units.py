@@ -88,11 +88,15 @@ PartOf={target_unit}
 [Service]
 Type=simple
 {owner_block}WorkingDirectory={install_root}/{app_dir}
-ExecStart={install_root}/.venv/bin/python3 app.py
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH={install_root}
+ExecStartPre={install_root}/.venv/bin/python3 -m common.wait_for_db
+ExecStart={install_root}/.venv/bin/python3 app.py
 Restart=on-failure
 RestartSec=5s
-TimeoutStartSec=60
+# >= common.wait_for_db MAX_WAIT_S (120s) + App-Start, sonst killt
+# systemd den Start bei langsamer DB als Timeout.
+TimeoutStartSec=180
 
 # Logs gehen nach journald — Abruf via:
 #   journalctl{journal_user_flag} -u {full_name} -f
@@ -110,10 +114,14 @@ PartOf={target_unit}
 [Service]
 Type=simple
 {owner_block}WorkingDirectory={install_root}
-ExecStart={install_root}/.venv/bin/python3 -m {module}
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH={install_root}
+ExecStartPre={install_root}/.venv/bin/python3 -m common.wait_for_db
+ExecStart={install_root}/.venv/bin/python3 -m {module}
 Restart=on-failure
 RestartSec=10s
+# >= common.wait_for_db MAX_WAIT_S (120s) + Start.
+TimeoutStartSec=180
 
 StandardOutput=journal
 StandardError=journal
@@ -223,14 +231,18 @@ def _render_after_block(mode: str) -> str:
     """After=/Wants= fuer Service-Unit-Header."""
     if mode == 'user':
         return 'After=default.target'
-    return ('After=network-online.target mariadb.service\n'
+    # mariadb.service entfernt: die DB laeuft remote (kein lokales
+    # MariaDB) -> die Abhaengigkeit war wirkungslos. Auf
+    # TCP-Erreichbarkeit wartet stattdessen der ExecStartPre
+    # (common.wait_for_db), Restverzoegerung faengt common.db_gate ab.
+    return ('After=network-online.target\n'
             'Wants=network-online.target')
 
 
 def _render_target_after_block(mode: str) -> str:
     if mode == 'user':
         return 'After=default.target'
-    return 'After=network-online.target mariadb.service'
+    return 'After=network-online.target'
 
 
 def _render_target_install_target(mode: str) -> str:

@@ -26,6 +26,11 @@ import mittagstisch as mt
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+# DB-Gate als ERSTER before_request (vor dem Permission-Guard): bei
+# nicht erreichbarer DB freundliche Warteseite statt Redirect-Schleife.
+from common.db_gate import install_db_gate  # noqa: E402
+install_db_gate(app)
+
 # Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Bausteine
 # (Navbar, Toast, Touch-Widgets, Login-Shell). Wird mit App-eigenen Templates
 # ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).
