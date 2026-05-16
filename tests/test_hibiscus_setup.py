@@ -64,6 +64,49 @@ class TestPropertiesMerge(unittest.TestCase):
             self.assertIn('hibiscus.xmlrpc.umsatz.shared=true', txt)
 
 
+class TestPlattform(unittest.TestCase):
+    def test_linux_x86_kein_jre_serverlauncher(self):
+        p = hs.aktuelle_plattform('Linux', 'x86_64')
+        self.assertEqual(p.key, 'linux64')
+        self.assertEqual(p.zip_name, 'jameica-linux64.zip')
+        self.assertEqual(p.root_dir, 'jameica')
+        self.assertFalse(p.jre_bundled)
+        cmd = hs.jameica_start_cmd('/b', headless=True,
+                                   passwordfile='/b/pw', plat=p)
+        self.assertEqual(cmd, ['/b/jameica/jameicaserver.sh',
+                               '-f', '/b/userdata', '-w', '/b/pw'])
+        # Server-Launcher ist schon Server-Mode → KEIN -d -n
+        self.assertNotIn('-d', cmd)
+
+    def test_linux_arm64(self):
+        p = hs.aktuelle_plattform('Linux', 'aarch64')
+        self.assertEqual(p.zip_name, 'jameica-linuxarm64.zip')
+
+    def test_macos_arm64_jre_und_dn(self):
+        p = hs.aktuelle_plattform('Darwin', 'arm64')
+        self.assertEqual(p.key, 'macos-aarch64')
+        self.assertTrue(p.jre_bundled)
+        cmd = hs.jameica_start_cmd('/b', headless=True, plat=p)
+        self.assertIn('-d', cmd)
+        self.assertIn('-n', cmd)
+        self.assertTrue(cmd[0].endswith('jameica.app/'
+                                        'jameica-macos-aarch64.sh'))
+
+    def test_amd64_alias(self):
+        # 'amd64' (z.B. manche Linux/Docker) → x86_64
+        self.assertEqual(
+            hs.aktuelle_plattform('Linux', 'amd64').key, 'linux64')
+
+    def test_unbekannte_plattform_wirft(self):
+        with self.assertRaises(RuntimeError):
+            hs.aktuelle_plattform('Windows', 'x86_64')
+
+    def test_jameica_artefakt_url_pro_plattform(self):
+        a = hs.jameica_artefakt(hs.aktuelle_plattform('Linux', 'x86_64'))
+        self.assertTrue(a.url.endswith('jameica-linux64.zip'))
+        self.assertIsNone(a.sha256_sidecar)
+
+
 class TestDbConfig(unittest.TestCase):
     def test_db_config_setzt_mysql_treiber_und_url(self):
         with tempfile.TemporaryDirectory() as d:

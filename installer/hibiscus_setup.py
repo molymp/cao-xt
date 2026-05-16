@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import platform
 import shutil
 import sys
 import tempfile
@@ -63,13 +64,77 @@ class _Artefakt:
     ziel: str
 
 
-JAMEICA_MACOS_AARCH64 = _Artefakt(
-    name='jameica',
-    url='https://www.willuhn.de/products/jameica/releases/current/'
-        'jameica/jameica-macos-aarch64.zip',
-    sha256_sidecar=None,   # bewegliche current-URL, kein Sidecar
-    ziel='app',
-)
+_JAMEICA_BASIS_URL = ('https://www.willuhn.de/products/jameica/'
+                      'releases/current/jameica/')
+
+
+@dataclass(frozen=True)
+class _JameicaPlattform:
+    """Plattform-spezifische Jameica-Eigenheiten.
+
+    Linux-Builds bringen KEIN JRE mit (System-Java nötig, Java 21+);
+    macOS-Builds bündeln eine JRE. Launcher + entpacktes Wurzel-
+    Verzeichnis unterscheiden sich (``jameica.app`` vs ``jameica``).
+    """
+    key: str               # 'macos-aarch64' | 'linux64' | …
+    zip_name: str          # Datei unter _JAMEICA_BASIS_URL
+    root_dir: str          # entpacktes Wurzelverzeichnis im Bundle
+    launcher_gui: str      # rel. zu <basis>: GUI/Standalone-Start
+    headless_launcher: str  # rel. zu <basis>: headless/Server-Start
+    headless_args: tuple   # zusätzl. Args für headless (macOS: -d -n)
+    jre_bundled: bool
+
+
+# machine()-Normalisierung: amd64→x86_64; auf Darwin meldet arm64,
+# auf Linux aarch64 – wir mappen über (system, normalisierte machine).
+_MACHINE_ALIASES = {'amd64': 'x86_64', 'x64': 'x86_64'}
+
+_PLATTFORMEN: dict[tuple[str, str], _JameicaPlattform] = {
+    ('Darwin', 'arm64'): _JameicaPlattform(
+        'macos-aarch64', 'jameica-macos-aarch64.zip', 'jameica.app',
+        'jameica.app/jameica-macos-aarch64.sh',
+        'jameica.app/jameica-macos-aarch64.sh', ('-d', '-n'), True),
+    ('Darwin', 'x86_64'): _JameicaPlattform(
+        'macos64', 'jameica-macos64.zip', 'jameica.app',
+        'jameica.app/jameica-macos64.sh',
+        'jameica.app/jameica-macos64.sh', ('-d', '-n'), True),
+    ('Linux', 'x86_64'): _JameicaPlattform(
+        'linux64', 'jameica-linux64.zip', 'jameica',
+        'jameica/jameica.sh',
+        'jameica/jameicaserver.sh', (), False),
+    ('Linux', 'aarch64'): _JameicaPlattform(
+        'linuxarm64', 'jameica-linuxarm64.zip', 'jameica',
+        'jameica/jameica.sh',
+        'jameica/jameicaserver.sh', (), False),
+}
+
+
+def aktuelle_plattform(system: str | None = None,
+                        machine: str | None = None) -> _JameicaPlattform:
+    """Ermittelt die Jameica-Plattform für (system, machine).
+
+    Default = laufendes System. Wirft ``RuntimeError`` mit Liste der
+    unterstützten Plattformen, wenn nichts passt (z.B. Windows).
+    """
+    sysname = system or platform.system()
+    mach = (machine or platform.machine()).lower()
+    mach = _MACHINE_ALIASES.get(mach, mach)
+    p = _PLATTFORMEN.get((sysname, mach))
+    if p is None:
+        unterstuetzt = ', '.join(f'{s}/{m}' for s, m in _PLATTFORMEN)
+        raise RuntimeError(
+            f"Keine Jameica-Build für {sysname}/{mach}. "
+            f"Unterstützt: {unterstuetzt}.")
+    return p
+
+
+def jameica_artefakt(plat: _JameicaPlattform | None = None) -> _Artefakt:
+    """Baut das Jameica-Download-Artefakt für die Plattform.
+    Bewegliche ``current``-URL → kein Sidecar (HTTPS-Trust + Log)."""
+    plat = plat or aktuelle_plattform()
+    return _Artefakt(name='jameica',
+                     url=_JAMEICA_BASIS_URL + plat.zip_name,
+                     sha256_sidecar=None, ziel='app')
 
 # hibiscus hat eine stabile Release-Linie + Sidecar; xmlrpc/webadmin/
 # xmlrpc-base existieren nur als Nightly (Nischen-Plugins, kein Sidecar).
@@ -324,21 +389,27 @@ def schreibe_caoxt_ini_block(ini_path: str, *, user: str = 'dorfkern',
 
 
 def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
-                       passwordfile: str | None = None) -> list[str]:
+                       passwordfile: str | None = None,
+                       plat: _JameicaPlattform | None = None) -> list[str]:
     """Liefert das argv zum Start des Dorfkern-gemanagten Jameica.
 
     Kern: ``-f <userdata>`` zeigt Jameica auf unser ``.hibiscus/
-    userdata`` (sonst läge die Config in ``~/Library/jameica``).
+    userdata`` (sonst läge die Config im OS-Default-Verzeichnis).
     GUI-Default (Standalone) für die Bank-/Master-PW-Ersteinrichtung;
-    ``headless`` (= Server-Mode, abgekoppelt) für den späteren Daemon,
-    dann mit ``passwordfile`` (``-w``) fürs Master-PW (Datei mit
-    600-Rechten, vom Aufrufer verwaltet — NICHT vom Installer).
+    ``headless`` für den späteren Daemon, dann mit ``passwordfile``
+    (``-w``) fürs Master-PW.
+
+    Plattformabhängig: Linux hat einen eigenen ``jameicaserver.sh``
+    (bereits Server-Mode → keine ``-d -n`` nötig), macOS startet das
+    GUI-Skript mit ``-d -n``. Linux bringt KEIN JRE mit – System-Java
+    21+ muss vorhanden sein.
     """
-    sh = os.path.join(basis, 'jameica.app', 'jameica-macos-aarch64.sh')
+    plat = plat or aktuelle_plattform()
     userdata = os.path.join(basis, 'userdata')
-    cmd = [sh, '-f', userdata]
+    rel = plat.headless_launcher if headless else plat.launcher_gui
+    cmd = [os.path.join(basis, *rel.split('/')), '-f', userdata]
     if headless:
-        cmd += ['-d', '-n']
+        cmd += list(plat.headless_args)
         if passwordfile:
             cmd += ['-w', passwordfile]
     return cmd
@@ -379,26 +450,33 @@ def setup(basis: str = DEFAULT_BASIS, *,
           db_schema: str = DEFAULT_DB_SCHEMA,
           db_user: str | None = None,
           db_pass: str | None = None,
+          plat: _JameicaPlattform | None = None,
           print_fn=print) -> dict:
-    """Komplette optionale Hibiscus-Installation.
+    """Komplette optionale Hibiscus-Installation (plattformabhängig).
 
     Layout::
 
-        <basis>/jameica.app/                (Jameica + JRE)
-        <basis>/userdata/                   (Jameica-Userdata, -d Ziel)
-        <basis>/userdata/plugins/<plugin>/  (Hibiscus-Plugins)
+        <basis>/<root_dir>/                 (Jameica; macOS inkl. JRE)
+        <basis>/userdata/                   (Jameica-Userdata, -f Ziel)
+        <basis>/userdata/plugins/<plugin>/  (Hibiscus-Plugins, Java)
+
+    ``plat`` default = laufendes System (Linux/macOS, x86_64/arm64).
+    Linux bringt kein JRE mit → System-Java 21+ erforderlich.
 
     Returns ein dict mit Pfaden + Status für den Abschlussbericht.
     """
+    plat = plat or aktuelle_plattform()
     app_dir      = basis
     userdata     = os.path.join(basis, 'userdata')
     plugins_dir  = os.path.join(userdata, 'plugins')
     os.makedirs(plugins_dir, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix='cxhib-') as tmp:
-        # 1) Jameica
+        # 1) Jameica (plattformspezifisches Bundle)
+        print_fn(f"    Plattform: {plat.key} "
+                 f"(JRE {'gebündelt' if plat.jre_bundled else 'extern'})")
         jzip = os.path.join(tmp, 'jameica.zip')
-        download_und_pruefe(JAMEICA_MACOS_AARCH64, jzip, print_fn)
+        download_und_pruefe(jameica_artefakt(plat), jzip, print_fn)
         _entpacke(jzip, app_dir)
         # 2) Plugins
         for art in PLUGINS:
@@ -439,11 +517,17 @@ def setup(basis: str = DEFAULT_BASIS, *,
                  "    ⚠  Master-Passwort konnte nicht gespeichert werden "
                  "(DB?) – später in der Admin-UI nachtragen")
 
+    if not plat.jre_bundled:
+        print_fn("    ⚠  Linux-Build ohne JRE: System-Java 21+ muss "
+                 "installiert sein (z.B. 'apt install openjdk-21-jre').")
+
     return {
         'app_dir':   app_dir,
         'userdata':  userdata,
+        'plattform': plat.key,
+        'jre_extern': not plat.jre_bundled,
         'plugins':   [a.name for a in PLUGINS],
         'pw_gespeichert': pw_ok,
         'db_konfiguriert': db_konfiguriert,
-        'start_cmd': jameica_start_cmd(basis),
+        'start_cmd': jameica_start_cmd(basis, plat=plat),
     }

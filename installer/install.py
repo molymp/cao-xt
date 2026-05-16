@@ -273,9 +273,13 @@ def phase4c_hibiscus(non_interactive: bool = False, *,
             db_user=db_user or None, db_pass=db_pass,
             print_fn=print)
         print()
+        print(f"  ✓ Plattform: {ergebnis['plattform']}")
         print(f"  ✓ Jameica:  {ergebnis['app_dir']}")
         print(f"  ✓ Userdata: {ergebnis['userdata']}")
         print(f"  ✓ Plugins:  {', '.join(ergebnis['plugins'])}")
+        if ergebnis.get('jre_extern'):
+            print("  ⚠  Linux ohne gebündelte JRE → System-Java 21+ "
+                  "nötig (z.B. apt install openjdk-21-jre).")
         if ergebnis['db_konfiguriert']:
             print(f"  ✓ DB:       MariaDB-Schema '{db_schema}' "
                   f"(Frisch-Install hängt sofort an der bestehenden DB)")
