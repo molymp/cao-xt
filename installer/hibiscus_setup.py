@@ -25,6 +25,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import subprocess
+import platform
 import shutil
 import sys
 import tempfile
@@ -63,13 +66,189 @@ class _Artefakt:
     ziel: str
 
 
-JAMEICA_MACOS_AARCH64 = _Artefakt(
-    name='jameica',
-    url='https://www.willuhn.de/products/jameica/releases/current/'
-        'jameica/jameica-macos-aarch64.zip',
-    sha256_sidecar=None,   # bewegliche current-URL, kein Sidecar
-    ziel='app',
-)
+_JAMEICA_BASIS_URL = ('https://www.willuhn.de/products/jameica/'
+                      'releases/current/jameica/')
+
+
+@dataclass(frozen=True)
+class _JameicaPlattform:
+    """Plattform-spezifische Jameica-Eigenheiten.
+
+    Linux-Builds bringen KEIN JRE mit (System-Java nötig, Java 21+);
+    macOS-Builds bündeln eine JRE. Launcher + entpacktes Wurzel-
+    Verzeichnis unterscheiden sich (``jameica.app`` vs ``jameica``).
+    """
+    key: str               # 'macos-aarch64' | 'linux64' | …
+    zip_name: str          # Datei unter _JAMEICA_BASIS_URL
+    root_dir: str          # entpacktes Wurzelverzeichnis im Bundle
+    launcher_gui: str      # rel. zu <basis>: GUI/Standalone-Start
+    headless_launcher: str  # rel. zu <basis>: headless/Server-Start
+    headless_args: tuple   # zusätzl. Args für headless (macOS: -d -n)
+    jre_bundled: bool
+
+
+# machine()-Normalisierung: amd64→x86_64; auf Darwin meldet arm64,
+# auf Linux aarch64 – wir mappen über (system, normalisierte machine).
+_MACHINE_ALIASES = {'amd64': 'x86_64', 'x64': 'x86_64'}
+
+_PLATTFORMEN: dict[tuple[str, str], _JameicaPlattform] = {
+    ('Darwin', 'arm64'): _JameicaPlattform(
+        'macos-aarch64', 'jameica-macos-aarch64.zip', 'jameica.app',
+        'jameica.app/jameica-macos-aarch64.sh',
+        'jameica.app/jameica-macos-aarch64.sh', ('-d', '-n'), True),
+    ('Darwin', 'x86_64'): _JameicaPlattform(
+        'macos64', 'jameica-macos64.zip', 'jameica.app',
+        'jameica.app/jameica-macos64.sh',
+        'jameica.app/jameica-macos64.sh', ('-d', '-n'), True),
+    ('Linux', 'x86_64'): _JameicaPlattform(
+        'linux64', 'jameica-linux64.zip', 'jameica',
+        'jameica/jameica.sh',
+        'jameica/jameicaserver.sh', (), False),
+    ('Linux', 'aarch64'): _JameicaPlattform(
+        'linuxarm64', 'jameica-linuxarm64.zip', 'jameica',
+        'jameica/jameica.sh',
+        'jameica/jameicaserver.sh', (), False),
+}
+
+
+JAVA_MIN_MAJOR = 21
+
+# Paketmanager → (Update-Cmd | None, Install-Cmd-Praefix, JRE-Paket).
+# Reihenfolge = Erkennungs-Reihenfolge. headless reicht: Jameica läuft
+# im Server-Mode (jameicaserver.sh), kein AWT/SWT nötig.
+_PKG_MANAGER = [
+    ('apt-get', ['apt-get', 'update'],
+     ['apt-get', 'install', '-y'], 'openjdk-21-jre-headless'),
+    ('dnf', None, ['dnf', 'install', '-y'], 'java-21-openjdk-headless'),
+    ('yum', None, ['yum', 'install', '-y'], 'java-21-openjdk-headless'),
+    ('zypper', None, ['zypper', '--non-interactive', 'install'],
+     'java-21-openjdk-headless'),
+]
+
+
+def java_major(java_bin: str = 'java') -> int | None:
+    """Major-Version des erreichbaren ``java`` (oder None).
+
+    Parst ``java -version`` (Ausgabe auf stderr). Formate:
+    ``"21.0.9"`` → 21, Legacy ``"1.8.0_xxx"`` → 8.
+    """
+    exe = shutil.which(java_bin)
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, '-version'], capture_output=True,
+                              text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    txt = (out.stderr or '') + (out.stdout or '')
+    m = re.search(r'version "(\d+)(?:\.(\d+))?', txt)
+    if not m:
+        return None
+    major = int(m.group(1))
+    if major == 1 and m.group(2):       # 1.8 → 8
+        return int(m.group(2))
+    return major
+
+
+def _ist_root() -> bool:
+    return hasattr(os, 'geteuid') and os.geteuid() == 0
+
+
+def _sudo_prefix() -> list[str]:
+    """``[]`` wenn root, sonst ``['sudo','-n']`` falls sudo da ist."""
+    if _ist_root():
+        return []
+    if shutil.which('sudo'):
+        return ['sudo', '-n']
+    return []
+
+
+def ensure_java(min_major: int = JAVA_MIN_MAJOR, *,
+                auto_install: bool = True, print_fn=print) -> dict:
+    """Stellt sicher, dass Java >= ``min_major`` verfügbar ist.
+
+    Linux-Jameica bringt kein JRE mit. Ist eine passende JVM bereits da
+    → nichts tun. Sonst (``auto_install``) per System-Paketmanager
+    installieren (apt/dnf/yum/zypper, sudo-aware). Best-effort:
+    schlägt sauber fehl mit klarer Anleitung statt Exception.
+
+    Returns ``{'status': 'ok'|'installiert'|'manuell', 'major': int|None,
+    'msg': str}``.
+    """
+    cur = java_major()
+    if cur is not None and cur >= min_major:
+        print_fn(f"    ✓ System-Java {cur} vorhanden (>= {min_major})")
+        return {'status': 'ok', 'major': cur, 'msg': ''}
+
+    if not auto_install:
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'Java {min_major}+ fehlt (gefunden: {cur}). '
+                       f'Manuell installieren.'}
+
+    pm = next(((name, upd, inst, pkg)
+               for name, upd, inst, pkg in _PKG_MANAGER
+               if shutil.which(name)), None)
+    if pm is None:
+        return {'status': 'manuell', 'major': cur,
+                'msg': 'Kein bekannter Paketmanager (apt/dnf/yum/'
+                       'zypper). Java 21+ bitte manuell installieren.'}
+    name, upd, inst, pkg = pm
+    sudo = _sudo_prefix()
+    if not _ist_root() and not sudo:
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'Java {min_major}+ fehlt und weder root noch '
+                       f'sudo verfügbar. Manuell: {name} install {pkg}'}
+    try:
+        if upd:
+            print_fn(f"    … {name} update")
+            subprocess.run(sudo + upd, check=True, timeout=300,
+                           capture_output=True)
+        print_fn(f"    … installiere {pkg} via {name}")
+        subprocess.run(sudo + inst + [pkg], check=True, timeout=600,
+                       capture_output=True)
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or b'').decode('utf-8', 'replace')[-300:]
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'{name}-Install fehlgeschlagen: {err.strip()} '
+                       f'→ manuell: {name} install {pkg}'}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {'status': 'manuell', 'major': cur,
+                'msg': f'Paketmanager-Aufruf fehlgeschlagen: {e}'}
+    neu = java_major()
+    if neu is not None and neu >= min_major:
+        print_fn(f"    ✓ Java {neu} installiert ({pkg})")
+        return {'status': 'installiert', 'major': neu, 'msg': pkg}
+    return {'status': 'manuell', 'major': neu,
+            'msg': f'{pkg} installiert, aber java meldet weiter '
+                   f'{neu}. PATH/alternatives prüfen.'}
+
+
+def aktuelle_plattform(system: str | None = None,
+                        machine: str | None = None) -> _JameicaPlattform:
+    """Ermittelt die Jameica-Plattform für (system, machine).
+
+    Default = laufendes System. Wirft ``RuntimeError`` mit Liste der
+    unterstützten Plattformen, wenn nichts passt (z.B. Windows).
+    """
+    sysname = system or platform.system()
+    mach = (machine or platform.machine()).lower()
+    mach = _MACHINE_ALIASES.get(mach, mach)
+    p = _PLATTFORMEN.get((sysname, mach))
+    if p is None:
+        unterstuetzt = ', '.join(f'{s}/{m}' for s, m in _PLATTFORMEN)
+        raise RuntimeError(
+            f"Keine Jameica-Build für {sysname}/{mach}. "
+            f"Unterstützt: {unterstuetzt}.")
+    return p
+
+
+def jameica_artefakt(plat: _JameicaPlattform | None = None) -> _Artefakt:
+    """Baut das Jameica-Download-Artefakt für die Plattform.
+    Bewegliche ``current``-URL → kein Sidecar (HTTPS-Trust + Log)."""
+    plat = plat or aktuelle_plattform()
+    return _Artefakt(name='jameica',
+                     url=_JAMEICA_BASIS_URL + plat.zip_name,
+                     sha256_sidecar=None, ziel='app')
 
 # hibiscus hat eine stabile Release-Linie + Sidecar; xmlrpc/webadmin/
 # xmlrpc-base existieren nur als Nightly (Nischen-Plugins, kein Sidecar).
@@ -324,21 +503,27 @@ def schreibe_caoxt_ini_block(ini_path: str, *, user: str = 'dorfkern',
 
 
 def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
-                       passwordfile: str | None = None) -> list[str]:
+                       passwordfile: str | None = None,
+                       plat: _JameicaPlattform | None = None) -> list[str]:
     """Liefert das argv zum Start des Dorfkern-gemanagten Jameica.
 
     Kern: ``-f <userdata>`` zeigt Jameica auf unser ``.hibiscus/
-    userdata`` (sonst läge die Config in ``~/Library/jameica``).
+    userdata`` (sonst läge die Config im OS-Default-Verzeichnis).
     GUI-Default (Standalone) für die Bank-/Master-PW-Ersteinrichtung;
-    ``headless`` (= Server-Mode, abgekoppelt) für den späteren Daemon,
-    dann mit ``passwordfile`` (``-w``) fürs Master-PW (Datei mit
-    600-Rechten, vom Aufrufer verwaltet — NICHT vom Installer).
+    ``headless`` für den späteren Daemon, dann mit ``passwordfile``
+    (``-w``) fürs Master-PW.
+
+    Plattformabhängig: Linux hat einen eigenen ``jameicaserver.sh``
+    (bereits Server-Mode → keine ``-d -n`` nötig), macOS startet das
+    GUI-Skript mit ``-d -n``. Linux bringt KEIN JRE mit – System-Java
+    21+ muss vorhanden sein.
     """
-    sh = os.path.join(basis, 'jameica.app', 'jameica-macos-aarch64.sh')
+    plat = plat or aktuelle_plattform()
     userdata = os.path.join(basis, 'userdata')
-    cmd = [sh, '-f', userdata]
+    rel = plat.headless_launcher if headless else plat.launcher_gui
+    cmd = [os.path.join(basis, *rel.split('/')), '-f', userdata]
     if headless:
-        cmd += ['-d', '-n']
+        cmd += list(plat.headless_args)
         if passwordfile:
             cmd += ['-w', passwordfile]
     return cmd
@@ -379,26 +564,41 @@ def setup(basis: str = DEFAULT_BASIS, *,
           db_schema: str = DEFAULT_DB_SCHEMA,
           db_user: str | None = None,
           db_pass: str | None = None,
+          plat: _JameicaPlattform | None = None,
+          java_autoinstall: bool = True,
           print_fn=print) -> dict:
-    """Komplette optionale Hibiscus-Installation.
+    """Komplette optionale Hibiscus-Installation (plattformabhängig).
 
     Layout::
 
-        <basis>/jameica.app/                (Jameica + JRE)
-        <basis>/userdata/                   (Jameica-Userdata, -d Ziel)
-        <basis>/userdata/plugins/<plugin>/  (Hibiscus-Plugins)
+        <basis>/<root_dir>/                 (Jameica; macOS inkl. JRE)
+        <basis>/userdata/                   (Jameica-Userdata, -f Ziel)
+        <basis>/userdata/plugins/<plugin>/  (Hibiscus-Plugins, Java)
+
+    ``plat`` default = laufendes System (Linux/macOS, x86_64/arm64).
+    Linux bringt kein JRE mit → System-Java 21+ erforderlich.
 
     Returns ein dict mit Pfaden + Status für den Abschlussbericht.
     """
+    plat = plat or aktuelle_plattform()
     app_dir      = basis
     userdata     = os.path.join(basis, 'userdata')
     plugins_dir  = os.path.join(userdata, 'plugins')
     os.makedirs(plugins_dir, exist_ok=True)
 
+    # Linux bringt keine JRE mit → System-Java sicherstellen (Auto-
+    # Install via Paketmanager). macOS-Bundle hat eine eigene JRE.
+    java_info = {'status': 'gebündelt', 'major': None, 'msg': ''}
+    if not plat.jre_bundled:
+        java_info = ensure_java(auto_install=java_autoinstall,
+                                print_fn=print_fn)
+
     with tempfile.TemporaryDirectory(prefix='cxhib-') as tmp:
-        # 1) Jameica
+        # 1) Jameica (plattformspezifisches Bundle)
+        print_fn(f"    Plattform: {plat.key} "
+                 f"(JRE {'gebündelt' if plat.jre_bundled else 'extern'})")
         jzip = os.path.join(tmp, 'jameica.zip')
-        download_und_pruefe(JAMEICA_MACOS_AARCH64, jzip, print_fn)
+        download_und_pruefe(jameica_artefakt(plat), jzip, print_fn)
         _entpacke(jzip, app_dir)
         # 2) Plugins
         for art in PLUGINS:
@@ -439,11 +639,18 @@ def setup(basis: str = DEFAULT_BASIS, *,
                  "    ⚠  Master-Passwort konnte nicht gespeichert werden "
                  "(DB?) – später in der Admin-UI nachtragen")
 
+    if not plat.jre_bundled and java_info['status'] == 'manuell':
+        print_fn(f"    ⚠  System-Java nicht sichergestellt: "
+                 f"{java_info['msg']}")
+
     return {
         'app_dir':   app_dir,
         'userdata':  userdata,
+        'plattform': plat.key,
+        'jre_extern': not plat.jre_bundled,
+        'java':      java_info,
         'plugins':   [a.name for a in PLUGINS],
         'pw_gespeichert': pw_ok,
         'db_konfiguriert': db_konfiguriert,
-        'start_cmd': jameica_start_cmd(basis),
+        'start_cmd': jameica_start_cmd(basis, plat=plat),
     }

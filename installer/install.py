@@ -456,23 +456,61 @@ def phase4c_hibiscus(non_interactive: bool = False, *,
             master_pw = None
 
     try:
-        from installer.hibiscus_setup import setup as _hib_setup
+        from installer.hibiscus_setup import (
+            setup as _hib_setup, aktuelle_plattform as _akt_plat,
+            java_major as _java_major, JAVA_MIN_MAJOR as _JAVA_MIN)
         # Default = die Dorfkern-HAUPT-DB (db_name aus Phase 1): die
         # Hibiscus-Tabellen liegen dort bereits (1:1-Spiegel), darum
         # nutzt das Dorfkern-Jameica genau dieses Schema – NICHT ein
         # separates 'hibiscus'. Override via XT_HIBISCUS_DB_SCHEMA.
         db_schema = (os.environ.get('XT_HIBISCUS_DB_SCHEMA')
                      or db_name or 'hibiscus')
+
+        # System-Java: Linux-Jameica bringt keine JRE mit. Fehlt eine
+        # passende JVM, darf der Installer sie per Paketmanager
+        # nachinstallieren – im interaktiven Modus mit Rückfrage, sonst
+        # per XT_HIBISCUS_JAVA_AUTOINSTALL (Default an).
+        java_autoinstall = True
+        try:
+            _pl = _akt_plat()
+            if not _pl.jre_bundled:
+                _cur = _java_major()
+                if _cur is None or _cur < _JAVA_MIN:
+                    if non_interactive:
+                        java_autoinstall = os.environ.get(
+                            'XT_HIBISCUS_JAVA_AUTOINSTALL', '1') == '1'
+                    else:
+                        java_autoinstall = _ask_yes_no(
+                            f"System-Java {_JAVA_MIN}+ fehlt "
+                            f"(gefunden: {_cur}). Jetzt automatisch "
+                            f"installieren (Paketmanager, ggf. sudo)?",
+                            True)
+        except Exception:
+            pass  # plat-Fehler (z.B. Windows) faellt unten sauber auf
+
         ergebnis = _hib_setup(
             ini_path=_INI_PATH, master_pw=master_pw,
             db_host=db_host or None, db_port=db_port,
             db_schema=db_schema,
             db_user=db_user or None, db_pass=db_pass,
+            java_autoinstall=java_autoinstall,
             print_fn=print)
         print()
+        print(f"  ✓ Plattform: {ergebnis['plattform']}")
         print(f"  ✓ Jameica:  {ergebnis['app_dir']}")
         print(f"  ✓ Userdata: {ergebnis['userdata']}")
         print(f"  ✓ Plugins:  {', '.join(ergebnis['plugins'])}")
+        if ergebnis.get('jre_extern'):
+            ji = ergebnis.get('java') or {}
+            st = ji.get('status')
+            if st == 'ok':
+                print(f"  ✓ System-Java {ji.get('major')} vorhanden")
+            elif st == 'installiert':
+                print(f"  ✓ System-Java automatisch installiert "
+                      f"({ji.get('msg')}, jetzt {ji.get('major')})")
+            else:
+                print(f"  ⚠  System-Java NICHT sichergestellt: "
+                      f"{ji.get('msg')}")
         if ergebnis['db_konfiguriert']:
             print(f"  ✓ DB:       MariaDB-Schema '{db_schema}' "
                   f"(Frisch-Install hängt sofort an der bestehenden DB)")
