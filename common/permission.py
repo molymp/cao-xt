@@ -234,6 +234,10 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Admin – System: Wartungs-Modus',
      'Box zwischen Kiosk-Vollbild und Wartungs-Desktop umschalten.',
      'LESE_PFLEGE'),
+    ('admin.system.banking',   'ADMIN',
+     'Admin – System: Banking',
+     'Hibiscus-Anbindung: Jameica-Master-Passwort hinterlegen, '
+     'Verbindung testen.', 'LESE_PFLEGE'),
 
     # Dorfkern-Konfiguration
     ('admin.dorfkern.konfig',  'ADMIN',
