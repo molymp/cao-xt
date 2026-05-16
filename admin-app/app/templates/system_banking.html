@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Banking{% endblock %}
+
+{% block extra_style %}
+<style>
+  .karte {
+    padding: 14px 18px; background: var(--bg-karte);
+    border: 1px solid var(--border); border-radius: var(--radius-klein);
+    margin-bottom: 14px; max-width: 760px;
+  }
+  .karte h2 {
+    margin: 0 0 10px 0; font-size: 12px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-dim);
+    padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  }
+  .zeile {
+    display: grid; grid-template-columns: 220px 1fr; gap: 8px;
+    padding: 4px 0; font-size: 13px; align-items: baseline;
+  }
+  .zeile .lbl { color: var(--text-dim); font-size: 12px; }
+  .zeile .val { color: var(--brand-ink); }
+  .zeile .val.mono {
+    font-family: 'JetBrains Mono', monospace; word-break: break-all;
+  }
+  .status-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 12px; font-weight: 700;
+  }
+  .status-pill.gruen { background: var(--status-gruen); color: #fff; }
+  .status-pill.rot   { background: var(--status-rot);   color: #fff; }
+  .status-pill.grau  {
+    background: var(--brand-cream); color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .pw-form { display: flex; gap: 8px; align-items: center;
+             margin-top: 4px; flex-wrap: wrap; }
+  .pw-form input[type=password] {
+    flex: 1; min-width: 220px; padding: 7px 10px;
+    border: 1px solid var(--border); border-radius: var(--radius-klein);
+    font: inherit;
+  }
+  .btn {
+    padding: 7px 14px; border: 1px solid var(--brand-terracotta);
+    background: var(--brand-terracotta); color: #fff;
+    border-radius: var(--radius-klein); font: inherit; cursor: pointer;
+  }
+  .btn.sek {
+    background: transparent; color: var(--brand-terracotta);
+  }
+  .fehler-box {
+    margin-top: 10px; padding: 8px 10px; background: #f6d8ce;
+    border-left: 3px solid var(--status-rot); color: #6a1810;
+    font-family: monospace; font-size: 12px; border-radius: 3px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .hinweis-box {
+    margin-top: 10px; padding: 8px 10px; background: #f6ecd0;
+    border-left: 3px solid var(--status-gelb); color: #4b3a12;
+    font-size: 12px; border-radius: 3px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:6px;">🏦 Banking (Hibiscus)</h1>
+<p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;">
+  Anbindung an das lokale Jameica/Hibiscus über XML-RPC. Das
+  <strong>Webadmin-Passwort ist das Jameica-Master-Passwort</strong>
+  (der Benutzername wird serverseitig ignoriert). Es wird beim
+  Jameica-Erststart von dir vergeben und hier in der Dorfkern-DB
+  hinterlegt, damit die Orga-App sich authentifizieren kann.
+</p>
+
+<div class="karte">
+  <h2>Status</h2>
+  <div class="zeile"><span class="lbl">Master-Passwort</span>
+    <span class="val"><span id="s-pw" class="status-pill grau">…</span></span></div>
+  <div class="zeile"><span class="lbl">caoxt.ini [Hibiscus]</span>
+    <span class="val"><span id="s-ini" class="status-pill grau">…</span></span></div>
+  <div class="zeile"><span class="lbl">XML-RPC-URL</span>
+    <span class="val mono" id="s-url">–</span></div>
+  <div class="zeile"><span class="lbl">Aktiv</span>
+    <span class="val"><span id="s-aktiv" class="status-pill grau">…</span></span></div>
+  <div class="zeile"><span class="lbl">TLS-Cert gepinnt</span>
+    <span class="val mono" id="s-cert">–</span></div>
+</div>
+
+<div class="karte">
+  <h2>Master-Passwort hinterlegen</h2>
+  <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">
+    Wird verschlüsselt? Nein – aktuell Klartext in DORFKERN_KONFIG
+    (TYP=SECRET). Wird nach dem Speichern <strong>nie wieder
+    angezeigt</strong>.
+  </p>
+  <div class="pw-form">
+    <input type="password" id="pw" autocomplete="off"
+           placeholder="Jameica-Master-Passwort">
+    <button class="btn" id="btn-save">Speichern</button>
+  </div>
+  <div id="pw-msg" class="hinweis-box" style="display:none;"></div>
+</div>
+
+<div class="karte">
+  <h2>Verbindung testen</h2>
+  <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">
+    Ruft <code>hibiscus.xmlrpc.konto.list</code> über den XML-RPC ab
+    (nur Anzahl Konten, keine Kontodaten). Setzt ein laufendes Jameica
+    voraus.
+  </p>
+  <button class="btn sek" id="btn-test">Jetzt testen</button>
+  <div class="zeile" style="margin-top:10px;"><span class="lbl">Ergebnis</span>
+    <span class="val"><span id="t-pill" class="status-pill grau">–</span></span></div>
+  <div id="t-fehler" class="fehler-box" style="display:none;"></div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+function _e(id){ return document.getElementById(id); }
+function _pill(el, ok, txtOk, txtNo){
+  el.className = 'status-pill ' + (ok ? 'gruen' : 'rot');
+  el.textContent = ok ? txtOk : txtNo;
+}
+
+async function laden(){
+  let d;
+  try {
+    d = await (await fetch('/api/system/banking')).json();
+  } catch (e) { toast('Fehler beim Laden: ' + e.message, 'err'); return; }
+  if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+  _pill(_e('s-pw'),  d.pw_gesetzt, '🟢 gesetzt', '🔴 fehlt');
+  _pill(_e('s-ini'), d.ini_block,  '🟢 vorhanden', '🔴 fehlt');
+  _e('s-url').textContent = d.xmlrpc_url || '–';
+  _pill(_e('s-aktiv'), d.aktiv, '🟢 aktiv', '⚪ inaktiv');
+  _e('s-cert').textContent = d.cert_gepinnt
+    ? ('🟢 ' + d.cert_sha256) : '⚪ noch nicht (TOFU beim 1. Call)';
+}
+
+_e('btn-save').addEventListener('click', async () => {
+  const pw = _e('pw').value;
+  if (!pw) { toast('Passwort eingeben.', 'err'); return; }
+  _e('btn-save').disabled = true;
+  try {
+    const r = await fetch('/api/system/banking/passwort', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({passwort: pw}),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.msg || 'Fehler', 'err'); return; }
+    _e('pw').value = '';
+    const m = _e('pw-msg');
+    m.textContent = 'Master-Passwort gespeichert.';
+    m.style.display = '';
+    toast('Gespeichert.', 'ok');
+    laden();
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'err');
+  } finally {
+    _e('btn-save').disabled = false;
+  }
+});
+
+_e('btn-test').addEventListener('click', async () => {
+  const p = _e('t-pill'), f = _e('t-fehler');
+  p.className = 'status-pill grau'; p.textContent = '… teste';
+  f.style.display = 'none';
+  _e('btn-test').disabled = true;
+  try {
+    const d = await (await fetch('/api/system/banking/test',
+      {method: 'POST'})).json();
+    if (d.ok && d.erreichbar) {
+      p.className = 'status-pill gruen';
+      p.textContent = `🟢 OK – ${d.konten} Konto/Konten`;
+    } else {
+      p.className = 'status-pill rot';
+      p.textContent = '🔴 nicht erreichbar';
+      f.textContent = d.msg || 'Unbekannter Fehler';
+      f.style.display = '';
+    }
+  } catch (e) {
+    p.className = 'status-pill rot';
+    p.textContent = '🔴 Fehler';
+    f.textContent = e.message; f.style.display = '';
+  } finally {
+    _e('btn-test').disabled = false;
+  }
+});
+
+laden();
+</script>
+{% endblock %}

@@ -401,6 +401,8 @@ _ADMIN_PERMISSION_MAP: list[tuple[str, str]] = [
     ('/system/einkauf-poller',       'admin.system.einkauf_poller'),
     ('/system/mitarbeiter',          'admin.system.mitarbeiter'),
     ('/system/updates',              'admin.system.updates'),
+    ('/system/banking',              'admin.system.banking'),
+    ('/api/system/banking',          'admin.system.banking'),
     ('/drucker',                     'admin.system.drucker'),
     ('/api/drucker',                 'admin.system.drucker'),
     ('/terminals',                   'admin.system.terminals'),
@@ -3155,6 +3157,89 @@ def api_system_einkauf_poller():
     except Exception as e:
         log.exception('system_einkauf_poller status fehlgeschlagen')
         return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.route('/system/banking')
+@_login_required
+def system_banking_seite():
+    """Hibiscus-Anbindung: Master-PW hinterlegen + Verbindung testen."""
+    return render_template('system_banking.html')
+
+
+def _banking_status() -> dict:
+    """Status der Hibiscus-Anbindung – ohne das Passwort preiszugeben."""
+    import configparser
+    from common import konfig
+    pw = konfig.get('hibiscus.master_passwort') or ''
+    cert = konfig.get('hibiscus.cert_sha256') or ''
+    ini_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), 'caoxt', 'caoxt.ini')
+    cfg = configparser.ConfigParser()
+    if os.path.isfile(ini_path):
+        cfg.read(ini_path, encoding='utf-8')
+    hib = dict(cfg.items('Hibiscus')) if cfg.has_section('Hibiscus') else {}
+    return {
+        'pw_gesetzt':   bool(pw),
+        'ini_block':    bool(hib),
+        'xmlrpc_url':   hib.get('xmlrpc_url', ''),
+        'aktiv':        hib.get('aktiv', '') in ('1', 'true', 'True'),
+        'cert_gepinnt': bool(cert),
+        'cert_sha256':  (cert[:16] + '…') if cert else '',
+    }
+
+
+@app.get('/api/system/banking')
+@_login_required
+def api_system_banking():
+    try:
+        return jsonify(ok=True, **_banking_status())
+    except Exception as e:
+        log.exception('banking status fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/system/banking/passwort')
+@_login_required
+def api_system_banking_passwort():
+    """Legt das Jameica-Master-Passwort in DORFKERN_KONFIG ab
+    (TYP=SECRET). Wird NIE wieder ausgegeben."""
+    body = request.get_json(silent=True) or {}
+    pw = str(body.get('passwort') or '').strip()
+    if not pw:
+        return jsonify(ok=False, msg='Passwort darf nicht leer sein.'), 400
+    try:
+        from common import konfig
+        konfig.run_migration()
+        konfig.set('hibiscus.master_passwort', pw, typ='SECRET',
+                   kategorie='HIBISCUS',
+                   beschreibung='Jameica-Master-Passwort = Webadmin/'
+                                'XML-RPC Basic-Auth (User wird ignoriert).',
+                   ma_id=session.get('ma_id'))
+        return jsonify(ok=True, **_banking_status())
+    except Exception as e:
+        log.exception('banking passwort speichern fehlgeschlagen')
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/system/banking/test')
+@_login_required
+def api_system_banking_test():
+    """Live-Test: konto.list über den Hibiscus-XML-RPC. Gibt nur die
+    Anzahl Konten zurück, keine Kontodaten."""
+    try:
+        from common.hibiscus_client import aus_konfig, HibiscusError
+        try:
+            client = aus_konfig(timeout=20)
+            konten = client.konto_list()
+        except HibiscusError as he:
+            return jsonify(ok=False, erreichbar=False, msg=str(he))
+        return jsonify(ok=True, erreichbar=True,
+                       konten=len(konten),
+                       cert_sha256=(client.gesehener_cert_sha256 or '')[:16])
+    except Exception as e:
+        log.exception('banking test fehlgeschlagen')
+        return jsonify(ok=False, erreichbar=False, msg=str(e)), 500
 
 
 @app.post('/api/einkauf/bestellungen/abrufen')
