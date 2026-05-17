@@ -44,11 +44,15 @@ class TestWerte(unittest.TestCase):
 
 
 class TestLockName(unittest.TestCase):
-    def test_format(self):
-        with patch.object(A, 'effektive_db_config',
-                          return_value={'database': 'cao_XT_DEV'}):
-            self.assertEqual(A._lock_name(432),
-                             'cao_cao_XT_DEV_MOD_1010_RECID_432')
+    def test_format_matcht_cao_trace(self):
+        # CAO-Trace: GET_LOCK('cao_XT_DEV_MOD_1010_RECID_432')
+        from common import cao_lock
+        with patch.object(cao_lock, 'effektive_db_config',
+                          return_value={'name': 'cao_XT_DEV'}):
+            self.assertEqual(
+                cao_lock.lock_name(1010, 432),
+                'cao_XT_DEV_MOD_1010_RECID_432')
+            self.assertEqual(A.MODUL_ID_ADRESSEN, 1010)
 
 
 class TestHashstring(unittest.TestCase):
@@ -109,18 +113,20 @@ class TestAendern(unittest.TestCase):
         cur = MagicMock()
         cur.lastrowid = 99
         cur.fetchone.side_effect = [
-            {'L': lock_ok},
-            {'REC_ID': 432} if exists else None,
-            {'HASHSTRING': 'V1|…'},
-            {'HASHSUM': None},
+            {'L': lock_ok},                       # GET_LOCK
+            {'REC_ID': 432} if exists else None,  # Existenz-Check
+            {'HASHSTRING': 'V1|…'},               # Hashstring
+            {'HASHSUM': None},                    # prev-Hashsum
+            {'RELEASE_LOCK': 1},                  # RELEASE_LOCK
         ]
         return cur
 
     def test_lock_acquire_release_und_log(self):
         cur = self._cur()
+        from common import cao_lock
         with patch.object(A, 'get_db_transaction', _ctx(cur)), \
-             patch.object(A, 'effektive_db_config',
-                          return_value={'database': 'd'}), \
+             patch.object(cao_lock, 'effektive_db_config',
+                          return_value={'name': 'd'}), \
              patch.object(A._cao_hashsum, 'get_salt',
                           return_value='s'), \
              patch.object(A._cao_log_hashsum, 'compute',
@@ -136,9 +142,10 @@ class TestAendern(unittest.TestCase):
 
     def test_lock_belegt_wirft(self):
         cur = self._cur(lock_ok=0)
+        from common import cao_lock
         with patch.object(A, 'get_db_transaction', _ctx(cur)), \
-             patch.object(A, 'effektive_db_config',
-                          return_value={'database': 'd'}), \
+             patch.object(cao_lock, 'effektive_db_config',
+                          return_value={'name': 'd'}), \
              patch.object(A._cao_hashsum, 'get_salt',
                           return_value='s'):
             with self.assertRaises(RuntimeError):

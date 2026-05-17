@@ -21,9 +21,11 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from common.db import get_db, get_db_transaction, effektive_db_config
+from common.db import get_db, get_db_transaction
 from common import cao_hashsum as _cao_hashsum
 from common import cao_log_hashsum as _cao_log_hashsum
+from common.cao_lock import cao_record_lock, CaoLockBelegt
+from common.binaerdaten import MODUL_ID_ADRESSEN
 
 # ── ADRESSEN: Spalten + CAO-Defaults (exakt aus dem Trace) ──────────
 # Wert = Default; vom Aufrufer via ``felder`` überschreibbar.
@@ -163,15 +165,6 @@ def adresse_anlegen(felder: dict[str, Any], *,
     return addr_id
 
 
-def _lock_name(rec_id: int) -> str:
-    try:
-        db = effektive_db_config().get('database') \
-            or effektive_db_config().get('db') or 'cao'
-    except Exception:
-        db = 'cao'
-    return f'cao_{db}_MOD_1010_RECID_{int(rec_id)}'
-
-
 def adresse_holen(rec_id: int) -> dict[str, Any] | None:
     with get_db() as cur:
         cur.execute("SELECT * FROM ADRESSEN WHERE REC_ID=%s",
@@ -191,13 +184,8 @@ def adresse_aendern(rec_id: int, felder: dict[str, Any], *,
                and k.upper() in EDITIERBAR}
     if not updates:
         raise ValueError('Keine änderbaren Felder übergeben.')
-    lock = _lock_name(rec_id)
     with get_db_transaction() as cur:
-        cur.execute("SELECT GET_LOCK(%s, 10) AS L", (lock,))
-        if int((cur.fetchone() or {}).get('L') or 0) != 1:
-            raise RuntimeError(
-                'Adresse ist gerade gesperrt (anderer Bearbeiter).')
-        try:
+        with cao_record_lock(cur, MODUL_ID_ADRESSEN, rec_id):
             cur.execute("SELECT REC_ID FROM ADRESSEN WHERE REC_ID=%s",
                         (rec_id,))
             if not cur.fetchone():
@@ -209,8 +197,6 @@ def adresse_aendern(rec_id: int, felder: dict[str, Any], *,
                 f"UPDATE ADRESSEN SET {sets} WHERE REC_ID=%s",
                 list(updates.values()) + [rec_id])
             _log_schreiben(cur, rec_id, 'Adresse geändert', ma_name)
-        finally:
-            cur.execute("SELECT RELEASE_LOCK(%s)", (lock,))
     return {'ok': True, 'rec_id': rec_id}
 
 
