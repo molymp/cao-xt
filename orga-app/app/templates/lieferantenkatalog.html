@@ -1,30 +1,179 @@
 {% extends "base.html" %}
+{% import '_listing.html' as L %}
 {% block title %}Lieferantenkataloge{% endblock %}
 
+{% block extra_style %}
+<style>
+.lk-card{background:#fff;border:1px solid var(--rand,#d8d2c0);
+  border-radius:var(--radius,10px);padding:14px 18px;margin:12px 0;
+  box-shadow:var(--schatten)}
+.lk-liefs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.lk-liefs a{padding:6px 12px;border:1px solid var(--rand,#d8d2c0);
+  border-radius:var(--radius-klein,6px);text-decoration:none;
+  color:var(--gruen-dunkel,#2e6e1a);background:var(--creme,#f7f4ec);
+  font-size:.92rem}
+.lk-liefs a.aktiv{background:var(--gruen-dunkel,#2e6e1a);color:#fff;
+  border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+.lk-tab{width:100%;border-collapse:collapse;background:#fff;
+  border-radius:var(--radius,10px);overflow:hidden;
+  box-shadow:var(--schatten)}
+.lk-tab th{background:var(--gruen-dunkel);color:var(--creme);
+  padding:8px 10px;text-align:left;font-size:.74rem;font-weight:800;
+  text-transform:uppercase;white-space:nowrap}
+.lk-tab td{padding:7px 10px;border-bottom:1px solid var(--creme-dunkel);
+  font-size:.9rem;vertical-align:middle}
+.lk-tab tr.entf td{color:#999;font-style:italic}
+.lk-flash{padding:8px 14px;border-radius:6px;margin:8px 0;font-size:.92rem}
+.lk-flash.ok{background:rgba(46,110,26,.1);color:var(--gruen-dunkel)}
+.lk-flash.fehler{background:rgba(184,48,48,.1);color:#b83030}
+.lk-filter{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;
+  margin:10px 0}
+.lk-filter label{display:flex;flex-direction:column;font-size:.8rem;
+  gap:3px;color:var(--text-dim,#5a7a3a)}
+.zahl-rechts{text-align:right}
+</style>
+{{ L.pager_css() }}
+{% endblock %}
+
 {% block content %}
-<div style="max-width:54rem;">
-  <h1>📚 Lieferantenkataloge</h1>
+{% include '_picker.html' %}
 
-  <p style="line-height:1.6;color:var(--text-dim,#5a7a3a);">
-    Lieferanten stellen ihr Sortiment in unterschiedlichen Formaten
-    bereit (Excel, regelmäßige Sonderkataloge per E-Mail, z.&nbsp;B.
-    Utz). Hier sollen die Kataloge je Lieferant gesichtet und pro
-    Artikel markiert werden:
-  </p>
-  <ul style="line-height:1.7;">
-    <li><strong>Bestellen</strong> — Artikel in eine Bestellung
-        übernehmen.</li>
-    <li><strong>In Artikelstamm übernehmen</strong> — Artikel als
-        Stammdaten anlegen/aktualisieren.</li>
-  </ul>
+<h1>📚 Lieferantenkataloge</h1>
 
-  <div style="margin-top:1.4rem;padding:14px 18px;
-       background:rgba(60,120,200,0.07);border-left:3px solid #2a4a8a;
-       border-radius:8px;line-height:1.6;">
-    🚧 <strong>Bereich in Aufbau.</strong> Navigation und Berechtigung
-    (<code>orga.lieferantenkatalog</code>) stehen. Das konkrete
-    Katalog-Ingest (Format-Parser für Excel/E-Mail) wird umgesetzt,
-    sobald ein Beispiel-Format vorliegt.
-  </div>
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for kat, msg in msgs %}
+    <div class="lk-flash {{ 'ok' if kat == 'ok' else 'fehler' }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<div class="lk-card">
+  <strong>Katalog importieren</strong> — Lieferanten-Sortiment als
+  Excel (festes Kramer-Format). Re-Import aktualisiert Preise/Daten;
+  Markierungen bleiben erhalten.
+  <form method="post" enctype="multipart/form-data"
+        action="{{ url_for('orga_lieferantenkatalog.katalog_import') }}"
+        style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+    <input type="hidden" name="lief_addr_id" id="lk-addr">
+    <button type="button" class="btn-aktion" onclick="lkLiefWaehlen()">
+      🚛 Lieferant wählen …</button>
+    <span id="lk-liefname" style="font-weight:600;">– kein Lieferant –</span>
+    <input type="file" name="katalog" accept=".xlsx,.xlsm" required>
+    <button type="submit" class="btn-primary">Importieren</button>
+  </form>
 </div>
+
+{% if lieferanten %}
+<div class="lk-liefs">
+  {% for li in lieferanten %}
+  <a href="{{ url_for('orga_lieferantenkatalog.uebersicht', lief=li.LIEFERANT_KUERZEL) }}"
+     class="{{ 'aktiv' if sel == li.LIEFERANT_KUERZEL else '' }}">
+    {{ li.lieferant_name or li.LIEFERANT_KUERZEL }}
+    ({{ li.aktiv }}/{{ li.n }}{% if li.markiert_best %} · 🛒{{ li.markiert_best }}{% endif %}{% if li.markiert_stamm %} · 📦{{ li.markiert_stamm }}{% endif %})
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p style="color:var(--text-dim,#5a7a3a);">Noch kein Katalog importiert.</p>
+{% endif %}
+
+{% if daten is not none %}
+<form method="get" class="lk-filter">
+  <input type="hidden" name="lief" value="{{ sel }}">
+  <label>Suche
+    <input type="text" name="q" value="{{ suche }}"
+           placeholder="Name / Art-Nr / EAN" autocomplete="off">
+  </label>
+  <label>Kategorie
+    <select name="kat" onchange="this.form.submit()">
+      <option value="">– alle –</option>
+      {% for k in kategorien %}
+      <option value="{{ k }}" {% if kategorie == k %}selected{% endif %}>{{ k }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Status
+    <select name="status" onchange="this.form.submit()">
+      <option value="aktiv" {% if status == 'aktiv' %}selected{% endif %}>aktiv</option>
+      <option value="entfallen" {% if status == 'entfallen' %}selected{% endif %}>entfallen</option>
+      <option value="alle" {% if status == 'alle' %}selected{% endif %}>alle</option>
+    </select>
+  </label>
+  {% if sort_key %}<input type="hidden" name="sort" value="{{ sort_key }}">
+  <input type="hidden" name="dir" value="{{ sort_dir }}">{% endif %}
+  <button type="submit">Filtern</button>
+</form>
+
+<p style="font-size:.85rem;color:var(--text-dim,#5a7a3a);font-weight:700;">
+  {{ daten.total }} Artikel{% if daten.gekuerzt %} · ⚠ gekürzt – bitte filtern{% endif %}
+</p>
+
+{% if daten.rows %}
+<table class="lk-tab">
+  <thead><tr>
+    <th>{{ L.sortlink('Art-Nr', 'artnr', sort_key, sort_dir) }}</th>
+    <th>{{ L.sortlink('Kategorie', 'kategorie', sort_key, sort_dir) }}</th>
+    <th>{{ L.sortlink('Artikel', 'name', sort_key, sort_dir) }}</th>
+    <th>{{ L.sortlink('Gebinde', 'gebinde', sort_key, sort_dir) }}</th>
+    <th class="zahl-rechts">{{ L.sortlink('EK €', 'ek', sort_key, sort_dir) }}</th>
+    <th class="zahl-rechts">USt</th>
+    <th class="zahl-rechts">{{ L.sortlink('VK-Empf €', 'vk', sort_key, sort_dir) }}</th>
+    <th>EAN</th>
+    <th title="Zum Bestellen markieren">🛒</th>
+    <th title="In Artikelstamm übernehmen">📦</th>
+    <th>{{ L.sortlink('Status', 'status', sort_key, sort_dir) }}</th>
+  </tr></thead>
+  <tbody>
+  {% for r in daten.rows %}
+  <tr class="{{ 'entf' if r.STATUS == 'entfallen' else '' }}">
+    <td>{{ r.LIEF_ART_NR }}</td>
+    <td>{{ r.KURZBESCHREIBUNG or '–' }}</td>
+    <td title="{{ r.NAME_LANG or '' }}">{{ r.ARTIKELNAME or '–' }}</td>
+    <td>{{ r.GEBINDE or '–' }}</td>
+    <td class="zahl-rechts">{{ '%.2f'|format(r.EK_NETTO) if r.EK_NETTO is not none else '–' }}</td>
+    <td class="zahl-rechts">{{ (r.UST_SATZ|int) ~ '%' if r.UST_SATZ is not none else '–' }}</td>
+    <td class="zahl-rechts">{{ '%.2f'|format(r.VK_EMPF) if r.VK_EMPF is not none else '–' }}</td>
+    <td>{{ r.EAN or '' }}</td>
+    <td><input type="checkbox" {% if r.FLAG_BESTELLEN %}checked{% endif %}
+         onchange="lkFlag({{ r.REC_ID }}, 'bestellen', this.checked, this)"></td>
+    <td><input type="checkbox" {% if r.FLAG_IN_STAMM %}checked{% endif %}
+         onchange="lkFlag({{ r.REC_ID }}, 'in_stamm', this.checked, this)"></td>
+    <td>{{ r.STATUS }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:var(--text-dim,#5a7a3a);">Keine Artikel für diesen Filter.</p>
+{% endif %}
+{% endif %}
+
+<script>
+function lkLiefWaehlen() {
+  cxPickerOpen({
+    modus: 'adresse',
+    titel: 'Lieferant wählen',
+    urls: {
+      gruppen: '/orga/bestellwesen/api/picker/adressgruppen',
+      liste:   '/orga/bestellwesen/api/picker/adressen?grp={GRP}',
+      suche:   '/orga/bestellwesen/api/picker/adressen/suche?q={Q}&grp={GRP}',
+    },
+    onWaehlen: (a) => {
+      document.getElementById('lk-addr').value = a.addr_id || '';
+      document.getElementById('lk-liefname').textContent = a.name || '–';
+    },
+  });
+}
+async function lkFlag(recId, feld, wert, el) {
+  el.disabled = true;
+  try {
+    const r = await fetch(
+      `/orga/lieferantenkatalog/api/pos/${recId}/flag`,
+      {method:'POST', headers:{'Content-Type':'application/json'},
+       body: JSON.stringify({feld, wert})});
+    const d = await r.json();
+    if (!d.ok) { alert('Fehler: ' + (d.fehler||'unbekannt')); el.checked = !wert; }
+  } catch (e) { alert('Verbindungsfehler'); el.checked = !wert; }
+  finally { el.disabled = false; }
+}
+</script>
 {% endblock %}

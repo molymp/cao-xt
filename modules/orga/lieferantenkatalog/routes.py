@@ -1,18 +1,27 @@
 """Flask-Routes für Orga – Lieferantenkataloge.
 
-Vorerst nur die Landing-Page (Bereich + Berechtigung angelegt). Das
-Katalog-Ingest (Excel/E-Mail-Formate) + Markier-Workflow folgt, sobald
-ein Beispiel-Format vorliegt.
+v1: Excel-Upload (festes Kramer-Format) je gewähltem Lieferant,
+Liste/Suche/Sortierung je Lieferant, Markierung pro Artikel
+(„bestellen" / „in Artikelstamm übernehmen"). Aktionen (Brücke in
+cao_sync) folgen als eigene Einheit.
 """
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 
-from flask import Blueprint, render_template, session, abort
+from flask import (Blueprint, render_template, request, jsonify,
+                   session, abort, redirect, url_for, flash)
+
+from common import listing
+from . import models as m
 
 log = logging.getLogger(__name__)
 bp = Blueprint('orga_lieferantenkatalog', __name__,
                template_folder='templates')
+
+_MAX_UPLOAD = 8 * 1024 * 1024  # 8 MB reicht für Katalog-Excels
 
 
 def _login_check() -> None:
@@ -20,11 +29,104 @@ def _login_check() -> None:
         abort(401)
 
 
+def _slug(name: str) -> str:
+    s = ''.join(c if c.isalnum() else '-' for c in (name or '').upper())
+    return s.strip('-')[:20] or 'LIEF'
+
+
 @bp.get('/')
 def uebersicht():
-    """Platzhalter-Landing für Lieferantenkataloge."""
+    """Lieferanten-Übersicht + (bei Auswahl) Katalog-Tabelle."""
     _login_check()
-    return render_template('lieferantenkatalog.html')
+    lieferanten = m.lieferanten_mit_katalog()
+    sel = (request.args.get('lief') or '').strip()
+    if not sel and lieferanten:
+        sel = lieferanten[0]['LIEFERANT_KUERZEL']
+
+    daten = None
+    kategorien: list[str] = []
+    suche = (request.args.get('q') or '').strip()
+    kategorie = (request.args.get('kat') or '').strip()
+    status = (request.args.get('status') or 'aktiv').strip()
+    order_sql, sort_key, sort_dir = listing.parse_sort(
+        request.args, m.LK_SORT, m.LK_DEFAULT_ORDER)
+    if sel:
+        kategorien = m.kategorien(sel)
+        daten = m.positionen(
+            lieferant_kuerzel=sel, suche=suche, kategorie=kategorie,
+            status=status, sort_sql=order_sql)
+
+    return render_template(
+        'lieferantenkatalog.html',
+        lieferanten=lieferanten, sel=sel, daten=daten,
+        kategorien=kategorien, suche=suche, kategorie=kategorie,
+        status=status, sort_key=sort_key, sort_dir=sort_dir,
+    )
+
+
+@bp.post('/import')
+def katalog_import():
+    """Excel (Kramer-Format) für den gewählten Lieferant importieren."""
+    _login_check()
+    f = request.files.get('katalog')
+    addr_raw = (request.form.get('lief_addr_id') or '').strip()
+    lief_name = (request.form.get('lief_name') or '').strip()
+    if not f or not f.filename:
+        flash('Keine Datei gewählt.', 'fehler')
+        return redirect(url_for('orga_lieferantenkatalog.uebersicht'))
+    if not f.filename.lower().endswith(('.xlsx', '.xlsm')):
+        flash('Bitte eine .xlsx-Datei wählen.', 'fehler')
+        return redirect(url_for('orga_lieferantenkatalog.uebersicht'))
+    if not lief_name:
+        flash('Bitte einen Lieferanten wählen.', 'fehler')
+        return redirect(url_for('orga_lieferantenkatalog.uebersicht'))
+    try:
+        cao_lief_id = int(addr_raw) if addr_raw.isdigit() else None
+    except (TypeError, ValueError):
+        cao_lief_id = None
+
+    fd, tmp = tempfile.mkstemp(suffix='.xlsx')
+    os.close(fd)
+    try:
+        f.save(tmp)
+        if os.path.getsize(tmp) > _MAX_UPLOAD:
+            flash('Datei zu groß (max. 8 MB).', 'fehler')
+            return redirect(url_for(
+                'orga_lieferantenkatalog.uebersicht'))
+        kuerzel = _slug(lief_name)
+        res = m.katalog_importieren(
+            path=tmp, lieferant_kuerzel=kuerzel,
+            lieferant_name=lief_name, cao_lief_id=cao_lief_id,
+            dateiname=f.filename,
+            ma_name=session.get('login_name')
+                    or session.get('mitarbeiter') or 'CAO-XT')
+        flash(f"Import OK: {res['positionen']} Artikel "
+              f"({', '.join(res['marken']) or '–'}), "
+              f"{res['entfallen']} entfallen.", 'ok')
+        return redirect(url_for('orga_lieferantenkatalog.uebersicht',
+                                lief=kuerzel))
+    except Exception as e:  # noqa: BLE001
+        log.exception('Katalog-Import fehlgeschlagen')
+        flash(f'Import fehlgeschlagen: {e}', 'fehler')
+        return redirect(url_for('orga_lieferantenkatalog.uebersicht'))
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+@bp.post('/api/pos/<int:rec_id>/flag')
+def api_flag(rec_id: int):
+    """Setzt eine Markierung (bestellen / in_stamm) einer Zeile."""
+    _login_check()
+    body = request.get_json(silent=True) or {}
+    try:
+        m.pos_flag_setzen(rec_id, str(body.get('feld')),
+                          bool(body.get('wert')))
+    except (ValueError, LookupError) as e:
+        return jsonify(ok=False, fehler=str(e)), 400
+    return jsonify(ok=True)
 
 
 def create_blueprint():

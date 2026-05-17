@@ -56,17 +56,45 @@ def schema_sicherstellen() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
               COMMENT='Lieferantenkataloge: stehendes Sortiment je Lieferant'
         """)
+        # Idempotente Spalten-Erweiterung (bestehende Installationen).
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA=DATABASE() "
+            "  AND TABLE_NAME='XT_LIEFERANTENKATALOG' "
+            "  AND COLUMN_NAME='LIEFERANT_NAME'"
+        )
+        if int((cur.fetchone() or {}).get('n', 0)) == 0:
+            cur.execute(
+                "ALTER TABLE XT_LIEFERANTENKATALOG "
+                "ADD COLUMN LIEFERANT_NAME VARCHAR(160) NULL "
+                "AFTER LIEFERANT_KUERZEL"
+            )
+
+
+# Sortierbare Spalten (UI-Key → erlaubter SQL-Ausdruck).
+LK_SORT = {
+    'artnr':     'LIEF_ART_NR',
+    'kategorie': 'KURZBESCHREIBUNG',
+    'name':      'ARTIKELNAME',
+    'gebinde':   'GEBINDE',
+    'ek':        'EK_NETTO',
+    'vk':        'VK_EMPF',
+    'status':    'STATUS',
+}
+LK_DEFAULT_ORDER = 'KURZBESCHREIBUNG, ARTIKELNAME, REC_ID'
 
 
 _UPSERT = """
     INSERT INTO XT_LIEFERANTENKATALOG
-      (LIEFERANT_KUERZEL, CAO_LIEF_ID, MARKE, LIEF_ART_NR,
+      (LIEFERANT_KUERZEL, LIEFERANT_NAME, CAO_LIEF_ID, MARKE,
+       LIEF_ART_NR,
        KATEGORIE, KURZBESCHREIBUNG, ARTIKELNAME, NAME_LANG, GEBINDE,
        EK_NETTO, UST_SATZ, VK_EMPF, EAN, MENGE_MIN, BESCHREIBUNG,
        BILD_URL, STATUS, DATEINAME, IMPORTIERT_AM, IMPORTIERT_VON)
-    VALUES (%s,%s,%s,%s, %s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,
+    VALUES (%s,%s,%s,%s, %s, %s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,
             %s,'aktiv',%s,NOW(),%s)
     ON DUPLICATE KEY UPDATE
+      LIEFERANT_NAME=VALUES(LIEFERANT_NAME),
       CAO_LIEF_ID=VALUES(CAO_LIEF_ID),
       KATEGORIE=VALUES(KATEGORIE),
       KURZBESCHREIBUNG=VALUES(KURZBESCHREIBUNG),
@@ -88,6 +116,7 @@ _UPSERT = """
 
 
 def katalog_importieren(*, path: str, lieferant_kuerzel: str,
+                         lieferant_name: str = '',
                          cao_lief_id: int | None = None,
                          dateiname: str = '',
                          ma_name: str = 'CAO-XT') -> dict[str, Any]:
@@ -96,6 +125,7 @@ def katalog_importieren(*, path: str, lieferant_kuerzel: str,
     schema_sicherstellen()
     blaetter = parse_kramer_xlsx(path)
     lk = (lieferant_kuerzel or '').strip()[:20]
+    ln = (lieferant_name or '').strip()[:160]
     ma = (ma_name or 'CAO-XT')[:50]
     dn = (dateiname or '')[:255]
 
@@ -108,7 +138,7 @@ def katalog_importieren(*, path: str, lieferant_kuerzel: str,
             marken.append(marke)
             for p in blatt['positionen']:
                 cur.execute(_UPSERT, (
-                    lk, cao_lief_id, marke,
+                    lk, ln, cao_lief_id, marke,
                     (p.get('lief_art_nr') or '')[:60],
                     (p.get('kategorie') or '')[:255],
                     (p.get('kurzbeschreibung') or '')[:255],
@@ -152,6 +182,8 @@ def lieferanten_mit_katalog() -> list[dict[str, Any]]:
     with get_db() as cur:
         cur.execute("""
             SELECT LIEFERANT_KUERZEL,
+                   MAX(LIEFERANT_NAME)               AS lieferant_name,
+                   MAX(CAO_LIEF_ID)                  AS cao_lief_id,
                    COUNT(*)                          AS n,
                    SUM(STATUS='aktiv')               AS aktiv,
                    SUM(FLAG_BESTELLEN=1)             AS markiert_best,
@@ -159,6 +191,71 @@ def lieferanten_mit_katalog() -> list[dict[str, Any]]:
                    MAX(IMPORTIERT_AM)                AS letzter_import
               FROM XT_LIEFERANTENKATALOG
              GROUP BY LIEFERANT_KUERZEL
-             ORDER BY LIEFERANT_KUERZEL
+             ORDER BY MAX(LIEFERANT_NAME), LIEFERANT_KUERZEL
         """)
         return list(cur.fetchall() or [])
+
+
+def kategorien(lieferant_kuerzel: str) -> list[str]:
+    """Distinct Produktkategorien (KURZBESCHREIBUNG) eines Lieferanten
+    für das Filter-Dropdown."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT DISTINCT KURZBESCHREIBUNG FROM XT_LIEFERANTENKATALOG "
+            " WHERE LIEFERANT_KUERZEL=%s "
+            "   AND COALESCE(KURZBESCHREIBUNG,'')<>'' "
+            " ORDER BY KURZBESCHREIBUNG",
+            (lieferant_kuerzel,)
+        )
+        return [r['KURZBESCHREIBUNG'] for r in (cur.fetchall() or [])]
+
+
+def positionen(*, lieferant_kuerzel: str, suche: str = '',
+               kategorie: str = '', status: str = 'aktiv',
+               sort_sql: str = LK_DEFAULT_ORDER,
+               limit: int = 2000) -> dict[str, Any]:
+    """Katalog-Positionen eines Lieferanten, gefiltert + sortiert.
+    Returns ``{'rows', 'total', 'gekuerzt'}``."""
+    schema_sicherstellen()
+    where = ['LIEFERANT_KUERZEL=%s']
+    params: list[Any] = [lieferant_kuerzel]
+    if suche:
+        where.append("(ARTIKELNAME LIKE %s OR LIEF_ART_NR LIKE %s "
+                      "OR NAME_LANG LIKE %s OR EAN LIKE %s)")
+        params += [f'%{suche}%'] * 4
+    if kategorie:
+        where.append('KURZBESCHREIBUNG=%s')
+        params.append(kategorie)
+    if status in ('aktiv', 'entfallen'):
+        where.append('STATUS=%s')
+        params.append(status)
+    where_sql = ' AND '.join(where)
+    with get_db() as cur:
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM XT_LIEFERANTENKATALOG "
+            f"WHERE {where_sql}", params)
+        total = int((cur.fetchone() or {}).get('n') or 0)
+        cur.execute(
+            f"SELECT REC_ID, LIEF_ART_NR, KATEGORIE, KURZBESCHREIBUNG, "
+            f"       ARTIKELNAME, NAME_LANG, GEBINDE, EK_NETTO, "
+            f"       UST_SATZ, VK_EMPF, EAN, MENGE_MIN, BILD_URL, "
+            f"       BESCHREIBUNG, FLAG_BESTELLEN, FLAG_IN_STAMM, STATUS "
+            f"  FROM XT_LIEFERANTENKATALOG "
+            f" WHERE {where_sql} ORDER BY {sort_sql} LIMIT %s",
+            params + [int(limit)])
+        rows = list(cur.fetchall() or [])
+    return {'rows': rows, 'total': total,
+            'gekuerzt': total > int(limit)}
+
+
+def pos_flag_setzen(rec_id: int, feld: str, wert: bool) -> None:
+    """Setzt FLAG_BESTELLEN bzw. FLAG_IN_STAMM einer Katalog-Zeile."""
+    spalte = {'bestellen': 'FLAG_BESTELLEN',
+              'in_stamm': 'FLAG_IN_STAMM'}.get(feld)
+    if not spalte:
+        raise ValueError(f'Unbekanntes Flag {feld!r}')
+    with get_db_transaction() as cur:
+        cur.execute(
+            f"UPDATE XT_LIEFERANTENKATALOG SET {spalte}=%s "
+            f"WHERE REC_ID=%s",
+            (1 if wert else 0, int(rec_id)))
