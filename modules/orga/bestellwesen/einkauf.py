@@ -94,34 +94,21 @@ def _stadium_label(code: int | None) -> str:
 
 
 def _next_edi_belegnum(cur) -> str:
-    """EDI-Format-Belegnummer für offene Einkäufe (QUELLE=15).
+    """EDI-Belegnummer für offene Vorgänge (QUELLE=15 etc.).
 
-    CAO nutzt das Format ``EDI-NNNNNN`` (6-stellig padded). Da CAO den
-    Counter wohl nicht in REGISTRY verwaltet (zumindest haben wir keinen
-    Eintrag dafür gefunden), nutzen wir ``MAX(VRENUM)+1`` mit einem
-    SELECT-FOR-UPDATE-Lock: in einer Transaktion holen wir den
-    aktuellen Maximum-Wert, parsen das Suffix, inkrementieren und
-    schreiben den neuen Wert. Race-frei nur in einer Transaktion.
+    CAO verwaltet den EDI-Zähler sehr wohl in REGISTRY:
+    ``MAIN\\NUMBERS`` / ``NAME='EDIT'`` mit Maske ``"EDI-"000000``.
+    Es ist EIN **geteilter** Zähler für ALLE EDI-Belege (Einkauf,
+    Wareneingang, Bestellung, Rechnung, Lieferschein — Trace
+    17.05.26: 'EDI-018182'…'018186' fortlaufend tabellenübergreifend).
 
-    Wir suchen bewusst nur nach VRENUMs, die mit 'EDI-' beginnen — der
-    Counter für 'EK-RECH' (= verbuchte Rechnungen) läuft separat.
+    Früher zog diese Funktion ``MAX(VRENUM)+1`` nur über JOURNAL —
+    das ignorierte EKEINGANG/EKBESTELL/LIEFERSCHEIN (Kollisionsgefahr
+    schon einzelthreadig) und war nicht CAO-kompatibel. Jetzt:
+    delegiert an den geteilten REGISTRY-Zähler.
     """
-    cur.execute(
-        """SELECT VRENUM FROM JOURNAL
-            WHERE QUELLE = 15 AND VRENUM LIKE 'EDI-%'
-            ORDER BY CAST(SUBSTRING(VRENUM, 5) AS UNSIGNED) DESC
-            LIMIT 1
-            FOR UPDATE"""
-    )
-    row = cur.fetchone()
-    if row and row.get('VRENUM'):
-        try:
-            n = int(row['VRENUM'].split('-', 1)[1])
-        except (ValueError, IndexError):
-            n = 0
-    else:
-        n = 0
-    return f'EDI-{n + 1:06d}'
+    from common.einkauf import _next_registry_nummer
+    return _next_registry_nummer(cur, 'EDIT')
 
 
 def _ueberweisung_zustand(quelle: int, stadium: int, zahlart_id: int,

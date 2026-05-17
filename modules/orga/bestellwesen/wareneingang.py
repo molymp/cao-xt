@@ -151,8 +151,9 @@ def wareneingang_anlegen(bestell_rec_id: int,
         if not pos_liste:
             raise ValueError('Keine offenen Positionen — Wareneingang nicht nötig')
 
-        # 2) BELEGNUM aus REGISTRY (Counter heisst in CAO 'WARENEINGANG')
-        belegnum = _next_registry_nummer(cur, 'WARENEINGANG')
+        # 2) BELEGNUM aus dem GETEILTEN EDI-Zähler (Trace: EKEINGANG
+        #    bekam 'EDI-018183', NICHT aus 'WARENEINGANG').
+        belegnum = _next_registry_nummer(cur, 'EDIT')
 
         heute = date.today()
         ma_id_int = int(ma_id) if ma_id is not None else -1
@@ -1082,8 +1083,8 @@ def wareneingang_anlegen_leer(addr_id: int,
         if not adr:
             raise LookupError(f'Lieferant-Adresse {addr_id} nicht gefunden')
 
-        # Belegnummer
-        belegnum = _next_registry_nummer(cur, 'WARENEINGANG')
+        # Belegnummer aus dem GETEILTEN EDI-Zähler (CAO-Mimik, s.o.)
+        belegnum = _next_registry_nummer(cur, 'EDIT')
         heute = date.today()
 
         # Spalten von EKEINGANG ermitteln (defensiv)

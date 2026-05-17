@@ -3385,17 +3385,46 @@ def position_warengruppe_setzen(pos_rec_id: int,
 
 # ── ARTNUM-Vergabe via REGISTRY ──────────────────────────────────────
 
+def _format_nummernkreis(n: int, mask: str | None) -> str:
+    """Formatiert ``n`` nach der CAO-REGISTRY-Maske ``VAL_CHAR``.
+
+    Delphi-Stil-Maske: ``0`` = Ziffer (nullgepaddet), Text in
+    doppelten Anführungszeichen = Literal. Beobachtet:
+      ``'000000'``        → ``'018187'``
+      ``'"EDI-"000000'``  → ``'EDI-018187'``
+    Andere Zähler haben reine ``0``-Masken → Verhalten unverändert
+    (nur der frühere Off-by-one entfällt, s. ``_next_registry_nummer``).
+    """
+    mask = mask or '000000'
+    # Segmente: Quoted-Literal ODER 0-Lauf, in Reihenfolge.
+    teile = re.findall(r'"([^"]*)"|(0+)', mask)
+    if not any(z for _lit, z in teile):
+        # keine Ziffern-Gruppe in der Maske → Fallback 6-stellig
+        return f"{int(n):06d}"
+    out: list[str] = []
+    for lit, zeros in teile:
+        out.append(f"{int(n):0{len(zeros)}d}" if zeros else lit)
+    return ''.join(out)
+
+
 def _next_registry_nummer(cur, name: str) -> str:
-    """Holt die naechste Nummer aus REGISTRY MAIN\\NUMBERS / <name>
-    und erhoeht den Counter atomar (FOR UPDATE).
+    """Zieht die nächste Belegnummer aus REGISTRY ``MAIN\\NUMBERS`` /
+    ``<name>``.
 
-    Beispiele:
-      ``ARTIKELNUMMER`` (VAL_CHAR='000000', 6-stellig) — fuer ARTNUM
-      ``EK-BEST`` (VAL_CHAR='000000', 6-stellig) — fuer EKBESTELL.BELEGNUM
-      ``VK-KASSE`` etc.
+    **CAO-Semantik (User-verifiziert 2026-05-17):** ``VAL_INT2`` ist
+    die *als Nächstes zu vergebende* Nummer. Der Vorgang bekommt
+    **genau** ``VAL_INT2``; danach wird der Zähler um 1 erhöht.
+    (Früher fälschlich ``VAL_INT2+1`` → Off-by-one: Dublette/Lücke
+    im Mischbetrieb CAO↔Dorfkern, GoBD-relevant.)
 
-    VAL_CHAR enthaelt das Padding-Pattern (Anzahl '0'-Zeichen = Stellen).
-    Aufruf muss innerhalb einer Transaktion erfolgen.
+    ``VAL_CHAR`` ist die Delphi-Format-Maske (s.
+    :func:`_format_nummernkreis`), z. B. ``"EDI-"000000`` für den
+    geteilten EDI-Zähler ``NAME='EDIT'``.
+
+    Hinweis: ``FOR UPDATE`` ist auf MyISAM wirkungslos (kein Row-Lock)
+    — die Nebenläufigkeits-Absicherung dieser Ziehung erfolgt über die
+    umgebenden Record-/XT-Locks der Aufrufer, nicht hier. Aufruf muss
+    innerhalb einer Transaktion erfolgen.
     """
     cur.execute("""
         SELECT VAL_INT2, VAL_CHAR
@@ -3409,15 +3438,13 @@ def _next_registry_nummer(cur, name: str) -> str:
             f"REGISTRY-Eintrag MAIN\\NUMBERS / {name} fehlt — "
             "CAO Faktura sollte ihn beim ersten Start anlegen."
         )
-    naechste = int(row['VAL_INT2'] or 0) + 1
-    pad = (row['VAL_CHAR'] or '000000')
-    n_stellen = pad.count('0') if pad.count('0') > 0 else 6
-    nummer = f"{naechste:0{n_stellen}d}"
+    aktuell = int(row['VAL_INT2'] or 0)
+    nummer = _format_nummernkreis(aktuell, row['VAL_CHAR'])
     cur.execute("""
         UPDATE REGISTRY
         SET VAL_INT2 = %s
         WHERE MAINKEY = 'MAIN\\\\NUMBERS' AND NAME = %s
-    """, (naechste, name))
+    """, (aktuell + 1, name))
     return nummer
 
 
@@ -4081,7 +4108,9 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
                            f'{_chk.get("CAO_BELEGNUM")} angelegt '
                            f'(EKBESTELL.REC_ID='
                            f'{_chk.get("CAO_EKBESTELL_REC_ID")}).'}
-            belegnum = _next_registry_nummer(cur, 'EK-BEST')
+            # CAO vergibt EKBESTELL.BELEGNUM aus dem GETEILTEN EDI-
+            # Zähler (Trace: 'EDI-018184'), NICHT aus 'EK-BEST'.
+            belegnum = _next_registry_nummer(cur, 'EDIT')
             heute = head.get('EMAIL_DATUM') or _dt.now()
             try:
                 heute = heute.date() if hasattr(heute, 'date') else heute
