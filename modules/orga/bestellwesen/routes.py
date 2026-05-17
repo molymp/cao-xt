@@ -332,6 +332,8 @@ def api_we_pos_menge(rec_id: int, pos_id: int) -> Any:
         return jsonify({'ok': False, 'fehler': 'menge fehlt/ungültig'}), 400
     try:
         result = we.pos_menge_setzen(rec_id, pos_id, menge)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
@@ -402,6 +404,8 @@ def api_we_pos_anhaengen(rec_id: int) -> Any:
     ma_name = session.get('login_name') or session.get('mitarbeiter')
     try:
         result = we.pos_aus_bestellpos_anhaengen(rec_id, bestell_pos_id, menge, ma_name)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
@@ -413,6 +417,8 @@ def api_we_pos_entfernen(rec_id: int, pos_id: int) -> Any:
     _login_check()
     try:
         result = we.pos_entfernen(rec_id, pos_id)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
@@ -432,6 +438,8 @@ def api_we_pos_entfernen_bulk(rec_id: int) -> Any:
             pass
     try:
         result = we.pos_entfernen_bulk(rec_id, ids)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
@@ -451,6 +459,8 @@ def api_we_lieferschein_setzen(rec_id: int) -> Any:
             liefnum=body.get('liefnum'),
             liefdatum=body.get('liefdatum'),
         )
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify(result)
@@ -469,6 +479,8 @@ def api_we_buchen(rec_id: int) -> Any:
             liefnum=body.get('liefnum'),
             liefdatum=body.get('liefdatum'),
         )
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify(result)
@@ -1104,6 +1116,8 @@ def api_we_artikel_anhaengen(rec_id: int) -> Any:
                 pass
         try:
             result = we.pos_artikel_anhaengen_bulk(rec_id, ids, ma_name)
+        except CaoLockBelegt as e:
+            return jsonify({'ok': False, 'fehler': str(e)}), 409
         except (LookupError, PermissionError, ValueError) as e:
             return jsonify({'ok': False, 'fehler': str(e)}), 400
         return jsonify({'ok': True, **result})
@@ -1120,6 +1134,8 @@ def api_we_artikel_anhaengen(rec_id: int) -> Any:
         menge = 0.0
     try:
         result = we.pos_artikel_anhaengen(rec_id, artikel_id, menge, ma_name)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
@@ -1141,6 +1157,8 @@ def api_we_storno(rec_id: int) -> Any:
     ma_name = session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT'
     try:
         result = we.storno(rec_id, ma_name=ma_name)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})

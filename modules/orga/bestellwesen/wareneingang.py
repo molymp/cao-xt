@@ -24,8 +24,30 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from contextlib import contextmanager
+
 from common.db import get_db, get_db_transaction
 from common.einkauf import _next_registry_nummer  # type: ignore
+from common.cao_lock import (cao_record_lock, CaoLockBelegt,
+                             LOCK_MOD_WARENEINGANG)
+
+
+@contextmanager
+def _eingang_lock_db(eingang_id: int):
+    """``get_db()``-Cursor mit CAO-Record-Lock auf dem Wareneingang
+    (``cao_<db>_MOD_2065_RECID_<ekeingang_rec_id>``, Trace 17.05.26)."""
+    with get_db() as cur:
+        with cao_record_lock(cur, LOCK_MOD_WARENEINGANG, int(eingang_id)):
+            yield cur
+
+
+@contextmanager
+def _eingang_lock_tx(eingang_id: int):
+    """Wie :func:`_eingang_lock_db`, aber auf der Schreib-Transaktion
+    (``get_db_transaction``). Minimal-invasiver 1-Zeilen-Swap."""
+    with get_db_transaction() as cur:
+        with cao_record_lock(cur, LOCK_MOD_WARENEINGANG, int(eingang_id)):
+            yield cur
 
 
 # STADIUM-Codes EKEINGANG.
@@ -534,7 +556,7 @@ def pos_menge_setzen(eingang_id: int, pos_id: int, menge: float) -> dict[str, An
     pos_id = int(pos_id)
     if menge < 0:
         raise ValueError('Menge muss >= 0 sein')
-    with get_db() as cur:
+    with _eingang_lock_db(eingang_id) as cur:
         _ist_bearbeitbar(cur, eingang_id)
         cur.execute(
             "SELECT REC_ID FROM EKEINGANG_POS "
@@ -827,7 +849,7 @@ def pos_aus_bestellpos_anhaengen(eingang_id: int,
     bestell_pos_id = int(bestell_pos_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:100]
 
-    with get_db_transaction() as cur:
+    with _eingang_lock_tx(eingang_id) as cur:
         # Wareneingang muss editierbar sein
         cur.execute(
             "SELECT ADDR_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s",
@@ -950,7 +972,7 @@ def pos_entfernen_bulk(eingang_id: int, pos_ids: list[int]) -> dict[str, Any]:
     pos_ids = [int(p) for p in pos_ids if p]
     if not pos_ids:
         return {'entfernt': 0}
-    with get_db() as cur:
+    with _eingang_lock_db(eingang_id) as cur:
         _ist_bearbeitbar(cur, eingang_id)
         # Filter: nur Pos die zu diesem WE gehoeren UND nicht gebucht sind
         fmt = ','.join(['%s'] * len(pos_ids))
@@ -1134,7 +1156,7 @@ def pos_artikel_anhaengen(eingang_id: int,
     artikel_id = int(artikel_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:100]
 
-    with get_db_transaction() as cur:
+    with _eingang_lock_tx(eingang_id) as cur:
         cur.execute("SELECT ADDR_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s",
                     (eingang_id,))
         we = cur.fetchone()
@@ -1253,7 +1275,7 @@ def pos_artikel_anhaengen_bulk(eingang_id: int,
         return {'angehaengt': 0}
     ma_name_safe = (ma_name or 'CAO-XT')[:100]
 
-    with get_db_transaction() as cur:
+    with _eingang_lock_tx(eingang_id) as cur:
         cur.execute("SELECT ADDR_ID, STADIUM FROM EKEINGANG WHERE REC_ID = %s",
                     (eingang_id,))
         we = cur.fetchone()
@@ -1415,7 +1437,7 @@ def buchen(eingang_id: int, ma_id: int | None, ma_name: str | None, *,
         raise ValueError('Lieferscheindatum fehlt')
     liefnum = liefnum[:50]
 
-    with get_db_transaction() as cur:
+    with _eingang_lock_tx(eingang_id) as cur:
         cur.execute(
             "SELECT STADIUM FROM EKEINGANG WHERE REC_ID = %s",
             (eingang_id,),
@@ -1612,7 +1634,7 @@ def lieferschein_setzen(eingang_id: int, *,
     Leer-String bedeutet 'loeschen' (LIEFNUM nur).
     """
     eingang_id = int(eingang_id)
-    with get_db() as cur:
+    with _eingang_lock_db(eingang_id) as cur:
         _ist_bearbeitbar(cur, eingang_id)
         sets: list[str] = []
         params: list[Any] = []
@@ -1690,7 +1712,9 @@ def storno(rec_id: int, *, ma_name: str = 'CAO-XT') -> dict[str, int]:
     rec_id = int(rec_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:50]
 
-    with get_db() as cur:
+    # Alles unter dem CAO-Record-Lock des WE (MODUL_ID 2065) auf
+    # derselben Connection wie die Schreibvorgänge.
+    with _eingang_lock_db(rec_id) as cur:
         cur.execute(
             "SELECT REC_ID, STADIUM, BELEGNUM FROM EKEINGANG WHERE REC_ID=%s",
             (rec_id,)
@@ -1702,8 +1726,35 @@ def storno(rec_id: int, *, ma_name: str = 'CAO-XT') -> dict[str, int]:
         if st == 127:
             return {'ok': 0, 'pos_lager_korrigiert': 0}
 
-    # Pre-Check fuer gebuchte WE
-    if st != 0:
+        # ── Offener WE (nie gebucht): CAO-Mimik = HARTER Delete ──────
+        # Trace 17.05.26 (cao_XT_DEV_MOD_2065_RECID_<id>): offener
+        # EKEINGANG wird NICHT soft-storniert, sondern gelöscht:
+        #   DELETE FROM REFERENZEN (gescopt ZIEL=MODUL_ID 2065)
+        #   DELETE FROM EKEINGANG WHERE REC_ID=...
+        # EKEINGANG_POS-Kaskade ist NICHT trace-bestätigt (Trace-WE war
+        # leer) — wir löschen die Positionen explizit mit, sonst blieben
+        # bei nicht-leeren offenen WE Waisen zurück. Kein Lager-/
+        # EKBESTELL_POS-Rollback: ein offener WE hat nie gebucht, also
+        # wurde weder Lager bewegt noch EKBESTELL_POS fortgeschrieben.
+        if st == 0:
+            cur.execute(
+                "DELETE FROM REFERENZEN WHERE ZIEL=2065 AND ZIEL_ID=%s "
+                "AND ZIEL_TYP=9 AND REFERENZTYP=1",
+                (rec_id,)
+            )
+            cur.execute(
+                "DELETE FROM EKEINGANG_POS WHERE EKEINGANG_ID=%s",
+                (rec_id,)
+            )
+            cur.execute(
+                "DELETE FROM EKEINGANG WHERE REC_ID=%s",
+                (rec_id,)
+            )
+            return {'ok': 1, 'pos_lager_korrigiert': 0}
+
+        # ── Gebuchter WE (STADIUM 2,3,4,9): Mimik NICHT getracet ─────
+        # Bestehende, erprobte Rückabwicklung unverändert beibehalten
+        # (nur jetzt unter dem Record-Lock). Pre-Check vor Mutationen.
         pruef = storno_pruefung(rec_id)
         if not pruef['ok']:
             namen = [e.get('VRENUM') or f"#{e['ek_id']}"
@@ -1713,8 +1764,7 @@ def storno(rec_id: int, *, ma_name: str = 'CAO-XT') -> dict[str, int]:
                 f"EK-Rechnung: {', '.join(namen)}"
             )
 
-    pos_korrigiert = 0
-    with get_db() as cur:
+        pos_korrigiert = 0
         if st in (2, 3, 4, 9):
             # Lager zurueckrollen: pro WE-Pos die noch BERECHNET='N' ist
             # (bei Y waere die Pos in einer aktiven EK-Rechnung — wuerde
