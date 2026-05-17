@@ -90,5 +90,34 @@ class TestEinkaufStorno(unittest.TestCase):
             _run(cur)
 
 
+class TestJournalLockTx(unittest.TestCase):
+    """Zentraler Wrapper für alle JOURNAL/2050-Schreibpfade
+    (einkauf_buchen, _zahlung_erfassen, vormerken/-zuruecknehmen,
+    bankumsatz_uebernehmen, storno_gebucht)."""
+
+    def test_nimmt_lock_mod_2050_und_gibt_frei(self):
+        cur = MagicMock()
+        cur.fetchone.side_effect = [{'L': 1}, {'RELEASE_LOCK': 1}]
+        with patch.object(E, 'get_db_transaction', _ctx(cur)), \
+             patch.object(cao_lock, 'effektive_db_config',
+                          return_value={'name': 'd'}):
+            with E._journal_lock_tx(556509) as c:
+                self.assertIs(c, cur)
+        calls = [c.args for c in cur.execute.call_args_list if c.args]
+        get_lock = [a for a in calls if 'GET_LOCK' in a[0]][0]
+        self.assertEqual(get_lock[1][0], 'd_MOD_2050_RECID_556509')
+        self.assertTrue(any('RELEASE_LOCK' in a[0] for a in calls))
+
+    def test_belegt_wirft_vor_dem_body(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {'L': 0}
+        with patch.object(E, 'get_db_transaction', _ctx(cur)), \
+             patch.object(cao_lock, 'effektive_db_config',
+                          return_value={'name': 'd'}):
+            with self.assertRaises(cao_lock.CaoLockBelegt):
+                with E._journal_lock_tx(1):
+                    raise AssertionError('Body darf nicht laufen')
+
+
 if __name__ == '__main__':
     unittest.main()

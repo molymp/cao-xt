@@ -22,6 +22,18 @@ if _REPO_ROOT not in sys.path:
 from installer import hibiscus_setup as hs  # noqa: E402
 from common.hibiscus_client import HibiscusClient, HibiscusError  # noqa: E402
 
+import contextlib as _ctxlib
+
+
+@_ctxlib.contextmanager
+def _noop_record_lock(*_a, **_k):
+    """Neutralisiert den CAO-Record-Lock in DB-Mock-Tests. Das Locking
+    selbst ist separat getestet (tests/test_cao_lock.py,
+    tests/test_einkauf_storno.py); diese Hibiscus-Tests prüfen die
+    Fachlogik und sollen nicht den GET_LOCK-fetchone des gemockten
+    Cursors mitbedienen müssen."""
+    yield 'noop-lock'
+
 
 class TestPropertiesMerge(unittest.TestCase):
     def test_merge_erhaelt_unbekannte_keys(self):
@@ -661,6 +673,7 @@ class TestVormerkenViaHibiscus(unittest.TestCase):
 
         with patch.object(E, 'get_db', self._ctx(cur)), \
              patch.object(E, 'get_db_transaction', self._ctx(cur)), \
+             patch.object(E, 'cao_record_lock', _noop_record_lock), \
              patch('common.konfig.get',
                    side_effect=lambda k, d=None:
                        debit if k == 'hibiscus.debit_konto_id' else d), \
@@ -884,6 +897,7 @@ class TestVormerkungZuruecknehmen(unittest.TestCase):
             fake.sepa_ueberweisung_loeschen.return_value = True
         with patch.object(E, 'get_db', self._ctx(cur)), \
              patch.object(E, 'get_db_transaction', self._ctx(cur)), \
+             patch.object(E, 'cao_record_lock', _noop_record_lock), \
              patch.object(hc, 'aus_konfig', return_value=fake):
             return E.vormerkung_zuruecknehmen(123, ma_name='T'), cur, fake
 

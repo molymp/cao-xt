@@ -29,6 +29,7 @@ Buchen mit Preisabweichung-Modal.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager, nullcontext
 from datetime import date, datetime
 from typing import Any
 
@@ -36,6 +37,22 @@ from common.db import get_db, get_db_transaction
 from common.cao_lock import cao_record_lock, CaoLockBelegt, LOCK_MOD_EINKAUF
 
 log = logging.getLogger(__name__)
+
+
+@contextmanager
+def _journal_lock_tx(rec_id: int):
+    """Schreib-Transaktion auf JOURNAL-Belege (Einkauf/EK-Rechnung)
+    mit CAO-Record-Lock (``GET_LOCK`` auf derselben Connection,
+    MODUL_ID 2050 = ``cao_<db>_MOD_2050_RECID_<journal_rec_id>``).
+
+    Minimal-invasiv: ersetzt nur die ``with get_db_transaction()``-
+    Zeile am Einstiegspunkt — der erprobte Body bleibt unverändert.
+    Lock + ``get_db_transaction`` sind komplementär (Lock =
+    Nebenläufigkeit/CAO-Mimik, Idempotenz = Resume).
+    """
+    with get_db_transaction() as cur:
+        with cao_record_lock(cur, LOCK_MOD_EINKAUF, int(rec_id)):
+            yield cur
 
 
 # ── STADIUM-Codes für JOURNAL.QUELLE in (5, 15) ─────────────────────
@@ -1451,7 +1468,7 @@ def einkauf_buchen(rec_id: int, *, ma_id: int | None = None,
     # jeder Schritt darf mehrfach laufen ohne Schaden anzurichten.
     # Der Aufrufer kann bei einem Crash mid-flight einfach erneut
     # aufrufen — die WHERE-Clauses und Existenz-Checks fangen ab.
-    with get_db_transaction() as cur:
+    with _journal_lock_tx(rec_id) as cur:
         # 0. Beleg validieren — akzeptiert sowohl frisch (QUELLE=15)
         # als auch resume nach partieller Buchung (QUELLE=5, STADIUM=2).
         cur.execute(
@@ -1864,7 +1881,7 @@ def einkauf_storno_gebucht(rec_id: int, *, ma_id: int | None = None,
             'bitte zuerst in CAO Faktura stornieren'
         )
 
-    with get_db_transaction() as cur:
+    with _journal_lock_tx(rec_id) as cur:
         # Pos lesen (alle, aber Lager nur fuer noch-nicht-stornierte
         # Pos zurueckrollen)
         cur.execute(
@@ -2587,7 +2604,7 @@ def einkauf_zahlung_erfassen(rec_id: int, *,
     datum_d  = _parse_date(datum) or date.today()
     valuta_d = _parse_date(valuta) or datum_d
 
-    with get_db_transaction() as cur:
+    with _journal_lock_tx(rec_id) as cur:
         cur.execute(
             "SELECT j.QUELLE, j.STADIUM, j.BSUMME, j.ADDR_ID, "
             "       j.GEGENKONTO, j.VRENUM, "
@@ -2947,7 +2964,7 @@ def vormerken_via_hibiscus(rec_id: int, *,
     # (Scoping-Grenze + Korrelationsschlüssel), dann STADIUM=11 —
     # idempotent (nur 2→11, nie 11 überschreiben). Keine ZAHLUNGEN-
     # Zeile (kommt erst beim Bank-Umsatz-Abgleich, Phase E.3).
-    with get_db_transaction() as cur:
+    with _journal_lock_tx(rec_id) as cur:
         cur.execute(
             """INSERT INTO XT_HIBISCUS_VORMERKUNG
                  (MODUL, REFERENZ_ID, RICHTUNG, HIBISCUS_AUFTRAG_ID,
@@ -3048,7 +3065,7 @@ def vormerkung_zuruecknehmen(rec_id: int, *,
                 'Vormerkung %s: Hibiscus-delete fehlgeschlagen: %s',
                 rec_id, e)
 
-    with get_db_transaction() as cur:
+    with _journal_lock_tx(rec_id) as cur:
         cur.execute(
             "UPDATE XT_HIBISCUS_VORMERKUNG "
             "   SET STATUS='zurueckgesetzt', "
@@ -3303,7 +3320,7 @@ def bankumsatz_uebernehmen(rec_id: int, umsatz_id: int, *,
     umsatz_id = int(umsatz_id)
     ma_name_safe = (ma_name or 'CAO-XT')[:50]
 
-    with get_db_transaction() as cur:
+    with _journal_lock_tx(rec_id) as cur:
         # Hibiscus-Umsatz lesen
         cur.execute(
             """SELECT u.id, u.konto_id, u.datum, u.valuta, u.betrag,
@@ -3476,37 +3493,44 @@ def einkauf_zahlung_stornieren(zahlung_rec_id: int, *,
                 'Lauf (ART=UB / UW_NUM>0) — Storno bitte in CAO unter '
                 'Finanzen / Überweisungen.'
             )
-        # CAO-Mimik (Trace 2026-05-10): STORNO=1, STORNOGRUND, VERW_ZWECK
-        # bekommt '\n--STORNO--'-Suffix. GEBUCHT bleibt unveraendert
-        # ('Y'), nicht auf 'S' setzen — das macht CAO bei diesem Storno-
-        # Pfad nicht.
-        cur.execute(
-            """UPDATE ZAHLUNGEN
-                  SET STORNO       = 1,
-                      STORNOGRUND  = %s,
-                      VERW_ZWECK   = CONCAT(IFNULL(VERW_ZWECK,''),
-                                            '\n--STORNO--')
-                WHERE REC_ID = %s""",
-            (grund, int(zahlung_rec_id))
-        )
+        # Lock auf dem zugehörigen JOURNAL-Beleg (Einkauf, MODUL_ID
+        # 2050) — die ZAHLUNGEN-Mutation + JOURNAL.STADIUM-Neuberechnung
+        # gehören zusammen unter CAOs Record-Lock. JOURNAL_ID erst nach
+        # dem SELECT bekannt; daher hier (nicht an der with-Zeile).
         rec_id = int(z.get('JOURNAL_ID') or 0)
+        lock_cm = (cao_record_lock(cur, LOCK_MOD_EINKAUF, rec_id)
+                   if rec_id > 0 else nullcontext())
         neues_stadium = None
-        if rec_id > 0:
-            neues_stadium = _stadium_neuberechnen(cur, rec_id)
-            # CAO setzt zusaetzlich JOURNAL.INFO=NULL, Z_ID=-1,
-            # PROJEKT_ID=-1 wenn der Beleg wieder komplett offen ist
-            # (STADIUM=2). Bei Teilzahlung (STADIUM=7) belassen wir die
-            # Felder.
-            if neues_stadium == 2:
-                cur.execute(
-                    """UPDATE JOURNAL
-                          SET INFO       = NULL,
-                              Z_ID       = -1,
-                              PROJEKT_ID = -1
-                        WHERE REC_ID = %s""",
-                    (rec_id,)
-                )
-        # JOURNAL_OP fuer QUELLE=5 neu aufbauen (CAO-Mimik)
-        _journal_op_rebuild_qu5(cur)
+        with lock_cm:
+            # CAO-Mimik (Trace 2026-05-10): STORNO=1, STORNOGRUND,
+            # VERW_ZWECK bekommt '\n--STORNO--'-Suffix. GEBUCHT bleibt
+            # unveraendert ('Y'), nicht auf 'S' setzen — das macht CAO
+            # bei diesem Storno-Pfad nicht.
+            cur.execute(
+                """UPDATE ZAHLUNGEN
+                      SET STORNO       = 1,
+                          STORNOGRUND  = %s,
+                          VERW_ZWECK   = CONCAT(IFNULL(VERW_ZWECK,''),
+                                                '\n--STORNO--')
+                    WHERE REC_ID = %s""",
+                (grund, int(zahlung_rec_id))
+            )
+            if rec_id > 0:
+                neues_stadium = _stadium_neuberechnen(cur, rec_id)
+                # CAO setzt zusaetzlich JOURNAL.INFO=NULL, Z_ID=-1,
+                # PROJEKT_ID=-1 wenn der Beleg wieder komplett offen ist
+                # (STADIUM=2). Bei Teilzahlung (STADIUM=7) belassen wir
+                # die Felder.
+                if neues_stadium == 2:
+                    cur.execute(
+                        """UPDATE JOURNAL
+                              SET INFO       = NULL,
+                                  Z_ID       = -1,
+                                  PROJEKT_ID = -1
+                            WHERE REC_ID = %s""",
+                        (rec_id,)
+                    )
+            # JOURNAL_OP fuer QUELLE=5 neu aufbauen (CAO-Mimik)
+            _journal_op_rebuild_qu5(cur)
     return {'ok': True, 'rec_id': int(zahlung_rec_id),
             'journal_stadium': neues_stadium}
