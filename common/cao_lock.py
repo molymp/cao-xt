@@ -28,6 +28,24 @@ from contextlib import contextmanager
 from common.db import effektive_db_config
 
 
+# ── Lock-MODUL_IDs je Vorgang (aus echten cao_faktura.exe-SQL-Traces,
+# 2026-05-17 — NICHT geraten). Achtung: dies sind *Lock*-MODUL_IDs;
+# sie sind NICHT zwingend identisch mit dem BINAERDATEN/Rechte-Enum
+# (EKBESTELL=2060 existiert in keinem Enum). Daher hier eigene
+# Konstanten statt Re-Use von common.binaerdaten.
+LOCK_MOD_ADRESSEN     = 1010   # ADRESSEN.REC_ID
+LOCK_MOD_ARTIKEL      = 1020   # ARTIKEL.REC_ID
+LOCK_MOD_LIEFERSCHEIN = 2030   # LIEFERSCHEIN.REC_ID
+LOCK_MOD_RECHNUNG     = 2040   # JOURNAL.REC_ID (QUELLE=13)
+LOCK_MOD_EINKAUF      = 2050   # JOURNAL.REC_ID (QUELLE=15)
+LOCK_MOD_EKBESTELL    = 2060   # EKBESTELL.REC_ID (nicht im Enum!)
+LOCK_MOD_WARENEINGANG = 2065   # EKEINGANG.REC_ID
+
+# CAO Faktura nimmt den Lock durchgängig mit Timeout 3 s
+# (``GET_LOCK(name, 3)`` in allen Traces). Default daran ausrichten.
+DEFAULT_TIMEOUT = 3
+
+
 class CaoLockBelegt(RuntimeError):
     """Der Datensatz wird gerade (von CAO Faktura oder Dorfkern)
     bearbeitet — Lock nicht erhalten."""
@@ -49,7 +67,7 @@ def lock_name(modul_id: int, rec_id: int) -> str:
 
 @contextmanager
 def cao_record_lock(cur, modul_id: int, rec_id: int,
-                    *, timeout: int = 10):
+                    *, timeout: int = DEFAULT_TIMEOUT):
     """Hält den CAO-Record-Lock auf ``cur`` (= dieselbe Connection,
     auf der geschrieben wird) für die Dauer des ``with``-Blocks.
 
