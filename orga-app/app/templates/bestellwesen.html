@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import '_listing.html' as L %}
 {% block title %}Bestellwesen – Übersicht{% endblock %}
 
 {% block extra_style %}
@@ -123,12 +124,13 @@
   font-weight: 700;
 }
 </style>
+{{ L.pager_css() }}
 {% endblock %}
 
 {% block content %}
 <div class="bw-kopf">
     <h1>🛒 Bestellungen – Übersicht</h1>
-    <span class="bw-trefferzahl">{{ bestellungen|length }} Treffer</span>
+    <span class="bw-trefferzahl">{{ total }} Treffer · {{ periode.label }}{% if gekuerzt %} · ⚠ gekürzt – Zeitraum eingrenzen{% endif %}</span>
 </div>
 
 <form method="get" class="bw-filter">
@@ -147,14 +149,14 @@
             {% endfor %}
         </select>
     </label>
-    <label>
-        Von
-        <input type="date" name="von" value="{{ von_datum.isoformat() if von_datum else '' }}">
+    {{ L.zeitfilter(periode, jahre) }}
+    <label style="flex-direction:row;align-items:center;gap:6px;">
+        <input type="checkbox" name="storno" value="1"
+               {% if not storno_aus %}checked{% endif %}>
+        stornierte anzeigen
     </label>
-    <label>
-        Bis
-        <input type="date" name="bis" value="{{ bis_datum.isoformat() if bis_datum else '' }}">
-    </label>
+    {% if sort_key %}<input type="hidden" name="sort" value="{{ sort_key }}">
+    <input type="hidden" name="dir" value="{{ sort_dir }}">{% endif %}
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset" onclick="window.location='{{ url_for('orga_bestellwesen.uebersicht') }}'">Zurücksetzen</button>
 </form>
@@ -163,13 +165,13 @@
 <table class="bw-tabelle">
     <thead>
         <tr>
-            <th>Beleg-Nr.</th>
-            <th>Datum</th>
-            <th>Lieferant</th>
+            <th>{{ L.sortlink('Beleg-Nr.', 'belegnr', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Datum', 'datum', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Lieferant', 'lieferant', sort_key, sort_dir) }}</th>
             <th class="zahl-rechts">Pos.</th>
-            <th class="zahl-rechts">Netto €</th>
-            <th class="zahl-rechts">Brutto €</th>
-            <th>Status</th>
+            <th class="zahl-rechts">{{ L.sortlink('Netto €', 'netto', sort_key, sort_dir) }}</th>
+            <th class="zahl-rechts">{{ L.sortlink('Brutto €', 'brutto', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Status', 'stadium', sort_key, sort_dir) }}</th>
         </tr>
     </thead>
     <tbody>

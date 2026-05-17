@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import '_listing.html' as L %}
 {% block title %}Wareneingänge – Übersicht{% endblock %}
 
 {% block extra_style %}
@@ -133,13 +134,14 @@
 }
 .btn-primary:hover { background: var(--akzent-hell, #2e6e1a); }
 </style>
+{{ L.pager_css() }}
 {% endblock %}
 
 {% block content %}
 <div class="we-kopf">
     <h1>📥 Wareneingänge – Übersicht</h1>
     <div style="display:flex; gap:10px; align-items:center;">
-        <span class="we-trefferzahl">{{ eingaenge|length }} Treffer</span>
+        <span class="we-trefferzahl">{{ total }} Treffer · {{ periode.label }}{% if gekuerzt %} · ⚠ gekürzt – Zeitraum eingrenzen{% endif %}</span>
         <button type="button" class="btn-primary" onclick="weNeuOeffnen()">+ Neuer Wareneingang</button>
     </div>
 </div>
@@ -163,6 +165,14 @@
             {% endfor %}
         </select>
     </label>
+    {{ L.zeitfilter(periode, jahre) }}
+    <label style="flex-direction:row;align-items:center;gap:6px;">
+        <input type="checkbox" name="storno" value="1"
+               {% if not storno_aus %}checked{% endif %}>
+        stornierte anzeigen
+    </label>
+    {% if sort_key %}<input type="hidden" name="sort" value="{{ sort_key }}">
+    <input type="hidden" name="dir" value="{{ sort_dir }}">{% endif %}
     <button type="submit">Filtern</button>
     <button type="button" class="btn-reset" onclick="window.location='{{ url_for('orga_bestellwesen.wareneingang_uebersicht') }}'">Zurücksetzen</button>
 </form>
@@ -201,12 +211,12 @@ function weNeuOeffnen() {
 <table class="we-tabelle">
     <thead>
         <tr>
-            <th>Beleg-Nr.</th>
-            <th>Datum</th>
-            <th>Lieferant</th>
+            <th>{{ L.sortlink('Beleg-Nr.', 'belegnr', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Datum', 'datum', sort_key, sort_dir) }}</th>
+            <th>{{ L.sortlink('Lieferant', 'lieferant', sort_key, sort_dir) }}</th>
             <th>aus Bestellung</th>
             <th class="zahl-rechts">Pos.</th>
-            <th>Status</th>
+            <th>{{ L.sortlink('Status', 'stadium', sort_key, sort_dir) }}</th>
         </tr>
     </thead>
     <tbody>

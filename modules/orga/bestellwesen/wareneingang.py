@@ -320,9 +320,27 @@ def wareneingang_anlegen(bestell_rec_id: int,
 # ── Übersicht / Detail ───────────────────────────────────────────────
 
 
+WE_SORT = {
+    'belegnr':   'e.BELEGNUM',
+    'datum':     'e.BELEGDATUM',
+    'lieferant': "COALESCE(a.NAME1, '')",
+    'stadium':   'e.STADIUM',
+}
+WE_DEFAULT_ORDER = 'e.BELEGDATUM DESC, e.REC_ID DESC'
+
+
 def wareneingang_liste(*, suche: str = '', stadium: int | None = None,
-                       limit: int = 200) -> list[dict[str, Any]]:
-    """Liste aller EKEINGANG-Belege (read-only)."""
+                       storno_aus: bool = True,
+                       von_datum: date | None = None,
+                       bis_datum: date | None = None,
+                       sort_sql: str = WE_DEFAULT_ORDER,
+                       limit: int = 2000) -> dict[str, Any]:
+    """EKEINGANG-Belege eines Zeitraums (BELEGDATUM), serverseitig
+    gefiltert + sortiert. Returns
+    ``{'rows': [...], 'total': int, 'gekuerzt': bool}``.
+
+    ``storno_aus`` (Default True) blendet STADIUM=127 (storniert) aus.
+    """
     where = ['1=1']
     params: list[Any] = []
     if suche:
@@ -331,45 +349,63 @@ def wareneingang_liste(*, suche: str = '', stadium: int | None = None,
     if stadium is not None:
         where.append('e.STADIUM = %s')
         params.append(int(stadium))
-    params.append(int(limit))
+    if storno_aus:
+        where.append('e.STADIUM <> 127')
+    if von_datum:
+        where.append('e.BELEGDATUM >= %s')
+        params.append(von_datum)
+    if bis_datum:
+        where.append('e.BELEGDATUM <= %s')
+        params.append(bis_datum)
+    where_sql = ' AND '.join(where)
 
     # Bestell-Belegnummer wird ueber die Pos-Verknuepfung ermittelt:
     # EKEINGANG_POS.EKBESTELL_POS_ID → EKBESTELL_POS.EKBESTELL_ID →
     # EKBESTELL.BELEGNUM. Wenn ein Wareneingang Pos aus mehreren
     # Bestellungen enthaelt, zeigen wir die mit der niedrigsten REC_ID.
-    sql = f"""
-        SELECT
-            e.REC_ID                            AS rec_id,
-            e.BELEGNUM                          AS belegnum,
-            e.BELEGDATUM                        AS belegdatum,
-            e.STADIUM                           AS stadium,
-            e.ADDR_ID                           AS addr_id,
-            COALESCE(a.NAME1, '–')              AS lief_name,
-            (
-                SELECT COUNT(*) FROM EKEINGANG_POS p
-                WHERE p.EKEINGANG_ID = e.REC_ID
-            )                                   AS pos_anzahl,
-            (
-                SELECT b.BELEGNUM
-                  FROM EKEINGANG_POS p
-                  JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
-                  JOIN EKBESTELL b      ON b.REC_ID  = bp.EKBESTELL_ID
-                 WHERE p.EKEINGANG_ID = e.REC_ID
-                 ORDER BY b.REC_ID
-                 LIMIT 1
-            )                                   AS bestell_belegnum
-        FROM EKEINGANG e
-        LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID
-        WHERE {' AND '.join(where)}
-        ORDER BY e.BELEGDATUM DESC, e.REC_ID DESC
-        LIMIT %s
-    """
     with get_db() as cur:
-        cur.execute(sql, params)
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM EKEINGANG e "
+            f"LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID "
+            f"WHERE {where_sql}",
+            params,
+        )
+        total = int((cur.fetchone() or {}).get('n') or 0)
+        cur.execute(
+            f"""
+            SELECT
+                e.REC_ID                            AS rec_id,
+                e.BELEGNUM                          AS belegnum,
+                e.BELEGDATUM                        AS belegdatum,
+                e.STADIUM                           AS stadium,
+                e.ADDR_ID                           AS addr_id,
+                COALESCE(a.NAME1, '–')              AS lief_name,
+                (
+                    SELECT COUNT(*) FROM EKEINGANG_POS p
+                    WHERE p.EKEINGANG_ID = e.REC_ID
+                )                                   AS pos_anzahl,
+                (
+                    SELECT b.BELEGNUM
+                      FROM EKEINGANG_POS p
+                      JOIN EKBESTELL_POS bp ON bp.REC_ID = p.EKBESTELL_POS_ID
+                      JOIN EKBESTELL b      ON b.REC_ID  = bp.EKBESTELL_ID
+                     WHERE p.EKEINGANG_ID = e.REC_ID
+                     ORDER BY b.REC_ID
+                     LIMIT 1
+                )                                   AS bestell_belegnum
+            FROM EKEINGANG e
+            LEFT JOIN ADRESSEN a ON a.REC_ID = e.ADDR_ID
+            WHERE {where_sql}
+            ORDER BY {sort_sql}
+            LIMIT %s
+            """,
+            params + [int(limit)],
+        )
         rows = cur.fetchall()
     for r in rows:
         r['stadium_label'] = _label(r.get('stadium'))
-    return rows
+    return {'rows': rows, 'total': total,
+            'gekuerzt': total > int(limit)}
 
 
 def wareneingang_detail(rec_id: int) -> dict[str, Any] | None:

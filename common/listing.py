@@ -122,3 +122,39 @@ def periode(gran: str, anchor: str | None,
     return {'gran': gran, 'anchor': canon, 'von': von, 'bis': bis,
             'label': label, 'prev': prev, 'next': nxt,
             'jahr': y, 'monat': m, 'quartal': q}
+
+
+def periode_from_request(args, session, key_prefix: str,
+                         heute: date | None = None
+                         ) -> tuple[dict[str, Any], list[int]]:
+    """Zeitraum aus Request-Dropdowns (gran + jahr/monat/quartal)
+    bzw. ``?periode=``; ohne Angabe → zuletzt in der Session
+    gemerkter Stand (``<key_prefix>_gran`` / ``_periode``); sonst
+    aktueller Monat. Persistiert die Auswahl (kanonisch) zurück in
+    die Session. Returns ``(pz, jahre)``.
+
+    Framework-agnostisch: ``args`` muss ``get(name, type=int)``
+    unterstützen (Flask ``request.args``), ``session`` ist dict-like.
+    """
+    heute = heute or date.today()
+    gran = (args.get('gran') or session.get(f'{key_prefix}_gran')
+            or 'monat')
+    if gran not in GRAN:
+        gran = 'monat'
+    jahr = args.get('jahr', type=int)
+    monat = args.get('monat', type=int)
+    quartal = args.get('quartal', type=int)
+    if jahr and gran == 'monat' and monat:
+        anchor = f'{jahr}-{monat:02d}'
+    elif jahr and gran == 'quartal' and quartal:
+        anchor = f'{jahr}-Q{quartal}'
+    elif jahr and gran == 'jahr':
+        anchor = f'{jahr}'
+    else:
+        anchor = (args.get('periode')
+                  or session.get(f'{key_prefix}_periode'))
+    pz = periode(gran, anchor, heute)
+    session[f'{key_prefix}_gran'] = pz['gran']
+    session[f'{key_prefix}_periode'] = pz['anchor']
+    jahre = list(range(heute.year + 1, heute.year - 7, -1))
+    return pz, jahre

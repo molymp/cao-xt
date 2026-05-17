@@ -125,5 +125,39 @@ class TestPeriode(unittest.TestCase):
             'Q2 2026')
 
 
+class TestPeriodeFromRequest(unittest.TestCase):
+    from datetime import date as _d
+    H = _d(2026, 5, 16)
+
+    def test_default_aktueller_monat_und_merkt(self):
+        sess = {}
+        pz, jahre = listing.periode_from_request(
+            _Args(), sess, 'ek', self.H)
+        self.assertEqual(pz['label'], 'Mai 2026')
+        self.assertEqual(sess['ek_gran'], 'monat')
+        self.assertEqual(sess['ek_periode'], '2026-05')
+        self.assertIn(2026, jahre)
+
+    def test_session_fallback(self):
+        sess = {'we_gran': 'quartal', 'we_periode': '2025-Q4'}
+        pz, _ = listing.periode_from_request(
+            _Args(), sess, 'we', self.H)
+        self.assertEqual(pz['label'], 'Q4 2025')
+
+    def test_dropdown_args_schlagen_session(self):
+        sess = {'ek_gran': 'jahr', 'ek_periode': '2020'}
+        pz, _ = listing.periode_from_request(
+            _Args(gran='monat', jahr='2024', monat='3'),
+            sess, 'ek', self.H)
+        self.assertEqual(pz['label'], 'März 2024')
+        self.assertEqual(sess['ek_periode'], '2024-03')
+
+    def test_prefix_isoliert(self):
+        sess = {'ek_periode': '2026-01', 'ek_gran': 'monat'}
+        pz, _ = listing.periode_from_request(
+            _Args(), sess, 'best', self.H)   # anderer Prefix
+        self.assertEqual(pz['label'], 'Mai 2026')  # nicht ek-Stand
+
+
 if __name__ == '__main__':
     unittest.main()

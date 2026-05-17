@@ -71,21 +71,32 @@ def _stadium_label(code: int | None) -> str:
     return _stadium_label_kopf(code)
 
 
+BESTELL_SORT = {
+    'belegnr':   'b.BELEGNUM',
+    'datum':     'b.BELEGDATUM',
+    'lieferant': "COALESCE(a.NAME1, '')",
+    'netto':     'b.NSUMME',
+    'brutto':    'b.BSUMME',
+    'stadium':   'b.STADIUM',
+}
+BESTELL_DEFAULT_ORDER = 'b.BELEGDATUM DESC, b.REC_ID DESC'
+
+
 def bestellungen_liste(
     *,
     suche: str = '',
     stadium: int | None = None,
+    storno_aus: bool = True,
     von_datum: date | None = None,
     bis_datum: date | None = None,
-    limit: int = 200,
-) -> list[dict[str, Any]]:
-    """Liste aller EKBESTELL-Köpfe mit Lieferant + Anzahl Positionen.
+    sort_sql: str = BESTELL_DEFAULT_ORDER,
+    limit: int = 2000,
+) -> dict[str, Any]:
+    """EKBESTELL-Köpfe eines Zeitraums (BELEGDATUM), serverseitig
+    gefiltert + sortiert. Returns
+    ``{'rows': [...], 'total': int, 'gekuerzt': bool}``.
 
-    Args:
-        suche: Substring-Filter auf BELEGNUM oder Lieferantenname.
-        stadium: STADIUM-Filter (z.B. 2=offen). None = alle.
-        von_datum / bis_datum: BELEGDATUM-Range (inklusive).
-        limit: Maximalanzahl Treffer (Default 200).
+    ``storno_aus`` (Default True) blendet STADIUM=127 (storniert) aus.
     """
     where = ['1=1']
     params: list[Any] = []
@@ -95,41 +106,53 @@ def bestellungen_liste(
     if stadium is not None:
         where.append('b.STADIUM = %s')
         params.append(int(stadium))
+    if storno_aus:
+        where.append('b.STADIUM <> 127')
     if von_datum:
         where.append('b.BELEGDATUM >= %s')
         params.append(von_datum)
     if bis_datum:
         where.append('b.BELEGDATUM <= %s')
         params.append(bis_datum)
-    params.append(int(limit))
+    where_sql = ' AND '.join(where)
 
-    sql = f"""
-        SELECT
-            b.REC_ID                            AS rec_id,
-            b.BELEGNUM                          AS belegnum,
-            b.BELEGDATUM                        AS belegdatum,
-            b.ADDR_ID                           AS addr_id,
-            COALESCE(a.NAME1, '–')              AS lief_name,
-            b.STADIUM                           AS stadium,
-            b.NSUMME                            AS nsumme,
-            b.MSUMME                            AS msumme,
-            b.BSUMME                            AS bsumme,
-            (
-                SELECT COUNT(*) FROM EKBESTELL_POS p
-                WHERE p.EKBESTELL_ID = b.REC_ID
-            )                                   AS pos_anzahl
-        FROM EKBESTELL b
-        LEFT JOIN ADRESSEN a ON a.REC_ID = b.ADDR_ID
-        WHERE {' AND '.join(where)}
-        ORDER BY b.BELEGDATUM DESC, b.REC_ID DESC
-        LIMIT %s
-    """
     with get_db() as cur:
-        cur.execute(sql, params)
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM EKBESTELL b "
+            f"LEFT JOIN ADRESSEN a ON a.REC_ID = b.ADDR_ID "
+            f"WHERE {where_sql}",
+            params,
+        )
+        total = int((cur.fetchone() or {}).get('n') or 0)
+        cur.execute(
+            f"""
+            SELECT
+                b.REC_ID                            AS rec_id,
+                b.BELEGNUM                          AS belegnum,
+                b.BELEGDATUM                        AS belegdatum,
+                b.ADDR_ID                           AS addr_id,
+                COALESCE(a.NAME1, '–')              AS lief_name,
+                b.STADIUM                           AS stadium,
+                b.NSUMME                            AS nsumme,
+                b.MSUMME                            AS msumme,
+                b.BSUMME                            AS bsumme,
+                (
+                    SELECT COUNT(*) FROM EKBESTELL_POS p
+                    WHERE p.EKBESTELL_ID = b.REC_ID
+                )                                   AS pos_anzahl
+            FROM EKBESTELL b
+            LEFT JOIN ADRESSEN a ON a.REC_ID = b.ADDR_ID
+            WHERE {where_sql}
+            ORDER BY {sort_sql}
+            LIMIT %s
+            """,
+            params + [int(limit)],
+        )
         rows = cur.fetchall()
     for r in rows:
         r['stadium_label'] = _stadium_label_kopf(r.get('stadium'))
-    return rows
+    return {'rows': rows, 'total': total,
+            'gekuerzt': total > int(limit)}
 
 
 def bestellung_detail(rec_id: int) -> dict[str, Any] | None:

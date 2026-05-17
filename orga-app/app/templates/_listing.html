@@ -34,6 +34,43 @@
   {%- endif -%}
 {%- endmacro -%}
 
+{# Zeitraum-Auswahl als Dropdowns (in ein <form method=get> setzen).
+   pz = listing.periode(...), jahre = Liste von Jahreszahlen.
+   Auto-Submit bei Änderung. #}
+{%- macro zeitfilter(pz, jahre) -%}
+  <label>Ansicht
+    <select name="gran" onchange="this.form.submit()">
+      <option value="monat"   {% if pz.gran == 'monat' %}selected{% endif %}>Monat</option>
+      <option value="quartal" {% if pz.gran == 'quartal' %}selected{% endif %}>Quartal</option>
+      <option value="jahr"    {% if pz.gran == 'jahr' %}selected{% endif %}>Jahr</option>
+    </select>
+  </label>
+  {%- if pz.gran == 'monat' -%}
+  <label>Monat
+    <select name="monat" onchange="this.form.submit()">
+      {%- for mn in ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'] -%}
+        <option value="{{ loop.index }}" {% if pz.monat == loop.index %}selected{% endif %}>{{ mn }}</option>
+      {%- endfor -%}
+    </select>
+  </label>
+  {%- elif pz.gran == 'quartal' -%}
+  <label>Quartal
+    <select name="quartal" onchange="this.form.submit()">
+      {%- for qn in [1,2,3,4] -%}
+        <option value="{{ qn }}" {% if pz.quartal == qn %}selected{% endif %}>Q{{ qn }}</option>
+      {%- endfor -%}
+    </select>
+  </label>
+  {%- endif -%}
+  <label>Jahr
+    <select name="jahr" onchange="this.form.submit()">
+      {%- for jr in jahre -%}
+        <option value="{{ jr }}" {% if pz.jahr == jr %}selected{% endif %}>{{ jr }}</option>
+      {%- endfor -%}
+    </select>
+  </label>
+{%- endmacro -%}
+
 {%- macro pager_css() -%}
 <style>
 .cx-pager{display:flex;gap:14px;align-items:center;justify-content:center;

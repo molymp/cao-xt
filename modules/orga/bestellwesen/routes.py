@@ -41,28 +41,37 @@ def _form_to_date(val: str | None) -> date | None:
 
 @bp.get('/')
 def uebersicht():
-    """Übersicht aller Lieferanten-Bestellungen (EKBESTELL)."""
+    """Übersicht aller Lieferanten-Bestellungen (EKBESTELL),
+    serverseitig gefiltert/sortiert, Zeitraum Monat/Quartal/Jahr."""
     _login_check()
+    from common import listing
     suche       = (request.args.get('q') or '').strip()
     stadium_raw = (request.args.get('stadium') or '').strip()
-    von_datum   = _form_to_date(request.args.get('von'))
-    bis_datum   = _form_to_date(request.args.get('bis'))
     stadium     = int(stadium_raw) if stadium_raw.isdigit() else None
+    storno_aus  = request.args.get('storno') != '1'
 
-    bestellungen = m.bestellungen_liste(
-        suche=suche,
-        stadium=stadium,
-        von_datum=von_datum,
-        bis_datum=bis_datum,
-    )
+    pz, jahre = listing.periode_from_request(
+        request.args, session, 'best')
+    order_sql, sort_key, sort_dir = listing.parse_sort(
+        request.args, m.BESTELL_SORT, m.BESTELL_DEFAULT_ORDER)
+
+    daten = m.bestellungen_liste(
+        suche=suche, stadium=stadium, storno_aus=storno_aus,
+        von_datum=pz['von'], bis_datum=pz['bis'],
+        sort_sql=order_sql)
 
     return render_template(
         'bestellwesen.html',
-        bestellungen=bestellungen,
+        bestellungen=daten['rows'],
+        total=daten['total'],
+        gekuerzt=daten.get('gekuerzt', False),
+        periode=pz,
+        jahre=jahre,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
         suche=suche,
         stadium=stadium,
-        von_datum=von_datum,
-        bis_datum=bis_datum,
+        storno_aus=storno_aus,
         stadium_label=m.STADIUM_LABEL,
     )
 
@@ -244,17 +253,37 @@ def api_wareneingang_anlegen(rec_id: int) -> Any:
 
 @bp.get('/wareneingang/')
 def wareneingang_uebersicht():
-    """Liste aller EKEINGANG-Belege."""
+    """Liste aller EKEINGANG-Belege, serverseitig gefiltert/
+    sortiert, Zeitraum Monat/Quartal/Jahr."""
     _login_check()
+    from common import listing
     suche = (request.args.get('q') or '').strip()
     stadium_raw = (request.args.get('stadium') or '').strip()
     stadium = int(stadium_raw) if stadium_raw.isdigit() else None
-    eingaenge = we.wareneingang_liste(suche=suche, stadium=stadium)
+    storno_aus = request.args.get('storno') != '1'
+
+    pz, jahre = listing.periode_from_request(
+        request.args, session, 'we')
+    order_sql, sort_key, sort_dir = listing.parse_sort(
+        request.args, we.WE_SORT, we.WE_DEFAULT_ORDER)
+
+    daten = we.wareneingang_liste(
+        suche=suche, stadium=stadium, storno_aus=storno_aus,
+        von_datum=pz['von'], bis_datum=pz['bis'],
+        sort_sql=order_sql)
+
     return render_template(
         'wareneingang.html',
-        eingaenge=eingaenge,
+        eingaenge=daten['rows'],
+        total=daten['total'],
+        gekuerzt=daten.get('gekuerzt', False),
+        periode=pz,
+        jahre=jahre,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
         suche=suche,
         stadium=stadium,
+        storno_aus=storno_aus,
         stadium_label=we.STADIUM_LABEL_KOPF,
     )
 
@@ -449,31 +478,8 @@ def einkauf_uebersicht():
     if bezahlt not in ('alle', 'bezahlt', 'unbezahlt'):
         bezahlt = 'alle'
 
-    # Granularität + Zeitraum: aus Dropdowns (gran + jahr/monat/
-    # quartal) bzw. ?periode=; ohne Angabe → zuletzt gemerkter Stand
-    # aus der Session; sonst aktueller Monat.
-    gran = (request.args.get('gran')
-            or session.get('ek_gran') or 'monat')
-    if gran not in listing.GRAN:
-        gran = 'monat'
-    jahr = request.args.get('jahr', type=int)
-    monat = request.args.get('monat', type=int)
-    quartal = request.args.get('quartal', type=int)
-    if jahr and gran == 'monat' and monat:
-        anchor = f'{jahr}-{monat:02d}'
-    elif jahr and gran == 'quartal' and quartal:
-        anchor = f'{jahr}-Q{quartal}'
-    elif jahr and gran == 'jahr':
-        anchor = f'{jahr}'
-    else:
-        anchor = request.args.get('periode') or session.get('ek_periode')
-    pz = listing.periode(gran, anchor)
-    # Auswahl merken (kanonischer anchor).
-    session['ek_gran'] = pz['gran']
-    session['ek_periode'] = pz['anchor']
-    heute = date.today()
-    jahre = list(range(heute.year + 1, heute.year - 7, -1))
-
+    pz, jahre = listing.periode_from_request(
+        request.args, session, 'ek')
     order_sql, sort_key, sort_dir = listing.parse_sort(
         request.args, ek.EINKAUF_SORT, ek.EINKAUF_DEFAULT_ORDER)
 
