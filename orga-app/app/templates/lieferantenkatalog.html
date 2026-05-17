@@ -54,6 +54,7 @@
         action="{{ url_for('orga_lieferantenkatalog.katalog_import') }}"
         style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;">
     <input type="hidden" name="lief_addr_id" id="lk-addr">
+    <input type="hidden" name="lief_name" id="lk-liefname-val">
     <button type="button" class="btn-aktion" onclick="lkLiefWaehlen()">
       🚛 Lieferant wählen …</button>
     <span id="lk-liefname" style="font-weight:600;">– kein Lieferant –</span>
@@ -159,6 +160,7 @@ function lkLiefWaehlen() {
     },
     onWaehlen: (a) => {
       document.getElementById('lk-addr').value = a.addr_id || '';
+      document.getElementById('lk-liefname-val').value = a.name || '';
       document.getElementById('lk-liefname').textContent = a.name || '–';
     },
   });
