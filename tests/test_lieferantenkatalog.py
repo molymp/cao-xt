@@ -61,7 +61,10 @@ class TestKramerParser(unittest.TestCase):
         self.assertEqual(b[0]['marke'], 'Wurm')
         p = b[0]['positionen'][0]
         self.assertEqual(p['lief_art_nr'], '3001')
-        self.assertEqual(p['artikelname'], 'Moorseife')
+        # „Artikelname"-Spalte (col3 'Moorseife') wird IGNORIERT;
+        # primärer Name = „2 Name" (col4).
+        self.assertEqual(p['artikelname'], 'Moorseife 100g')
+        self.assertNotIn('name_lang', p)
         self.assertEqual(p['ek_netto'], 3.95)
         self.assertEqual(p['ust_satz'], 19.0)
         self.assertEqual(p['vk_empf'], 7.9)        # „7,9" → 7.9
@@ -93,7 +96,7 @@ class TestKramerParser(unittest.TestCase):
         self.assertEqual(len(ps), 2)               # Leerzeile raus
         ohne = next(p for p in ps if p.get('ohne_liefnr'))
         self.assertTrue(ohne['lief_art_nr'].startswith('~'))
-        self.assertEqual(ohne['name_lang'], 'Sonderposten 1')
+        self.assertEqual(ohne['artikelname'], 'Sonderposten 1')
         mit = next(p for p in ps if p['lief_art_nr'] == '4002')
         self.assertFalse(mit.get('ohne_liefnr'))
 

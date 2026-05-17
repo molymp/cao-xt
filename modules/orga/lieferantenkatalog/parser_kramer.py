@@ -43,8 +43,10 @@ _FELD_MAP = {
     'artikelnr':             'lief_art_nr',
     'kategorie':             'kategorie',
     'kurzbeschreibung':      'kurzbeschreibung',
-    'artikelname':           'artikelname',
-    'name':                  'name_lang',
+    # Spalte „Artikelname" wird IGNORIERT (bei Kramer-Varianten nur
+    # ein Fragment, z. B. „- Apfel-Zimt"). Primärer Artikelname =
+    # Spalte „2 Name" (User-Entscheidung 2026-05-17).
+    'name':                  'artikelname',
     'gebinde':               'gebinde',
     'ek netto':              'ek_netto',
     'beschreibung':          'beschreibung',
