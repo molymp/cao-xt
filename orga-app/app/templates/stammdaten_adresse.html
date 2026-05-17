@@ -34,7 +34,7 @@
 </p>
 
 <form method="post"
-      action="{{ url_for('orga_lieferantenkatalog.adresse_speichern') }}">
+      action="{{ url_for('orga_stammdaten.adresse_speichern') }}">
   {% if rid %}<input type="hidden" name="id" value="{{ rid }}">{% endif %}
   {% for gruppe, felder in gruppen %}
   <div class="adr-grp">
@@ -68,7 +68,7 @@
   <div style="display:flex;gap:10px;margin:14px 0;">
     <button type="submit" class="btn-primary">Speichern</button>
     <a class="btn-aktion"
-       href="{{ url_for('orga_lieferantenkatalog.uebersicht') }}">Abbrechen</a>
+       href="{{ url_for('orga_stammdaten.adressen') }}">Abbrechen</a>
   </div>
 </form>
 
@@ -80,7 +80,7 @@ async function adrPlz() {
   if (!plz || (ort && ort.value.trim())) return;  // Ort nicht überschreiben
   try {
     const d = await (await fetch(
-      `/orga/lieferantenkatalog/api/plz?land=${encodeURIComponent(land)}`
+      `/orga/stammdaten/api/plz?land=${encodeURIComponent(land)}`
       + `&plz=${encodeURIComponent(plz)}`)).json();
     if (d.ok && d.orte && d.orte.length && ort) ort.value = d.orte[0].ort || '';
   } catch (e) { /* optional */ }

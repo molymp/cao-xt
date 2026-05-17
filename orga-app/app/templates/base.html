@@ -384,7 +384,10 @@ a { text-decoration: none; color: inherit; }
 
       <div class="sidebar-section-title">Stammdaten</div>
       <div class="sidebar-section">
-        <a href="/coming-soon?modul=Adressen" class="sidebar-item">
+        {% set _adr = hat_recht('orga.stammdaten.adressen') %}
+        <a href="{% if _adr %}/orga/stammdaten/adressen{% else %}#{% endif %}"
+           class="sidebar-item {% if _adr and request.path.startswith('/orga/stammdaten/adressen') %}aktiv{% endif %} {% if not _adr %}ausgegraut{% endif %}"
+           {% if not _adr %}title="Keine Berechtigung (orga.stammdaten.adressen)" aria-disabled="true"{% endif %}>
           <span class="icon">👥</span> Adressen
         </a>
 

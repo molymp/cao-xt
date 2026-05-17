@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Stammdaten – Adressen{% endblock %}
+
+{% block content %}
+<div style="max-width:52rem;">
+  <h1>👥 Adressen</h1>
+  <p style="line-height:1.6;color:var(--text-dim,#5a7a3a);">
+    CAO-Adressen (Kunden/Lieferanten) anlegen und bearbeiten.
+    Anlegen/Ändern erzeugt die CAO-Mimik (ADRESSEN + ADRESSEN_LOG +
+    HASHSUM); Bearbeiten ist beim Speichern CAO-record-gesperrt.
+  </p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+    <a class="btn-primary"
+       href="{{ url_for('orga_stammdaten.adresse_form') }}">➕ Neue Adresse anlegen</a>
+  </div>
+  <p style="margin-top:18px;color:var(--text-dim,#5a7a3a);font-size:.9rem;">
+    Eine bestehende Adresse bearbeiten: über die jeweilige Stelle
+    (z. B. Lieferantenkatalog) den Bearbeiten-Link nutzen, oder
+    <code>…/orga/stammdaten/adressen/form?id=&lt;REC_ID&gt;</code>.
+    Eine Adress-Suche/-Liste folgt bei Bedarf separat.
+  </p>
+</div>
+{% endblock %}

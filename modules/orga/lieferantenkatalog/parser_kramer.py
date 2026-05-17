@@ -16,6 +16,7 @@ Parser"); weitere Lieferanten-Formate kommen als eigene Parser.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any
 
@@ -107,10 +108,6 @@ def parse_kramer_xlsx(path: str) -> list[dict[str, Any]]:
         for r in rows[2:]:
             if not r:
                 continue
-            art_nr = r[spalte['lief_art_nr']] \
-                if spalte['lief_art_nr'] < len(r) else None
-            if art_nr in (None, ''):
-                continue
             pos: dict[str, Any] = {}
             for feld, idx in spalte.items():
                 val = r[idx] if idx < len(r) else None
@@ -123,6 +120,21 @@ def parse_kramer_xlsx(path: str) -> list[dict[str, Any]]:
                 else:
                     pos[feld] = _str(val, 255)
             pos['marke'] = sn
+            name = (pos.get('name_lang') or pos.get('artikelname')
+                    or '').strip()
+            # Zeilen OHNE Artikel-Nr trotzdem aufnehmen (User-Wunsch) —
+            # aber echte Leer-/Abschnittszeilen (weder Nr noch Name)
+            # überspringen.
+            if not pos.get('lief_art_nr'):
+                if not name:
+                    continue
+                # Stabiler Ersatz-Schlüssel für UNIQUE (Marke+Name+
+                # Gebinde) — deterministisch, damit Re-Import upsertet
+                # statt zu duplizieren. Präfix '~' = „ohne Lief-Nr".
+                roh = f"{sn}|{name}|{pos.get('gebinde') or ''}"
+                pos['lief_art_nr'] = '~' + hashlib.sha1(
+                    roh.encode('utf-8')).hexdigest()[:12]
+                pos['ohne_liefnr'] = True
             positionen.append(pos)
         if positionen:
             blaetter.append({'marke': sn, 'positionen': positionen})

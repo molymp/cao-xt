@@ -61,27 +61,42 @@
     <input type="file" name="katalog" accept=".xlsx,.xlsm" required>
     <button type="submit" class="btn-primary">Importieren</button>
   </form>
-  <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-    <a class="btn-aktion"
-       href="{{ url_for('orga_lieferantenkatalog.adresse_form') }}">➕ Neue Adresse anlegen</a>
-    {% set _selli = (lieferanten | selectattr('LIEFERANT_KUERZEL','equalto',sel) | list | first) if sel else none %}
-    {% if _selli and _selli.cao_lief_id %}
-    <a class="btn-aktion"
-       href="{{ url_for('orga_lieferantenkatalog.adresse_form', id=_selli.cao_lief_id) }}">✎ Adresse „{{ _selli.lieferant_name or sel }}" bearbeiten</a>
-    {% endif %}
-  </div>
+  <p style="margin-top:8px;font-size:.82rem;color:var(--text-dim,#5a7a3a);">
+    Neue Lieferanten-Adresse anlegen/ändern: unter
+    <a href="{{ url_for('orga_stammdaten.adressen') }}">Stammdaten → Adressen</a>.
+  </p>
 </div>
 
+<h2 style="margin:18px 0 6px;">Kataloge</h2>
 {% if lieferanten %}
-<div class="lk-liefs">
+<table class="lk-tab">
+  <thead><tr>
+    <th>Lieferant</th><th class="zahl-rechts">Artikel</th>
+    <th class="zahl-rechts">🛒</th><th class="zahl-rechts">📦</th>
+    <th>letzter Import</th><th></th><th></th>
+  </tr></thead>
+  <tbody>
   {% for li in lieferanten %}
-  <a href="{{ url_for('orga_lieferantenkatalog.uebersicht', lief=li.LIEFERANT_KUERZEL) }}"
-     class="{{ 'aktiv' if sel == li.LIEFERANT_KUERZEL else '' }}">
-    {{ li.lieferant_name or li.LIEFERANT_KUERZEL }}
-    ({{ li.aktiv }}/{{ li.n }}{% if li.markiert_best %} · 🛒{{ li.markiert_best }}{% endif %}{% if li.markiert_stamm %} · 📦{{ li.markiert_stamm }}{% endif %})
-  </a>
+  <tr {% if sel == li.LIEFERANT_KUERZEL %}style="background:rgba(46,110,26,.06);"{% endif %}>
+    <td><strong>{{ li.lieferant_name or li.LIEFERANT_KUERZEL }}</strong></td>
+    <td class="zahl-rechts">{{ li.aktiv }}{% if li.n != li.aktiv %} <span style="color:#999;">/ {{ li.n }}</span>{% endif %}</td>
+    <td class="zahl-rechts">{{ li.markiert_best or 0 }}</td>
+    <td class="zahl-rechts">{{ li.markiert_stamm or 0 }}</td>
+    <td>{{ li.letzter_import.strftime('%d.%m.%Y %H:%M') if li.letzter_import else '–' }}</td>
+    <td><a class="btn-aktion"
+       href="{{ url_for('orga_lieferantenkatalog.uebersicht', lief=li.LIEFERANT_KUERZEL) }}">Öffnen</a></td>
+    <td>
+      <form method="post" style="display:inline;"
+            action="{{ url_for('orga_lieferantenkatalog.katalog_loeschen') }}"
+            onsubmit="return confirm('Katalog „{{ li.lieferant_name or li.LIEFERANT_KUERZEL }}“ komplett entfernen? Alle {{ li.n }} Positionen werden gelöscht.');">
+        <input type="hidden" name="lief" value="{{ li.LIEFERANT_KUERZEL }}">
+        <button type="submit" class="btn-danger">Entfernen</button>
+      </form>
+    </td>
+  </tr>
   {% endfor %}
-</div>
+  </tbody>
+</table>
 {% else %}
 <p style="color:var(--text-dim,#5a7a3a);">Noch kein Katalog importiert.</p>
 {% endif %}

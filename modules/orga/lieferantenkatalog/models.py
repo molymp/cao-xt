@@ -259,3 +259,23 @@ def pos_flag_setzen(rec_id: int, feld: str, wert: bool) -> None:
             f"UPDATE XT_LIEFERANTENKATALOG SET {spalte}=%s "
             f"WHERE REC_ID=%s",
             (1 if wert else 0, int(rec_id)))
+
+
+def katalog_loeschen(lieferant_kuerzel: str,
+                      marke: str | None = None) -> int:
+    """Entfernt einen Katalog vollständig (alle Zeilen eines
+    Lieferanten; optional nur eine Marke). Returns gelöschte Anzahl."""
+    lk = (lieferant_kuerzel or '').strip()
+    if not lk:
+        raise ValueError('Lieferant fehlt')
+    with get_db_transaction() as cur:
+        if marke:
+            cur.execute(
+                "DELETE FROM XT_LIEFERANTENKATALOG "
+                " WHERE LIEFERANT_KUERZEL=%s AND MARKE=%s",
+                (lk, marke))
+        else:
+            cur.execute(
+                "DELETE FROM XT_LIEFERANTENKATALOG "
+                " WHERE LIEFERANT_KUERZEL=%s", (lk,))
+        return int(cur.rowcount or 0)

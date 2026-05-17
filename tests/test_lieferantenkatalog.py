@@ -78,15 +78,33 @@ class TestKramerParser(unittest.TestCase):
         self.assertNotIn('handelsklasse', p)
         self.assertNotIn('einheit', p)
 
-    def test_zeile_ohne_artikelnr_uebersprungen(self):
+    def test_zeile_ohne_artikelnr_wird_aufgenommen(self):
+        # Ohne Art-Nr aber mit Name → aufnehmen, stabiler ~Key.
+        # Ohne Art-Nr UND ohne Name → echte Leerzeile, überspringen.
         b = self._parse([
-            ['K', '', 'a', 'b', 'c', 'd', 1.0, 'x', '7', '1', 'E',
-             '1', 1, 's', ''],
-            ['K', 4002, 'a', 'b', 'c', 'd', 2.0, 'x', '7', '1', 'E',
-             '2', 1, 's', ''],
+            ['K', '', 'a', 'b', 'Sonderposten 1', 'd', 1.0, 'x', '7',
+             '1', 'E', '1', 1, 's', ''],
+            ['K', '', '', '', '', '', None, '', '', '', '', '', None,
+             '', ''],
+            ['K', 4002, 'a', 'Reg', 'Reg lang', 'd', 2.0, 'x', '7',
+             '1', 'E', '2', 1, 's', ''],
         ])
-        self.assertEqual(len(b[0]['positionen']), 1)
-        self.assertEqual(b[0]['positionen'][0]['lief_art_nr'], '4002')
+        ps = b[0]['positionen']
+        self.assertEqual(len(ps), 2)               # Leerzeile raus
+        ohne = next(p for p in ps if p.get('ohne_liefnr'))
+        self.assertTrue(ohne['lief_art_nr'].startswith('~'))
+        self.assertEqual(ohne['name_lang'], 'Sonderposten 1')
+        mit = next(p for p in ps if p['lief_art_nr'] == '4002')
+        self.assertFalse(mit.get('ohne_liefnr'))
+
+    def test_synthetik_key_stabil(self):
+        a = self._parse([['K', '', 'a', 'b', 'Same', 'Stk', 1.0, 'x',
+                           '7', '1', 'E', '1', 1, 's', '']])
+        b = self._parse([['K', '', 'a', 'b', 'Same', 'Stk', 9.9, 'x',
+                           '7', '2', 'E', '1', 1, 's', '']])
+        # gleicher Name+Gebinde+Marke → gleicher Key (Preis egal).
+        self.assertEqual(a[0]['positionen'][0]['lief_art_nr'],
+                         b[0]['positionen'][0]['lief_art_nr'])
 
     def test_leeres_blatt_ignoriert(self):
         import openpyxl

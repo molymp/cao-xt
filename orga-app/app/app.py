@@ -277,6 +277,14 @@ except Exception as e:
                 "geladen werden: %s", e)
 
 try:
+    from modules.orga.stammdaten import create_blueprint as _sd_bp
+    app.register_blueprint(_sd_bp(), url_prefix='/orga/stammdaten')
+    log.info("Orga-Stammdaten-Blueprint registriert.")
+except Exception as e:
+    log.warning("Orga-Stammdaten-Blueprint konnte nicht "
+                "geladen werden: %s", e)
+
+try:
     from modules.orga.betriebserfolg import create_blueprint as _bef_bp
     app.register_blueprint(_bef_bp(),
                             url_prefix='/orga/berichte/betriebserfolg')

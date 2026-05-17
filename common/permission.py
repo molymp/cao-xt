@@ -190,6 +190,10 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Lieferanten-Sortimente (Excel/E-Mail-Kataloge) sichten und '
      'Artikel zum Bestellen bzw. zur Übernahme in den Artikelstamm '
      'markieren.', 'LESE_PFLEGE'),
+    ('orga.stammdaten.adressen', 'ORGA',
+     'Orga – Stammdaten/Adressen',
+     'CAO-Adressen anlegen und bearbeiten (ADRESSEN + ADRESSEN_LOG, '
+     'CAO-Mimik mit Record-Lock).', 'LESE_PFLEGE'),
     ('orga.banking',           'ORGA',
      'Orga – Banking (Hibiscus)',
      'Bankkonten-Uebersicht, Umsaetze, SEPA-Sammelueberweisungen, '
