@@ -33,6 +33,7 @@ from datetime import date, datetime
 from typing import Any
 
 from common.db import get_db, get_db_transaction
+from common.cao_lock import cao_record_lock, CaoLockBelegt, LOCK_MOD_EINKAUF
 
 log = logging.getLogger(__name__)
 
@@ -426,29 +427,80 @@ def einkauf_anlegen(ma_id: int | None,
 
 
 def einkauf_storno(rec_id: int) -> dict[str, int]:
-    """Storno: nur möglich solange QUELLE=15 (in Bearbeitung). Nach dem
-    Buchen (QUELLE=5) muss in CAO-Faktura storniert werden.
+    """Storno eines unverbuchten Einkaufs (QUELLE=15, STADIUM=0).
+    Nach dem Buchen (QUELLE=5) muss in CAO-Faktura storniert werden.
 
-    Wir machen einen harten DELETE — der Beleg ist noch nicht in CAOs
-    Buchhaltungs-Pipeline. JOURNALPOS-Einträge werden mit-gelöscht.
+    CAO-Mimik (Trace 17.05.26, ``cao_XT_DEV_MOD_2050_RECID_<id>``):
+    KEIN harter DELETE — CAO macht einen **Soft-Delete** und behält
+    JOURNAL + JOURNALPOS:
+
+      1. ``DELETE FROM REFERENZEN`` (gescopt auf ZIEL=MODUL_ID 2050)
+      2. ARTIKEL_BDATEN-Rebuild für QUELLE=15 (EDI-offene-Mengen,
+         globaler Neuaufbau — exakt wie CAO)
+      3. ``UPDATE JOURNAL SET QUELLE=-15, DEL_FLAG='Y'`` (QUELLE
+         negiert; Zeile + Positionen bleiben für die Belegspur)
+
+    Record-Lock wie CAO (``GET_LOCK`` auf derselben Connection,
+    MODUL_ID 2050). MyISAM → kein Rollback; alle Schritte sind
+    idempotent (WHERE-Guard auf QUELLE=15, Re-Run = No-Op).
     """
     rec_id = int(rec_id)
     with get_db_transaction() as cur:
-        cur.execute(
-            "SELECT QUELLE, STADIUM FROM JOURNAL WHERE REC_ID = %s",
-            (rec_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            raise LookupError(f'Einkauf {rec_id} nicht gefunden')
-        if int(row['QUELLE']) != 15 or int(row['STADIUM']) != 0:
-            raise PermissionError(
-                f"Einkauf STADIUM={row['STADIUM']} QUELLE={row['QUELLE']} — "
-                f"nur in Bearbeitung (QUELLE=15, STADIUM=0) loeschbar; "
-                f"verbuchte Belege bitte in CAO-Faktura stornieren"
+        with cao_record_lock(cur, LOCK_MOD_EINKAUF, rec_id):
+            cur.execute(
+                "SELECT QUELLE, STADIUM, DEL_FLAG FROM JOURNAL "
+                "WHERE REC_ID = %s",
+                (rec_id,),
             )
-        cur.execute("DELETE FROM JOURNALPOS WHERE JOURNAL_ID = %s", (rec_id,))
-        cur.execute("DELETE FROM JOURNAL WHERE REC_ID = %s", (rec_id,))
+            row = cur.fetchone()
+            if not row:
+                raise LookupError(f'Einkauf {rec_id} nicht gefunden')
+            quelle = int(row['QUELLE'])
+            # Idempotenz: schon soft-storniert → No-Op (Re-Run sicher).
+            if quelle == -15 and (row.get('DEL_FLAG') or '') == 'Y':
+                return {'ok': 1}
+            if quelle != 15 or int(row['STADIUM']) != 0:
+                raise PermissionError(
+                    f"Einkauf STADIUM={row['STADIUM']} QUELLE={row['QUELLE']}"
+                    f" — nur in Bearbeitung (QUELLE=15, STADIUM=0) "
+                    f"loeschbar; verbuchte Belege bitte in CAO-Faktura "
+                    f"stornieren"
+                )
+
+            # 1. Querverweise lösen (ZIEL = Lock-MODUL_ID 2050).
+            cur.execute(
+                "DELETE FROM REFERENZEN WHERE ZIEL=2050 AND ZIEL_ID=%s "
+                "AND ZIEL_TYP=9 AND REFERENZTYP=1",
+                (rec_id,),
+            )
+
+            # 2. ARTIKEL_BDATEN (EDI-offene-Mengen QUELLE=15) global neu
+            #    aufbauen — verbatim aus dem CAO-Trace.
+            cur.execute("DELETE FROM ARTIKEL_BDATEN WHERE QUELLE=15")
+            cur.execute(
+                "REPLACE INTO ARTIKEL_BDATEN "
+                "(ARTIKEL_ID,QUELLE,JAHR,MONAT,SUM_MENGE,SUM_AU_MENGE) "
+                "SELECT JP.ARTIKEL_ID,JP.QUELLE,0,0,"
+                "SUM(CASE WHEN LP.MENGE IS NULL THEN JP.MENGE "
+                "ELSE JP.MENGE-LP.MENGE END),0 "
+                "FROM JOURNALPOS JP "
+                "LEFT OUTER JOIN LIEFERSCHEIN_POS LP "
+                "  ON LP.RECHPOS_ID=JP.REC_ID "
+                "WHERE JP.QUELLE=15 AND JP.QUELLE>0 "
+                "  AND JP.ARTIKELTYP IN ('N','S','L','K','P','B') "
+                "  AND JP.ARTIKEL_ID>0 "
+                "  AND JP.STATUS_FLAG NOT IN (127,120) "
+                "GROUP BY JP.ARTIKEL_ID, JP.QUELLE "
+                "HAVING SUM(CASE WHEN LP.MENGE IS NULL THEN JP.MENGE "
+                "ELSE JP.MENGE-LP.MENGE END)!=0"
+            )
+
+            # 3. Soft-Delete (idempotent: greift nur solange QUELLE=15).
+            cur.execute(
+                "UPDATE JOURNAL SET QUELLE=-15, DEL_FLAG='Y' "
+                "WHERE REC_ID=%s AND QUELLE=15",
+                (rec_id,),
+            )
     return {'ok': 1}
 
 

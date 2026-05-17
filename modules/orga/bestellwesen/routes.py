@@ -15,6 +15,8 @@ from typing import Any
 
 from flask import Blueprint, render_template, request, jsonify, abort, session
 
+from common.cao_lock import CaoLockBelegt
+
 from . import models as m
 from . import wareneingang as we
 from . import einkauf as ek
@@ -564,6 +566,8 @@ def api_ek_storno(rec_id: int) -> Any:
         else:
             result = ek.einkauf_storno_gebucht(
                 rec_id, ma_id=ma_id, ma_name=ma_name)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
