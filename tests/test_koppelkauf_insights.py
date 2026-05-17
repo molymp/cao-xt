@@ -8,11 +8,28 @@ import unittest
 
 _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 _ORGA_APP  = os.path.join(_REPO_ROOT, 'orga-app', 'app')
-for p in (_REPO_ROOT, _ORGA_APP):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
-import koppelkauf as kk
+# Die App-Module 'db'/'config' existieren in MEHREREN App-Verzeichnissen
+# unter demselben Top-Level-Namen. In der Gesamt-Suite (`pytest tests/`)
+# importiert ein vorher laufender Test ggf. eine andere 'db'-Variante
+# (z. B. admin-app ohne get_cao_db); der sys.modules-Cache ist
+# importreihenfolge-abhaengig → `from db import get_cao_db` in
+# koppelkauf schlaegt fehl. Daher: orga-app/app nach vorne, die
+# kollidierenden Module sichern, koppelkauf frisch (gegen orga's db)
+# importieren und danach den vorherigen sys.modules-Stand
+# wiederherstellen — keine Seiteneffekte fuer andere Testmodule.
+sys.path.insert(0, _REPO_ROOT)
+sys.path.insert(0, _ORGA_APP)
+_saved = {n: sys.modules.pop(n, None)
+          for n in ('koppelkauf', 'db', 'config')}
+try:
+    import koppelkauf as kk
+finally:
+    for _n, _mod in _saved.items():
+        if _mod is not None:
+            sys.modules[_n] = _mod
+        else:
+            sys.modules.pop(_n, None)
 
 
 def _basis_analyse(**overrides):
