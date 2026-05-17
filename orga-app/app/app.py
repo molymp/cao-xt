@@ -269,6 +269,14 @@ except Exception as e:
                 "werden: %s", e)
 
 try:
+    from modules.orga.lieferantenkatalog import create_blueprint as _lk_bp
+    app.register_blueprint(_lk_bp(), url_prefix='/orga/lieferantenkatalog')
+    log.info("Orga-Lieferantenkatalog-Blueprint registriert.")
+except Exception as e:
+    log.warning("Orga-Lieferantenkatalog-Blueprint konnte nicht "
+                "geladen werden: %s", e)
+
+try:
     from modules.orga.betriebserfolg import create_blueprint as _bef_bp
     app.register_blueprint(_bef_bp(),
                             url_prefix='/orga/berichte/betriebserfolg')

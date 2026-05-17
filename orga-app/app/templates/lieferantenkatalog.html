@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Lieferantenkataloge{% endblock %}
+
+{% block content %}
+<div style="max-width:54rem;">
+  <h1>📚 Lieferantenkataloge</h1>
+
+  <p style="line-height:1.6;color:var(--text-dim,#5a7a3a);">
+    Lieferanten stellen ihr Sortiment in unterschiedlichen Formaten
+    bereit (Excel, regelmäßige Sonderkataloge per E-Mail, z.&nbsp;B.
+    Utz). Hier sollen die Kataloge je Lieferant gesichtet und pro
+    Artikel markiert werden:
+  </p>
+  <ul style="line-height:1.7;">
+    <li><strong>Bestellen</strong> — Artikel in eine Bestellung
+        übernehmen.</li>
+    <li><strong>In Artikelstamm übernehmen</strong> — Artikel als
+        Stammdaten anlegen/aktualisieren.</li>
+  </ul>
+
+  <div style="margin-top:1.4rem;padding:14px 18px;
+       background:rgba(60,120,200,0.07);border-left:3px solid #2a4a8a;
+       border-radius:8px;line-height:1.6;">
+    🚧 <strong>Bereich in Aufbau.</strong> Navigation und Berechtigung
+    (<code>orga.lieferantenkatalog</code>) stehen. Das konkrete
+    Katalog-Ingest (Format-Parser für Excel/E-Mail) wird umgesetzt,
+    sobald ein Beispiel-Format vorliegt.
+  </div>
+</div>
+{% endblock %}

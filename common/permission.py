@@ -185,6 +185,11 @@ _SEED_OBJEKTE: list[tuple[str, str, str, str, str]] = [
      'Orga – Bestellvorschlag',
      'Backwaren-Bedarfsprognose (Luidl): Historie + Wetter + Feiertage. '
      'Vorhersage und Bestellzettel-Vorschlag.', 'KEINE'),
+    ('orga.lieferantenkatalog', 'ORGA',
+     'Orga – Lieferantenkataloge',
+     'Lieferanten-Sortimente (Excel/E-Mail-Kataloge) sichten und '
+     'Artikel zum Bestellen bzw. zur Übernahme in den Artikelstamm '
+     'markieren.', 'LESE_PFLEGE'),
     ('orga.banking',           'ORGA',
      'Orga – Banking (Hibiscus)',
      'Bankkonten-Uebersicht, Umsaetze, SEPA-Sammelueberweisungen, '

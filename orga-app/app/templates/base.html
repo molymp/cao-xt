@@ -465,11 +465,11 @@ a { text-decoration: none; color: inherit; }
             <span class="toggle-arrow">▶</span>
           </button>
           <div class="sidebar-group-items">
-            {% set _ok = hat_recht('orga.bestellwesen') %}
-            <a href="{% if _ok %}/orga/bestellwesen/{% else %}#{% endif %}"
-               class="sidebar-sub-item {% if _ok and (request.path == '/orga/bestellwesen/' or (request.path.startswith('/orga/bestellwesen/') and not request.path.startswith('/orga/bestellwesen/wareneingang') and not request.path.startswith('/orga/bestellwesen/einkauf'))) %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
-               {% if not _ok %}title="Keine Berechtigung (orga.bestellwesen)" aria-disabled="true"{% endif %}>
-              <span class="sub-icon">📋</span> Bestellungen
+            {% set _lk = hat_recht('orga.lieferantenkatalog') %}
+            <a href="{% if _lk %}/orga/lieferantenkatalog/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _lk and request.path.startswith('/orga/lieferantenkatalog') %}aktiv{% endif %} {% if not _lk %}ausgegraut{% endif %}"
+               {% if not _lk %}title="Keine Berechtigung (orga.lieferantenkatalog)" aria-disabled="true"{% endif %}>
+              <span class="sub-icon">📚</span> Lieferantenkataloge
             </a>
             <div class="sidebar-group {% if request.path.startswith('/orga/bestellvorschlag') %}open{% endif %}"
                  id="grp-bestellvorschlag" style="margin-left:0;">
@@ -489,6 +489,11 @@ a { text-decoration: none; color: inherit; }
               </div>
             </div>
             {% set _ok = hat_recht('orga.bestellwesen') %}
+            <a href="{% if _ok %}/orga/bestellwesen/{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and (request.path == '/orga/bestellwesen/' or (request.path.startswith('/orga/bestellwesen/') and not request.path.startswith('/orga/bestellwesen/wareneingang') and not request.path.startswith('/orga/bestellwesen/einkauf'))) %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.bestellwesen)" aria-disabled="true"{% endif %}>
+              <span class="sub-icon">📋</span> Bestellungen
+            </a>
             <a href="{% if _ok %}/orga/bestellwesen/wareneingang/{% else %}#{% endif %}"
                class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/bestellwesen/wareneingang') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
                {% if not _ok %}title="Keine Berechtigung (orga.bestellwesen)" aria-disabled="true"{% endif %}>
