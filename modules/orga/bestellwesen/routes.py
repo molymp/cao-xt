@@ -135,6 +135,8 @@ def api_kopf_liefertermin(rec_id: int) -> Any:
     datum = _request_datum()
     try:
         n = m.kopf_liefertermin_setzen(rec_id, datum)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, 'positionen_geaendert': n,
@@ -148,6 +150,8 @@ def api_pos_liefertermin(rec_id: int, pos_id: int) -> Any:
     datum = _request_datum()
     try:
         m.position_liefertermin_setzen(pos_id, datum)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True,
@@ -165,6 +169,8 @@ def api_pos_status(rec_id: int, pos_id: int) -> Any:
         return jsonify({'ok': False, 'fehler': 'stadium fehlt oder ungueltig'}), 400
     try:
         m.position_status_setzen(pos_id, stadium)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError, ValueError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, 'stadium': stadium,
@@ -177,6 +183,8 @@ def api_bestellung_storno(rec_id: int) -> Any:
     _login_check()
     try:
         ergebnis = m.bestellung_stornieren(rec_id)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except LookupError as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 404
     return jsonify({'ok': True, **ergebnis})
@@ -199,6 +207,8 @@ def api_kopf_metadata(rec_id: int) -> Any:
         termin = None  # leer = TERMIN auf NULL setzen
     try:
         m.kopf_metadata_setzen(rec_id, lief_ab=lief_ab, termin=termin)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True})
@@ -220,6 +230,8 @@ def api_pos_lieferpreis(rec_id: int, pos_id: int) -> Any:
         return jsonify({'ok': False, 'fehler': 'lieferpreis muss >= 0 sein'}), 400
     try:
         result = m.position_lieferpreis_setzen(pos_id, lpreis)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **result})
@@ -232,6 +244,8 @@ def api_rest_nicht_lieferbar(rec_id: int) -> Any:
     _login_check()
     try:
         ergebnis = m.bestellung_rest_nicht_lieferbar(rec_id)
+    except CaoLockBelegt as e:
+        return jsonify({'ok': False, 'fehler': str(e)}), 409
     except (LookupError, PermissionError) as e:
         return jsonify({'ok': False, 'fehler': str(e)}), 400
     return jsonify({'ok': True, **ergebnis})

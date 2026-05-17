@@ -11,10 +11,24 @@ beobachteten SQL-Muster, kein _LOG-Snapshot (CAO loggt EKBESTELL nicht).
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
 from common.db import get_db
+from common.cao_lock import cao_record_lock, LOCK_MOD_EKBESTELL
+
+
+@contextmanager
+def _ekbestell_lock_db(ek_rec_id: int):
+    """``get_db()``-Cursor mit CAO-Record-Lock auf der Bestellung
+    (``cao_<db>_MOD_2060_RECID_<ekbestell_rec_id>``) — wie CAO Faktura
+    beim Bearbeiten/Stornieren einer EKBESTELL. Lock auf derselben
+    Connection wie die Schreibvorgänge. Für rec_id-keyed Editoren ein
+    minimal-invasiver 1-Zeilen-Swap der ``with``-Zeile."""
+    with get_db() as cur:
+        with cao_record_lock(cur, LOCK_MOD_EKBESTELL, int(ek_rec_id)):
+            yield cur
 
 
 # CAO-Mimik: STADIUM-Codes aus EKBESTELL und EKBESTELL_POS.
@@ -286,7 +300,7 @@ def kopf_liefertermin_setzen(rec_id: int, datum: date | None) -> int:
     pos_skip = ','.join(str(c) for c in _POS_BEARBEITBAR_STADIUM_NOT_IN)
     kopf_skip = ','.join(str(c) for c in _KOPF_BEARBEITBAR_STADIUM_NOT_IN)
     n = 0
-    with get_db() as cur:
+    with _ekbestell_lock_db(rec_id) as cur:
         # 1) Kopfstatus prüfen — abgeschlossene/stornierte Bestellungen
         # nicht anfassen.
         cur.execute(
@@ -358,23 +372,27 @@ def position_liefertermin_setzen(pos_id: int, datum: date | None) -> None:
             raise PermissionError(
                 f'Position {pos_id} (STADIUM={pos["STADIUM"]}) ist gesperrt'
             )
-        cur.execute(
-            "SELECT LIEFERTERMIN FROM EKBESTELL_INFO "
-            "WHERE EKBESTPOS_ID = %s AND ARTIKEL_ID = %s",
-            (pos_id, pos['ARTIKEL_ID']),
-        )
-        if cur.fetchone():
+        # Schreibvorgänge unter CAO-Record-Lock der zugehörigen
+        # Bestellung (MODUL_ID 2060, EKBESTELL.REC_ID aus dem Pos-SELECT).
+        with cao_record_lock(cur, LOCK_MOD_EKBESTELL,
+                             int(pos['EKBESTELL_ID'])):
             cur.execute(
-                "UPDATE EKBESTELL_INFO SET LIEFERTERMIN = %s "
+                "SELECT LIEFERTERMIN FROM EKBESTELL_INFO "
                 "WHERE EKBESTPOS_ID = %s AND ARTIKEL_ID = %s",
-                (datum, pos_id, pos['ARTIKEL_ID']),
+                (pos_id, pos['ARTIKEL_ID']),
             )
-        else:
-            cur.execute(
-                "INSERT INTO EKBESTELL_INFO (ARTIKEL_ID, EKBESTPOS_ID, LIEFERTERMIN) "
-                "VALUES (%s, %s, %s)",
-                (pos['ARTIKEL_ID'], pos_id, datum),
-            )
+            if cur.fetchone():
+                cur.execute(
+                    "UPDATE EKBESTELL_INFO SET LIEFERTERMIN = %s "
+                    "WHERE EKBESTPOS_ID = %s AND ARTIKEL_ID = %s",
+                    (datum, pos_id, pos['ARTIKEL_ID']),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO EKBESTELL_INFO (ARTIKEL_ID, EKBESTPOS_ID, LIEFERTERMIN) "
+                    "VALUES (%s, %s, %s)",
+                    (pos['ARTIKEL_ID'], pos_id, datum),
+                )
 
 
 def position_status_setzen(pos_id: int, stadium: int) -> None:
@@ -385,7 +403,8 @@ def position_status_setzen(pos_id: int, stadium: int) -> None:
         raise ValueError(f'STADIUM={stadium} ist nicht erlaubt')
     with get_db() as cur:
         cur.execute(
-            "SELECT REC_ID, STADIUM FROM EKBESTELL_POS WHERE REC_ID = %s",
+            "SELECT REC_ID, STADIUM, EKBESTELL_ID "
+            "FROM EKBESTELL_POS WHERE REC_ID = %s",
             (pos_id,),
         )
         pos = cur.fetchone()
@@ -393,10 +412,12 @@ def position_status_setzen(pos_id: int, stadium: int) -> None:
             raise LookupError(f'Position {pos_id} nicht gefunden')
         if int(pos['STADIUM']) == 127 and stadium != 127:
             raise PermissionError('Stornierte Position kann nicht reaktiviert werden')
-        cur.execute(
-            "UPDATE EKBESTELL_POS SET STADIUM = %s WHERE REC_ID = %s",
-            (stadium, pos_id),
-        )
+        with cao_record_lock(cur, LOCK_MOD_EKBESTELL,
+                             int(pos['EKBESTELL_ID'])):
+            cur.execute(
+                "UPDATE EKBESTELL_POS SET STADIUM = %s WHERE REC_ID = %s",
+                (stadium, pos_id),
+            )
 
 
 def kopf_metadata_setzen(rec_id: int,
@@ -427,7 +448,7 @@ def kopf_metadata_setzen(rec_id: int,
         params.append(info_rtf)
     if not sets:
         return
-    with get_db() as cur:
+    with _ekbestell_lock_db(rec_id) as cur:
         cur.execute(
             "SELECT STADIUM FROM EKBESTELL WHERE REC_ID = %s",
             (rec_id,),
@@ -461,7 +482,8 @@ def position_lieferpreis_setzen(pos_id: int, lieferpreis: float | None) -> dict[
     lpreis = float(lieferpreis)
     with get_db() as cur:
         cur.execute(
-            "SELECT REC_ID, MENGE, STADIUM FROM EKBESTELL_POS WHERE REC_ID = %s",
+            "SELECT REC_ID, MENGE, STADIUM, EKBESTELL_ID "
+            "FROM EKBESTELL_POS WHERE REC_ID = %s",
             (pos_id,),
         )
         pos = cur.fetchone()
@@ -472,11 +494,13 @@ def position_lieferpreis_setzen(pos_id: int, lieferpreis: float | None) -> dict[
         gpreis = round(lpreis * float(pos['MENGE'] or 0), 2)
         # CAO-Mimik (Binary @0x0255b32c):
         # UPDATE EKBESTELL_POS SET LIEFPREIS=:LPREIS, GLIEFPREIS=:GPREIS WHERE REC_ID=:ID
-        cur.execute(
-            "UPDATE EKBESTELL_POS SET LIEFPREIS = %s, GLIEFPREIS = %s "
-            "WHERE REC_ID = %s",
-            (lpreis, gpreis, pos_id),
-        )
+        with cao_record_lock(cur, LOCK_MOD_EKBESTELL,
+                             int(pos['EKBESTELL_ID'])):
+            cur.execute(
+                "UPDATE EKBESTELL_POS SET LIEFPREIS = %s, GLIEFPREIS = %s "
+                "WHERE REC_ID = %s",
+                (lpreis, gpreis, pos_id),
+            )
     return {'lieferpreis': lpreis, 'gliefpreis': gpreis}
 
 
@@ -489,7 +513,7 @@ def bestellung_rest_nicht_lieferbar(rec_id: int) -> dict[str, int]:
        and EKBESTELL_ID=...``
     """
     rec_id = int(rec_id)
-    with get_db() as cur:
+    with _ekbestell_lock_db(rec_id) as cur:
         cur.execute(
             "SELECT STADIUM FROM EKBESTELL WHERE REC_ID = %s",
             (rec_id,),
@@ -584,7 +608,7 @@ def bestellung_stornieren(rec_id: int) -> dict[str, int]:
             'Storno blockiert — bitte zuerst stornieren: ' + ' / '.join(teile)
         )
 
-    with get_db() as cur:
+    with _ekbestell_lock_db(rec_id) as cur:
         cur.execute(
             "SELECT REC_ID, STADIUM, BELEGNUM FROM EKBESTELL WHERE REC_ID = %s",
             (rec_id,),
@@ -671,6 +695,11 @@ def heile_alte_positions_stadium() -> dict[str, int]:
 
     Returns:
         Dict mit `geheilt` (Anzahl aktualisierter Positionen).
+
+    Kein CAO-Record-Lock: dies ist ein einmaliger, satzübergreifender
+    Daten-Heal über ALLE Bestellungen (kein einzelner EKBESTELL.REC_ID,
+    kein interaktiver Bearbeitungspfad). Ein Per-Record-Lock ist hier
+    konzeptionell nicht anwendbar; bewusst ausgelassen.
     """
     with get_db() as cur:
         cur.execute(
