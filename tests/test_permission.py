@@ -103,30 +103,36 @@ class TestHatRecht(unittest.TestCase):
              patch.object(permission, 'get_db', _ctxmgr(cur)):
             self.assertFalse(permission.hat_recht(1, 'kiosk.backwaren'))
 
+    # hat_recht liest die Permissions per Bulk-Query
+    # (_permissions_fuer_rolle → cur.fetchall() mit OBJEKT_KEY+RECHT),
+    # NICHT per fetchone. Daher fetchall mocken.
+    @staticmethod
+    def _perm_cur(recht_db):
+        return _cur(fetchall=[{'OBJEKT_KEY': 'orga.schichtplan',
+                               'RECHT': recht_db}])
+
     def test_beides_deckt_lesen_und_pflegen(self):
-        cur = _cur(fetchone={'RECHT': 'BEIDES'})
-        with patch.object(permission, 'rolle_von',
-                          return_value='Ladenleitung'), \
-             patch.object(permission, 'get_db', _ctxmgr(cur)):
-            self.assertTrue(permission.hat_recht(1, 'orga.schichtplan',
-                                                 recht='LESEN'))
-        cur = _cur(fetchone={'RECHT': 'BEIDES'})
-        with patch.object(permission, 'rolle_von',
-                          return_value='Ladenleitung'), \
-             patch.object(permission, 'get_db', _ctxmgr(cur)):
-            self.assertTrue(permission.hat_recht(1, 'orga.schichtplan',
-                                                 recht='PFLEGEN'))
+        for ang in ('LESEN', 'PFLEGEN'):
+            cur = self._perm_cur('BEIDES')
+            with patch.object(permission, 'rolle_von',
+                              return_value='Ladenleitung'), \
+                 patch.object(permission, 'get_db', _ctxmgr(cur)):
+                self.assertTrue(
+                    permission.hat_recht(1, 'orga.schichtplan',
+                                         recht=ang))
 
     def test_pflegen_impliziert_nicht_lesen(self):
-        cur = _cur(fetchone={'RECHT': 'PFLEGEN'})
+        cur = self._perm_cur('PFLEGEN')
         with patch.object(permission, 'rolle_von',
                           return_value='Ladenleitung'), \
              patch.object(permission, 'get_db', _ctxmgr(cur)):
             self.assertFalse(permission.hat_recht(1, 'orga.schichtplan',
                                                   recht='LESEN'))
+            self.assertTrue(permission.hat_recht(1, 'orga.schichtplan',
+                                                 recht='PFLEGEN'))
 
     def test_lesen_gewaehrt_nur_lesen(self):
-        cur = _cur(fetchone={'RECHT': 'LESEN'})
+        cur = self._perm_cur('LESEN')
         with patch.object(permission, 'rolle_von',
                           return_value='Mitarbeiter'), \
              patch.object(permission, 'get_db', _ctxmgr(cur)):
