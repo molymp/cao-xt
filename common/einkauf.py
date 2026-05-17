@@ -41,13 +41,18 @@ from common.cao_lock import cao_record_lock, LOCK_MOD_XT_EK_SYNC
 
 @contextmanager
 def _xt_ekbestell_sync_lock_tx(bestellung_rec_id: int):
-    """Schreib-Transaktion für ``cao_sync_ekbestell`` mit Dorfkern-
-    internem Lock auf der **Quell**-Bestellung (XT_EINKAUF_BESTELLUNG.
-    REC_ID). Kein CAO-Lock: die Ziel-EKBESTELL.REC_ID existiert noch
-    nicht und CAO kennt XT_*-Tabellen nicht. Zweck: zwei gleichzeitige
-    Syncs derselben XT-Bestellung serialisieren (Check-then-Act-Schutz
-    gegen Doppel-Anlage). Re-Check des Guards MUSS unter diesem Lock
-    erfolgen.
+    """Schreib-Transaktion für die Sync-Create-Pfade einer XT-
+    Bestellung mit Dorfkern-internem Lock auf der **Quell**-Bestellung
+    (XT_EINKAUF_BESTELLUNG.REC_ID). Genutzt von ``cao_sync_ekbestell``
+    (EKBESTELL-Anlage) UND ``cao_sync_artikel`` (Stammartikel-Anlage)
+    — beide Phasen derselben Bestellung schließen sich damit
+    gegenseitig aus.
+
+    Kein CAO-Lock: Ziel-REC_IDs (EKBESTELL/ARTIKEL) existieren beim
+    Create noch nicht und CAO kennt XT_*-Tabellen nicht. Zweck: zwei
+    gleichzeitige Syncs derselben XT-Bestellung serialisieren
+    (Check-then-Act-Schutz gegen Doppel-Anlage). Der Guard-Re-Check
+    MUSS unter diesem Lock erfolgen.
     """
     with get_db_transaction() as cur:
         with cao_record_lock(cur, LOCK_MOD_XT_EK_SYNC,
@@ -3587,7 +3592,26 @@ def cao_sync_artikel(bestellung_rec_id: int,
         vpe_ek    = m.get('vpe_lief')
 
         try:
-            with get_db_transaction() as cur:
+            with _xt_ekbestell_sync_lock_tx(bestellung_rec_id) as cur:
+                # Re-Check UNTER dem Lock: gleiches Check-then-Act wie
+                # cao_sync_ekbestell. cao_match_positionen() wurde VOR
+                # dem Lock gelesen — zwei gleichzeitige Syncs derselben
+                # Bestellung würden sonst beide ein ARTIKEL für dieselbe
+                # Lieferanten-Pos anlegen. Ist die Pos bereits 'matched'
+                # bzw. hat eine ARTIKEL_REC_ID, hat ein paralleler/
+                # vorheriger Lauf sie schon angelegt → überspringen.
+                cur.execute(
+                    "SELECT STATUS, ARTIKEL_REC_ID "
+                    "FROM XT_EINKAUF_BESTELLPOS WHERE REC_ID=%s",
+                    (int(pos_id),))
+                _rc = cur.fetchone() or {}
+                if ((_rc.get('STATUS') or '').lower() != 'neu_anlegen'
+                        or _rc.get('ARTIKEL_REC_ID')):
+                    n_skip += 1
+                    aktionen.append({'pos_nr': pos_nr, 'art': 'SKIP',
+                                      'grund': 'bereits angelegt '
+                                               '(paralleler/vorheriger Lauf)'})
+                    continue
                 # 1. WG-Defaults laden
                 wg = _wg_defaults(cur, int(wg_id))
                 if not wg:
