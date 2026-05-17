@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Adresse bearbeiten' if rid else 'Neue Adresse' }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.adr-grp{background:#fff;border:1px solid var(--rand,#d8d2c0);
+  border-radius:var(--radius,10px);padding:12px 16px;margin:12px 0;
+  box-shadow:var(--schatten)}
+.adr-grp h3{margin:0 0 8px;font-size:.95rem;color:var(--gruen-dunkel,#2e6e1a)}
+.adr-felder{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:10px 16px}
+.adr-felder label{display:flex;flex-direction:column;font-size:.78rem;
+  gap:3px;color:var(--text-dim,#5a7a3a)}
+.adr-felder input,.adr-felder select{padding:5px 7px;
+  border:1px solid var(--rand,#d8d2c0);border-radius:6px;font-size:.9rem}
+.adr-flash{padding:8px 14px;border-radius:6px;margin:8px 0;font-size:.92rem}
+.adr-flash.ok{background:rgba(46,110,26,.1);color:var(--gruen-dunkel)}
+.adr-flash.fehler{background:rgba(184,48,48,.1);color:#b83030}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>{{ '✎ Adresse bearbeiten (#' ~ rid ~ ')' if rid else '➕ Neue Adresse' }}</h1>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for kat, msg in msgs %}
+    <div class="adr-flash {{ 'ok' if kat == 'ok' else 'fehler' }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+<p style="color:var(--text-dim,#5a7a3a);font-size:.88rem;">
+  Anlegen/Ändern erzeugt CAO-Mimik (ADRESSEN + ADRESSEN_LOG + HASHSUM).
+  {% if rid %}Bearbeiten ist während des Speicherns CAO-record-gesperrt.{% endif %}
+</p>
+
+<form method="post"
+      action="{{ url_for('orga_lieferantenkatalog.adresse_speichern') }}">
+  {% if rid %}<input type="hidden" name="id" value="{{ rid }}">{% endif %}
+  {% for gruppe, felder in gruppen %}
+  <div class="adr-grp">
+    <h3>{{ gruppe }}</h3>
+    <div class="adr-felder">
+      {% for col, label, typ in felder %}
+      <label>{{ label }}
+        {% if typ == 'jn' %}
+          <select name="{{ col }}">
+            {% set v = (werte.get(col) or 'N')|string %}
+            <option value="N" {% if v != 'Y' %}selected{% endif %}>Nein</option>
+            <option value="Y" {% if v == 'Y' %}selected{% endif %}>Ja</option>
+          </select>
+        {% elif typ == 'num' %}
+          <input type="number" step="any" name="{{ col }}"
+                 value="{{ werte.get(col, '') }}">
+        {% else %}
+          <input type="text" name="{{ col }}"
+                 value="{{ werte.get(col, '') }}"
+                 {% if col == 'PLZ' %}id="adr-plz"
+                   onblur="adrPlz()"{% endif %}
+                 {% if col == 'ORT' %}id="adr-ort"{% endif %}
+                 {% if col == 'LAND' %}id="adr-land"{% endif %}
+                 autocomplete="off">
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  <div style="display:flex;gap:10px;margin:14px 0;">
+    <button type="submit" class="btn-primary">Speichern</button>
+    <a class="btn-aktion"
+       href="{{ url_for('orga_lieferantenkatalog.uebersicht') }}">Abbrechen</a>
+  </div>
+</form>
+
+<script>
+async function adrPlz() {
+  const plz = (document.getElementById('adr-plz').value || '').trim();
+  const ort = document.getElementById('adr-ort');
+  const land = (document.getElementById('adr-land')||{}).value || 'DE';
+  if (!plz || (ort && ort.value.trim())) return;  // Ort nicht überschreiben
+  try {
+    const d = await (await fetch(
+      `/orga/lieferantenkatalog/api/plz?land=${encodeURIComponent(land)}`
+      + `&plz=${encodeURIComponent(plz)}`)).json();
+    if (d.ok && d.orte && d.orte.length && ort) ort.value = d.orte[0].ort || '';
+  } catch (e) { /* optional */ }
+}
+</script>
+{% endblock %}

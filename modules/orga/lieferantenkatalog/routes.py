@@ -15,9 +15,52 @@ from flask import (Blueprint, render_template, request, jsonify,
                    session, abort, redirect, url_for, flash)
 
 from common import listing
+from common import cao_adressen as adr
 from . import models as m
 
 log = logging.getLogger(__name__)
+
+# Stamm-Formular: Gruppen → [(Spalte, Label, Typ)]. Spalten müssen in
+# cao_adressen.EDITIERBAR sein.
+FELDGRUPPEN = [
+    ('Name & Anschrift', [
+        ('NAME1', 'Name 1', 'text'), ('NAME2', 'Name 2', 'text'),
+        ('NAME3', 'Name 3', 'text'), ('ANREDE', 'Anrede', 'text'),
+        ('ABTEILUNG', 'Abteilung', 'text'),
+        ('BRIEFANREDE', 'Briefanrede', 'text'),
+        ('STRASSE', 'Straße', 'text'), ('HAUSNR', 'Haus-Nr', 'text'),
+        ('ADRESSZUSATZ', 'Adresszusatz', 'text'),
+        ('PLZ', 'PLZ', 'text'), ('ORT', 'Ort', 'text'),
+        ('LAND', 'Land', 'text'),
+        ('POSTFACH', 'Postfach', 'text'),
+        ('PF_PLZ', 'Postfach-PLZ', 'text'),
+        ('KUNNUM1', 'Kunden-/Lief-Nr 1', 'text'),
+        ('KUNNUM2', 'Kunden-/Lief-Nr 2', 'text')]),
+    ('Kontakt', [
+        ('TELE1', 'Telefon 1', 'text'), ('TELE2', 'Telefon 2', 'text'),
+        ('FAX', 'Fax', 'text'), ('FUNK', 'Mobil', 'text'),
+        ('EMAIL', 'E-Mail', 'text'), ('EMAIL2', 'E-Mail 2', 'text'),
+        ('INTERNET', 'Internet', 'text')]),
+    ('Bank', [
+        ('IBAN', 'IBAN', 'text'), ('SWIFT', 'BIC/SWIFT', 'text'),
+        ('BANK', 'Bank', 'text'), ('BLZ', 'BLZ', 'text'),
+        ('KTO', 'Konto', 'text'),
+        ('KTO_INHABER', 'Kontoinhaber', 'text')]),
+    ('Steuer & Konditionen', [
+        ('UST_NUM', 'USt-IdNr', 'text'), ('UID', 'UID', 'text'),
+        ('WAEHRUNG', 'Währung', 'text'),
+        ('BRUTTO_FLAG', 'Brutto-Preise', 'jn'),
+        ('PR_EBENE', 'Preisebene', 'num'),
+        ('LIEF_LIEFART', 'Lief.-Lieferart-ID', 'num'),
+        ('LIEF_ZAHLART', 'Lief.-Zahlart-ID', 'num'),
+        ('LIEF_PRLISTE', 'Lief.-Preisliste', 'jn'),
+        ('LIEF_TKOSTEN', 'Lief.-Transportkosten', 'num'),
+        ('LIEF_MBWERT', 'Lief.-Mindestbestellwert', 'num'),
+        ('KUN_LIEFART', 'Kun.-Lieferart-ID', 'num'),
+        ('KUN_ZAHLART', 'Kun.-Zahlart-ID', 'num'),
+        ('KUN_PRLISTE', 'Kun.-Preisliste', 'jn'),
+        ('DIVERSES', 'Diverses', 'text')]),
+]
 bp = Blueprint('orga_lieferantenkatalog', __name__,
                template_folder='templates')
 
@@ -127,6 +170,66 @@ def api_flag(rec_id: int):
     except (ValueError, LookupError) as e:
         return jsonify(ok=False, fehler=str(e)), 400
     return jsonify(ok=True)
+
+
+@bp.get('/adresse')
+def adresse_form():
+    """Stamm-Formular: neu (ohne ?id) oder bearbeiten (?id=)."""
+    _login_check()
+    rid = request.args.get('id', type=int)
+    werte: dict = {}
+    if rid:
+        a = adr.adresse_holen(rid)
+        if not a:
+            abort(404)
+        werte = {k: ('' if v is None else v) for k, v in a.items()}
+    return render_template('lk_adresse.html', gruppen=FELDGRUPPEN,
+                           werte=werte, rid=rid)
+
+
+@bp.post('/adresse')
+def adresse_speichern():
+    """Anlegen (kein Lock) bzw. Ändern (CAO-Record-Lock)."""
+    _login_check()
+    rid = request.form.get('id', type=int)
+    ma = (session.get('login_name') or session.get('mitarbeiter')
+          or 'CAO-XT')
+    erlaubt = {c for _, felder in FELDGRUPPEN for c, _, _ in felder}
+    felder = {k: (request.form.get(k) or '').strip()
+              for k in erlaubt if k in request.form}
+    try:
+        if rid:
+            adr.adresse_aendern(rid, felder, ma_name=ma)
+            flash(f'Adresse #{rid} gespeichert.', 'ok')
+        else:
+            if not felder.get('NAME1'):
+                flash('Name 1 ist Pflicht.', 'fehler')
+                return redirect(url_for(
+                    'orga_lieferantenkatalog.adresse_form'))
+            neu = adr.adresse_anlegen(felder, ma_name=ma)
+            flash(f'Adresse #{neu} „{felder.get("NAME1")}" angelegt.',
+                  'ok')
+    except (ValueError, LookupError, RuntimeError) as e:
+        flash(f'Nicht gespeichert: {e}', 'fehler')
+        return redirect(url_for('orga_lieferantenkatalog.adresse_form',
+                                **({'id': rid} if rid else {})))
+    except Exception as e:  # noqa: BLE001 - Salt/DB
+        log.exception('Adresse speichern')
+        flash(f'Fehler: {e}', 'fehler')
+        return redirect(url_for('orga_lieferantenkatalog.adresse_form',
+                                **({'id': rid} if rid else {})))
+    return redirect(url_for('orga_lieferantenkatalog.uebersicht'))
+
+
+@bp.get('/api/plz')
+def api_plz():
+    """Ort-Vorschlag zur PLZ (CAO-PLZ-Tabelle)."""
+    _login_check()
+    orte = adr.plz_orte(request.args.get('land') or 'DE',
+                        request.args.get('plz') or '')
+    return jsonify(ok=True, orte=[
+        {'ort': o.get('NAME'), 'bundesland': o.get('BUNDESLAND'),
+         'vorwahl': o.get('VORWAHL')} for o in orte])
 
 
 def create_blueprint():

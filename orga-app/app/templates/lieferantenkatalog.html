@@ -61,6 +61,15 @@
     <input type="file" name="katalog" accept=".xlsx,.xlsm" required>
     <button type="submit" class="btn-primary">Importieren</button>
   </form>
+  <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+    <a class="btn-aktion"
+       href="{{ url_for('orga_lieferantenkatalog.adresse_form') }}">➕ Neue Adresse anlegen</a>
+    {% set _selli = (lieferanten | selectattr('LIEFERANT_KUERZEL','equalto',sel) | list | first) if sel else none %}
+    {% if _selli and _selli.cao_lief_id %}
+    <a class="btn-aktion"
+       href="{{ url_for('orga_lieferantenkatalog.adresse_form', id=_selli.cao_lief_id) }}">✎ Adresse „{{ _selli.lieferant_name or sel }}" bearbeiten</a>
+    {% endif %}
+  </div>
 </div>
 
 {% if lieferanten %}
