@@ -32,8 +32,27 @@ import re
 import socket
 from typing import Any, Optional
 
+from contextlib import contextmanager
+
 from common.db import get_db, get_db_transaction
 from common import konfig as _konfig
+from common.cao_lock import cao_record_lock, LOCK_MOD_XT_EK_SYNC
+
+
+@contextmanager
+def _xt_ekbestell_sync_lock_tx(bestellung_rec_id: int):
+    """Schreib-Transaktion für ``cao_sync_ekbestell`` mit Dorfkern-
+    internem Lock auf der **Quell**-Bestellung (XT_EINKAUF_BESTELLUNG.
+    REC_ID). Kein CAO-Lock: die Ziel-EKBESTELL.REC_ID existiert noch
+    nicht und CAO kennt XT_*-Tabellen nicht. Zweck: zwei gleichzeitige
+    Syncs derselben XT-Bestellung serialisieren (Check-then-Act-Schutz
+    gegen Doppel-Anlage). Re-Check des Guards MUSS unter diesem Lock
+    erfolgen.
+    """
+    with get_db_transaction() as cur:
+        with cao_record_lock(cur, LOCK_MOD_XT_EK_SYNC,
+                             int(bestellung_rec_id)):
+            yield cur
 
 log = logging.getLogger(__name__)
 
@@ -4019,7 +4038,25 @@ def cao_sync_ekbestell(bestellung_rec_id: int,
     # Live-Sync — alles in einer Transaktion
     from datetime import datetime as _dt, date as _date
     try:
-        with get_db_transaction() as cur:
+        with _xt_ekbestell_sync_lock_tx(bestellung_rec_id) as cur:
+            # Re-Check UNTER dem Lock: der Guard oben (head.CAO_
+            # EKBESTELL_REC_ID) ist ein Check-then-Act. Zwei
+            # gleichzeitige Syncs derselben Bestellung würden sonst
+            # beide ein EKBESTELL anlegen. Jetzt sieht der zweite den
+            # vom ersten gesetzten Wert und bricht idempotent ab —
+            # BEVOR die BELEGNUM gezogen wird.
+            cur.execute(
+                "SELECT CAO_EKBESTELL_REC_ID, CAO_BELEGNUM "
+                "FROM XT_EINKAUF_BESTELLUNG WHERE REC_ID=%s",
+                (int(bestellung_rec_id),))
+            _chk = cur.fetchone() or {}
+            if _chk.get('CAO_EKBESTELL_REC_ID'):
+                return {
+                    'ok': False,
+                    'msg': f'Bestellung ist schon in CAO als BELEGNUM '
+                           f'{_chk.get("CAO_BELEGNUM")} angelegt '
+                           f'(EKBESTELL.REC_ID='
+                           f'{_chk.get("CAO_EKBESTELL_REC_ID")}).'}
             belegnum = _next_registry_nummer(cur, 'EK-BEST')
             heute = head.get('EMAIL_DATUM') or _dt.now()
             try:

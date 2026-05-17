@@ -41,6 +41,14 @@ LOCK_MOD_EINKAUF      = 2050   # JOURNAL.REC_ID (QUELLE=15)
 LOCK_MOD_EKBESTELL    = 2060   # EKBESTELL.REC_ID (nicht im Enum!)
 LOCK_MOD_WARENEINGANG = 2065   # EKEINGANG.REC_ID
 
+# ── Dorfkern-INTERNE Lock-MODUL_IDs (>=90000, analog zum XT-Bereich
+# in reference_cao_binaerdaten). NICHT CAO-kompatibel: CAO Faktura
+# kennt diese XT-Tabellen nicht und nimmt darauf keinen Lock. Zweck:
+# Dorfkern-vs-Dorfkern (zwei Clients/Poller) — z. B. Schutz von
+# Sync-Create-Pfaden mit Check-then-Act-Guard gegen Doppel-Anlage.
+LOCK_MOD_XT_EK_SYNC = 92050    # XT_EINKAUF_BESTELLUNG.REC_ID (Quelle
+                               # des cao_sync_ekbestell-Creates)
+
 # CAO Faktura nimmt den Lock durchgängig mit Timeout 3 s
 # (``GET_LOCK(name, 3)`` in allen Traces). Default daran ausrichten.
 DEFAULT_TIMEOUT = 3
