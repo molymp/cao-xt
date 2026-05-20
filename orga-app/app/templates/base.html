@@ -364,7 +364,7 @@ a { text-decoration: none; color: inherit; }
 <div class="layout">
 
   <!-- Navbar -->
-  {% set nav_logo_sub      = 'Orga' %}
+  {% set nav_logo_sub      = 'Orga · ' ~ db_name %}
   {% set nav_aktive_app    = 'orga' %}
   {% set nav_aktive_app_url= '/' %}
   {% set nav_user_name     = current_user.login_name if current_user else '' %}

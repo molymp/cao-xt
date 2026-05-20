@@ -346,7 +346,7 @@ a { color: inherit; text-decoration: none; }
 <div class="layout">
 
   <!-- Navbar -->
-  {% set nav_logo_sub          = 'Admin' %}
+  {% set nav_logo_sub          = 'Admin · ' ~ db_name %}
   {% set nav_aktive_app        = 'admin' %}
   {% set nav_aktive_app_url    = '/' %}
   {% set nav_user_name         = current_user.login_name if current_user else '' %}

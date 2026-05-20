@@ -327,6 +327,7 @@ def _inject_globals():
         pass
     return {
         "firma_name":      config.FIRMA_NAME,
+        "db_name":         config.DB_NAME,
         "kasse_url":       kasse_url,
         "kiosk_url":       kiosk_url,
         "admin_url":  admin_url,

@@ -572,6 +572,7 @@ def _inject_globals():
         log.debug("Feature-Gating uebersprungen: %s", _exc)
     return {
         "firma_name":       config.FIRMA_NAME,
+        "db_name":          config.DB_NAME,
         "kasse_url":        kasse_url,
         "kiosk_url":        kiosk_url,
         "orga_url":         orga_url,
