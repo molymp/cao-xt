@@ -90,7 +90,7 @@ Type=simple
 {owner_block}WorkingDirectory={install_root}/{app_dir}
 ExecStart={install_root}/.venv/bin/python3 app.py
 Environment=PYTHONUNBUFFERED=1
-Restart=on-failure
+{port_env_block}Restart=on-failure
 RestartSec=5s
 # Web-Apps starten BEWUSST ohne wait_for_db: sonst ist der Port beim
 # Boot ~20-30s zu (connection refused) statt offen. Die DB-Wartezeit
@@ -268,6 +268,19 @@ def _desc(app: str, *, base_port: int, instance_name: str) -> str:
 # Render-Funktionen (oeffentliche API)
 # ──────────────────────────────────────────────────────────────
 
+def _render_port_env_block(base_port: int) -> str:
+    """Environment-Zeilen mit den Ports ALLER Web-Apps der Instanz.
+
+    Damit kennt jede Web-App ihren eigenen Bind-Port UND die Ports der
+    Nachbar-Apps (Inter-App-URLs in config.py: KIOSK_PORT/KASSE_PORT/
+    ORGA_PORT/ADMIN_PORT). Ohne diese Injektion greifen die App-internen
+    Defaults (5001-5004) -> Multi-Instanz mit anderem ``base_port``
+    waere wirkungslos / faende Port-Kollision.
+    """
+    return ''.join(f'Environment={a.upper()}_PORT={app_port(a, base_port)}\n'
+                   for a in ('kiosk', 'kasse', 'orga', 'admin'))
+
+
 def render_unit(name: str, *,
                 mode: str = 'system',
                 instance_name: str = '',
@@ -306,6 +319,7 @@ def render_unit(name: str, *,
             after_block=after_block,
             target_unit=target_unit,
             journal_user_flag=journal_flag,
+            port_env_block=_render_port_env_block(base_port),
         )
     if name in _DAEMONS:
         cfg = _DAEMONS[name]

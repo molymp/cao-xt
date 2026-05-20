@@ -33,7 +33,7 @@ TERMINAL_NR = 1
 # Prozesse, doppelte Background-Threads). Daher Default false; per Env
 # einschaltbar fuer lokale Entwicklung.
 DEBUG      = os.environ.get('KIOSK_DEBUG', 'false').lower() == 'true'
-PORT       = 5001            # 5000 ist belegt
+PORT       = int(os.environ.get('KIOSK_PORT', '5001'))  # env-overridable (Multi-Instanz)
 HOST       = "0.0.0.0"      # ganzes LAN erreichbar
 SECRET_KEY = os.environ.get('KIOSK_SECRET_KEY', 'bitte-in-produktion-aendern')
 

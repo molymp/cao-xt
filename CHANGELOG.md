@@ -79,6 +79,16 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Behoben
 
+- Multi-Instanz-Runtime-Lücke: zwei Instanzen mit unterschiedlichem
+  `base_port` belegten trotzdem dieselben Ports, weil die Apps ihren
+  Bind-Port aus Env-Vars (`KIOSK_PORT/KASSE_PORT/ORGA_PORT/ADMIN_PORT`)
+  mit hardgecodeten 5001–5004-Defaults lasen — und die systemd-
+  Templates diese Vars nicht setzten. Kiosk hatte `PORT = 5001` sogar
+  literal hartkodiert. Behoben: kiosk-config liest jetzt `KIOSK_PORT`
+  (Env-overridable wie die anderen), und `units.py` `_WEB_TEMPLATE`
+  injiziert pro Instanz alle vier `*_PORT`-Env-Vars aus
+  `app_port(base_port)`. Multi-Instanz wirkt jetzt auch zur Laufzeit,
+  nicht nur in der Description.
 - Updater stoppte/startete die Apps in Wahrheit gar nicht
   (`python -m installer.app_manager stop_all` war ein No-Op mangels
   `__main__`-Block) — Apps liefen während `git pull` mit altem Code.
