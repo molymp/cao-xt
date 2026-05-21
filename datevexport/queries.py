@@ -557,7 +557,7 @@ SELECT 'EUR' AS Waehrungskennung,
     '' AS Skonto,
     CONCAT('Banktransit EUR ', z3.BETRAG, ' ', IF(z3.kommentar > '', z3.kommentar, ''), ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.id) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
-FROM hibiscus.umsatz z3
+FROM umsatz z3
 WHERE z3.konto_id = 35
     AND YEAR(z3.VALUTA) = {year}
     AND MONTH(z3.VALUTA) = {month}
@@ -588,7 +588,7 @@ SELECT 'EUR' AS Waehrungskennung,
     CONCAT('EC-Zahlungen ', SUBSTR(z3.ZWECK, LOCATE('TELECASH ', z3.ZWECK) + 9, 4),
            ' EUR ', z3.BETRAG, ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.id) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
-FROM hibiscus.umsatz z3
+FROM umsatz z3
 WHERE z3.konto_id = 35
     AND YEAR(z3.VALUTA) = {year}
     AND MONTH(z3.VALUTA) = {month}
@@ -616,7 +616,7 @@ SELECT 'EUR' AS Waehrungskennung,
     CONCAT('Karten-Zahlungen ', SUBSTR(z3.ZWECK, LOCATE('Abrechnung vom ', z3.ZWECK) + 15, 6),
            ' EUR ', z3.BETRAG, ' valuta ', DATE_FORMAT(z3.VALUTA, '%d.%m.'), ' ', z3.id) AS Buchungstext,
     {k.Festschreibungskennzeichen} AS Festschreibung
-FROM hibiscus.umsatz z3
+FROM umsatz z3
 WHERE z3.konto_id = 35
     AND YEAR(z3.VALUTA) = {year}
     AND MONTH(z3.VALUTA) = {month}

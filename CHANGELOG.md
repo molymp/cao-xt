@@ -55,6 +55,14 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Geändert
 
+- **DATEV-Export: Hibiscus-Tabellen müssen jetzt im Haupt-Schema
+  liegen** (`cao_2018_001` / `cao_XT_DEV`), nicht in einer separaten
+  `hibiscus`-DB. Drei SQL-Queries in `datevexport/queries.py` ohne
+  Schema-Prefix (`FROM umsatz z3` statt `FROM hibiscus.umsatz z3`).
+  **Breaking-Change für bestehende Installationen** mit getrennter
+  `hibiscus`-DB: die Tabellen müssen vorher per `mysqldump hibiscus |
+  mysql cao_2018_001` umgezogen werden (oder die Installation neu
+  aufgesetzt werden).
 - systemd-Units: wirkungsloses `After=mariadb.service` entfernt (DB
   läuft remote, kein lokales MariaDB). **Daemon-Units** (haccp-/
   einkauf-poller) bekommen `ExecStartPre=… -m common.wait_for_db`
