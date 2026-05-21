@@ -130,6 +130,10 @@ _PLATTFORMEN: dict[tuple[str, str], _JameicaPlattform] = {
 
 JAVA_MIN_MAJOR = 21
 
+# Dateiname des Wrapper-Skripts, das jameicaserver.sh ``-P``-tauglich macht
+# (Single-Path ohne Whitespace, umschifft den ``$@``-unquoted-Bug).
+PW_WRAPPER_NAME = 'jameica-pwcmd.sh'
+
 # Paketmanager → (Update-Cmd | None, Install-Cmd-Praefix, JRE-Paket).
 # Reihenfolge = Erkennungs-Reihenfolge. headless reicht: Jameica läuft
 # im Server-Mode (jameicaserver.sh), kein AWT/SWT nötig.
@@ -607,6 +611,73 @@ def schreibe_caoxt_ini_block(ini_path: str, *, user: str = 'dorfkern',
         cfg.write(fh)
 
 
+def _ensure_linux_jar_symlink(basis: str, plat: _JameicaPlattform,
+                              *, print_fn=print) -> None:
+    """Legt ``<jameica>/jameica-linux.jar`` als Symlink auf das eigentlich
+    installierte Jar (``jameica-linux64.jar`` bzw. ``jameica-linuxarm64.jar``).
+
+    Hintergrund: das mitgelieferte ``jameicaserver.sh`` ruft hart
+    ``-jar jameica-linux.jar`` auf. Der tatsächlich entpackte Dateiname
+    ist je nach Nightly aber z.B. ``jameica-linux64.jar``. Ohne Symlink:
+    ``Error: Unable to access jarfile jameica-linux.jar`` — Java exitet
+    sofort, systemd zeigt nur status=1/FAILURE, ``jameica.log`` bleibt
+    leer. Idempotent.
+    """
+    if plat.key not in ('linux64', 'linuxarm64'):
+        return
+    jameica_root = os.path.join(basis, *plat.root_dir.split('/'))
+    erwartet = os.path.join(jameica_root, 'jameica-linux.jar')
+    actual_name = f'jameica-{plat.key}.jar'
+    actual = os.path.join(jameica_root, actual_name)
+    if os.path.exists(erwartet):
+        return
+    if not os.path.exists(actual):
+        print_fn(f"    ⚠  weder {erwartet} noch {actual} vorhanden — "
+                 f"jameicaserver.sh wird scheitern.")
+        return
+    try:
+        os.symlink(actual_name, erwartet)
+        print_fn(f"    ✓ {os.path.basename(erwartet)} → "
+                 f"{actual_name} (Symlink für jameicaserver.sh)")
+    except OSError as exc:
+        # Fallback: copy (z.B. wenn FS keine Symlinks erlaubt).
+        shutil.copy2(actual, erwartet)
+        print_fn(f"    ✓ {os.path.basename(erwartet)} = "
+                 f"{actual_name} (Kopie statt Symlink: {exc})")
+
+
+def schreibe_pw_wrapper(basis: str = DEFAULT_BASIS,
+                        *, repo_root: str = _REPO_ROOT) -> str:
+    """Schreibt das Wrapper-Skript fuer Jameicas ``-P`` (Passwordcommand).
+
+    Hintergrund: ``jameicaserver.sh`` reicht ``$@`` UNQUOTED an
+    ``java -jar … -d $@`` weiter. Ein Passwordcommand mit Leerzeichen
+    (``python3 -m installer.hibiscus_pw``) wird dadurch in Tokens
+    zersplittet, Java sieht spätere Tokens als eigene Optionen
+    (``Unrecognized option: -m``). Workaround: ``-P`` auf einen
+    einzelnen Pfad ohne Whitespace zeigen lassen — dieses Skript IST
+    dieser Pfad und ruft intern ``installer.hibiscus_pw``.
+
+    Returns den absoluten Pfad zum geschriebenen Wrapper.
+    """
+    venv_python = os.path.join(repo_root, '.venv', 'bin', 'python3')
+    interpreter = venv_python if os.path.exists(venv_python) else 'python3'
+    pfad = os.path.join(basis, PW_WRAPPER_NAME)
+    inhalt = (
+        '#!/bin/sh\n'
+        '# Auto-generiert von installer.hibiscus_setup.\n'
+        '# Liefert das Jameica Master-Passwort auf stdout. Single-Pfad\n'
+        '# ohne Whitespace, weil jameicaserver.sh "$@" unquoted weiterreicht.\n'
+        f'export PYTHONPATH={shlex.quote(repo_root)}\n'
+        f'exec {shlex.quote(interpreter)} -m installer.hibiscus_pw\n'
+    )
+    os.makedirs(basis, exist_ok=True)
+    with open(pfad, 'w', encoding='utf-8') as f:
+        f.write(inhalt)
+    os.chmod(pfad, 0o755)
+    return pfad
+
+
 def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
                        passwordfile: str | None = None,
                        passwordcommand: str | None = None,
@@ -638,6 +709,15 @@ def jameica_start_cmd(basis: str = DEFAULT_BASIS, *, headless: bool = False,
         return [sh, '-f', userdata]
 
     # ---- headless ----
+    # Default-Passwordcommand: das von ``setup()`` angelegte Wrapper-
+    # Skript (Single-Path, keine Whitespace-Tokens → umschifft
+    # jameicaserver.sh's ``$@``-unquoted-Bug). Nur wenn weder
+    # passwordcommand noch passwordfile explizit gesetzt sind.
+    if not passwordcommand and not passwordfile:
+        wrapper = os.path.join(basis, PW_WRAPPER_NAME)
+        if os.path.exists(wrapper):
+            passwordcommand = wrapper
+
     if plat.jre_java:
         # macOS: java DIREKT (GUI-.sh erzwingt -o, das -P/-w aushebelt).
         # Jameica prüft inProgramDir gegen das Prozess-CWD → wir cd'en
@@ -751,11 +831,20 @@ def setup(basis: str = DEFAULT_BASIS, *,
         jzip = os.path.join(tmp, 'jameica.zip')
         download_und_pruefe(jameica_artefakt(plat), jzip, print_fn)
         _entpacke(jzip, app_dir)
+        # 1b) Linux-Nightly: jameicaserver.sh ruft 'jameica-linux.jar',
+        # entpackt wird aber 'jameica-linux64.jar' → Symlink legen.
+        _ensure_linux_jar_symlink(app_dir, plat, print_fn=print_fn)
         # 2) Plugins
         for art in PLUGINS:
             pzip = os.path.join(tmp, f'{art.name}.zip')
             download_und_pruefe(art, pzip, print_fn)
             _entpacke(pzip, plugins_dir)
+
+    # 2b) Passwordcommand-Wrapper für headless-Unlock anlegen
+    # (jameicaserver.sh's $@-Bug umschiffen).
+    pw_wrap = schreibe_pw_wrapper(app_dir)
+    print_fn(f"    ✓ Passwordcommand-Wrapper: "
+             f"{os.path.basename(pw_wrap)}")
 
     # 3) Plaintext-Konfig
     wa = schreibe_webadmin_config(userdata)

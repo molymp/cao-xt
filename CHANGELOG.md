@@ -87,6 +87,18 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Behoben
 
+- Jameica-Installer: zwei stille Crash-Ursachen behoben, die dazu
+  führten dass der headless-Daemon mit `status=1/FAILURE` looped und
+  `jameica.log` leer blieb. (a) `jameicaserver.sh` ruft hart
+  `-jar jameica-linux.jar`, der Nightly entpackt aber
+  `jameica-linux64.jar` → `_ensure_linux_jar_symlink()` legt nach
+  dem Entpacken den fehlenden Symlink an. (b) `jameicaserver.sh`
+  reicht `$@` UNQUOTED an Java weiter, ein Passwordcommand mit
+  Leerzeichen wird in Tokens zersplittet (`-m` → "Unrecognized
+  option") → neuer `schreibe_pw_wrapper()` schreibt
+  `<basis>/jameica-pwcmd.sh` (Single-Path, ruft intern
+  `installer.hibiscus_pw`); `jameica_start_cmd(headless=True)`
+  defaultet ohne explizites passwordcommand auf diesen Wrapper.
 - Multi-Instanz-Runtime-Lücke: zwei Instanzen mit unterschiedlichem
   `base_port` belegten trotzdem dieselben Ports, weil die Apps ihren
   Bind-Port aus Env-Vars (`KIOSK_PORT/KASSE_PORT/ORGA_PORT/ADMIN_PORT`)
