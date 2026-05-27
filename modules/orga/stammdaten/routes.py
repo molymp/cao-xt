@@ -65,11 +65,54 @@ def _login_check() -> None:
         abort(401)
 
 
+_PAGE_SIZE = 50
+
+
 @bp.get('/adressen')
 def adressen():
-    """Landing: Einstieg zur Adress-Pflege."""
+    """Adress-Liste mit Suche, Sortierung, Pagination."""
     _login_check()
-    return render_template('stammdaten_adressen.html')
+    q = (request.args.get('q') or '').strip()
+    sort = request.args.get('sort') or 'NAME1'
+    sort_dir = request.args.get('dir') or 'asc'
+    page = max(1, request.args.get('page', type=int) or 1)
+    offset = (page - 1) * _PAGE_SIZE
+    total = adr.adressen_zaehlen(q)
+    rows = adr.adressen_liste(q, sort=sort, sort_dir=sort_dir,
+                               limit=_PAGE_SIZE, offset=offset)
+    seiten = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+    pg = {
+        'total': total, 'page': page, 'seiten': seiten,
+        'von': (offset + 1) if total else 0,
+        'bis': min(offset + _PAGE_SIZE, total),
+        'hat_zurueck': page > 1,
+        'hat_vor': page < seiten,
+    }
+    return render_template('stammdaten_adressen.html',
+                           rows=rows, suche=q,
+                           sort_key=sort, sort_dir=sort_dir, pg=pg)
+
+
+@bp.get('/adressen/<int:addr_id>')
+def adresse_detail(addr_id: int):
+    """Detail-Ansicht: Stammdaten + Merkmale + Lieferadressen + ASP +
+    Sonderpreise + Datei-Links + komplette Vorgangshistorie (Journal,
+    Lieferscheine, EK-Bestellungen, Preisanfragen)."""
+    _login_check()
+    a = adr.adresse_holen(addr_id)
+    if not a:
+        abort(404)
+    return render_template(
+        'stammdaten_adresse_detail.html',
+        a=a,
+        merkmale=adr.merkmale_zu_adresse(addr_id),
+        lieferadressen=adr.lieferadressen(addr_id),
+        ansprechpartner=adr.ansprechpartner(addr_id),
+        sonderpreise=adr.sonderpreise(addr_id, 3),
+        dateien=adr.links_zu_adresse(addr_id),
+        historie=adr.vorgangs_historie(addr_id),
+        quelle_label=adr.QUELLE_LABEL,
+    )
 
 
 @bp.get('/adressen/form')

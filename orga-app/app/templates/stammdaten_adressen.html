@@ -1,23 +1,126 @@
 {% extends "base.html" %}
+{% import '_listing.html' as L %}
 {% block title %}Stammdaten – Adressen{% endblock %}
 
+{% block extra_style %}
+<style>
+.adr-kopf{display:flex;justify-content:space-between;align-items:center;
+  gap:14px;flex-wrap:wrap;margin:6px 0 14px 0}
+.adr-suche{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.adr-suche input[type=search]{padding:6px 10px;font-size:.95rem;
+  border:1px solid var(--rand,#d8d2c0);border-radius:var(--radius-klein,6px);
+  min-width:18rem;background:#fff}
+.adr-suche button{padding:6px 14px;border:1px solid var(--rand,#d8d2c0);
+  background:var(--creme,#f7f4ec);border-radius:var(--radius-klein,6px);
+  cursor:pointer}
+.adr-tab{width:100%;border-collapse:collapse;background:#fff;
+  border-radius:var(--radius,10px);overflow:hidden;
+  box-shadow:var(--schatten)}
+.adr-tab th{background:var(--gruen-dunkel);color:var(--creme);
+  padding:8px 10px;text-align:left;font-size:.74rem;font-weight:800;
+  text-transform:uppercase;white-space:nowrap}
+.adr-tab th a{color:inherit;text-decoration:none}
+.adr-tab td{padding:7px 10px;border-bottom:1px solid var(--creme-dunkel);
+  font-size:.9rem;vertical-align:middle}
+.adr-tab tr:hover td{background:rgba(46,110,26,.04)}
+.adr-tab a.name{color:var(--gruen-dunkel,#2e6e1a);font-weight:600;
+  text-decoration:none}
+.adr-tab a.name:hover{text-decoration:underline}
+.adr-tab .knum{color:var(--text-dim,#5a7a3a);font-family:monospace;
+  font-size:.85rem}
+.adr-grp{display:inline-block;padding:1px 7px;border-radius:10px;
+  background:var(--creme,#f7f4ec);color:var(--gruen-dunkel,#2e6e1a);
+  font-size:.72rem;font-weight:700}
+.adr-kontakt{color:var(--text-dim,#5a7a3a);font-size:.82rem;line-height:1.3}
+.cx-sort{color:inherit;text-decoration:none;border-bottom:1px dotted transparent}
+.cx-sort:hover{border-bottom-color:currentColor}
+.cx-sort-aktiv{font-weight:900}
+.cx-pager{display:flex;gap:10px;align-items:center;margin:14px 0;
+  font-size:.9rem;color:var(--text-dim,#5a7a3a)}
+.cx-pager a{padding:4px 10px;border:1px solid var(--rand,#d8d2c0);
+  border-radius:6px;background:var(--creme,#f7f4ec);text-decoration:none;
+  color:var(--gruen-dunkel,#2e6e1a)}
+.cx-pager-info{margin-right:auto}
+.empty{padding:30px;text-align:center;color:var(--text-dim,#5a7a3a);
+  font-style:italic;background:#fff;border-radius:var(--radius,10px);
+  box-shadow:var(--schatten)}
+</style>
+{% endblock %}
+
 {% block content %}
-<div style="max-width:52rem;">
-  <h1>👥 Adressen</h1>
-  <p style="line-height:1.6;color:var(--text-dim,#5a7a3a);">
-    CAO-Adressen (Kunden/Lieferanten) anlegen und bearbeiten.
-    Anlegen/Ändern erzeugt die CAO-Mimik (ADRESSEN + ADRESSEN_LOG +
-    HASHSUM); Bearbeiten ist beim Speichern CAO-record-gesperrt.
-  </p>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+<div style="max-width:78rem;">
+  <div class="adr-kopf">
+    <h1 style="margin:0;">👥 Adressen</h1>
+    <form method="get" class="adr-suche">
+      <input type="search" name="q" value="{{ suche|e }}"
+             placeholder="Suchen (Name, Kund-Nr, PLZ, Ort, Matchcode) …"
+             autocomplete="off">
+      <button type="submit">Suchen</button>
+      {% if suche %}
+      <a href="{{ url_for('orga_stammdaten.adressen') }}"
+         style="font-size:.85rem;color:var(--text-dim);">× zurücksetzen</a>
+      {% endif %}
+    </form>
     <a class="btn-primary"
-       href="{{ url_for('orga_stammdaten.adresse_form') }}">➕ Neue Adresse anlegen</a>
+       href="{{ url_for('orga_stammdaten.adresse_form') }}"
+       style="padding:8px 14px;background:var(--gruen-dunkel,#2e6e1a);
+              color:#fff;border-radius:var(--radius-klein,6px);
+              text-decoration:none;font-weight:700;">
+      ➕ Neue Adresse
+    </a>
   </div>
-  <p style="margin-top:18px;color:var(--text-dim,#5a7a3a);font-size:.9rem;">
-    Eine bestehende Adresse bearbeiten: über die jeweilige Stelle
-    (z. B. Lieferantenkatalog) den Bearbeiten-Link nutzen, oder
-    <code>…/orga/stammdaten/adressen/form?id=&lt;REC_ID&gt;</code>.
-    Eine Adress-Suche/-Liste folgt bei Bedarf separat.
-  </p>
+
+  {% if rows %}
+  <table class="adr-tab">
+    <thead>
+      <tr>
+        <th>{{ L.sortlink('Kund-Nr',  'KUNNUM1', sort_key, sort_dir) }}</th>
+        <th>{{ L.sortlink('Name',     'NAME1',   sort_key, sort_dir) }}</th>
+        <th>{{ L.sortlink('PLZ',      'PLZ',     sort_key, sort_dir) }}</th>
+        <th>{{ L.sortlink('Ort',      'ORT',     sort_key, sort_dir) }}</th>
+        <th>Straße</th>
+        <th>Kontakt</th>
+        <th>Gruppe</th>
+        <th style="width:7rem;text-align:right;">Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="knum">{{ r.KUNNUM1 or '' }}{% if r.KUNNUM2 %} / {{ r.KUNNUM2 }}{% endif %}</td>
+        <td>
+          <a class="name" href="{{ url_for('orga_stammdaten.adresse_detail', addr_id=r.REC_ID) }}">
+            {{ r.NAME1 or '–' }}
+          </a>
+          {% if r.NAME2 %}<br><small style="color:var(--text-dim);">{{ r.NAME2 }}</small>{% endif %}
+        </td>
+        <td>{{ r.PLZ or '' }}</td>
+        <td>{{ r.ORT or '' }}{% if r.LAND and r.LAND != 'DE' %} <small>({{ r.LAND }})</small>{% endif %}</td>
+        <td>{{ r.STRASSE or '' }}</td>
+        <td class="adr-kontakt">
+          {% if r.TELE1 %}☎ {{ r.TELE1 }}{% endif %}
+          {% if r.EMAIL %}{% if r.TELE1 %}<br>{% endif %}✉ {{ r.EMAIL }}{% endif %}
+        </td>
+        <td>{% if r.GRUPPE %}<span class="adr-grp">{{ r.GRUPPE }}</span>{% endif %}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <a href="{{ url_for('orga_stammdaten.adresse_detail', addr_id=r.REC_ID) }}" title="Detail">📄</a>
+          <a href="{{ url_for('orga_stammdaten.adresse_form', id=r.REC_ID) }}" title="Bearbeiten">✎</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {{ L.pager(pg) }}
+
+  {% else %}
+  <div class="empty">
+    {% if suche %}
+      Keine Adresse passt zu „<b>{{ suche|e }}</b>".
+    {% else %}
+      Noch keine Adressen — über <b>„Neue Adresse"</b> rechts oben anlegen.
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

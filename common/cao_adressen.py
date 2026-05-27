@@ -208,3 +208,245 @@ def plz_orte(land: str, plz: str) -> list[dict[str, Any]]:
             "  FROM PLZ WHERE LAND=%s AND PLZ=%s LIMIT 2",
             ((land or 'DE')[:2], (plz or '')[:10]))
         return list(cur.fetchall() or [])
+
+
+# ── Liste + Detail-Hilfen für die Orga-Stammdaten-UI ────────────────
+#
+# Read-only-Queries, gebündelt hier statt verstreut in der UI, damit
+# die SQLs (1:1 aus dem CAO-Trace) in einem Modul prüfbar bleiben.
+
+_LIST_COLS = (
+    'REC_ID', 'KUNNUM1', 'KUNNUM2', 'NAME1', 'NAME2', 'STRASSE',
+    'PLZ', 'ORT', 'LAND', 'GRUPPE', 'TELE1', 'EMAIL')
+_SORTABLE = {'NAME1', 'KUNNUM1', 'KUNNUM2', 'ORT', 'PLZ', 'REC_ID'}
+
+
+def _such_where(suche: str) -> tuple[str, list[Any]]:
+    s = (suche or '').strip()
+    if not s:
+        return '', []
+    like = f"%{s}%"
+    return ("WHERE NAME1 LIKE %s OR NAME2 LIKE %s OR KUNNUM1 LIKE %s "
+            "OR KUNNUM2 LIKE %s OR PLZ LIKE %s OR ORT LIKE %s "
+            "OR MATCHCODE LIKE %s"), [like]*7
+
+
+def adressen_liste(suche: str = '', *,
+                   sort: str = 'NAME1', sort_dir: str = 'asc',
+                   limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    """Paginierte Adressliste mit Volltext-Suche.
+
+    Sortierschlüssel: ``NAME1`` (Default), ``KUNNUM1``, ``KUNNUM2``,
+    ``ORT``, ``PLZ``, ``REC_ID``. Andere Werte → Fallback auf NAME1.
+    """
+    if sort not in _SORTABLE:
+        sort = 'NAME1'
+    direction = 'DESC' if str(sort_dir).lower() == 'desc' else 'ASC'
+    where, args = _such_where(suche)
+    args += [int(limit), int(offset)]
+    sql = (f"SELECT {', '.join(_LIST_COLS)} FROM ADRESSEN "
+           f"{where} ORDER BY {sort} {direction} LIMIT %s OFFSET %s")
+    with get_db() as cur:
+        cur.execute(sql, args)
+        return list(cur.fetchall() or [])
+
+
+def adressen_zaehlen(suche: str = '') -> int:
+    where, args = _such_where(suche)
+    with get_db() as cur:
+        cur.execute(f"SELECT COUNT(*) AS n FROM ADRESSEN {where}", args)
+        row = cur.fetchone() or {'n': 0}
+        return int(row.get('n', 0))
+
+
+def merkmale_zu_adresse(addr_id: int) -> list[dict[str, Any]]:
+    """Alle Merkmale + Flag ob die Adresse sie hat (zugewiesene zuerst)."""
+    sql = """SELECT AM.MERKMAL_ID, AM.NAME,
+                    CASE WHEN ATM.MERKMAL_ID=AM.MERKMAL_ID
+                         THEN 1 ELSE 0 END AS FLAG
+               FROM ADRESSEN_MERK AM
+               LEFT OUTER JOIN ADRESSEN_TO_MERK ATM
+                 ON ATM.ADDR_ID=%s AND ATM.MERKMAL_ID=AM.MERKMAL_ID
+              ORDER BY FLAG DESC, AM.NAME ASC"""
+    with get_db() as cur:
+        cur.execute(sql, (int(addr_id),))
+        return list(cur.fetchall() or [])
+
+
+def lieferadressen(addr_id: int) -> list[dict[str, Any]]:
+    """Liefer-/Standort-Adressen + USt-IdNr-Prüf-Flag."""
+    sql = """SELECT AL.*,
+                    TRIM(CONCAT_WS(' ', AL.STRASSE, TRIM(AL.HAUSNR),
+                                        TRIM(AL.ADRESSZUSATZ))) AS STRASSEZUSATZ,
+                    CASE WHEN U.ERROR_CODE=200 THEN 1
+                         WHEN U.ERROR_CODE IN (216,218,219,223) THEN 2
+                         WHEN U.ERROR_CODE>200 AND U.ERROR_CODE
+                              NOT IN (216,218,219,223) THEN 3
+                         ELSE -1 END AS PRUEFUID
+               FROM ADRESSEN_LIEF AL
+               LEFT JOIN ADRESSEN_UID_PRUEF U
+                 ON AL.REC_ID=U.LIEF_ADDR_ID AND U.ADDR_ID=AL.ADDR_ID
+              WHERE AL.ADDR_ID=%s
+              ORDER BY NAME1 ASC"""
+    with get_db() as cur:
+        cur.execute(sql, (int(addr_id),))
+        return list(cur.fetchall() or [])
+
+
+def ansprechpartner(addr_id: int) -> list[dict[str, Any]]:
+    sql = """SELECT *,
+                    TRIM(CONCAT_WS(' ', STRASSE, TRIM(HAUSNR),
+                                        TRIM(ADRESSZUSATZ))) AS STRASSEZUSATZ
+               FROM ADRESSEN_ASP
+              WHERE ADDR_ID=%s
+              ORDER BY FUNKTION"""
+    with get_db() as cur:
+        cur.execute(sql, (int(addr_id),))
+        return list(cur.fetchall() or [])
+
+
+def sonderpreise(addr_id: int, preis_typ: int = 3) -> list[dict[str, Any]]:
+    """Adress-spezifische Artikelpreise (Default ``PREIS_TYP=3`` = Sonder)."""
+    sql = """SELECT A.MENGE_AKT, A.ARTNUM, A.KURZNAME, A.EK_PREIS,
+                    A.VK1, A.VK2, A.VK3, A.VK4, A.VK5, A.PR_EINHEIT,
+                    M.BEZEICHNUNG AS ME_EINHEIT,
+                    AP.ARTIKEL_ID, AP.ADRESS_ID, AP.PREIS_TYP,
+                    AP.BESTNUM, AP.VPE, AP.PREIS, AP.RABATT,
+                    AP.GEAEND, AP.GEAEND_NAME
+               FROM ARTIKEL_PREIS AP
+               LEFT JOIN ARTIKEL A ON A.REC_ID=AP.ARTIKEL_ID
+               LEFT JOIN MENGENEINHEIT M ON A.ME_ID=M.REC_ID
+              WHERE AP.ADRESS_ID=%s AND AP.PREIS_TYP=%s
+              ORDER BY A.ARTNUM ASC"""
+    with get_db() as cur:
+        cur.execute(sql, (int(addr_id), int(preis_typ)))
+        return list(cur.fetchall() or [])
+
+
+def links_zu_adresse(addr_id: int) -> list[dict[str, Any]]:
+    """Verknüpfte Dateien (LINK-Tabelle, MODUL_ID=50 = ADRESSEN)."""
+    sql = """SELECT * FROM LINK
+              WHERE MODUL_ID=50 AND REC_ID=%s
+              ORDER BY DATEI, PFAD"""
+    with get_db() as cur:
+        cur.execute(sql, (int(addr_id),))
+        return list(cur.fetchall() or [])
+
+
+# QUELLE-Code Beschreibungen (CAO-Konvention) für die Anzeige.
+QUELLE_LABEL = {
+    '1':  'Rechnung',
+    '2':  'Lieferschein',
+    '3':  'Gutschrift',
+    '4':  'Storno-Rechnung',
+    '6':  'EK-Bestellung',
+    '7':  'Preisanfrage',
+    '11': 'Storno-Rechnung',
+    '12': 'EDI-Lieferschein',
+    '16': 'EK-Bestellung (offen)',
+    '17': 'Preisanfrage (offen)',
+}
+
+
+def vorgangs_historie(addr_id: int) -> list[dict[str, Any]]:
+    """Vereinigte Vorgangshistorie: Journal + Lieferschein + EK-Bestellung
+    + Preisanfrage (Quellen 1:1 aus dem CAO-Trace).
+
+    Rückgabe-Spalten (gleich für alle Quellen, damit sich die UI in einer
+    Tabelle abbilden lässt):
+      REC_ID, QUELLE (string), BELEGNUM, BELEGDATUM, KUN_NAME, ADDR_ID,
+      LIEF_ADDR_ID, NSUMME, MSUMME, BSUMME, STADIUM, PROJEKT, ORGNUM,
+      WAEHRUNG, LIEFANSCHR. Sortierung: BELEGDATUM absteigend.
+    """
+    aid = int(addr_id)
+    q_journal = """
+        SELECT JOURNAL.REC_ID,
+               CONCAT_WS('', JOURNAL.QUELLE) AS QUELLE,
+               CASE WHEN JOURNAL.VERSNR>=1 AND JOURNAL.QUELLE IN (1,11)
+                    THEN CONCAT_WS('-', JOURNAL.VRENUM, JOURNAL.VERSNR)
+                    ELSE JOURNAL.VRENUM END AS BELEGNUM,
+               JOURNAL.RDATUM AS BELEGDATUM,
+               CONCAT_WS(' ', JOURNAL.KUN_NAME1, JOURNAL.KUN_NAME2,
+                              JOURNAL.KUN_NAME3) AS KUN_NAME,
+               JOURNAL.ADDR_ID, JOURNAL.LIEF_ADDR_ID,
+               JOURNAL.NSUMME, JOURNAL.MSUMME, JOURNAL.BSUMME,
+               JOURNAL.STADIUM, JOURNAL.PROJEKT, JOURNAL.ORGNUM,
+               JOURNAL.WAEHRUNG,
+               CONCAT(TRIM(CONCAT_WS(' ', AD.ANREDE, AD.NAME1,
+                                          AD.NAME2, AD.NAME3)),
+                      ', ', AD.STRASSE, ', ', AD.LAND, ' ',
+                      AD.PLZ, ' ', AD.ORT) AS LIEFANSCHR
+          FROM JOURNAL
+          LEFT JOIN JOURNALPOS JP ON JP.JOURNAL_ID=JOURNAL.REC_ID
+          LEFT OUTER JOIN LIEFERSCHEIN_POS LP
+            ON LP.RECHPOS_ID=JP.REC_ID
+          LEFT OUTER JOIN LIEFERSCHEIN L ON L.REC_ID=LP.LIEFERSCHEIN_ID
+          LEFT OUTER JOIN ADRESSEN_LIEF AD
+            ON AD.REC_ID=JOURNAL.LIEF_ADDR_ID
+         WHERE JOURNAL.ADDR_ID=%s
+           AND JOURNAL.QUELLE>0
+           AND JOURNAL.STADIUM<>120
+           AND JOURNAL.TERM_ID<>99999
+           AND YEAR(JOURNAL.RDATUM) BETWEEN 1900 AND 2300
+           AND JP.TOP_POS_ID=-1
+      GROUP BY JOURNAL.REC_ID"""
+    q_liefer = """
+        SELECT L.REC_ID,
+               CASE WHEN L.EDI_FLAG='N' THEN '2' ELSE '12' END AS QUELLE,
+               L.VLSNUM AS BELEGNUM, L.LDATUM AS BELEGDATUM,
+               CONCAT_WS(' ', L.KUN_NAME1, L.KUN_NAME2,
+                              L.KUN_NAME3) AS KUN_NAME,
+               L.ADDR_ID, L.LIEF_ADDR_ID,
+               L.NSUMME, L.MSUMME, L.BSUMME,
+               CASE WHEN L.STORNO_FLAG='Y' THEN 127
+                    WHEN L.STATUS_FLAG=2 THEN 2
+                    WHEN COUNT(LP.REC_ID)=SUM(LP.RECHPOS_ID=-1) THEN 1
+                    WHEN SUM(LP.RECHPOS_ID=-1)>0 THEN 5
+                    WHEN SUM(LP.RECHPOS_ID=-1)=0 THEN 9
+                    ELSE 1 END AS STADIUM,
+               L.PROJEKT, L.ORGNUM, L.WAEHRUNG, '-' AS LIEFANSCHR
+          FROM LIEFERSCHEIN L
+          LEFT OUTER JOIN LIEFERSCHEIN_POS LP
+            ON LP.LIEFERSCHEIN_ID=L.REC_ID
+            AND LP.ARTIKELTYP IN ('N','S','L','K','F','P')
+         WHERE L.ADDR_ID=%s
+           AND YEAR(L.LDATUM) BETWEEN 1900 AND 2300
+           AND LP.TOP_POS_ID=-1
+      GROUP BY L.REC_ID"""
+    q_bestell = """
+        SELECT REC_ID,
+               CASE WHEN STADIUM=0 THEN '16' ELSE '6' END AS QUELLE,
+               BELEGNUM, BELEGDATUM,
+               CONCAT_WS(' ', KUN_NAME1, KUN_NAME2,
+                              KUN_NAME3) AS KUN_NAME,
+               ADDR_ID, LIEF_ADDR_ID,
+               NSUMME, MSUMME, BSUMME, STADIUM, PROJEKT, ORGNUM, WAEHRUNG,
+               '-' AS LIEFANSCHR
+          FROM EKBESTELL
+         WHERE PREISANFRAGE='N' AND ADDR_ID=%s
+           AND YEAR(BELEGDATUM) BETWEEN 1900 AND 2300"""
+    q_preisanfr = """
+        SELECT REC_ID,
+               CASE WHEN STADIUM=0 THEN '17' ELSE '7' END AS QUELLE,
+               BELEGNUM, BELEGDATUM,
+               CONCAT_WS(' ', KUN_NAME1, KUN_NAME2,
+                              KUN_NAME3) AS KUN_NAME,
+               ADDR_ID, LIEF_ADDR_ID,
+               NSUMME, MSUMME, BSUMME, STADIUM, PROJEKT, ORGNUM, WAEHRUNG,
+               '-' AS LIEFANSCHR
+          FROM EKBESTELL
+         WHERE PREISANFRAGE='Y' AND ADDR_ID=%s
+           AND YEAR(BELEGDATUM) BETWEEN 1900 AND 2300"""
+    alles: list[dict[str, Any]] = []
+    with get_db() as cur:
+        for q in (q_journal, q_liefer, q_bestell, q_preisanfr):
+            cur.execute(q, (aid,))
+            alles.extend(cur.fetchall() or [])
+    # BELEGDATUM kann date ODER datetime sein (LIEFERSCHEIN.LDATUM ist
+    # datetime, JOURNAL.RDATUM ist date) — als ISO-String sortieren,
+    # damit Python die nicht typabhängig vergleicht.
+    def _key(r):
+        v = r.get('BELEGDATUM')
+        return v.isoformat() if v else '0000-00-00'
+    alles.sort(key=_key, reverse=True)
+    return alles

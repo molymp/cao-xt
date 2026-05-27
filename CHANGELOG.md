@@ -9,6 +9,15 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Hinzugefügt
 
+- Orga → Stammdaten → Adressen: vollständige Listen- und Detail-Ansicht.
+  Liste mit Volltext-Suche (Name/Kund-Nr/PLZ/Ort/Matchcode), Spalten-
+  Sortierung und Pagination (50 pro Seite). Detail-Seite zeigt
+  Stammdaten + zugewiesene Merkmale + Lieferadressen + Ansprech-
+  partner + adress-spezifische Sonderpreise (PREIS_TYP=3) + verknüpfte
+  Dateien (LINK MODUL_ID=50) + die **gesamte Vorgangshistorie**
+  (Journal, Lieferscheine, EK-Bestellungen, Preisanfragen — Quellen
+  1:1 aus dem CAO-Trace, vereinheitlicht und nach Datum sortiert).
+  Datenzugriff in `common.cao_adressen.*` gebündelt.
 - **systemd-Service-Betrieb** (`installer/systemd/`): Apps laufen wahlweise
   als systemd-Dienste statt als Popen-Kinder. Drei Installationstypen,
   im Installer-Dialog (Phase 0) wählbar:

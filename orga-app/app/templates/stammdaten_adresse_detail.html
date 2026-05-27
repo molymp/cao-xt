@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Adresse #{{ a.REC_ID }} – {{ a.NAME1 or '?' }}{% endblock %}
+
+{% block extra_style %}
+<style>
+.ad-kopf{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:14px;flex-wrap:wrap;background:#fff;padding:14px 18px;
+  border-radius:var(--radius,10px);box-shadow:var(--schatten);margin:6px 0 14px 0}
+.ad-name{margin:0 0 4px 0;font-size:1.5rem;color:var(--gruen-dunkel,#2e6e1a)}
+.ad-meta{color:var(--text-dim,#5a7a3a);font-size:.9rem;line-height:1.5}
+.ad-meta b{color:var(--text,#33321b)}
+.ad-knum{font-family:monospace;background:var(--creme,#f7f4ec);padding:2px 7px;
+  border-radius:8px;font-size:.85rem}
+.ad-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ad-actions a{padding:6px 12px;border:1px solid var(--rand,#d8d2c0);
+  border-radius:var(--radius-klein,6px);text-decoration:none;font-size:.9rem;
+  background:var(--creme,#f7f4ec);color:var(--gruen-dunkel,#2e6e1a)}
+.ad-actions a.primary{background:var(--gruen-dunkel,#2e6e1a);color:#fff;
+  border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+
+.ad-sek{background:#fff;border-radius:var(--radius,10px);
+  box-shadow:var(--schatten);margin:14px 0;overflow:hidden}
+.ad-sek h2{margin:0;padding:10px 16px;background:var(--gruen-dunkel,#2e6e1a);
+  color:var(--creme,#f7f4ec);font-size:.85rem;text-transform:uppercase;
+  letter-spacing:.04em;font-weight:800;display:flex;justify-content:space-between;
+  align-items:center}
+.ad-sek h2 .count{background:rgba(255,255,255,.18);color:#fff;
+  padding:1px 8px;border-radius:10px;font-size:.7rem;font-weight:700}
+.ad-sek .inhalt{padding:10px 16px}
+.ad-sek table{width:100%;border-collapse:collapse;font-size:.88rem}
+.ad-sek table th{text-align:left;font-weight:700;color:var(--text-dim);
+  border-bottom:1px solid var(--creme-dunkel);padding:6px 8px;
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+.ad-sek table td{padding:6px 8px;border-bottom:1px solid var(--creme-dunkel);
+  vertical-align:middle}
+.ad-sek table tr:last-child td{border-bottom:0}
+.ad-sek table tr:hover td{background:rgba(46,110,26,.04)}
+.ad-empty{color:var(--text-dim);font-style:italic;font-size:.9rem;padding:6px 2px}
+.ad-merk{display:flex;gap:6px;flex-wrap:wrap}
+.ad-merk .tag{padding:2px 10px;border-radius:12px;background:var(--gruen-dunkel,#2e6e1a);
+  color:#fff;font-size:.78rem;font-weight:600}
+.ad-merk .tag.off{background:transparent;border:1px solid var(--rand,#d8d2c0);
+  color:var(--text-dim,#5a7a3a);font-weight:500;opacity:.7}
+
+/* Vorgangshistorie-spezifisch */
+.hist-quelle{display:inline-block;padding:1px 8px;border-radius:10px;
+  background:var(--creme,#f7f4ec);color:var(--gruen-dunkel,#2e6e1a);
+  font-size:.72rem;font-weight:700;white-space:nowrap}
+.hist-quelle.q-1,.hist-quelle.q-11{background:#e8f5e0;color:#2e7a2e}
+.hist-quelle.q-2,.hist-quelle.q-12{background:#e0eaf5;color:#1a4a7a}
+.hist-quelle.q-3{background:#fef1db;color:#8a5e1a}
+.hist-quelle.q-6,.hist-quelle.q-16{background:#f5e0e0;color:#7a1a1a}
+.hist-quelle.q-7,.hist-quelle.q-17{background:#f0e0f5;color:#5a1a7a}
+.hist-stadium{font-family:monospace;font-size:.78rem;color:var(--text-dim)}
+.hist-stadium.s-127{color:#b83030;font-weight:700}
+.hist-betrag{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;
+  white-space:nowrap}
+.hist-num{font-family:monospace;font-size:.82rem;color:var(--text-dim)}
+.hist-anschr{font-size:.78rem;color:var(--text-dim);max-width:30rem}
+
+.zwei-spalten{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:900px){.zwei-spalten{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:88rem;">
+
+  {# ─── Kopf: Name + Anschrift + Aktionen ─── #}
+  <div class="ad-kopf">
+    <div>
+      <h1 class="ad-name">{{ a.NAME1 or '–' }}
+        {% if a.NAME2 %}<small style="color:var(--text-dim);font-weight:400;">
+          {{ a.NAME2 }}</small>{% endif %}
+      </h1>
+      <div class="ad-meta">
+        {% if a.STRASSE %}{{ a.STRASSE }}
+          {% if a.HAUSNR %} {{ a.HAUSNR }}{% endif %}<br>{% endif %}
+        {% if a.PLZ or a.ORT %}{{ a.PLZ }} {{ a.ORT }}
+          {% if a.LAND %}({{ a.LAND }}){% endif %}<br>{% endif %}
+        {% if a.TELE1 %}☎ {{ a.TELE1 }}{% if a.EMAIL %} · {% endif %}{% endif %}
+        {% if a.EMAIL %}✉ <a href="mailto:{{ a.EMAIL }}">{{ a.EMAIL }}</a>{% endif %}
+        {% if a.UST_NUM or a.UID %}<br>USt-IdNr: <b>{{ a.UST_NUM or a.UID }}</b>{% endif %}
+        <br>
+        <span class="ad-knum">#{{ a.REC_ID }}</span>
+        {% if a.KUNNUM1 %}<span class="ad-knum">Kund-Nr {{ a.KUNNUM1 }}</span>{% endif %}
+        {% if a.KUNNUM2 %}<span class="ad-knum">Lief-Nr {{ a.KUNNUM2 }}</span>{% endif %}
+        {% if a.GRUPPE %}<span class="ad-knum">Gruppe {{ a.GRUPPE }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="ad-actions">
+      <a href="{{ url_for('orga_stammdaten.adressen') }}">← zur Liste</a>
+      <a class="primary"
+         href="{{ url_for('orga_stammdaten.adresse_form', id=a.REC_ID) }}">✎ Bearbeiten</a>
+    </div>
+  </div>
+
+  {# ─── Merkmale (Tags) ─── #}
+  {% if merkmale %}
+  <div class="ad-sek">
+    <h2>🏷 Merkmale
+      <span class="count">{{ merkmale|selectattr('FLAG')|list|length }}
+        / {{ merkmale|length }}</span></h2>
+    <div class="inhalt">
+      <div class="ad-merk">
+        {% for m in merkmale %}
+          <span class="tag {% if not m.FLAG %}off{% endif %}">{{ m.NAME }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ─── Vorgangshistorie (Hauptfeature) ─── #}
+  <div class="ad-sek">
+    <h2>📋 Vorgangshistorie
+      <span class="count">{{ historie|length }}</span></h2>
+    <div class="inhalt">
+    {% if historie %}
+      <table>
+        <thead>
+          <tr>
+            <th>Quelle</th><th>Beleg-Nr</th><th>Datum</th>
+            <th>Lieferanschrift</th>
+            <th style="text-align:right;">Netto</th>
+            <th style="text-align:right;">MwSt</th>
+            <th style="text-align:right;">Brutto</th>
+            <th>Stadium</th><th>Projekt</th><th>Org-Nr</th><th>W</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for h in historie %}
+          <tr>
+            <td><span class="hist-quelle q-{{ h.QUELLE }}">{{ quelle_label.get(h.QUELLE|string, 'Q' ~ h.QUELLE) }}</span></td>
+            <td class="hist-num">{{ h.BELEGNUM }}</td>
+            <td>{{ h.BELEGDATUM.strftime('%d.%m.%Y') if h.BELEGDATUM else '' }}</td>
+            <td class="hist-anschr">
+              {% set anschr = h.LIEFANSCHR %}
+              {% if anschr and anschr != '-' %}{{ anschr }}
+              {% elif h.KUN_NAME %}<i>{{ h.KUN_NAME }}</i>
+              {% else %}—{% endif %}
+            </td>
+            <td class="hist-betrag">{{ '%.2f'|format(h.NSUMME or 0) }}</td>
+            <td class="hist-betrag">{{ '%.2f'|format(h.MSUMME or 0) }}</td>
+            <td class="hist-betrag">{{ '%.2f'|format(h.BSUMME or 0) }}</td>
+            <td><span class="hist-stadium s-{{ h.STADIUM }}">{{ h.STADIUM }}</span></td>
+            <td class="hist-num">{{ h.PROJEKT or '' }}</td>
+            <td class="hist-num">{{ h.ORGNUM or '' }}</td>
+            <td>{{ h.WAEHRUNG or 'EUR' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="ad-empty">Keine Vorgänge zu dieser Adresse.</div>
+    {% endif %}
+    </div>
+  </div>
+
+  <div class="zwei-spalten">
+    {# ─── Lieferadressen ─── #}
+    <div class="ad-sek">
+      <h2>📦 Lieferadressen <span class="count">{{ lieferadressen|length }}</span></h2>
+      <div class="inhalt">
+      {% if lieferadressen %}
+        <table>
+          <thead><tr><th>Name</th><th>Anschrift</th><th>Telefon</th><th>UID</th></tr></thead>
+          <tbody>
+          {% for l in lieferadressen %}
+            <tr>
+              <td><b>{{ l.NAME1 or '' }}</b>{% if l.NAME2 %}<br><small>{{ l.NAME2 }}</small>{% endif %}</td>
+              <td>{{ l.STRASSEZUSATZ or '' }}{% if l.PLZ or l.ORT %}<br>{{ l.PLZ }} {{ l.ORT }}{% endif %}</td>
+              <td class="hist-num">{{ l.TELE1 or '' }}</td>
+              <td>{% if l.PRUEFUID == 1 %}✓
+                  {% elif l.PRUEFUID == 2 %}⚠
+                  {% elif l.PRUEFUID == 3 %}✗
+                  {% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="ad-empty">Keine Lieferadressen hinterlegt.</div>{% endif %}
+      </div>
+    </div>
+
+    {# ─── Ansprechpartner ─── #}
+    <div class="ad-sek">
+      <h2>👤 Ansprechpartner <span class="count">{{ ansprechpartner|length }}</span></h2>
+      <div class="inhalt">
+      {% if ansprechpartner %}
+        <table>
+          <thead><tr><th>Name</th><th>Funktion</th><th>Kontakt</th></tr></thead>
+          <tbody>
+          {% for p in ansprechpartner %}
+            <tr>
+              <td>{{ p.ANREDE or '' }} <b>{{ p.VORNAME or '' }} {{ p.NAME or '' }}</b></td>
+              <td>{{ p.FUNKTION or '' }}</td>
+              <td class="hist-num">
+                {% if p.TELE1 %}☎ {{ p.TELE1 }}{% endif %}
+                {% if p.EMAIL %}{% if p.TELE1 %}<br>{% endif %}✉ {{ p.EMAIL }}{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="ad-empty">Keine Ansprechpartner hinterlegt.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="zwei-spalten">
+    {# ─── Sonderpreise ─── #}
+    <div class="ad-sek">
+      <h2>💰 Sonderpreise <span class="count">{{ sonderpreise|length }}</span></h2>
+      <div class="inhalt">
+      {% if sonderpreise %}
+        <table>
+          <thead><tr><th>Art-Nr</th><th>Kurzname</th><th style="text-align:right;">Preis</th>
+            <th style="text-align:right;">Rabatt</th><th>BestNr</th></tr></thead>
+          <tbody>
+          {% for p in sonderpreise %}
+            <tr>
+              <td class="hist-num">{{ p.ARTNUM or '' }}</td>
+              <td>{{ p.KURZNAME or '' }}</td>
+              <td class="hist-betrag">{{ '%.2f'|format(p.PREIS or 0) }}</td>
+              <td class="hist-betrag">{% if p.RABATT %}{{ '%.1f'|format(p.RABATT) }} %{% endif %}</td>
+              <td class="hist-num">{{ p.BESTNUM or '' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="ad-empty">Keine Sonderpreise (PREIS_TYP=3) hinterlegt.</div>{% endif %}
+      </div>
+    </div>
+
+    {# ─── Verknüpfte Dateien (LINK) ─── #}
+    <div class="ad-sek">
+      <h2>📎 Verknüpfte Dateien <span class="count">{{ dateien|length }}</span></h2>
+      <div class="inhalt">
+      {% if dateien %}
+        <table>
+          <thead><tr><th>Datei</th><th>Pfad</th><th>Bemerkung</th></tr></thead>
+          <tbody>
+          {% for d in dateien %}
+            <tr>
+              <td><b>{{ d.DATEI or '' }}</b></td>
+              <td class="hist-num">{{ d.PFAD or '' }}</td>
+              <td>{{ d.BEMERKUNG or '' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<div class="ad-empty">Keine verknüpften Dateien (LINK MODUL_ID=50).</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
