@@ -8,9 +8,40 @@ Alle Apps verwenden dieselben Session-Schluessel:
   ``ma_id``, ``login_name``, ``vname``, ``ma_name``
 """
 import hashlib
+from datetime import timedelta
 from functools import wraps
 
 from flask import session, redirect, url_for
+
+
+# Default-Lebensdauer einer angemeldeten Session — explizit „permanent"
+# (Flask-Begriff), damit Browser-Schließen die Session nicht killt.
+SESSION_LIFETIME = timedelta(days=7)
+
+
+def configure_session(app, instance_name: str = '') -> None:
+    """Hängt Session-Cookie-Name und -Lebensdauer an ``app`` an.
+
+    Zwei Probleme, die das löst:
+
+    * **Cookie-Kollision bei Multi-Instanz auf demselben Host:**
+      Browser scopen Session-Cookies NICHT nach Port — ``localhost:5004``
+      (PROD) und ``localhost:5104`` (DEV) teilen sich Flask-Defaults
+      (``SESSION_COOKIE_NAME='session'``). Folge: Login auf einer
+      Instanz hinterlässt einen Cookie, den die andere Instanz beim
+      ``db_sig``-Check verwirft → endloses Re-Login-Ping-Pong.
+      Pro Instanz daher ein eigener Cookie-Name (``dorfkern_<inst>``,
+      bzw. ``dorfkern`` ohne Instanz).
+    * **Sessions verschwinden beim Browser-Schließen:** Flask-Default
+      ist ein Browser-Session-Cookie. ``PERMANENT_SESSION_LIFETIME``
+      + ``session.permanent = True`` (gesetzt in ``login_user()``)
+      machen daraus ein echtes Persistent-Cookie.
+
+    Soll direkt nach ``app = Flask(__name__)`` aufgerufen werden.
+    """
+    inst = (instance_name or '').strip()
+    app.config['SESSION_COOKIE_NAME'] = f'dorfkern_{inst}' if inst else 'dorfkern'
+    app.config['PERMANENT_SESSION_LIFETIME'] = SESSION_LIFETIME
 
 
 def db_signatur() -> str:
@@ -102,6 +133,9 @@ def login_user(ma: dict) -> None:
     # authentifiziert wurde. Wechselt die DB, wird die Session beim
     # naechsten Request via session_db_ok() invalidiert.
     session['db_sig']     = db_signatur()
+    # Persistent: ueberlebt Browser-Schliessen, gilt
+    # PERMANENT_SESSION_LIFETIME (= SESSION_LIFETIME, default 7 Tage).
+    session.permanent     = True
 
 
 def logout_user() -> None:

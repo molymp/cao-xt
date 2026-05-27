@@ -37,6 +37,12 @@ app.config['FIRMA_NAME'] = config.FIRMA_NAME
 from common.db_gate import install_db_gate  # noqa: E402
 install_db_gate(app)
 
+# Session-Cookie pro Instanz benennen (verhindert PROD/DEV-Kollision
+# auf demselben Host) + permanente Session-Lifetime (Default 7 Tage).
+from common.auth import configure_session  # noqa: E402
+from common.config import load_instance_config  # noqa: E402
+configure_session(app, load_instance_config().get('instance_name', ''))
+
 # Zusaetzliche Template-Quelle: common/templates/ fuer gemeinsame Widgets
 # (Touch-Numpad/Keyboard/Datepicker). Wird mit App-eigenen Templates
 # ueber ChoiceLoader kombiniert (App-Templates haben Vorrang).

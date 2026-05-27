@@ -87,6 +87,16 @@ Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Behoben
 
+- Session-Ping-Pong zwischen Multi-Instanzen auf demselben Host:
+  Browser scopen Session-Cookies NICHT nach Port, daher teilten sich
+  `localhost:5004` (PROD) und `localhost:5104` (DEV) den Flask-Default-
+  Cookie `session`. Beim Wechsel zwischen Instanzen wurde durch den
+  `db_sig`-Mismatch jeweils die andere Session invalidiert → endloses
+  Re-Login. Neu: `common.auth.configure_session(app, instance_name)`
+  setzt `SESSION_COOKIE_NAME=f'dorfkern_{instance}'` (bzw. `dorfkern`
+  ohne Instanz) und `PERMANENT_SESSION_LIFETIME=7d`; `login_user()`
+  setzt `session.permanent=True`. Dadurch eigene Cookies pro Instanz
+  und Login überlebt Browser-Schließen. In allen 4 Apps verdrahtet.
 - Jameica-Installer: zwei stille Crash-Ursachen behoben, die dazu
   führten dass der headless-Daemon mit `status=1/FAILURE` looped und
   `jameica.log` leer blieb. (a) `jameicaserver.sh` ruft hart
