@@ -65,32 +65,32 @@ def _login_check() -> None:
         abort(401)
 
 
-_PAGE_SIZE = 50
-
-
 @bp.get('/adressen')
 def adressen():
-    """Adress-Liste mit Suche, Sortierung, Pagination."""
+    """Adress-Liste — Volltext-Suche + Gruppen-Filter, KEINE Pagination
+    (alle Treffer auf einer Seite, Tabelle ist eh sortierbar)."""
     _login_check()
+    from common.picker_data import adressgruppen as _gruppen
     q = (request.args.get('q') or '').strip()
     sort = request.args.get('sort') or 'NAME1'
     sort_dir = request.args.get('dir') or 'asc'
-    page = max(1, request.args.get('page', type=int) or 1)
-    offset = (page - 1) * _PAGE_SIZE
-    total = adr.adressen_zaehlen(q)
-    rows = adr.adressen_liste(q, sort=sort, sort_dir=sort_dir,
-                               limit=_PAGE_SIZE, offset=offset)
-    seiten = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE)
-    pg = {
-        'total': total, 'page': page, 'seiten': seiten,
-        'von': (offset + 1) if total else 0,
-        'bis': min(offset + _PAGE_SIZE, total),
-        'hat_zurueck': page > 1,
-        'hat_vor': page < seiten,
-    }
+    grp_raw = (request.args.get('grp') or '').strip()
+    gruppe_id: int | None = None
+    if grp_raw and grp_raw.lower() != 'alle':
+        try:
+            gruppe_id = int(grp_raw)
+        except ValueError:
+            gruppe_id = None
+    rows = adr.adressen_liste(q, gruppe_id=gruppe_id,
+                               sort=sort, sort_dir=sort_dir)
+    gruppen = _gruppen()
+    # Aktive Gruppe für Sidebar-Hervorhebung
+    gruppen_aktiv = grp_raw if grp_raw else ''
     return render_template('stammdaten_adressen.html',
                            rows=rows, suche=q,
-                           sort_key=sort, sort_dir=sort_dir, pg=pg)
+                           sort_key=sort, sort_dir=sort_dir,
+                           gruppen=gruppen, gruppen_aktiv=gruppen_aktiv,
+                           gruppe_id=gruppe_id)
 
 
 @bp.get('/adressen/<int:addr_id>')
@@ -105,6 +105,7 @@ def adresse_detail(addr_id: int):
     return render_template(
         'stammdaten_adresse_detail.html',
         a=a,
+        gruppen=FELDGRUPPEN,  # gleiche Feldstruktur wie das Edit-Formular
         merkmale=adr.merkmale_zu_adresse(addr_id),
         lieferadressen=adr.lieferadressen(addr_id),
         ansprechpartner=adr.ansprechpartner(addr_id),

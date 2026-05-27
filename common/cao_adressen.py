@@ -221,38 +221,52 @@ _LIST_COLS = (
 _SORTABLE = {'NAME1', 'KUNNUM1', 'KUNNUM2', 'ORT', 'PLZ', 'REC_ID'}
 
 
-def _such_where(suche: str) -> tuple[str, list[Any]]:
+def _liste_where(suche: str, gruppe_id: int | None) -> tuple[str, list[Any]]:
+    """Baut WHERE-Klausel + Args fuer Suche und Gruppen-Filter."""
+    teile: list[str] = []
+    args: list[Any] = []
     s = (suche or '').strip()
-    if not s:
-        return '', []
-    like = f"%{s}%"
-    return ("WHERE NAME1 LIKE %s OR NAME2 LIKE %s OR KUNNUM1 LIKE %s "
-            "OR KUNNUM2 LIKE %s OR PLZ LIKE %s OR ORT LIKE %s "
-            "OR MATCHCODE LIKE %s"), [like]*7
+    if s:
+        like = f"%{s}%"
+        teile.append("(NAME1 LIKE %s OR NAME2 LIKE %s OR KUNNUM1 LIKE %s "
+                     "OR KUNNUM2 LIKE %s OR PLZ LIKE %s OR ORT LIKE %s "
+                     "OR MATCHCODE LIKE %s)")
+        args += [like]*7
+    if gruppe_id is not None:
+        teile.append("KUNDENGRUPPE=%s")
+        args.append(int(gruppe_id))
+    where = ('WHERE ' + ' AND '.join(teile)) if teile else ''
+    return where, args
 
 
 def adressen_liste(suche: str = '', *,
+                   gruppe_id: int | None = None,
                    sort: str = 'NAME1', sort_dir: str = 'asc',
-                   limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
-    """Paginierte Adressliste mit Volltext-Suche.
+                   limit: int | None = None,
+                   offset: int = 0) -> list[dict[str, Any]]:
+    """Adressliste mit Volltext-Suche und optionalem Gruppen-Filter.
 
     Sortierschlüssel: ``NAME1`` (Default), ``KUNNUM1``, ``KUNNUM2``,
     ``ORT``, ``PLZ``, ``REC_ID``. Andere Werte → Fallback auf NAME1.
+    ``limit=None`` heißt: kein LIMIT (alle Treffer).
     """
     if sort not in _SORTABLE:
         sort = 'NAME1'
     direction = 'DESC' if str(sort_dir).lower() == 'desc' else 'ASC'
-    where, args = _such_where(suche)
-    args += [int(limit), int(offset)]
+    where, args = _liste_where(suche, gruppe_id)
     sql = (f"SELECT {', '.join(_LIST_COLS)} FROM ADRESSEN "
-           f"{where} ORDER BY {sort} {direction} LIMIT %s OFFSET %s")
+           f"{where} ORDER BY {sort} {direction}")
+    if limit is not None:
+        sql += " LIMIT %s OFFSET %s"
+        args += [int(limit), int(offset)]
     with get_db() as cur:
         cur.execute(sql, args)
         return list(cur.fetchall() or [])
 
 
-def adressen_zaehlen(suche: str = '') -> int:
-    where, args = _such_where(suche)
+def adressen_zaehlen(suche: str = '', *,
+                     gruppe_id: int | None = None) -> int:
+    where, args = _liste_where(suche, gruppe_id)
     with get_db() as cur:
         cur.execute(f"SELECT COUNT(*) AS n FROM ADRESSEN {where}", args)
         row = cur.fetchone() or {'n': 0}

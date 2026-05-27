@@ -60,6 +60,23 @@
 
 .zwei-spalten{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:900px){.zwei-spalten{grid-template-columns:1fr}}
+
+/* Stammdaten-Sektion: Feldgruppen mit Label/Wert-Paaren */
+.ad-felder{display:grid;grid-template-columns:repeat(auto-fit,minmax(22rem,1fr));
+  gap:12px}
+.ad-fg{border:1px solid var(--creme-dunkel);border-radius:var(--radius-klein,6px);
+  padding:6px 12px 10px;background:var(--creme,#f7f4ec)}
+.ad-fg legend{padding:0 6px;font-size:.78rem;font-weight:800;
+  color:var(--gruen-dunkel,#2e6e1a);text-transform:uppercase;
+  letter-spacing:.04em}
+.ad-fg dl{display:grid;grid-template-columns:11rem 1fr;gap:2px 10px;
+  margin:0;font-size:.86rem}
+.ad-fg dt{color:var(--text-dim,#5a7a3a);padding:2px 0;
+  border-bottom:1px dotted var(--creme-dunkel)}
+.ad-fg dd{margin:0;padding:2px 0;border-bottom:1px dotted var(--creme-dunkel);
+  word-break:break-word}
+.ad-fg dd.leer{color:#bbb;font-style:italic}
+.ad-fg dl > dt:last-of-type, .ad-fg dl > dd:last-of-type{border-bottom:0}
 </style>
 {% endblock %}
 
@@ -92,6 +109,35 @@
       <a href="{{ url_for('orga_stammdaten.adressen') }}">← zur Liste</a>
       <a class="primary"
          href="{{ url_for('orga_stammdaten.adresse_form', id=a.REC_ID) }}">✎ Bearbeiten</a>
+    </div>
+  </div>
+
+  {# ─── Stammdaten: ALLE editierbaren Felder (gleicher Aufbau wie das
+       Edit-Formular FELDGRUPPEN, hier als read-only Übersicht). ─── #}
+  <div class="ad-sek">
+    <h2>📇 Stammdaten</h2>
+    <div class="inhalt">
+      <div class="ad-felder">
+      {% for gruppen_titel, felder in gruppen %}
+        <fieldset class="ad-fg">
+          <legend>{{ gruppen_titel }}</legend>
+          <dl>
+          {% for spalte, label, typ in felder %}
+            <dt>{{ label }}</dt>
+            <dd class="{% if a.get(spalte) in (None, '', 0, '0') %}leer{% endif %}">
+              {% set v = a.get(spalte) %}
+              {% if typ == 'jn' %}
+                {% if v in ('Y','y',1,'1',True) %}Ja
+                {% elif v in ('N','n',0,'0',False) %}Nein
+                {% else %}—{% endif %}
+              {% elif v in (None, '') %}—
+              {% else %}{{ v }}{% endif %}
+            </dd>
+          {% endfor %}
+          </dl>
+        </fieldset>
+      {% endfor %}
+      </div>
     </div>
   </div>
 
