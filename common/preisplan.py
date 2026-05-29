@@ -96,7 +96,21 @@ def anlegen(artikel_id: int, art_typ: str, vks: list, gueltig_ab,
             (int(artikel_id), art_typ, vk[0], vk[1], vk[2], vk[3], vk[4],
              gueltig_ab, gueltig_bis or None, notiz[:255],
              (ma_name or 'CAO-XT')[:50]))
-        return int(cur.lastrowid)
+        new_id = int(cur.lastrowid)
+    # Stichtag heute/überfällig → sofort anwenden (live in CAO → Kasse UND
+    # Etikett zeigen das Angebot, nicht erst nach dem Tages-Timer).
+    try:
+        ab = (gueltig_ab if isinstance(gueltig_ab, date)
+              else date.fromisoformat(str(gueltig_ab)[:10]))
+        bis = None
+        if gueltig_bis:
+            bis = (gueltig_bis if isinstance(gueltig_bis, date)
+                   else date.fromisoformat(str(gueltig_bis)[:10]))
+        if ab <= date.today() and (bis is None or bis >= date.today()):
+            anwenden(new_id, ma_name=ma_name)
+    except Exception:  # noqa: BLE001
+        log.exception('Preisplan #%s Auto-Anwenden bei Anlage', new_id)
+    return new_id
 
 
 def aendern(rec_id: int, felder: dict[str, Any], *,
