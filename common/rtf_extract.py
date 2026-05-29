@@ -200,6 +200,8 @@ def rtf_to_text(rtf: str | None) -> str:
         i += 1
 
     text = ''.join(out)
+    # C0-Steuerzeichen (u.a. CAO-NUL-Terminator) entfernen, \n und \t behalten.
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
     # Mehrfache Leerzeilen reduzieren, Rand-Whitespace entfernen.
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)

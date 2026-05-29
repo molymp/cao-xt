@@ -174,7 +174,7 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
       </div>
       {% if a.INFO %}
       <fieldset class="fg" style="margin-top:12px;"><legend>Info</legend>
-        <div class="info-memo">{{ a.INFO|striptags }}</div>
+        <div class="info-memo">{{ a.INFO|rtf }}</div>
       </fieldset>
       {% endif %}
       {% if merkmale %}
