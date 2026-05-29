@@ -1,14 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Adresse #{{ a.REC_ID }} – {{ a.NAME1 or '?' }}{% endblock %}
 
-{# Label/Wert-Paar; leere Werte als „—" #}
+{# Statisches Label/Wert-Paar (Benutzerfelder etc.) #}
 {% macro f(label, value) %}
   <dt>{{ label }}</dt>
   <dd class="{% if value in (None,'',0,'0') %}leer{% endif %}">{{ value if value not in (None,'') else '—' }}</dd>
 {% endmacro %}
-{% macro jn(label, value) %}
+
+{# Anzeige-Text eines Feldwertes (codierte Felder als „Nr – Name") #}
+{% macro anz(col, val, typ, optset) %}
+{%- if typ == 'jn' -%}{{ 'Ja' if (val|string) in ('Y','y','1') else 'Nein' }}
+{%- elif typ == 'select' -%}
+  {%- set name = lookups.get(optset, {}).get(val) if optset else None -%}
+  {%- if val in (None,'',-1,'-1',0,'0') or not name -%}—{%- else -%}{{ val }} – {{ name }}{%- endif -%}
+{%- else -%}{{ val if val not in (None,'') else '—' }}{%- endif -%}
+{% endmacro %}
+
+{# Feld-Zeile: editierbar (Klick) wenn col in editierbar, sonst statisch.
+   typ: text | jn | select   optset: liefart | zahlart | sprache | vertreter #}
+{% macro fe(col, label, typ='text', optset=None) %}
+{%- set val = a[col] -%}
+{%- set edit = col in editierbar -%}
   <dt>{{ label }}</dt>
-  <dd>{% if value in ('Y','y',1,'1',True) %}Ja{% elif value in ('N','n',0,'0',False,None,'') %}Nein{% else %}{{ value }}{% endif %}</dd>
+  <dd class="fld{% if edit %} editbar{% endif %}"
+      {%- if edit %} data-col="{{ col }}" data-typ="{{ typ }}"{% if optset %} data-opts="{{ optset }}"{% endif %} data-raw="{{ '' if val in (None,'') else val }}" tabindex="0" title="Klicken zum Bearbeiten"{% endif %}><span class="fld-anz">{{ anz(col, val, typ, optset) }}</span>{% if edit %}<span class="fld-pen">✎</span>{% endif %}</dd>
 {% endmacro %}
 
 {% block extra_style %}
@@ -24,8 +39,7 @@
 .ad-actions a{padding:6px 12px;border:1px solid var(--rand,#d8d2c0);
   border-radius:var(--radius-klein,6px);text-decoration:none;font-size:.9rem;
   background:var(--creme,#f7f4ec);color:var(--gruen-dunkel,#2e6e1a)}
-.ad-actions a.primary{background:var(--gruen-dunkel,#2e6e1a);color:#fff;
-  border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+.ad-hint{font-size:.8rem;color:var(--text-dim,#5a7a3a);margin:0 2px 10px}
 
 /* ── CSS-Radio-Tabs (kein JS) ── */
 .tabs > input[type=radio]{position:absolute;opacity:0;pointer-events:none}
@@ -38,7 +52,7 @@
 .tabpanel{display:none;background:#fff;border-radius:0 10px 10px 10px;
   box-shadow:var(--schatten);padding:16px}
 /* aktiver Tab + Panel je Radio */
-{% for t in ['allg','erw','preise','liefanschr','asp','dateien','hist'] %}
+{% for t in ['allg','erw','preise','benutzer','liefanschr','asp','dateien','hist'] %}
 #tab-{{t}}:checked ~ .tabbar label[for=tab-{{t}}]{background:#fff;color:var(--gruen-dunkel,#2e6e1a);
   border-color:var(--gruen-dunkel,#2e6e1a);border-bottom:2px solid #fff;margin-bottom:-2px}
 #tab-{{t}}:checked ~ .tabpanel.p-{{t}}{display:block}
@@ -53,15 +67,34 @@
 .fg dt{color:var(--text-dim,#5a7a3a);padding:2px 0;border-bottom:1px dotted var(--creme-dunkel)}
 .fg dd{margin:0;padding:2px 0;border-bottom:1px dotted var(--creme-dunkel);word-break:break-word}
 .fg dd.leer{color:#bbb}
+/* Inline-Edit */
+.fg dd.editbar{cursor:pointer;border-radius:4px;padding-left:4px;margin-left:-4px}
+.fg dd.editbar:hover{background:rgba(46,110,26,.09)}
+.fg dd.editbar:focus{outline:2px solid var(--gruen-dunkel,#2e6e1a);outline-offset:-2px}
+.fg dd .fld-pen{opacity:0;font-size:.72rem;margin-left:6px;color:var(--gruen-dunkel,#2e6e1a)}
+.fg dd.editbar:hover .fld-pen,.fg dd.editbar:focus .fld-pen{opacity:.55}
+.fld-edit{width:100%;padding:2px 4px;font-size:.86rem;
+  border:1px solid var(--gruen-dunkel,#2e6e1a);border-radius:4px;box-sizing:border-box}
+.fg dd.ok-flash{background:rgba(46,110,26,.22)}
 .info-memo{white-space:pre-wrap;background:var(--creme,#f7f4ec);padding:8px 12px;
   border-radius:6px;font-size:.88rem;color:var(--text,#33321b)}
 
+/* Tabellen + Werkzeuge */
+.tbl-tools{display:flex;gap:10px;align-items:center;margin:0 0 8px;flex-wrap:wrap}
+.tbl-search{padding:5px 10px;border:1px solid var(--rand,#d8d2c0);border-radius:6px;
+  font-size:.86rem;min-width:14rem}
+.tbl-count{color:var(--text-dim,#5a7a3a);font-size:.8rem}
 table.dt{width:100%;border-collapse:collapse;font-size:.86rem}
 table.dt th{text-align:left;font-weight:700;color:var(--text-dim);
   border-bottom:1px solid var(--creme-dunkel);padding:6px 8px;font-size:.72rem;
   text-transform:uppercase;letter-spacing:.04em}
 table.dt td{padding:5px 8px;border-bottom:1px solid var(--creme-dunkel);vertical-align:middle}
 table.dt tr:hover td{background:rgba(46,110,26,.04)}
+table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
+table.sortable th[data-nosort]{cursor:default}
+table.sortable th .ind{opacity:.35;font-size:.7rem;margin-left:3px}
+table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
+table.sortable th.sorted .ind{opacity:1}
 .rechts{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .mono{font-family:monospace;font-size:.82rem;color:var(--text-dim)}
 .leer-hint{color:var(--text-dim);font-style:italic;font-size:.9rem;padding:8px 2px}
@@ -76,19 +109,34 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
   color:#fff;font-size:.78rem;font-weight:600}
 .merk .tag.off{background:transparent;border:1px solid var(--rand,#d8d2c0);
   color:var(--text-dim);font-weight:500;opacity:.7}
+/* Belegart-Multiselect */
+.ms{position:relative;font-size:.82rem}
+.ms>summary{list-style:none;cursor:pointer;padding:5px 12px;
+  border:1px solid var(--rand,#d8d2c0);border-radius:6px;background:var(--creme,#f7f4ec)}
+.ms>summary::-webkit-details-marker{display:none}
+.ms-pop{position:absolute;z-index:6;background:#fff;border:1px solid var(--rand,#d8d2c0);
+  border-radius:8px;box-shadow:var(--schatten);padding:8px;margin-top:4px;
+  min-width:15rem;max-height:20rem;overflow:auto}
+.ms-pop label{display:flex;gap:8px;align-items:center;padding:3px 4px;cursor:pointer;white-space:nowrap}
+.ms-pop label:hover{background:var(--creme,#f7f4ec)}
+.ms-act{display:flex;gap:12px;border-bottom:1px solid var(--creme-dunkel);
+  padding-bottom:6px;margin-bottom:4px}
+.ms-act a{font-size:.78rem;color:var(--gruen-dunkel,#2e6e1a);cursor:pointer;text-decoration:underline}
 /* Vorgangshistorie Quelle-Badges */
 .q{display:inline-block;padding:1px 8px;border-radius:10px;background:var(--creme,#f7f4ec);
   color:var(--gruen-dunkel,#2e6e1a);font-size:.72rem;font-weight:700;white-space:nowrap}
-.q.q-1,.q.q-11{background:#e8f5e0;color:#2e7a2e}
-.q.q-2,.q.q-12{background:#e0eaf5;color:#1a4a7a}
-.q.q-3{background:#fef1db;color:#8a5e1a}
-.q.q-6,.q.q-16{background:#f5e0e0;color:#7a1a1a}
-.q.q-7,.q.q-17{background:#f0e0f5;color:#5a1a7a}
+.q.q-23{background:#e8f5e0;color:#2e7a2e}              /* Verkauf Kasse */
+.q.q-3,.q.q-13{background:#e0eaf5;color:#1a4a7a}       /* VK-Rechnung */
+.q.q-5,.q.q-15{background:#f0e0f5;color:#5a1a7a}       /* EK-Rechnung */
+.q.q-4,.q.q-14{background:#f5e0e0;color:#7a1a1a}       /* VK-Gutschrift */
+.q.q-2,.q.q-12{background:#dcf0ef;color:#0f6e66}       /* Lieferschein */
+.q.q-6,.q.q-16{background:#fef1db;color:#8a5e1a}       /* EK-Bestellung */
+.q.q-7,.q.q-17{background:#efe7f5;color:#6a4a8a}       /* Preisanfrage */
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="max-width:92rem;">
+<div style="max-width:92rem;" data-feld-url="{{ url_for('orga_stammdaten.adresse_feld_speichern', addr_id=a.REC_ID) }}">
 
   {# ─── Kopf ─── #}
   <div class="ad-kopf">
@@ -105,14 +153,16 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
     </div>
     <div class="ad-actions">
       <a href="{{ url_for('orga_stammdaten.adressen') }}">← Liste</a>
-      <a class="primary" href="{{ url_for('orga_stammdaten.adresse_form', id=a.REC_ID) }}">✎ Bearbeiten</a>
+      <a class="primary" href="{{ url_for('orga_stammdaten.adresse_form', id=a.REC_ID) }}">✎ Vollformular</a>
     </div>
   </div>
+  <p class="ad-hint">Felder mit ✎ direkt anklicken zum Bearbeiten – Enter speichert, Esc bricht ab.</p>
 
   <div class="tabs">
     <input type="radio" name="adrtab" id="tab-allg" checked>
     <input type="radio" name="adrtab" id="tab-erw">
     <input type="radio" name="adrtab" id="tab-preise">
+    <input type="radio" name="adrtab" id="tab-benutzer">
     <input type="radio" name="adrtab" id="tab-liefanschr">
     <input type="radio" name="adrtab" id="tab-asp">
     <input type="radio" name="adrtab" id="tab-dateien">
@@ -122,6 +172,7 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
       <label for="tab-allg">Allgemein</label>
       <label for="tab-erw">Erweitert</label>
       <label for="tab-preise">Preise</label>
+      <label for="tab-benutzer">Benutzerfelder</label>
       <label for="tab-liefanschr">Lieferanschriften ({{ lieferadressen|length }})</label>
       <label for="tab-asp">Ansprechpartner ({{ ansprechpartner|length }})</label>
       <label for="tab-dateien">Dateien ({{ dateien|length }})</label>
@@ -133,40 +184,43 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
       <div class="felder">
         <fieldset class="fg"><legend>Suchbegriffe</legend><dl>
           {{ f('Suchbegriff', a.MATCHCODE) }}
-          {{ f('Adress-Nr (intern)', a.KUNNUM1) }}
-          {{ f('Ku-Nr. vom Lieferanten', a.KUNNUM2) }}
+          {{ f('Adress-Nr (intern, fix)', a.KUNNUM1) }}
+          {{ fe('KUNNUM2', 'Ku-Nr. vom Lieferanten') }}
           {{ f('Gruppe', gruppe_name or a.KUNDENGRUPPE) }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Anschrift</legend><dl>
-          {{ f('Anrede', a.ANREDE) }}
-          {{ f('Name 1', a.NAME1) }}
-          {{ f('Name 2', a.NAME2) }}
-          {{ f('Name 3', a.NAME3) }}
-          {{ f('z.Hd. / Abteilung', a.ABTEILUNG) }}
-          {{ f('Straße / Hausnr.', (a.STRASSE or '') ~ ' ' ~ (a.HAUSNR or '')) }}
-          {{ f('Adresszusatz', a.ADRESSZUSATZ) }}
-          {{ f('Land / PLZ / Ort', (a.LAND or '') ~ ' ' ~ (a.PLZ or '') ~ ' ' ~ (a.ORT or '')) }}
+          {{ fe('ANREDE', 'Anrede') }}
+          {{ fe('NAME1', 'Name 1') }}
+          {{ fe('NAME2', 'Name 2') }}
+          {{ fe('NAME3', 'Name 3') }}
+          {{ fe('ABTEILUNG', 'z.Hd. / Abteilung') }}
+          {{ fe('STRASSE', 'Straße') }}
+          {{ fe('HAUSNR', 'Haus-Nr') }}
+          {{ fe('ADRESSZUSATZ', 'Adresszusatz') }}
+          {{ fe('PLZ', 'PLZ') }}
+          {{ fe('ORT', 'Ort') }}
+          {{ fe('LAND', 'Land') }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Kommunikation</legend><dl>
-          {{ f('Telefon', a.TELE1) }}
-          {{ f('Telefon 2', a.TELE2) }}
-          {{ f('Telefax', a.FAX) }}
-          {{ f('Mobilfunk', a.FUNK) }}
-          {{ f('E-Mail', a.EMAIL) }}
-          {{ f('E-Mail 2', a.EMAIL2) }}
-          {{ f('Internet', a.INTERNET) }}
-          {{ f('Diverses', a.DIVERSES) }}
+          {{ fe('TELE1', 'Telefon') }}
+          {{ fe('TELE2', 'Telefon 2') }}
+          {{ fe('FAX', 'Telefax') }}
+          {{ fe('FUNK', 'Mobilfunk') }}
+          {{ fe('EMAIL', 'E-Mail') }}
+          {{ fe('EMAIL2', 'E-Mail 2') }}
+          {{ fe('INTERNET', 'Internet') }}
+          {{ fe('DIVERSES', 'Diverses') }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Briefanrede & Daten</legend><dl>
-          {{ f('Briefanrede', a.BRIEFANREDE) }}
+          {{ fe('BRIEFANREDE', 'Briefanrede') }}
           {{ f('Geburtstag', a.KUN_GEBDATUM) }}
           {{ f('Kunde seit', a.KUN_SEIT) }}
-          {{ jn('Shop-Kunde', a.SHOP_KUNDE) }}
+          {{ f('Shop-Kunde', 'Ja' if (a.SHOP_KUNDE|string) in ('Y','1') else 'Nein') }}
         </dl></fieldset>
-        <fieldset class="fg"><legend>Zahlungsbedingungen</legend><dl>
-          {{ f('Preisliste (Kunde)', a.KUN_PRLISTE) }}
-          {{ f('Versandart (Kunde)', a.KUN_LIEFART) }}
-          {{ f('Zahlart (Kunde)', a.KUN_ZAHLART) }}
+        <fieldset class="fg"><legend>Zahlungsbedingungen (Kunde)</legend><dl>
+          {{ fe('KUN_PRLISTE', 'Preisliste', 'jn') }}
+          {{ fe('KUN_LIEFART', 'Versandart', 'select', 'liefart') }}
+          {{ fe('KUN_ZAHLART', 'Zahlart', 'select', 'zahlart') }}
           {{ f('Skonto %', a.NET_SKONTO) }}
           {{ f('Netto-Tage', a.NET_TAGE) }}
           {{ f('Brutto-Tage', a.BRT_TAGE) }}
@@ -191,38 +245,37 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
     <section class="tabpanel p-erw">
       <div class="felder">
         <fieldset class="fg"><legend>Lieferant</legend><dl>
-          {{ f('Versandart', a.LIEF_LIEFART) }}
-          {{ f('Zahlart', a.LIEF_ZAHLART) }}
-          {{ jn('Lief.-Preisliste', a.LIEF_PRLISTE) }}
+          {{ fe('LIEF_LIEFART', 'Versandart', 'select', 'liefart') }}
+          {{ fe('LIEF_ZAHLART', 'Zahlart', 'select', 'zahlart') }}
+          {{ fe('LIEF_PRLISTE', 'Preisliste', 'jn') }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Kunde</legend><dl>
           {{ f('Debitor-Nr', a.DEB_NUM) }}
-          {{ f('Versandart', a.KUN_LIEFART) }}
-          {{ f('Zahlart', a.KUN_ZAHLART) }}
+          {{ fe('KUN_LIEFART', 'Versandart', 'select', 'liefart') }}
+          {{ fe('KUN_ZAHLART', 'Zahlart', 'select', 'zahlart') }}
           {{ f('Kreditlimit', a.KUN_KRDLIMIT) }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Zuweisungen</legend><dl>
-          {{ f('Währung', a.WAEHRUNG) }}
+          {{ fe('WAEHRUNG', 'Währung') }}
           {{ f('Globalrabatt', a.GRABATT) }}
-          {{ f('USt-IdNr', a.UST_NUM or a.UID) }}
-          {{ jn('Brutto-Berechnung', a.BRUTTO_FLAG) }}
-          {{ jn('MwSt-frei', a.MWST_FREI_FLAG) }}
-          {{ f('Sprache', a.SPRACH_ID) }}
-          {{ f('Vertreter', a.VERTRETER_ID) }}
-          {{ jn('Kundenkarte', a.KUNDENKARTE) }}
+          {{ fe('UST_NUM', 'USt-IdNr') }}
+          {{ fe('UID', 'UID') }}
+          {{ fe('BRUTTO_FLAG', 'Brutto-Berechnung', 'jn') }}
+          {{ f('MwSt-frei', 'Ja' if (a.MWST_FREI_FLAG|string) in ('Y','1') else 'Nein') }}
+          {{ fe('SPRACH_ID', 'Sprache', 'select', 'sprache') }}
+          {{ fe('VERTRETER_ID', 'Vertreter', 'select', 'vertreter') }}
+          {{ f('Kundenkarte', 'Ja' if (a.KUNDENKARTE|string) in ('Y','1') else 'Nein') }}
           {{ f('GLN', a.GLN_C) }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Bankverbindung</legend><dl>
-          {{ f('Konto-Inhaber', a.KTO_INHABER) }}
-          {{ f('Konto-Nummer', a.KTO) }}
-          {{ f('BLZ', a.BLZ) }}
-          {{ f('Bank', a.BANK) }}
-          {{ f('IBAN', a.IBAN) }}
-          {{ f('SWIFT/BIC', a.SWIFT) }}
+          {{ fe('KTO_INHABER', 'Konto-Inhaber') }}
+          {{ fe('KTO', 'Konto-Nummer') }}
+          {{ fe('BLZ', 'BLZ') }}
+          {{ fe('BANK', 'Bank') }}
+          {{ fe('IBAN', 'IBAN') }}
+          {{ fe('SWIFT', 'SWIFT/BIC') }}
           {{ f('SEPA-Mandat-Id', a.SEPA_MANDAT_ID) }}
-          {{ f('Mandat erteilt', a.SEPA_MANDAT_ERTEILT) }}
           {{ f('Lastschriftart', a.SEPA_LART) }}
-          {{ f('Lastschrifttyp', a.SEPA_STYP) }}
         </dl></fieldset>
         <fieldset class="fg"><legend>E-Rechnung</legend><dl>
           {{ f('Rechnungstyp', a.E_RECHNUNG) }}
@@ -232,6 +285,36 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
     </section>
 
     {# ═══ PREISE (Sub-Tabs) ═══ #}
+    {% macro preistab(rows) %}
+      {% if rows %}
+      <div class="tbl" data-tbl>
+        <div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+        <table class="dt sortable">
+          <thead><tr><th>Art-Nr</th><th>Kurzname</th><th>Warengruppe</th><th>Best-Nr</th><th>ME</th>
+            <th class="rechts" data-type="num">Artikelpreis</th><th class="rechts" data-type="num">Preis</th>
+            <th class="rechts" data-type="num">Rabatt</th><th>VPE</th>
+            <th data-type="date">Geändert</th><th>von</th></tr></thead>
+          <tbody>
+          {% for p in rows %}
+            <tr>
+              <td class="mono">{{ p.ARTNUM or '' }}</td>
+              <td>{{ p.KURZNAME or '' }}</td>
+              <td data-val="{{ p.WGR_NAME or '' }}">{% if p.WGR_ID %}<span class="mono">{{ p.WGR_ID }}</span> {{ p.WGR_NAME or '' }}{% endif %}</td>
+              <td class="mono">{{ p.BESTNUM or '' }}</td>
+              <td>{{ p.ME_EINHEIT or '' }}</td>
+              <td class="rechts" data-val="{{ p.VK1 if p.VK1 is not none else '' }}">{{ '%.2f €'|format(p.VK1) if p.VK1 is not none else '' }}</td>
+              <td class="rechts" data-val="{{ p.PREIS if p.PREIS is not none else '' }}">{{ '%.2f €'|format(p.PREIS) if p.PREIS is not none else '' }}</td>
+              <td class="rechts" data-val="{{ p.RABATT if p.RABATT is not none else '' }}">{% if p.RABATT %}{{ '%.1f %%'|format(p.RABATT) }}{% endif %}</td>
+              <td>{{ p.VPE or '' }}</td>
+              <td data-val="{{ p.GEAEND.isoformat() if p.GEAEND else '' }}">{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td>
+              <td>{{ p.GEAEND_NAME or '' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="leer-hint">Keine Einträge.</div>{% endif %}
+    {% endmacro %}
     <section class="tabpanel p-preise">
       <div class="preis-wrap">
         <input type="radio" name="preistab" id="pt-kunde" checked>
@@ -242,132 +325,156 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
           <label for="pt-lief">Lieferantenpreise ({{ lieferantenpreise|length }})</label>
           <label for="pt-wgr">Warengruppenrabatte ({{ wgr_rabatte|length }})</label>
         </div>
-        {% macro preistab(rows) %}
-          {% if rows %}
-          <table class="dt">
-            <thead><tr><th>Art-Nr</th><th>Kurzname</th><th>Best-Nr</th><th>ME</th>
-              <th class="rechts">Artikelpreis</th><th class="rechts">Preis</th>
-              <th class="rechts">Rabatt</th><th>VPE</th><th>Geändert</th><th>von</th></tr></thead>
-            <tbody>
-            {% for p in rows %}
-              <tr>
-                <td class="mono">{{ p.ARTNUM or '' }}</td>
-                <td>{{ p.KURZNAME or '' }}</td>
-                <td class="mono">{{ p.BESTNUM or '' }}</td>
-                <td>{{ p.ME_EINHEIT or '' }}</td>
-                <td class="rechts">{{ '%.2f €'|format(p.VK1) if p.VK1 is not none else '' }}</td>
-                <td class="rechts">{{ '%.2f €'|format(p.PREIS) if p.PREIS is not none else '' }}</td>
-                <td class="rechts">{% if p.RABATT %}{{ '%.1f %%'|format(p.RABATT) }}{% endif %}</td>
-                <td>{{ p.VPE or '' }}</td>
-                <td>{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td>
-                <td>{{ p.GEAEND_NAME or '' }}</td>
-              </tr>
-            {% endfor %}
-            </tbody>
-          </table>
-          {% else %}<div class="leer-hint">Keine Einträge.</div>{% endif %}
-        {% endmacro %}
         <div class="preis-panel" id="pp-kunde">{{ preistab(kundenpreise) }}</div>
         <div class="preis-panel" id="pp-lief">{{ preistab(lieferantenpreise) }}</div>
         <div class="preis-panel" id="pp-wgr">
           {% if wgr_rabatte %}
-          <table class="dt">
-            <thead><tr><th>Warengruppe</th><th class="rechts">Rabatt</th>
-              <th>Geändert</th><th>von</th><th>Info</th></tr></thead>
-            <tbody>
-            {% for r in wgr_rabatte %}
-              <tr><td>{{ r.WGR_NAME or r.WGR_ID }}</td>
-                <td class="rechts">{{ '%.2f %%'|format(r.RABATT) if r.RABATT is not none else '' }}</td>
-                <td>{{ r.GEAEND.strftime('%d.%m.%Y') if r.GEAEND else '' }}</td>
-                <td>{{ r.GEAEND_NAME or '' }}</td><td>{{ r.INFO or '' }}</td></tr>
-            {% endfor %}
-            </tbody>
-          </table>
+          <div class="tbl" data-tbl>
+            <div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+            <table class="dt sortable">
+              <thead><tr><th>Warengruppe</th><th class="rechts" data-type="num">Rabatt</th>
+                <th data-type="date">Geändert</th><th>von</th><th>Info</th></tr></thead>
+              <tbody>
+              {% for r in wgr_rabatte %}
+                <tr><td><span class="mono">{{ r.WGR_ID }}</span> {{ r.WGR_NAME or '' }}</td>
+                  <td class="rechts" data-val="{{ r.RABATT if r.RABATT is not none else '' }}">{{ '%.2f %%'|format(r.RABATT) if r.RABATT is not none else '' }}</td>
+                  <td data-val="{{ r.GEAEND.isoformat() if r.GEAEND else '' }}">{{ r.GEAEND.strftime('%d.%m.%Y') if r.GEAEND else '' }}</td>
+                  <td>{{ r.GEAEND_NAME or '' }}</td><td>{{ r.INFO or '' }}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
           {% else %}<div class="leer-hint">Keine Warengruppenrabatte.</div>{% endif %}
         </div>
       </div>
     </section>
 
+    {# ═══ BENUTZERFELDER ═══ #}
+    <section class="tabpanel p-benutzer">
+      {% set uf = [a.USERFELD_01, a.USERFELD_02, a.USERFELD_03, a.USERFELD_04,
+                   a.USERFELD_05, a.USERFELD_06, a.USERFELD_07, a.USERFELD_08,
+                   a.USERFELD_09, a.USERFELD_10] %}
+      {% if uf|select('string')|select|list %}
+      <div class="felder">
+        <fieldset class="fg"><legend>Benutzerfelder</legend><dl>
+          {% for v in uf %}{{ f('Benutzerfeld %d'|format(loop.index), v) }}{% endfor %}
+        </dl></fieldset>
+      </div>
+      {% else %}
+      <div class="leer-hint">Keine Benutzerfelder belegt
+        (frei definierbare CAO-Felder USERFELD_01–10).</div>
+      {% endif %}
+    </section>
+
     {# ═══ LIEFERANSCHRIFTEN ═══ #}
     <section class="tabpanel p-liefanschr">
       {% if lieferadressen %}
-      <table class="dt">
-        <thead><tr><th>Name</th><th>Anschrift</th><th>Telefon</th><th>UID</th></tr></thead>
-        <tbody>
-        {% for l in lieferadressen %}
-          <tr>
-            <td><b>{{ l.NAME1 or '' }}</b>{% if l.NAME2 %}<br><small>{{ l.NAME2 }}</small>{% endif %}</td>
-            <td>{{ l.STRASSEZUSATZ or '' }}{% if l.PLZ or l.ORT %}<br>{{ l.PLZ }} {{ l.ORT }}{% endif %}</td>
-            <td class="mono">{{ l.TELE1 or '' }}</td>
-            <td>{% if l.PRUEFUID==1 %}✓{% elif l.PRUEFUID==2 %}⚠{% elif l.PRUEFUID==3 %}✗{% endif %}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <div class="tbl" data-tbl>
+        <div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+        <table class="dt sortable">
+          <thead><tr><th>Name</th><th>Anschrift</th><th>Telefon</th><th data-nosort>UID</th></tr></thead>
+          <tbody>
+          {% for l in lieferadressen %}
+            <tr>
+              <td><b>{{ l.NAME1 or '' }}</b>{% if l.NAME2 %}<br><small>{{ l.NAME2 }}</small>{% endif %}</td>
+              <td>{{ l.STRASSEZUSATZ or '' }}{% if l.PLZ or l.ORT %}<br>{{ l.PLZ }} {{ l.ORT }}{% endif %}</td>
+              <td class="mono">{{ l.TELE1 or '' }}</td>
+              <td>{% if l.PRUEFUID==1 %}✓{% elif l.PRUEFUID==2 %}⚠{% elif l.PRUEFUID==3 %}✗{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% else %}<div class="leer-hint">Keine Lieferanschriften.</div>{% endif %}
     </section>
 
     {# ═══ ANSPRECHPARTNER ═══ #}
     <section class="tabpanel p-asp">
       {% if ansprechpartner %}
-      <table class="dt">
-        <thead><tr><th>Name</th><th>Funktion</th><th>Kontakt</th></tr></thead>
-        <tbody>
-        {% for p in ansprechpartner %}
-          <tr>
-            <td>{{ p.ANREDE or '' }} <b>{{ p.VORNAME or '' }} {{ p.NAME or '' }}</b></td>
-            <td>{{ p.FUNKTION or '' }}</td>
-            <td class="mono">{% if p.TELE1 %}☎ {{ p.TELE1 }}{% endif %}
-              {% if p.EMAIL %}{% if p.TELE1 %}<br>{% endif %}✉ {{ p.EMAIL }}{% endif %}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <div class="tbl" data-tbl>
+        <div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+        <table class="dt sortable">
+          <thead><tr><th>Name</th><th>Funktion</th><th data-nosort>Kontakt</th></tr></thead>
+          <tbody>
+          {% for p in ansprechpartner %}
+            <tr>
+              <td>{{ p.ANREDE or '' }} <b>{{ p.VORNAME or '' }} {{ p.NAME or '' }}</b></td>
+              <td>{{ p.FUNKTION or '' }}</td>
+              <td class="mono">{% if p.TELE1 %}☎ {{ p.TELE1 }}{% endif %}
+                {% if p.EMAIL %}{% if p.TELE1 %}<br>{% endif %}✉ {{ p.EMAIL }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% else %}<div class="leer-hint">Keine Ansprechpartner.</div>{% endif %}
     </section>
 
     {# ═══ DATEIEN ═══ #}
     <section class="tabpanel p-dateien">
       {% if dateien %}
-      <table class="dt">
-        <thead><tr><th>Datei</th><th>Pfad</th><th>Bemerkung</th></tr></thead>
-        <tbody>
-        {% for d in dateien %}
-          <tr><td><b>{{ d.DATEI or '' }}</b></td><td class="mono">{{ d.PFAD or '' }}</td>
-            <td>{{ d.BEMERKUNG or '' }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <div class="tbl" data-tbl>
+        <div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+        <table class="dt sortable">
+          <thead><tr><th>Datei</th><th>Pfad</th><th>Bemerkung</th></tr></thead>
+          <tbody>
+          {% for d in dateien %}
+            <tr><td><b>{{ d.DATEI or '' }}</b></td><td class="mono">{{ d.PFAD or '' }}</td>
+              <td>{{ d.BEMERKUNG or '' }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% else %}<div class="leer-hint">Keine verknüpften Dateien.</div>{% endif %}
     </section>
 
     {# ═══ HISTORIE ═══ #}
     <section class="tabpanel p-hist">
       {% if historie %}
-      <table class="dt">
-        <thead><tr><th>Quelle</th><th>Beleg-Nr</th><th>Datum</th><th>Lieferanschrift</th>
-          <th class="rechts">Netto</th><th class="rechts">MwSt</th><th class="rechts">Brutto</th>
-          <th>Stadium</th><th>Projekt</th><th>Org-Nr</th><th>W</th></tr></thead>
-        <tbody>
-        {% for h in historie %}
-          <tr>
-            <td><span class="q q-{{ h.QUELLE }}">{{ quelle_label.get(h.QUELLE|string, 'Q'~h.QUELLE) }}</span></td>
-            <td class="mono">{{ h.BELEGNUM }}</td>
-            <td>{{ h.BELEGDATUM.strftime('%d.%m.%Y') if h.BELEGDATUM else '' }}</td>
-            <td style="font-size:.8rem;color:var(--text-dim);max-width:28rem;">
-              {% if h.LIEFANSCHR and h.LIEFANSCHR != '-' %}{{ h.LIEFANSCHR }}
-              {% elif h.KUN_NAME %}<i>{{ h.KUN_NAME }}</i>{% else %}—{% endif %}</td>
-            <td class="rechts">{{ '%.2f'|format(h.NSUMME or 0) }}</td>
-            <td class="rechts">{{ '%.2f'|format(h.MSUMME or 0) }}</td>
-            <td class="rechts">{{ '%.2f'|format(h.BSUMME or 0) }}</td>
-            <td class="mono">{{ h.STADIUM }}</td>
-            <td class="mono">{{ h.PROJEKT or '' }}</td>
-            <td class="mono">{{ h.ORGNUM or '' }}</td>
-            <td>{{ h.WAEHRUNG or 'EUR' }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <div class="tbl" data-tbl>
+        <div class="tbl-tools">
+          <input type="search" class="tbl-search" placeholder="Suchen…">
+          <details class="ms">
+            <summary>Belegart ▾</summary>
+            <div class="ms-pop">
+              <div class="ms-act"><a data-all>Alle</a><a data-none>Keine</a></div>
+              {% for q in historie|map(attribute='QUELLE')|unique|sort %}
+              <label><input type="checkbox" value="{{ q }}" checked>
+                <span class="q q-{{ q }}">{{ quelle_label.get(q|string, 'Q'~q) }}</span></label>
+              {% endfor %}
+            </div>
+          </details>
+          <span class="tbl-count"></span>
+        </div>
+        <table class="dt sortable">
+          <thead><tr><th>Quelle</th><th>Beleg-Nr</th><th data-type="date">Datum</th><th>Lieferanschrift</th>
+            <th class="rechts" data-type="num">Netto</th><th class="rechts" data-type="num">MwSt</th>
+            <th class="rechts" data-type="num">Brutto</th>
+            <th>Stadium</th><th>Projekt</th><th>Org-Nr</th><th>W</th></tr></thead>
+          <tbody>
+          {% for h in historie %}
+            <tr data-quelle="{{ h.QUELLE }}">
+              <td><span class="q q-{{ h.QUELLE }}">{{ quelle_label.get(h.QUELLE|string, 'Q'~h.QUELLE) }}</span></td>
+              <td class="mono">{{ h.BELEGNUM }}</td>
+              <td data-val="{{ h.BELEGDATUM.isoformat() if h.BELEGDATUM else '' }}">{{ h.BELEGDATUM.strftime('%d.%m.%Y') if h.BELEGDATUM else '' }}</td>
+              <td style="font-size:.8rem;color:var(--text-dim);max-width:28rem;">
+                {% if h.LIEFANSCHR and h.LIEFANSCHR != '-' %}{{ h.LIEFANSCHR }}
+                {% elif h.KUN_NAME %}<i>{{ h.KUN_NAME }}</i>{% else %}—{% endif %}</td>
+              <td class="rechts" data-val="{{ h.NSUMME or 0 }}">{{ '%.2f'|format(h.NSUMME or 0) }}</td>
+              <td class="rechts" data-val="{{ h.MSUMME or 0 }}">{{ '%.2f'|format(h.MSUMME or 0) }}</td>
+              <td class="rechts" data-val="{{ h.BSUMME or 0 }}">{{ '%.2f'|format(h.BSUMME or 0) }}</td>
+              <td class="mono" title="Code {{ h.STADIUM }}">
+                {%- if (h.QUELLE|string) in ['1','3','4','5','8','11','13','14','15','18','23'] -%}
+                  {{ stadium_label.get(h.STADIUM, h.STADIUM) }}
+                {%- else -%}{{ h.STADIUM }}{%- endif -%}</td>
+              <td class="mono">{{ h.PROJEKT or '' }}</td>
+              <td class="mono">{{ h.ORGNUM or '' }}</td>
+              <td>{{ h.WAEHRUNG or 'EUR' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% else %}<div class="leer-hint">Keine Vorgänge.</div>{% endif %}
     </section>
   </div>
@@ -383,4 +490,129 @@ table.dt tr:hover td{background:rgba(46,110,26,.04)}
 #pt-lief:checked ~ #pp-lief,
 #pt-wgr:checked ~ #pp-wgr{display:block}
 </style>
+
+<script>
+window.ADR_FELD_URL = {{ url_for('orga_stammdaten.adresse_feld_speichern', addr_id=a.REC_ID)|tojson }};
+window.ADR_OPTS = {{ {'liefart': opt_lists.liefart, 'zahlart': opt_lists.zahlart}|tojson }};
+(function(){
+  'use strict';
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>(
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  /* ── Inline-Edit ── */
+  function readView(dd, anzeige, raw){
+    if(raw!==undefined) dd.dataset.raw = raw;
+    dd.innerHTML = '<span class="fld-anz">'+esc(anzeige)+'</span><span class="fld-pen">✎</span>';
+  }
+  function cancel(dd){ readView(dd, dd.dataset.anz!==undefined ? dd.dataset.anz
+      : (dd.querySelector('.fld-anz')?dd.querySelector('.fld-anz').textContent:'')); delete dd.dataset.anz; }
+  async function commit(dd, col, val){
+    if(dd.dataset.busy) return; dd.dataset.busy = '1';
+    const fd = new FormData(); fd.append('feld', col); fd.append('wert', val);
+    try{
+      const r = await fetch(window.ADR_FELD_URL, {method:'POST', body:fd,
+        headers:{'X-Requested-With':'fetch'}});
+      const d = await r.json();
+      if(d.ok){ readView(dd, d.anzeige, d.wert); dd.classList.add('ok-flash');
+        setTimeout(()=>dd.classList.remove('ok-flash'), 700); delete dd.dataset.anz; }
+      else { alert('Nicht gespeichert: '+(d.fehler||'Fehler')); cancel(dd); }
+    }catch(e){ alert('Fehler beim Speichern: '+e); cancel(dd); }
+    finally{ delete dd.dataset.busy; }
+  }
+  function startEdit(dd){
+    if(dd.querySelector('.fld-edit')) return;
+    const col=dd.dataset.col, typ=dd.dataset.typ, opts=dd.dataset.opts, raw=dd.dataset.raw||'';
+    dd.dataset.anz = dd.querySelector('.fld-anz') ? dd.querySelector('.fld-anz').textContent : '';
+    let ed;
+    if(typ==='select' || typ==='jn'){
+      ed = document.createElement('select');
+      if(typ==='jn'){ ed.innerHTML = '<option value="N">Nein</option><option value="Y">Ja</option>';
+        ed.value = (raw==='Y'?'Y':'N'); }
+      else { let o = '<option value="-1">— (keine)</option>';
+        (window.ADR_OPTS[opts]||[]).forEach(it=>{ o += '<option value="'+it.id+'">'+it.id+' – '+esc(it.name)+'</option>'; });
+        ed.innerHTML = o; ed.value = raw || '-1'; }
+    } else { ed = document.createElement('input'); ed.type='text'; ed.value = raw; }
+    ed.className = 'fld-edit';
+    dd.innerHTML = ''; dd.appendChild(ed); ed.focus();
+    if(ed.select) ed.select();
+    let done = false;
+    const save = ()=>{ if(done) return; done = true; commit(dd, col, ed.value); };
+    ed.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); save(); }
+      else if(e.key==='Escape'){ done = true; cancel(dd); } });
+    ed.addEventListener('blur', ()=>{ setTimeout(()=>{ if(!done && dd.contains(ed)) save(); }, 150); });
+  }
+  document.addEventListener('click', e=>{
+    const dd = e.target.closest('dd.editbar');
+    if(dd && !dd.querySelector('.fld-edit')) startEdit(dd);
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ const dd=document.activeElement;
+      if(dd && dd.classList && dd.classList.contains('editbar') && !dd.querySelector('.fld-edit')){
+        e.preventDefault(); startEdit(dd); } }
+  });
+
+  /* ── Tabellen: Suche + Sortierung + Belegart-Filter ── */
+  function cellVal(row, idx, type){
+    const c = row.cells[idx]; if(!c) return type==='num'?-Infinity:'';
+    const dv = c.dataset.val;
+    if(type==='num'){ let v = (dv!==undefined && dv!=='') ? parseFloat(dv)
+        : parseFloat(c.textContent.replace(/\./g,'').replace(',','.').replace(/[^\d.\-]/g,''));
+      return isNaN(v)?-Infinity:v; }
+    if(type==='date'){ return (dv!==undefined?dv:c.textContent).trim(); }
+    return (dv!==undefined?dv:c.textContent).trim().toLowerCase();
+  }
+  function applyFilter(tbl){
+    const table = tbl.querySelector('table'); if(!table) return;
+    const q = (tbl.querySelector('.tbl-search')?.value||'').trim().toLowerCase();
+    const ms = tbl.querySelector('.ms');
+    let sel = null;
+    if(ms){ sel = new Set(Array.from(ms.querySelectorAll('input:checked')).map(i=>i.value)); }
+    let n = 0;
+    Array.from(table.tBodies[0].rows).forEach(r=>{
+      let show = true;
+      if(q && !r.textContent.toLowerCase().includes(q)) show = false;
+      if(show && sel && r.dataset.quelle!==undefined && !sel.has(r.dataset.quelle)) show = false;
+      r.style.display = show ? '' : 'none';
+      if(show) n++;
+    });
+    const c = tbl.querySelector('.tbl-count');
+    if(c) c.textContent = n + (n===1?' Zeile':' Zeilen');
+  }
+  function initTable(tbl){
+    const table = tbl.querySelector('table'); if(!table) return;
+    const ths = Array.from(table.tHead.rows[0].cells);
+    ths.forEach((th, idx)=>{
+      if(th.hasAttribute('data-nosort')) return;
+      th.insertAdjacentHTML('beforeend', ' <span class="ind">↕</span>');
+      th.addEventListener('click', ()=>{
+        const type = th.dataset.type || 'text';
+        const dir = (table.dataset.sortIdx==idx && table.dataset.sortDir==='1') ? -1 : 1;
+        table.dataset.sortIdx = idx; table.dataset.sortDir = dir>0?'1':'-1';
+        const tb = table.tBodies[0];
+        const rows = Array.from(tb.rows);
+        rows.sort((ra,rb)=>{
+          const x=cellVal(ra,idx,type), y=cellVal(rb,idx,type);
+          if(type==='text') return x.localeCompare(y,'de')*dir;
+          if(x<y) return -1*dir; if(x>y) return 1*dir; return 0;
+        });
+        rows.forEach(r=>tb.appendChild(r));
+        ths.forEach(o=>{ o.classList.remove('sorted'); const i=o.querySelector('.ind'); if(i)i.textContent='↕'; });
+        th.classList.add('sorted'); th.querySelector('.ind').textContent = dir>0?'▲':'▼';
+      });
+    });
+    const search = tbl.querySelector('.tbl-search');
+    if(search) search.addEventListener('input', ()=>applyFilter(tbl));
+    const ms = tbl.querySelector('.ms');
+    if(ms){
+      ms.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change', ()=>applyFilter(tbl)));
+      const all = ms.querySelector('[data-all]'), none = ms.querySelector('[data-none]');
+      if(all) all.addEventListener('click', ()=>{ ms.querySelectorAll('input').forEach(c=>c.checked=true); applyFilter(tbl); });
+      if(none) none.addEventListener('click', ()=>{ ms.querySelectorAll('input').forEach(c=>c.checked=false); applyFilter(tbl); });
+    }
+    applyFilter(tbl);
+  }
+  document.querySelectorAll('.tbl[data-tbl]').forEach(initTable);
+})();
+</script>
 {% endblock %}

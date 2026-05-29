@@ -65,6 +65,36 @@ def _login_check() -> None:
         abort(401)
 
 
+# Codierte Felder → Lookup-Quelle (Klartext + Dropdown-Optionen).
+SELECT_LOOKUP = {
+    'KUN_LIEFART': 'liefart', 'LIEF_LIEFART': 'liefart',
+    'KUN_ZAHLART': 'zahlart', 'LIEF_ZAHLART': 'zahlart',
+}
+# Ja/Nein-Felder (inline als Dropdown).
+JN_COLS = {'KUN_PRLISTE', 'LIEF_PRLISTE', 'BRUTTO_FLAG'}
+
+
+def _lookup_dict(name: str) -> dict:
+    """{id: name} der codierten Stammdaten (klein, daher pro Aufruf ok)."""
+    quelle = {'liefart': adr.lieferarten, 'zahlart': adr.zahlungsarten,
+              'sprache': adr.sprachen, 'vertreter': adr.vertreter}.get(name)
+    if not quelle:
+        return {}
+    return {r['id']: r['name'] for r in quelle()}
+
+
+def _anzeige_wert(col: str, val) -> str:
+    """Klartext-Anzeige eines Feldwerts (codierte Felder aufgelöst)."""
+    if col in JN_COLS:
+        return 'Ja' if str(val) in ('Y', 'y', '1') else 'Nein'
+    if col in SELECT_LOOKUP:
+        if val in (None, '', -1, '-1', 0, '0'):
+            return '—'
+        name = _lookup_dict(SELECT_LOOKUP[col]).get(int(val))
+        return f'{val} – {name}' if name else str(val)
+    return '—' if val in (None, '') else str(val)
+
+
 @bp.get('/adressen')
 def adressen():
     """Adress-Liste — Volltext-Suche + Gruppen-Filter, KEINE Pagination
@@ -105,9 +135,16 @@ def adresse_detail(addr_id: int):
     from common.picker_data import adressgruppen as _gruppen
     grp_name = next((g['name'] for g in _gruppen()
                      if g['id'] == a.get('KUNDENGRUPPE')), None)
+    liefart, zahlart = adr.lieferarten(), adr.zahlungsarten()
+    lookups = {'liefart': {r['id']: r['name'] for r in liefart},
+               'zahlart': {r['id']: r['name'] for r in zahlart},
+               'sprache': _lookup_dict('sprache'),
+               'vertreter': _lookup_dict('vertreter')}
     return render_template(
         'stammdaten_adresse_detail.html',
         a=a, gruppe_name=grp_name,
+        editierbar=set(adr.EDITIERBAR) - {'KUNNUM1'},
+        lookups=lookups, opt_lists={'liefart': liefart, 'zahlart': zahlart},
         merkmale=adr.merkmale_zu_adresse(addr_id),
         lieferadressen=adr.lieferadressen(addr_id),
         ansprechpartner=adr.ansprechpartner(addr_id),
@@ -117,6 +154,7 @@ def adresse_detail(addr_id: int):
         dateien=adr.links_zu_adresse(addr_id),
         historie=adr.vorgangs_historie(addr_id),
         quelle_label=adr.QUELLE_LABEL,
+        stadium_label=adr.STADIUM_LABEL,
     )
 
 
@@ -173,6 +211,32 @@ def adresse_speichern():
         return redirect(url_for('orga_stammdaten.adresse_form',
                                 **({'id': rid} if rid else {})))
     return redirect(url_for('orga_stammdaten.adressen'))
+
+
+@bp.post('/adressen/<int:addr_id>/feld')
+def adresse_feld_speichern(addr_id: int):
+    """Inline-Edit: ein einzelnes Feld speichern (CAO-Log + HMAC + Lock).
+
+    Erwartet ``feld`` + ``wert``. Antwort JSON mit dem (codiert
+    aufgelösten) Anzeige-Wert für die Live-Aktualisierung."""
+    _login_check()
+    col = (request.form.get('feld') or '').strip().upper()
+    wert = (request.form.get('wert') or '').strip()
+    if col not in set(adr.EDITIERBAR) or col == 'KUNNUM1':
+        return jsonify(ok=False, fehler='Feld nicht editierbar'), 400
+    ma = (session.get('login_name') or session.get('mitarbeiter')
+          or 'CAO-XT')
+    try:
+        adr.adresse_aendern(addr_id, {col: wert}, ma_name=ma)
+    except (ValueError, LookupError, RuntimeError) as e:
+        return jsonify(ok=False, fehler=str(e)), 400
+    except Exception as e:  # noqa: BLE001
+        log.exception('Feld inline speichern')
+        return jsonify(ok=False, fehler=str(e)), 500
+    a = adr.adresse_holen(addr_id)
+    neu = a.get(col) if a else wert
+    return jsonify(ok=True, wert='' if neu is None else str(neu),
+                   anzeige=_anzeige_wert(col, neu))
 
 
 @bp.get('/api/plz')

@@ -324,12 +324,14 @@ def sonderpreise(addr_id: int, preis_typ: int = 3) -> list[dict[str, Any]]:
     sql = """SELECT A.MENGE_AKT, A.ARTNUM, A.KURZNAME, A.EK_PREIS,
                     A.VK1, A.VK2, A.VK3, A.VK4, A.VK5, A.PR_EINHEIT,
                     M.BEZEICHNUNG AS ME_EINHEIT,
+                    A.WARENGRUPPE AS WGR_ID, WG.NAME AS WGR_NAME,
                     AP.ARTIKEL_ID, AP.ADRESS_ID, AP.PREIS_TYP,
                     AP.BESTNUM, AP.VPE, AP.PREIS, AP.RABATT,
                     AP.GEAEND, AP.GEAEND_NAME
                FROM ARTIKEL_PREIS AP
                LEFT JOIN ARTIKEL A ON A.REC_ID=AP.ARTIKEL_ID
                LEFT JOIN MENGENEINHEIT M ON A.ME_ID=M.REC_ID
+               LEFT JOIN WARENGRUPPEN WG ON WG.ID=A.WARENGRUPPE
               WHERE AP.ADRESS_ID=%s AND AP.PREIS_TYP=%s
               ORDER BY A.ARTNUM ASC"""
     with get_db() as cur:
@@ -350,6 +352,39 @@ def wgr_rabatte(addr_id: int) -> list[dict[str, Any]]:
         return list(cur.fetchall() or [])
 
 
+def lieferarten() -> list[dict[str, Any]]:
+    """Versandarten (LIEFERARTEN) für Dropdown/Klartext-Auflösung."""
+    with get_db() as cur:
+        cur.execute("SELECT REC_ID AS id, NAME AS name FROM LIEFERARTEN "
+                    "ORDER BY NAME")
+        return list(cur.fetchall() or [])
+
+
+def zahlungsarten() -> list[dict[str, Any]]:
+    """Zahlungsarten (ZAHLUNGSARTEN, nur aktive) für Dropdown/Klartext."""
+    with get_db() as cur:
+        cur.execute("SELECT REC_ID AS id, NAME AS name FROM ZAHLUNGSARTEN "
+                    "WHERE AKTIV_FLAG='Y' ORDER BY NAME")
+        return list(cur.fetchall() or [])
+
+
+def sprachen() -> list[dict[str, Any]]:
+    """Sprachen (SPRACHEN) — nur Klartext-Auflösung (read-only)."""
+    with get_db() as cur:
+        cur.execute("SELECT SPRACH_ID AS id, NAME AS name FROM SPRACHEN "
+                    "ORDER BY SORT")
+        return list(cur.fetchall() or [])
+
+
+def vertreter() -> list[dict[str, Any]]:
+    """Vertreter (VERTRETER) — nur Klartext-Auflösung (read-only)."""
+    with get_db() as cur:
+        cur.execute("SELECT VERTRETER_ID AS id, "
+                    "TRIM(CONCAT_WS(' ', VNAME, NAME)) AS name "
+                    "FROM VERTRETER ORDER BY NAME, VNAME")
+        return list(cur.fetchall() or [])
+
+
 def links_zu_adresse(addr_id: int) -> list[dict[str, Any]]:
     """Verknüpfte Dateien (LINK-Tabelle, MODUL_ID=50 = ADRESSEN)."""
     sql = """SELECT * FROM LINK
@@ -360,18 +395,31 @@ def links_zu_adresse(addr_id: int) -> list[dict[str, Any]]:
         return list(cur.fetchall() or [])
 
 
-# QUELLE-Code Beschreibungen (CAO-Konvention) für die Anzeige.
+# QUELLE-Code → Belegart (autoritative CAO-Tabelle, vgl. Memory
+# „cao-belegarten"). Regeln: QUELLE+10 = „in Bearbeitung"; QUELLE=3 mit
+# QUELLE_SUB=2 = Verkauf Kasse (Code 23) — vorgangs_historie bildet das
+# synthetisch auf '23' ab. 12/16/17 nutzt die Query teils abweichend
+# (EDI-Lieferschein bzw. offen) — kollidiert in den Daten nicht.
 QUELLE_LABEL = {
-    '1':  'Rechnung',
-    '2':  'Lieferschein',
-    '3':  'Gutschrift',
-    '4':  'Storno-Rechnung',
-    '6':  'EK-Bestellung',
-    '7':  'Preisanfrage',
-    '11': 'Storno-Rechnung',
-    '12': 'EDI-Lieferschein',
-    '16': 'EK-Bestellung (offen)',
-    '17': 'Preisanfrage (offen)',
+    '1':  'Angebot',         '11': 'Angebot (in Bearb.)',
+    '2':  'Lieferschein',    '12': 'EDI-Lieferschein',
+    '3':  'VK-Rechnung',     '13': 'VK-Rechnung (in Bearb.)',
+    '4':  'VK-Gutschrift',   '14': 'VK-Gutschrift (in Bearb.)',
+    '5':  'EK-Rechnung',     '15': 'EK-Rechnung (in Bearb.)',
+    '6':  'EK-Bestellung',   '16': 'EK-Bestellung (offen)',
+    '7':  'Preisanfrage',    '17': 'Preisanfrage (offen)',
+    '8':  'Auftrag',         '18': 'Auftrag (in Bearb.)',
+    '23': 'Verkauf Kasse',
+}
+
+# JOURNAL.STADIUM → Klartext (autoritative CAO-Tabelle). Gilt für
+# JOURNAL-Belegarten; bei synthetisierten Lieferschein-Zeilen kodiert die
+# Query 5/9 abweichend (teilw./voll berechnet) → in der UI quellenbewusst.
+STADIUM_LABEL = {
+    0: 'Entwurf', 1: 'Lieferschein gedruckt', 2: 'offen',
+    3: '1× gemahnt', 4: '2× gemahnt', 5: '3× gemahnt', 6: 'INKASSO',
+    7: 'Teilzahlung', 8: 'bezahlt (Skonto)', 9: 'bezahlt',
+    11: 'angewiesen', 127: 'storniert',
 }
 
 
@@ -388,7 +436,8 @@ def vorgangs_historie(addr_id: int) -> list[dict[str, Any]]:
     aid = int(addr_id)
     q_journal = """
         SELECT JOURNAL.REC_ID,
-               CONCAT_WS('', JOURNAL.QUELLE) AS QUELLE,
+               CASE WHEN JOURNAL.QUELLE=3 AND JOURNAL.QUELLE_SUB=2 THEN '23'
+                    ELSE CONCAT_WS('', JOURNAL.QUELLE) END AS QUELLE,
                CASE WHEN JOURNAL.VERSNR>=1 AND JOURNAL.QUELLE IN (1,11)
                     THEN CONCAT_WS('-', JOURNAL.VRENUM, JOURNAL.VERSNR)
                     ELSE JOURNAL.VRENUM END AS BELEGNUM,
