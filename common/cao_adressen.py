@@ -337,6 +337,19 @@ def sonderpreise(addr_id: int, preis_typ: int = 3) -> list[dict[str, Any]]:
         return list(cur.fetchall() or [])
 
 
+def wgr_rabatte(addr_id: int) -> list[dict[str, Any]]:
+    """Warengruppen-Rabatte der Adresse (ADRESSEN_WGR_RABATT)."""
+    sql = """SELECT R.WGR_ID, R.RABATT, R.GEAEND, R.GEAEND_NAME, R.INFO,
+                    W.NAME AS WGR_NAME
+               FROM ADRESSEN_WGR_RABATT R
+               LEFT JOIN WARENGRUPPEN W ON W.ID=R.WGR_ID
+              WHERE R.ADDR_ID=%s
+              ORDER BY W.NAME"""
+    with get_db() as cur:
+        cur.execute(sql, (int(addr_id),))
+        return list(cur.fetchall() or [])
+
+
 def links_zu_adresse(addr_id: int) -> list[dict[str, Any]]:
     """Verknüpfte Dateien (LINK-Tabelle, MODUL_ID=50 = ADRESSEN)."""
     sql = """SELECT * FROM LINK

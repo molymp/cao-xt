@@ -31,8 +31,8 @@ FELDGRUPPEN = [
         ('LAND', 'Land', 'text'),
         ('POSTFACH', 'Postfach', 'text'),
         ('PF_PLZ', 'Postfach-PLZ', 'text'),
-        ('KUNNUM1', 'Kunden-/Lief-Nr 1', 'text'),
-        ('KUNNUM2', 'Kunden-/Lief-Nr 2', 'text')]),
+        ('KUNNUM1', 'Adress-Nr (intern, fix)', 'text'),
+        ('KUNNUM2', 'Kunden-Nr beim Lieferanten', 'text')]),
     ('Kontakt', [
         ('TELE1', 'Telefon 1', 'text'), ('TELE2', 'Telefon 2', 'text'),
         ('FAX', 'Fax', 'text'), ('FUNK', 'Mobil', 'text'),
@@ -102,14 +102,18 @@ def adresse_detail(addr_id: int):
     a = adr.adresse_holen(addr_id)
     if not a:
         abort(404)
+    from common.picker_data import adressgruppen as _gruppen
+    grp_name = next((g['name'] for g in _gruppen()
+                     if g['id'] == a.get('KUNDENGRUPPE')), None)
     return render_template(
         'stammdaten_adresse_detail.html',
-        a=a,
-        gruppen=FELDGRUPPEN,  # gleiche Feldstruktur wie das Edit-Formular
+        a=a, gruppe_name=grp_name,
         merkmale=adr.merkmale_zu_adresse(addr_id),
         lieferadressen=adr.lieferadressen(addr_id),
         ansprechpartner=adr.ansprechpartner(addr_id),
-        sonderpreise=adr.sonderpreise(addr_id, 3),
+        kundenpreise=adr.sonderpreise(addr_id, 5),       # PREIS_TYP 5 = Kunde
+        lieferantenpreise=adr.sonderpreise(addr_id, 3),  # PREIS_TYP 3 = Lief.
+        wgr_rabatte=adr.wgr_rabatte(addr_id),
         dateien=adr.links_zu_adresse(addr_id),
         historie=adr.vorgangs_historie(addr_id),
         quelle_label=adr.QUELLE_LABEL,
@@ -127,8 +131,12 @@ def adresse_form():
         if not a:
             abort(404)
         werte = {k: ('' if v is None else v) for k, v in a.items()}
+    # KUNNUM1 ist die intern vergebene Adress-Nr → beim Ändern fix
+    # (read-only). Beim Neuanlegen darf sie gesetzt werden.
+    readonly_cols = {'KUNNUM1'} if rid else set()
     return render_template('stammdaten_adresse.html',
-                           gruppen=FELDGRUPPEN, werte=werte, rid=rid)
+                           gruppen=FELDGRUPPEN, werte=werte, rid=rid,
+                           readonly_cols=readonly_cols)
 
 
 @bp.post('/adressen/form')
@@ -143,6 +151,8 @@ def adresse_speichern():
               for k in erlaubt if k in request.form}
     try:
         if rid:
+            # Adress-Nr (KUNNUM1) ist beim Ändern fix → nie überschreiben.
+            felder.pop('KUNNUM1', None)
             adr.adresse_aendern(rid, felder, ma_name=ma)
             flash(f'Adresse #{rid} gespeichert.', 'ok')
         else:

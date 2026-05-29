@@ -1,16 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Adresse #{{ a.REC_ID }} – {{ a.NAME1 or '?' }}{% endblock %}
 
+{# Label/Wert-Paar; leere Werte als „—" #}
+{% macro f(label, value) %}
+  <dt>{{ label }}</dt>
+  <dd class="{% if value in (None,'',0,'0') %}leer{% endif %}">{{ value if value not in (None,'') else '—' }}</dd>
+{% endmacro %}
+{% macro jn(label, value) %}
+  <dt>{{ label }}</dt>
+  <dd>{% if value in ('Y','y',1,'1',True) %}Ja{% elif value in ('N','n',0,'0',False,None,'') %}Nein{% else %}{{ value }}{% endif %}</dd>
+{% endmacro %}
+
 {% block extra_style %}
 <style>
 .ad-kopf{display:flex;justify-content:space-between;align-items:flex-start;
-  gap:14px;flex-wrap:wrap;background:#fff;padding:14px 18px;
-  border-radius:var(--radius,10px);box-shadow:var(--schatten);margin:6px 0 14px 0}
-.ad-name{margin:0 0 4px 0;font-size:1.5rem;color:var(--gruen-dunkel,#2e6e1a)}
-.ad-meta{color:var(--text-dim,#5a7a3a);font-size:.9rem;line-height:1.5}
-.ad-meta b{color:var(--text,#33321b)}
+  gap:14px;flex-wrap:wrap;background:#fff;padding:12px 18px;
+  border-radius:var(--radius,10px);box-shadow:var(--schatten);margin:6px 0 12px 0}
+.ad-name{margin:0 0 4px 0;font-size:1.4rem;color:var(--gruen-dunkel,#2e6e1a)}
+.ad-meta{color:var(--text-dim,#5a7a3a);font-size:.88rem;line-height:1.5}
 .ad-knum{font-family:monospace;background:var(--creme,#f7f4ec);padding:2px 7px;
-  border-radius:8px;font-size:.85rem}
+  border-radius:8px;font-size:.82rem;margin-right:4px}
 .ad-actions{display:flex;gap:8px;flex-wrap:wrap}
 .ad-actions a{padding:6px 12px;border:1px solid var(--rand,#d8d2c0);
   border-radius:var(--radius-klein,6px);text-decoration:none;font-size:.9rem;
@@ -18,288 +27,360 @@
 .ad-actions a.primary{background:var(--gruen-dunkel,#2e6e1a);color:#fff;
   border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
 
-.ad-sek{background:#fff;border-radius:var(--radius,10px);
-  box-shadow:var(--schatten);margin:14px 0;overflow:hidden}
-.ad-sek h2{margin:0;padding:10px 16px;background:var(--gruen-dunkel,#2e6e1a);
-  color:var(--creme,#f7f4ec);font-size:.85rem;text-transform:uppercase;
-  letter-spacing:.04em;font-weight:800;display:flex;justify-content:space-between;
-  align-items:center}
-.ad-sek h2 .count{background:rgba(255,255,255,.18);color:#fff;
-  padding:1px 8px;border-radius:10px;font-size:.7rem;font-weight:700}
-.ad-sek .inhalt{padding:10px 16px}
-.ad-sek table{width:100%;border-collapse:collapse;font-size:.88rem}
-.ad-sek table th{text-align:left;font-weight:700;color:var(--text-dim);
-  border-bottom:1px solid var(--creme-dunkel);padding:6px 8px;
-  font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
-.ad-sek table td{padding:6px 8px;border-bottom:1px solid var(--creme-dunkel);
-  vertical-align:middle}
-.ad-sek table tr:last-child td{border-bottom:0}
-.ad-sek table tr:hover td{background:rgba(46,110,26,.04)}
-.ad-empty{color:var(--text-dim);font-style:italic;font-size:.9rem;padding:6px 2px}
-.ad-merk{display:flex;gap:6px;flex-wrap:wrap}
-.ad-merk .tag{padding:2px 10px;border-radius:12px;background:var(--gruen-dunkel,#2e6e1a);
-  color:#fff;font-size:.78rem;font-weight:600}
-.ad-merk .tag.off{background:transparent;border:1px solid var(--rand,#d8d2c0);
-  color:var(--text-dim,#5a7a3a);font-weight:500;opacity:.7}
+/* ── CSS-Radio-Tabs (kein JS) ── */
+.tabs > input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.tabbar{display:flex;flex-wrap:wrap;gap:2px;border-bottom:2px solid var(--gruen-dunkel,#2e6e1a);
+  margin-bottom:0}
+.tabbar label{padding:8px 16px;cursor:pointer;font-size:.86rem;font-weight:600;
+  color:var(--text-dim,#5a7a3a);border:1px solid transparent;border-bottom:0;
+  border-radius:8px 8px 0 0;background:transparent;white-space:nowrap}
+.tabbar label:hover{background:var(--creme,#f7f4ec)}
+.tabpanel{display:none;background:#fff;border-radius:0 10px 10px 10px;
+  box-shadow:var(--schatten);padding:16px}
+/* aktiver Tab + Panel je Radio */
+{% for t in ['allg','erw','preise','liefanschr','asp','dateien','hist'] %}
+#tab-{{t}}:checked ~ .tabbar label[for=tab-{{t}}]{background:#fff;color:var(--gruen-dunkel,#2e6e1a);
+  border-color:var(--gruen-dunkel,#2e6e1a);border-bottom:2px solid #fff;margin-bottom:-2px}
+#tab-{{t}}:checked ~ .tabpanel.p-{{t}}{display:block}
+{% endfor %}
 
-/* Vorgangshistorie-spezifisch */
-.hist-quelle{display:inline-block;padding:1px 8px;border-radius:10px;
-  background:var(--creme,#f7f4ec);color:var(--gruen-dunkel,#2e6e1a);
-  font-size:.72rem;font-weight:700;white-space:nowrap}
-.hist-quelle.q-1,.hist-quelle.q-11{background:#e8f5e0;color:#2e7a2e}
-.hist-quelle.q-2,.hist-quelle.q-12{background:#e0eaf5;color:#1a4a7a}
-.hist-quelle.q-3{background:#fef1db;color:#8a5e1a}
-.hist-quelle.q-6,.hist-quelle.q-16{background:#f5e0e0;color:#7a1a1a}
-.hist-quelle.q-7,.hist-quelle.q-17{background:#f0e0f5;color:#5a1a7a}
-.hist-stadium{font-family:monospace;font-size:.78rem;color:var(--text-dim)}
-.hist-stadium.s-127{color:#b83030;font-weight:700}
-.hist-betrag{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;
-  white-space:nowrap}
-.hist-num{font-family:monospace;font-size:.82rem;color:var(--text-dim)}
-.hist-anschr{font-size:.78rem;color:var(--text-dim);max-width:30rem}
-
-.zwei-spalten{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media (max-width:900px){.zwei-spalten{grid-template-columns:1fr}}
-
-/* Stammdaten-Sektion: Feldgruppen mit Label/Wert-Paaren */
-.ad-felder{display:grid;grid-template-columns:repeat(auto-fit,minmax(22rem,1fr));
-  gap:12px}
-.ad-fg{border:1px solid var(--creme-dunkel);border-radius:var(--radius-klein,6px);
+.felder{display:grid;grid-template-columns:repeat(auto-fit,minmax(20rem,1fr));gap:12px}
+.fg{border:1px solid var(--creme-dunkel);border-radius:var(--radius-klein,6px);
   padding:6px 12px 10px;background:var(--creme,#f7f4ec)}
-.ad-fg legend{padding:0 6px;font-size:.78rem;font-weight:800;
-  color:var(--gruen-dunkel,#2e6e1a);text-transform:uppercase;
-  letter-spacing:.04em}
-.ad-fg dl{display:grid;grid-template-columns:11rem 1fr;gap:2px 10px;
-  margin:0;font-size:.86rem}
-.ad-fg dt{color:var(--text-dim,#5a7a3a);padding:2px 0;
-  border-bottom:1px dotted var(--creme-dunkel)}
-.ad-fg dd{margin:0;padding:2px 0;border-bottom:1px dotted var(--creme-dunkel);
-  word-break:break-word}
-.ad-fg dd.leer{color:#bbb;font-style:italic}
-.ad-fg dl > dt:last-of-type, .ad-fg dl > dd:last-of-type{border-bottom:0}
+.fg legend,.fg h4{margin:0 0 4px;padding:0 4px;font-size:.76rem;font-weight:800;
+  color:var(--gruen-dunkel,#2e6e1a);text-transform:uppercase;letter-spacing:.04em}
+.fg dl{display:grid;grid-template-columns:10rem 1fr;gap:1px 10px;margin:0;font-size:.86rem}
+.fg dt{color:var(--text-dim,#5a7a3a);padding:2px 0;border-bottom:1px dotted var(--creme-dunkel)}
+.fg dd{margin:0;padding:2px 0;border-bottom:1px dotted var(--creme-dunkel);word-break:break-word}
+.fg dd.leer{color:#bbb}
+.info-memo{white-space:pre-wrap;background:var(--creme,#f7f4ec);padding:8px 12px;
+  border-radius:6px;font-size:.88rem;color:var(--text,#33321b)}
+
+table.dt{width:100%;border-collapse:collapse;font-size:.86rem}
+table.dt th{text-align:left;font-weight:700;color:var(--text-dim);
+  border-bottom:1px solid var(--creme-dunkel);padding:6px 8px;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.04em}
+table.dt td{padding:5px 8px;border-bottom:1px solid var(--creme-dunkel);vertical-align:middle}
+table.dt tr:hover td{background:rgba(46,110,26,.04)}
+.rechts{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:monospace;font-size:.82rem;color:var(--text-dim)}
+.leer-hint{color:var(--text-dim);font-style:italic;font-size:.9rem;padding:8px 2px}
+.subtabs{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+.subtabs > input{position:absolute;opacity:0;pointer-events:none}
+.subtabs > label{padding:5px 12px;border:1px solid var(--rand,#d8d2c0);border-radius:16px;
+  cursor:pointer;font-size:.82rem;background:var(--creme,#f7f4ec)}
+.preis-wrap input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.preis-panel{display:none}
+.merk{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.merk .tag{padding:2px 10px;border-radius:12px;background:var(--gruen-dunkel,#2e6e1a);
+  color:#fff;font-size:.78rem;font-weight:600}
+.merk .tag.off{background:transparent;border:1px solid var(--rand,#d8d2c0);
+  color:var(--text-dim);font-weight:500;opacity:.7}
+/* Vorgangshistorie Quelle-Badges */
+.q{display:inline-block;padding:1px 8px;border-radius:10px;background:var(--creme,#f7f4ec);
+  color:var(--gruen-dunkel,#2e6e1a);font-size:.72rem;font-weight:700;white-space:nowrap}
+.q.q-1,.q.q-11{background:#e8f5e0;color:#2e7a2e}
+.q.q-2,.q.q-12{background:#e0eaf5;color:#1a4a7a}
+.q.q-3{background:#fef1db;color:#8a5e1a}
+.q.q-6,.q.q-16{background:#f5e0e0;color:#7a1a1a}
+.q.q-7,.q.q-17{background:#f0e0f5;color:#5a1a7a}
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="max-width:88rem;">
+<div style="max-width:92rem;">
 
-  {# ─── Kopf: Name + Anschrift + Aktionen ─── #}
+  {# ─── Kopf ─── #}
   <div class="ad-kopf">
     <div>
       <h1 class="ad-name">{{ a.NAME1 or '–' }}
-        {% if a.NAME2 %}<small style="color:var(--text-dim);font-weight:400;">
-          {{ a.NAME2 }}</small>{% endif %}
-      </h1>
+        {% if a.NAME2 %}<small style="color:var(--text-dim);font-weight:400;">{{ a.NAME2 }}</small>{% endif %}</h1>
       <div class="ad-meta">
-        {% if a.STRASSE %}{{ a.STRASSE }}
-          {% if a.HAUSNR %} {{ a.HAUSNR }}{% endif %}<br>{% endif %}
-        {% if a.PLZ or a.ORT %}{{ a.PLZ }} {{ a.ORT }}
-          {% if a.LAND %}({{ a.LAND }}){% endif %}<br>{% endif %}
-        {% if a.TELE1 %}☎ {{ a.TELE1 }}{% if a.EMAIL %} · {% endif %}{% endif %}
-        {% if a.EMAIL %}✉ <a href="mailto:{{ a.EMAIL }}">{{ a.EMAIL }}</a>{% endif %}
-        {% if a.UST_NUM or a.UID %}<br>USt-IdNr: <b>{{ a.UST_NUM or a.UID }}</b>{% endif %}
-        <br>
+        {% if a.STRASSE %}{{ a.STRASSE }} {{ a.HAUSNR or '' }}, {% endif %}
+        {{ a.PLZ or '' }} {{ a.ORT or '' }}{% if a.LAND %} ({{ a.LAND }}){% endif %}<br>
         <span class="ad-knum">#{{ a.REC_ID }}</span>
-        {% if a.KUNNUM1 %}<span class="ad-knum">Kund-Nr {{ a.KUNNUM1 }}</span>{% endif %}
-        {% if a.KUNNUM2 %}<span class="ad-knum">Lief-Nr {{ a.KUNNUM2 }}</span>{% endif %}
-        {% if a.GRUPPE %}<span class="ad-knum">Gruppe {{ a.GRUPPE }}</span>{% endif %}
+        {% if a.KUNNUM1 %}<span class="ad-knum">Adress-Nr {{ a.KUNNUM1 }}</span>{% endif %}
+        {% if gruppe_name %}<span class="ad-knum">{{ gruppe_name }}</span>{% endif %}
       </div>
     </div>
     <div class="ad-actions">
-      <a href="{{ url_for('orga_stammdaten.adressen') }}">← zur Liste</a>
-      <a class="primary"
-         href="{{ url_for('orga_stammdaten.adresse_form', id=a.REC_ID) }}">✎ Bearbeiten</a>
+      <a href="{{ url_for('orga_stammdaten.adressen') }}">← Liste</a>
+      <a class="primary" href="{{ url_for('orga_stammdaten.adresse_form', id=a.REC_ID) }}">✎ Bearbeiten</a>
     </div>
   </div>
 
-  {# ─── Stammdaten: ALLE editierbaren Felder (gleicher Aufbau wie das
-       Edit-Formular FELDGRUPPEN, hier als read-only Übersicht). ─── #}
-  <div class="ad-sek">
-    <h2>📇 Stammdaten</h2>
-    <div class="inhalt">
-      <div class="ad-felder">
-      {% for gruppen_titel, felder in gruppen %}
-        <fieldset class="ad-fg">
-          <legend>{{ gruppen_titel }}</legend>
-          <dl>
-          {% for spalte, label, typ in felder %}
-            <dt>{{ label }}</dt>
-            <dd class="{% if a.get(spalte) in (None, '', 0, '0') %}leer{% endif %}">
-              {% set v = a.get(spalte) %}
-              {% if typ == 'jn' %}
-                {% if v in ('Y','y',1,'1',True) %}Ja
-                {% elif v in ('N','n',0,'0',False) %}Nein
-                {% else %}—{% endif %}
-              {% elif v in (None, '') %}—
-              {% else %}{{ v }}{% endif %}
-            </dd>
-          {% endfor %}
-          </dl>
-        </fieldset>
-      {% endfor %}
+  <div class="tabs">
+    <input type="radio" name="adrtab" id="tab-allg" checked>
+    <input type="radio" name="adrtab" id="tab-erw">
+    <input type="radio" name="adrtab" id="tab-preise">
+    <input type="radio" name="adrtab" id="tab-liefanschr">
+    <input type="radio" name="adrtab" id="tab-asp">
+    <input type="radio" name="adrtab" id="tab-dateien">
+    <input type="radio" name="adrtab" id="tab-hist">
+
+    <nav class="tabbar">
+      <label for="tab-allg">Allgemein</label>
+      <label for="tab-erw">Erweitert</label>
+      <label for="tab-preise">Preise</label>
+      <label for="tab-liefanschr">Lieferanschriften ({{ lieferadressen|length }})</label>
+      <label for="tab-asp">Ansprechpartner ({{ ansprechpartner|length }})</label>
+      <label for="tab-dateien">Dateien ({{ dateien|length }})</label>
+      <label for="tab-hist">Historie ({{ historie|length }})</label>
+    </nav>
+
+    {# ═══ ALLGEMEIN ═══ #}
+    <section class="tabpanel p-allg">
+      <div class="felder">
+        <fieldset class="fg"><legend>Suchbegriffe</legend><dl>
+          {{ f('Suchbegriff', a.MATCHCODE) }}
+          {{ f('Adress-Nr (intern)', a.KUNNUM1) }}
+          {{ f('Ku-Nr. vom Lieferanten', a.KUNNUM2) }}
+          {{ f('Gruppe', gruppe_name or a.KUNDENGRUPPE) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Anschrift</legend><dl>
+          {{ f('Anrede', a.ANREDE) }}
+          {{ f('Name 1', a.NAME1) }}
+          {{ f('Name 2', a.NAME2) }}
+          {{ f('Name 3', a.NAME3) }}
+          {{ f('z.Hd. / Abteilung', a.ABTEILUNG) }}
+          {{ f('Straße / Hausnr.', (a.STRASSE or '') ~ ' ' ~ (a.HAUSNR or '')) }}
+          {{ f('Adresszusatz', a.ADRESSZUSATZ) }}
+          {{ f('Land / PLZ / Ort', (a.LAND or '') ~ ' ' ~ (a.PLZ or '') ~ ' ' ~ (a.ORT or '')) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Kommunikation</legend><dl>
+          {{ f('Telefon', a.TELE1) }}
+          {{ f('Telefon 2', a.TELE2) }}
+          {{ f('Telefax', a.FAX) }}
+          {{ f('Mobilfunk', a.FUNK) }}
+          {{ f('E-Mail', a.EMAIL) }}
+          {{ f('E-Mail 2', a.EMAIL2) }}
+          {{ f('Internet', a.INTERNET) }}
+          {{ f('Diverses', a.DIVERSES) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Briefanrede & Daten</legend><dl>
+          {{ f('Briefanrede', a.BRIEFANREDE) }}
+          {{ f('Geburtstag', a.KUN_GEBDATUM) }}
+          {{ f('Kunde seit', a.KUN_SEIT) }}
+          {{ jn('Shop-Kunde', a.SHOP_KUNDE) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Zahlungsbedingungen</legend><dl>
+          {{ f('Preisliste (Kunde)', a.KUN_PRLISTE) }}
+          {{ f('Versandart (Kunde)', a.KUN_LIEFART) }}
+          {{ f('Zahlart (Kunde)', a.KUN_ZAHLART) }}
+          {{ f('Skonto %', a.NET_SKONTO) }}
+          {{ f('Netto-Tage', a.NET_TAGE) }}
+          {{ f('Brutto-Tage', a.BRT_TAGE) }}
+        </dl></fieldset>
       </div>
-    </div>
-  </div>
+      {% if a.INFO %}
+      <fieldset class="fg" style="margin-top:12px;"><legend>Info</legend>
+        <div class="info-memo">{{ a.INFO|striptags }}</div>
+      </fieldset>
+      {% endif %}
+      {% if merkmale %}
+      <fieldset class="fg" style="margin-top:12px;"><legend>Merkmale
+        ({{ merkmale|selectattr('FLAG')|list|length }}/{{ merkmale|length }})</legend>
+        <div class="merk">
+          {% for m in merkmale %}<span class="tag {% if not m.FLAG %}off{% endif %}">{{ m.NAME }}</span>{% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+    </section>
 
-  {# ─── Merkmale (Tags) ─── #}
-  {% if merkmale %}
-  <div class="ad-sek">
-    <h2>🏷 Merkmale
-      <span class="count">{{ merkmale|selectattr('FLAG')|list|length }}
-        / {{ merkmale|length }}</span></h2>
-    <div class="inhalt">
-      <div class="ad-merk">
-        {% for m in merkmale %}
-          <span class="tag {% if not m.FLAG %}off{% endif %}">{{ m.NAME }}</span>
-        {% endfor %}
+    {# ═══ ERWEITERT ═══ #}
+    <section class="tabpanel p-erw">
+      <div class="felder">
+        <fieldset class="fg"><legend>Lieferant</legend><dl>
+          {{ f('Versandart', a.LIEF_LIEFART) }}
+          {{ f('Zahlart', a.LIEF_ZAHLART) }}
+          {{ jn('Lief.-Preisliste', a.LIEF_PRLISTE) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Kunde</legend><dl>
+          {{ f('Debitor-Nr', a.DEB_NUM) }}
+          {{ f('Versandart', a.KUN_LIEFART) }}
+          {{ f('Zahlart', a.KUN_ZAHLART) }}
+          {{ f('Kreditlimit', a.KUN_KRDLIMIT) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Zuweisungen</legend><dl>
+          {{ f('Währung', a.WAEHRUNG) }}
+          {{ f('Globalrabatt', a.GRABATT) }}
+          {{ f('USt-IdNr', a.UST_NUM or a.UID) }}
+          {{ jn('Brutto-Berechnung', a.BRUTTO_FLAG) }}
+          {{ jn('MwSt-frei', a.MWST_FREI_FLAG) }}
+          {{ f('Sprache', a.SPRACH_ID) }}
+          {{ f('Vertreter', a.VERTRETER_ID) }}
+          {{ jn('Kundenkarte', a.KUNDENKARTE) }}
+          {{ f('GLN', a.GLN_C) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Bankverbindung</legend><dl>
+          {{ f('Konto-Inhaber', a.KTO_INHABER) }}
+          {{ f('Konto-Nummer', a.KTO) }}
+          {{ f('BLZ', a.BLZ) }}
+          {{ f('Bank', a.BANK) }}
+          {{ f('IBAN', a.IBAN) }}
+          {{ f('SWIFT/BIC', a.SWIFT) }}
+          {{ f('SEPA-Mandat-Id', a.SEPA_MANDAT_ID) }}
+          {{ f('Mandat erteilt', a.SEPA_MANDAT_ERTEILT) }}
+          {{ f('Lastschriftart', a.SEPA_LART) }}
+          {{ f('Lastschrifttyp', a.SEPA_STYP) }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>E-Rechnung</legend><dl>
+          {{ f('Rechnungstyp', a.E_RECHNUNG) }}
+          {{ f('Leitweg-ID', a.LEITWEG_ID) }}
+        </dl></fieldset>
       </div>
-    </div>
-  </div>
-  {% endif %}
+    </section>
 
-  {# ─── Vorgangshistorie (Hauptfeature) ─── #}
-  <div class="ad-sek">
-    <h2>📋 Vorgangshistorie
-      <span class="count">{{ historie|length }}</span></h2>
-    <div class="inhalt">
-    {% if historie %}
-      <table>
-        <thead>
+    {# ═══ PREISE (Sub-Tabs) ═══ #}
+    <section class="tabpanel p-preise">
+      <div class="preis-wrap">
+        <input type="radio" name="preistab" id="pt-kunde" checked>
+        <input type="radio" name="preistab" id="pt-lief">
+        <input type="radio" name="preistab" id="pt-wgr">
+        <div class="subtabs">
+          <label for="pt-kunde">Kundenpreise ({{ kundenpreise|length }})</label>
+          <label for="pt-lief">Lieferantenpreise ({{ lieferantenpreise|length }})</label>
+          <label for="pt-wgr">Warengruppenrabatte ({{ wgr_rabatte|length }})</label>
+        </div>
+        {% macro preistab(rows) %}
+          {% if rows %}
+          <table class="dt">
+            <thead><tr><th>Art-Nr</th><th>Kurzname</th><th>Best-Nr</th><th>ME</th>
+              <th class="rechts">Artikelpreis</th><th class="rechts">Preis</th>
+              <th class="rechts">Rabatt</th><th>VPE</th><th>Geändert</th><th>von</th></tr></thead>
+            <tbody>
+            {% for p in rows %}
+              <tr>
+                <td class="mono">{{ p.ARTNUM or '' }}</td>
+                <td>{{ p.KURZNAME or '' }}</td>
+                <td class="mono">{{ p.BESTNUM or '' }}</td>
+                <td>{{ p.ME_EINHEIT or '' }}</td>
+                <td class="rechts">{{ '%.2f €'|format(p.VK1) if p.VK1 is not none else '' }}</td>
+                <td class="rechts">{{ '%.2f €'|format(p.PREIS) if p.PREIS is not none else '' }}</td>
+                <td class="rechts">{% if p.RABATT %}{{ '%.1f %%'|format(p.RABATT) }}{% endif %}</td>
+                <td>{{ p.VPE or '' }}</td>
+                <td>{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td>
+                <td>{{ p.GEAEND_NAME or '' }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% else %}<div class="leer-hint">Keine Einträge.</div>{% endif %}
+        {% endmacro %}
+        <div class="preis-panel" id="pp-kunde">{{ preistab(kundenpreise) }}</div>
+        <div class="preis-panel" id="pp-lief">{{ preistab(lieferantenpreise) }}</div>
+        <div class="preis-panel" id="pp-wgr">
+          {% if wgr_rabatte %}
+          <table class="dt">
+            <thead><tr><th>Warengruppe</th><th class="rechts">Rabatt</th>
+              <th>Geändert</th><th>von</th><th>Info</th></tr></thead>
+            <tbody>
+            {% for r in wgr_rabatte %}
+              <tr><td>{{ r.WGR_NAME or r.WGR_ID }}</td>
+                <td class="rechts">{{ '%.2f %%'|format(r.RABATT) if r.RABATT is not none else '' }}</td>
+                <td>{{ r.GEAEND.strftime('%d.%m.%Y') if r.GEAEND else '' }}</td>
+                <td>{{ r.GEAEND_NAME or '' }}</td><td>{{ r.INFO or '' }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% else %}<div class="leer-hint">Keine Warengruppenrabatte.</div>{% endif %}
+        </div>
+      </div>
+    </section>
+
+    {# ═══ LIEFERANSCHRIFTEN ═══ #}
+    <section class="tabpanel p-liefanschr">
+      {% if lieferadressen %}
+      <table class="dt">
+        <thead><tr><th>Name</th><th>Anschrift</th><th>Telefon</th><th>UID</th></tr></thead>
+        <tbody>
+        {% for l in lieferadressen %}
           <tr>
-            <th>Quelle</th><th>Beleg-Nr</th><th>Datum</th>
-            <th>Lieferanschrift</th>
-            <th style="text-align:right;">Netto</th>
-            <th style="text-align:right;">MwSt</th>
-            <th style="text-align:right;">Brutto</th>
-            <th>Stadium</th><th>Projekt</th><th>Org-Nr</th><th>W</th>
+            <td><b>{{ l.NAME1 or '' }}</b>{% if l.NAME2 %}<br><small>{{ l.NAME2 }}</small>{% endif %}</td>
+            <td>{{ l.STRASSEZUSATZ or '' }}{% if l.PLZ or l.ORT %}<br>{{ l.PLZ }} {{ l.ORT }}{% endif %}</td>
+            <td class="mono">{{ l.TELE1 or '' }}</td>
+            <td>{% if l.PRUEFUID==1 %}✓{% elif l.PRUEFUID==2 %}⚠{% elif l.PRUEFUID==3 %}✗{% endif %}</td>
           </tr>
-        </thead>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="leer-hint">Keine Lieferanschriften.</div>{% endif %}
+    </section>
+
+    {# ═══ ANSPRECHPARTNER ═══ #}
+    <section class="tabpanel p-asp">
+      {% if ansprechpartner %}
+      <table class="dt">
+        <thead><tr><th>Name</th><th>Funktion</th><th>Kontakt</th></tr></thead>
+        <tbody>
+        {% for p in ansprechpartner %}
+          <tr>
+            <td>{{ p.ANREDE or '' }} <b>{{ p.VORNAME or '' }} {{ p.NAME or '' }}</b></td>
+            <td>{{ p.FUNKTION or '' }}</td>
+            <td class="mono">{% if p.TELE1 %}☎ {{ p.TELE1 }}{% endif %}
+              {% if p.EMAIL %}{% if p.TELE1 %}<br>{% endif %}✉ {{ p.EMAIL }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="leer-hint">Keine Ansprechpartner.</div>{% endif %}
+    </section>
+
+    {# ═══ DATEIEN ═══ #}
+    <section class="tabpanel p-dateien">
+      {% if dateien %}
+      <table class="dt">
+        <thead><tr><th>Datei</th><th>Pfad</th><th>Bemerkung</th></tr></thead>
+        <tbody>
+        {% for d in dateien %}
+          <tr><td><b>{{ d.DATEI or '' }}</b></td><td class="mono">{{ d.PFAD or '' }}</td>
+            <td>{{ d.BEMERKUNG or '' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="leer-hint">Keine verknüpften Dateien.</div>{% endif %}
+    </section>
+
+    {# ═══ HISTORIE ═══ #}
+    <section class="tabpanel p-hist">
+      {% if historie %}
+      <table class="dt">
+        <thead><tr><th>Quelle</th><th>Beleg-Nr</th><th>Datum</th><th>Lieferanschrift</th>
+          <th class="rechts">Netto</th><th class="rechts">MwSt</th><th class="rechts">Brutto</th>
+          <th>Stadium</th><th>Projekt</th><th>Org-Nr</th><th>W</th></tr></thead>
         <tbody>
         {% for h in historie %}
           <tr>
-            <td><span class="hist-quelle q-{{ h.QUELLE }}">{{ quelle_label.get(h.QUELLE|string, 'Q' ~ h.QUELLE) }}</span></td>
-            <td class="hist-num">{{ h.BELEGNUM }}</td>
+            <td><span class="q q-{{ h.QUELLE }}">{{ quelle_label.get(h.QUELLE|string, 'Q'~h.QUELLE) }}</span></td>
+            <td class="mono">{{ h.BELEGNUM }}</td>
             <td>{{ h.BELEGDATUM.strftime('%d.%m.%Y') if h.BELEGDATUM else '' }}</td>
-            <td class="hist-anschr">
-              {% set anschr = h.LIEFANSCHR %}
-              {% if anschr and anschr != '-' %}{{ anschr }}
-              {% elif h.KUN_NAME %}<i>{{ h.KUN_NAME }}</i>
-              {% else %}—{% endif %}
-            </td>
-            <td class="hist-betrag">{{ '%.2f'|format(h.NSUMME or 0) }}</td>
-            <td class="hist-betrag">{{ '%.2f'|format(h.MSUMME or 0) }}</td>
-            <td class="hist-betrag">{{ '%.2f'|format(h.BSUMME or 0) }}</td>
-            <td><span class="hist-stadium s-{{ h.STADIUM }}">{{ h.STADIUM }}</span></td>
-            <td class="hist-num">{{ h.PROJEKT or '' }}</td>
-            <td class="hist-num">{{ h.ORGNUM or '' }}</td>
+            <td style="font-size:.8rem;color:var(--text-dim);max-width:28rem;">
+              {% if h.LIEFANSCHR and h.LIEFANSCHR != '-' %}{{ h.LIEFANSCHR }}
+              {% elif h.KUN_NAME %}<i>{{ h.KUN_NAME }}</i>{% else %}—{% endif %}</td>
+            <td class="rechts">{{ '%.2f'|format(h.NSUMME or 0) }}</td>
+            <td class="rechts">{{ '%.2f'|format(h.MSUMME or 0) }}</td>
+            <td class="rechts">{{ '%.2f'|format(h.BSUMME or 0) }}</td>
+            <td class="mono">{{ h.STADIUM }}</td>
+            <td class="mono">{{ h.PROJEKT or '' }}</td>
+            <td class="mono">{{ h.ORGNUM or '' }}</td>
             <td>{{ h.WAEHRUNG or 'EUR' }}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
-    {% else %}
-      <div class="ad-empty">Keine Vorgänge zu dieser Adresse.</div>
-    {% endif %}
-    </div>
+      {% else %}<div class="leer-hint">Keine Vorgänge.</div>{% endif %}
+    </section>
   </div>
-
-  <div class="zwei-spalten">
-    {# ─── Lieferadressen ─── #}
-    <div class="ad-sek">
-      <h2>📦 Lieferadressen <span class="count">{{ lieferadressen|length }}</span></h2>
-      <div class="inhalt">
-      {% if lieferadressen %}
-        <table>
-          <thead><tr><th>Name</th><th>Anschrift</th><th>Telefon</th><th>UID</th></tr></thead>
-          <tbody>
-          {% for l in lieferadressen %}
-            <tr>
-              <td><b>{{ l.NAME1 or '' }}</b>{% if l.NAME2 %}<br><small>{{ l.NAME2 }}</small>{% endif %}</td>
-              <td>{{ l.STRASSEZUSATZ or '' }}{% if l.PLZ or l.ORT %}<br>{{ l.PLZ }} {{ l.ORT }}{% endif %}</td>
-              <td class="hist-num">{{ l.TELE1 or '' }}</td>
-              <td>{% if l.PRUEFUID == 1 %}✓
-                  {% elif l.PRUEFUID == 2 %}⚠
-                  {% elif l.PRUEFUID == 3 %}✗
-                  {% endif %}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% else %}<div class="ad-empty">Keine Lieferadressen hinterlegt.</div>{% endif %}
-      </div>
-    </div>
-
-    {# ─── Ansprechpartner ─── #}
-    <div class="ad-sek">
-      <h2>👤 Ansprechpartner <span class="count">{{ ansprechpartner|length }}</span></h2>
-      <div class="inhalt">
-      {% if ansprechpartner %}
-        <table>
-          <thead><tr><th>Name</th><th>Funktion</th><th>Kontakt</th></tr></thead>
-          <tbody>
-          {% for p in ansprechpartner %}
-            <tr>
-              <td>{{ p.ANREDE or '' }} <b>{{ p.VORNAME or '' }} {{ p.NAME or '' }}</b></td>
-              <td>{{ p.FUNKTION or '' }}</td>
-              <td class="hist-num">
-                {% if p.TELE1 %}☎ {{ p.TELE1 }}{% endif %}
-                {% if p.EMAIL %}{% if p.TELE1 %}<br>{% endif %}✉ {{ p.EMAIL }}{% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% else %}<div class="ad-empty">Keine Ansprechpartner hinterlegt.</div>{% endif %}
-      </div>
-    </div>
-  </div>
-
-  <div class="zwei-spalten">
-    {# ─── Sonderpreise ─── #}
-    <div class="ad-sek">
-      <h2>💰 Sonderpreise <span class="count">{{ sonderpreise|length }}</span></h2>
-      <div class="inhalt">
-      {% if sonderpreise %}
-        <table>
-          <thead><tr><th>Art-Nr</th><th>Kurzname</th><th style="text-align:right;">Preis</th>
-            <th style="text-align:right;">Rabatt</th><th>BestNr</th></tr></thead>
-          <tbody>
-          {% for p in sonderpreise %}
-            <tr>
-              <td class="hist-num">{{ p.ARTNUM or '' }}</td>
-              <td>{{ p.KURZNAME or '' }}</td>
-              <td class="hist-betrag">{{ '%.2f'|format(p.PREIS or 0) }}</td>
-              <td class="hist-betrag">{% if p.RABATT %}{{ '%.1f'|format(p.RABATT) }} %{% endif %}</td>
-              <td class="hist-num">{{ p.BESTNUM or '' }}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% else %}<div class="ad-empty">Keine Sonderpreise (PREIS_TYP=3) hinterlegt.</div>{% endif %}
-      </div>
-    </div>
-
-    {# ─── Verknüpfte Dateien (LINK) ─── #}
-    <div class="ad-sek">
-      <h2>📎 Verknüpfte Dateien <span class="count">{{ dateien|length }}</span></h2>
-      <div class="inhalt">
-      {% if dateien %}
-        <table>
-          <thead><tr><th>Datei</th><th>Pfad</th><th>Bemerkung</th></tr></thead>
-          <tbody>
-          {% for d in dateien %}
-            <tr>
-              <td><b>{{ d.DATEI or '' }}</b></td>
-              <td class="hist-num">{{ d.PFAD or '' }}</td>
-              <td>{{ d.BEMERKUNG or '' }}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% else %}<div class="ad-empty">Keine verknüpften Dateien (LINK MODUL_ID=50).</div>{% endif %}
-      </div>
-    </div>
-  </div>
-
 </div>
+
+<style>
+/* Sub-Tabs der Preise: aktives Panel je Radio (am Ende, da nach Markup) */
+#pt-kunde:checked ~ .subtabs label[for=pt-kunde],
+#pt-lief:checked ~ .subtabs label[for=pt-lief],
+#pt-wgr:checked ~ .subtabs label[for=pt-wgr]{
+  background:var(--gruen-dunkel,#2e6e1a);color:#fff;border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+#pt-kunde:checked ~ #pp-kunde,
+#pt-lief:checked ~ #pp-lief,
+#pt-wgr:checked ~ #pp-wgr{display:block}
+</style>
 {% endblock %}

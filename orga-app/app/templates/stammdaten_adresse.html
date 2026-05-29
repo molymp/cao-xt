@@ -41,8 +41,12 @@
     <h3>{{ gruppe }}</h3>
     <div class="adr-felder">
       {% for col, label, typ in felder %}
-      <label>{{ label }}
-        {% if typ == 'jn' %}
+      {% set ro = (readonly_cols is defined) and (col in readonly_cols) %}
+      <label>{{ label }}{% if ro %} 🔒{% endif %}
+        {% if ro %}
+          <input type="text" value="{{ werte.get(col, '') }}" readonly
+                 style="background:var(--creme,#f7f4ec);color:var(--text-dim,#5a7a3a);">
+        {% elif typ == 'jn' %}
           <select name="{{ col }}">
             {% set v = (werte.get(col) or 'N')|string %}
             <option value="N" {% if v != 'Y' %}selected{% endif %}>Nein</option>
