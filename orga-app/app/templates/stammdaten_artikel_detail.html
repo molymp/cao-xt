@@ -266,11 +266,20 @@ table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
 
     {# ═══ PREISE (read-only, Pflege in Preispflege) ═══ #}
     <section class="tabpanel p-preise">
-      <div class="std-preise">
-        <div class="pk"><b>{{ '%.2f €'|format(a.EK_PREIS or 0) }}</b><span>EK-Preis</span></div>
-        {% for n in [1,2,3,4,5] %}
-        <div class="pk"><b>{{ '%.2f €'|format(a['VK'~n~'B'] or 0) }}</b><span>VK{{ n }} brutto</span></div>
-        {% endfor %}
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+        <div class="std-preise" style="flex:1;min-width:18rem;">
+          <div class="pk"><b>{{ '%.2f €'|format(a.EK_PREIS or 0) }}</b><span>EK-Preis</span></div>
+          {% for n in [1,2,3,4,5] %}
+          <div class="pk"><b>{{ '%.2f €'|format(a['VK'~n~'B'] or 0) }}</b><span>VK{{ n }} brutto</span></div>
+          {% endfor %}
+        </div>
+        <fieldset class="fg" style="margin:0;"><legend>Etikett-Vorschau</legend>
+          <img src="{{ url_for('orga_stammdaten.artikel_etikett', rec_id=a.REC_ID) }}"
+               alt="Etikett" style="display:block;width:250px;max-width:100%;border:1px solid var(--creme-dunkel);border-radius:6px;">
+          <div style="margin-top:6px;">
+            <a href="{{ url_for('orga_stammdaten.artikel_etikett', rec_id=a.REC_ID) }}" target="_blank"
+               style="font-size:.8rem;">SVG öffnen / drucken</a></div>
+        </fieldset>
       </div>
       {% if aktionspreis %}
       <div class="leer-hint">Aktiver CAO-Aktionspreis vorhanden (VK5 {{ '%.2f €'|format(aktionspreis.PREIS5) if aktionspreis.PREIS5 else '–' }}

@@ -11,11 +11,12 @@ import logging
 from decimal import Decimal
 
 from flask import (Blueprint, render_template, request, jsonify,
-                   session, abort, redirect, url_for, flash)
+                   session, abort, redirect, url_for, flash, Response)
 
 from common import cao_adressen as adr
 from common import cao_artikel as art
 from common import preisplan as preisplan_mod
+from common import etiketten as etiketten_mod
 
 log = logging.getLogger(__name__)
 bp = Blueprint('orga_stammdaten', __name__, template_folder='templates')
@@ -433,6 +434,16 @@ def artikel_feld_speichern(rec_id: int):
     neu = a.get(col) if a else wert
     return jsonify(ok=True, wert='' if neu is None else str(neu),
                    anzeige=_art_anzeige_wert(col, neu))
+
+
+@bp.get('/artikel/<int:rec_id>/etikett.svg')
+def artikel_etikett(rec_id: int):
+    """Artikel-Preis-Etikett als SVG (Vektor; druck-/PDF-fähig)."""
+    _login_check()
+    if not art.artikel_holen(rec_id):
+        abort(404)
+    svg = etiketten_mod.artikel_etikett_svg(rec_id)
+    return Response(svg, mimetype='image/svg+xml')
 
 
 @bp.get('/artikel/lieferanten')
