@@ -1,155 +1,266 @@
 {% extends "base.html" %}
-{% import '_listing.html' as L %}
 {% block title %}Stammdaten – Artikel{% endblock %}
 
-{# Rekursiver Warengruppen-Baum (ohne Marge) #}
+{# Rekursiver Warengruppen-Baum: Nummer + Name + rekursive Anzahl #}
 {% macro wgnode(nodes, parent) %}
   {% for n in nodes if n.parent_id == parent %}
     {% set kinder = nodes|selectattr('parent_id','equalto',n.id)|list %}
     {% if kinder %}
-      <details class="wg-grp"{% if wg_aktiv == n.id %} open{% endif %}>
+      <details class="wg-grp" data-wgid="{{ n.id }}">
         <summary>
-          <a href="{{ url_for('orga_stammdaten.artikel', wg=n.id, q=suche or None) }}"
-             class="wg-link {% if wg_aktiv == n.id %}aktiv{% endif %}">{{ n.bezeichnung }}</a>
-          <span class="wg-n">{{ n.gesamt|default(n.artikel_anzahl) }}</span>
+          <a class="wg-sel wg-link" data-wg="{{ n.id }}" href="?wg={{ n.id }}">
+            <span class="wg-nr">{{ n.nummer }}</span> {{ n.name }}</a>
+          <span class="wg-n">{{ n.gesamt|default(n.direkt) }}</span>
         </summary>
         <div class="wg-kinder">{{ wgnode(nodes, n.id) }}</div>
       </details>
     {% else %}
-      <a href="{{ url_for('orga_stammdaten.artikel', wg=n.id, q=suche or None) }}"
-         class="wg-link wg-leaf {% if wg_aktiv == n.id %}aktiv{% endif %}">
-        <span>{{ n.bezeichnung }}</span><span class="wg-n">{{ n.gesamt|default(n.artikel_anzahl) }}</span></a>
+      <a class="wg-sel wg-link wg-leaf" data-wg="{{ n.id }}" data-wgid="{{ n.id }}" href="?wg={{ n.id }}">
+        <span><span class="wg-nr">{{ n.nummer }}</span> {{ n.name }}</span>
+        <span class="wg-n">{{ n.gesamt|default(n.direkt) }}</span></a>
     {% endif %}
   {% endfor %}
 {% endmacro %}
 
 {% block extra_style %}
 <style>
-.art-layout{display:grid;grid-template-columns:18rem 1fr;gap:14px;align-items:start}
+.art-layout{display:grid;grid-template-columns:19rem 1fr;gap:14px;align-items:start}
 @media (max-width:900px){.art-layout{grid-template-columns:1fr}}
 .art-side{background:#fff;border-radius:var(--radius,10px);box-shadow:var(--schatten);
   padding:8px 6px;position:sticky;top:8px;max-height:calc(100vh - 20px);overflow:auto}
-.art-side h3{margin:0 0 4px;padding:6px 10px;font-size:.74rem;text-transform:uppercase;
+.art-side h3{margin:6px 0 4px;padding:6px 10px;font-size:.74rem;text-transform:uppercase;
   letter-spacing:.04em;color:var(--text-dim,#5a7a3a);font-weight:800}
 .wg-grp{margin:0}
 .wg-grp>summary{list-style:none;display:flex;justify-content:space-between;gap:6px;
-  align-items:center;padding:4px 8px;cursor:pointer;border-radius:6px;font-size:.86rem}
+  align-items:center;padding:3px 6px;cursor:pointer;border-radius:6px;font-size:.85rem}
 .wg-grp>summary::-webkit-details-marker{display:none}
 .wg-grp>summary::before{content:'▸';color:var(--text-dim);font-size:.7rem;flex:0 0 auto}
 .wg-grp[open]>summary::before{content:'▾'}
 .wg-grp>summary:hover{background:var(--creme,#f7f4ec)}
-.wg-kinder{padding-left:12px;border-left:1px dotted var(--creme-dunkel)}
+.wg-kinder{padding-left:13px;border-left:1px dotted var(--creme-dunkel)}
 .wg-link{text-decoration:none;color:var(--text,#33321b);flex:1}
-.wg-leaf{display:flex;justify-content:space-between;gap:6px;padding:4px 8px;
-  border-radius:6px;font-size:.86rem}
+.wg-leaf{display:flex;justify-content:space-between;gap:6px;padding:3px 6px;
+  border-radius:6px;font-size:.85rem}
 .wg-leaf:hover{background:var(--creme,#f7f4ec)}
-.wg-link.aktiv{color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
-.wg-n{color:var(--text-dim,#5a7a3a);font-size:.78rem;font-variant-numeric:tabular-nums}
-.art-kopf{display:flex;justify-content:space-between;align-items:center;gap:14px;
-  flex-wrap:wrap;margin:0 0 12px}
+.wg-nr{font-family:monospace;font-size:.78rem;color:var(--text-dim)}
+.wg-sel.aktiv{background:var(--gruen-dunkel,#2e6e1a)!important;color:#fff;font-weight:700}
+.wg-sel.aktiv .wg-nr,.wg-sel.aktiv .wg-n{color:#dceccf}
+.wg-n{color:var(--text-dim,#5a7a3a);font-size:.76rem;font-variant-numeric:tabular-nums}
+.mk-list a{display:flex;justify-content:space-between;gap:6px;padding:4px 10px;
+  text-decoration:none;color:var(--text,#33321b);font-size:.86rem;border-radius:6px}
+.mk-list a:hover{background:var(--creme,#f7f4ec)}
+.mk-list a .mk-n{color:var(--text-dim);font-size:.76rem;font-variant-numeric:tabular-nums}
+.art-kopf{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 12px}
+.art-suche{display:flex;gap:8px}
 .art-suche input[type=search]{padding:6px 10px;font-size:.95rem;min-width:18rem;
   border:1px solid var(--rand,#d8d2c0);border-radius:6px}
-.art-suche button{padding:6px 14px;border:1px solid var(--rand,#d8d2c0);
-  background:var(--creme,#f7f4ec);border-radius:6px;cursor:pointer}
-.art-info{color:var(--text-dim);font-size:.85rem;margin-bottom:8px}
-.art-tab{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;
-  overflow:hidden;box-shadow:var(--schatten)}
-.art-tab th{background:var(--gruen-dunkel);color:var(--creme);padding:8px 10px;
-  text-align:left;font-size:.72rem;font-weight:800;text-transform:uppercase;
-  white-space:nowrap;cursor:pointer;user-select:none}
-.art-tab th .ind{opacity:.4;font-size:.7rem}
-.art-tab td{padding:6px 10px;border-bottom:1px solid var(--creme-dunkel);font-size:.9rem}
-.art-tab tr:hover td{background:rgba(46,110,26,.05);cursor:pointer}
-.art-tab a.name{color:var(--gruen-dunkel,#2e6e1a);font-weight:600;text-decoration:none}
-.rechts{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.mono{font-family:monospace;font-size:.84rem;color:var(--text-dim)}
+.art-suche button,.btn-cols{padding:6px 12px;border:1px solid var(--rand,#d8d2c0);
+  background:var(--creme,#f7f4ec);border-radius:6px;cursor:pointer;font-size:.9rem}
+.art-toolbar{display:flex;justify-content:space-between;align-items:center;margin:0 0 8px}
+.art-info{color:var(--text-dim);font-size:.85rem}
+.art-tab{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:var(--schatten)}
+.art-tab th{background:var(--gruen-dunkel);color:var(--creme);padding:8px 10px;text-align:left;
+  font-size:.72rem;font-weight:800;text-transform:uppercase;white-space:nowrap;cursor:pointer;user-select:none}
+.art-tab th.r{text-align:right}.art-tab th .ind{opacity:.4;font-size:.7rem}
+.art-tab td{padding:6px 10px;border-bottom:1px solid var(--creme-dunkel);font-size:.9rem;white-space:nowrap}
+.art-tab td.r{text-align:right;font-variant-numeric:tabular-nums}
+.art-tab tr:hover td{background:rgba(46,110,26,.06);cursor:pointer}
+.art-tab .mono{font-family:monospace;font-size:.84rem;color:var(--text-dim)}
 .art-typ{font-size:.7rem;padding:1px 6px;border-radius:8px;background:var(--creme,#f7f4ec);color:var(--text-dim)}
-.empty{padding:30px;text-align:center;color:var(--text-dim);font-style:italic;
-  background:#fff;border-radius:10px;box-shadow:var(--schatten)}
+.empty{padding:30px;text-align:center;color:var(--text-dim);font-style:italic;background:#fff;border-radius:10px;box-shadow:var(--schatten)}
+/* Spalten-Dialog */
+.cx-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:50;align-items:center;justify-content:center}
+.cx-modal.on{display:flex}
+.cx-box{background:#fff;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.3);width:22rem;max-height:80vh;display:flex;flex-direction:column}
+.cx-box h3{margin:0;padding:12px 16px;border-bottom:1px solid var(--creme-dunkel);color:var(--gruen-dunkel,#2e6e1a)}
+.cx-cols{overflow:auto;padding:8px 12px;flex:1}
+.cx-col{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:6px}
+.cx-col:hover{background:var(--creme,#f7f4ec)}
+.cx-col label{flex:1;font-size:.88rem;cursor:pointer}
+.cx-col button{border:1px solid var(--rand,#d8d2c0);background:#fff;border-radius:4px;cursor:pointer;width:22px;font-size:.8rem}
+.cx-foot{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--creme-dunkel)}
+.cx-foot button{padding:6px 14px;border-radius:6px;border:1px solid var(--rand,#d8d2c0);cursor:pointer}
+.cx-foot .ok{background:var(--gruen-dunkel,#2e6e1a);color:#fff;border-color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="max-width:92rem;">
+<div style="max-width:94rem;"
+     data-wg="{{ wg_aktiv or '' }}" data-merk="{{ merk_aktiv or '' }}" data-q="{{ suche|e }}"
+     data-alle="{{ '1' if alle_aktiv else '' }}" data-aktion="{{ '1' if aktion_aktiv else '' }}"
+     id="art-root">
   <div class="art-kopf">
     <h1 style="margin:0;">📦 Artikel</h1>
-    <form method="get" class="art-suche">
-      {% if wg_aktiv %}<input type="hidden" name="wg" value="{{ wg_aktiv }}">{% endif %}
-      <input type="search" name="q" value="{{ suche|e }}"
-             placeholder="Art-Nr, Name, Barcode, Matchcode …" autocomplete="off">
+    <form class="art-suche" id="art-suchform">
+      <input type="search" id="art-q" value="{{ suche|e }}" placeholder="Art-Nr, Name, Barcode, Matchcode …" autocomplete="off">
       <button type="submit">Suchen</button>
-      {% if suche %}<a href="{{ url_for('orga_stammdaten.artikel', wg=wg_aktiv or None) }}"
-         style="font-size:.85rem;color:var(--text-dim);">× zurücksetzen</a>{% endif %}
     </form>
   </div>
 
   <div class="art-layout">
     <aside class="art-side">
       <h3>Warengruppen</h3>
-      <a class="wg-leaf {% if not wg_aktiv %}aktiv{% endif %}"
-         href="{{ url_for('orga_stammdaten.artikel', q=suche or None) }}">
+      <a class="wg-leaf wg-sel" data-alle="1" href="?alle=1">
         <span>alle Warengruppen</span></a>
       {{ wgnode(baum, None) }}
+      <h3>Merkmale</h3>
+      <div class="mk-list">
+        {% for m in merkmale %}
+        <a class="mk-sel" data-merk="{{ m.id }}" href="?merk={{ m.id }}">
+          <span>{{ m.name }}</span><span class="mk-n">{{ m.anzahl }}</span></a>
+        {% endfor %}
+      </div>
+      <h3>Sonderfilter</h3>
+      <div class="mk-list">
+        <a class="ak-sel" data-aktion="1" href="?aktion=1">
+          <span>★ Aktionspreise</span><span class="mk-n">{{ aktion_anzahl }}</span></a>
+      </div>
     </aside>
 
     <div>
-      <div class="art-info">{{ rows|length }} Artikel{% if suche %} — Suche „<b>{{ suche|e }}</b>"{% endif %}</div>
-      {% if rows %}
-      <table class="art-tab sortable" id="art-tab">
-        <thead><tr>
-          <th data-i="0">{{ L.sortlink('Art-Nr','ARTNUM',sort_key,sort_dir) }}</th>
-          <th data-i="1">{{ L.sortlink('Bezeichnung','KURZNAME',sort_key,sort_dir) }}</th>
-          <th data-i="2">{{ L.sortlink('Warengruppe','WGR_NAME',sort_key,sort_dir) }}</th>
-          <th data-i="3">Typ</th>
-          <th data-i="4">{{ L.sortlink('Einheit','ME_NAME',sort_key,sort_dir) }}</th>
-          <th class="rechts" data-i="5" data-type="num">{{ L.sortlink('EK','EK_PREIS',sort_key,sort_dir) }}</th>
-          <th class="rechts" data-i="6" data-type="num">{{ L.sortlink('VK5','VK5B',sort_key,sort_dir) }}</th>
-          <th class="rechts" data-i="7" data-type="num">{{ L.sortlink('Bestand','MENGE_AKT',sort_key,sort_dir) }}</th>
-        </tr></thead>
-        <tbody>
-        {% for r in rows %}
-          <tr onclick="location.href='{{ url_for('orga_stammdaten.artikel_detail', rec_id=r.REC_ID) }}'">
-            <td class="mono">{{ r.ARTNUM or '' }}</td>
-            <td><a class="name" href="{{ url_for('orga_stammdaten.artikel_detail', rec_id=r.REC_ID) }}">
-              {{ r.KAS_NAME or r.KURZNAME or r.MATCHCODE or '–' }}</a></td>
-            <td>{{ r.WGR_NAME or '' }}</td>
-            <td><span class="art-typ" title="{{ artikeltyp_label.get(r.ARTIKELTYP, r.ARTIKELTYP) }}">{{ r.ARTIKELTYP or '' }}</span></td>
-            <td>{{ r.ME_NAME or '' }}</td>
-            <td class="rechts" data-val="{{ r.EK_PREIS if r.EK_PREIS is not none else '' }}">{{ '%.2f'|format(r.EK_PREIS) if r.EK_PREIS is not none else '' }}</td>
-            <td class="rechts" data-val="{{ r.VK5B if r.VK5B is not none else '' }}">{{ '%.2f'|format(r.VK5B) if r.VK5B is not none else '' }}</td>
-            <td class="rechts" data-val="{{ r.MENGE_AKT if r.MENGE_AKT is not none else '' }}">{{ '%.0f'|format(r.MENGE_AKT) if r.MENGE_AKT is not none else '' }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <div class="empty">{% if suche %}Kein Artikel passt zu „<b>{{ suche|e }}</b>".
-        {% elif wg_aktiv %}Keine Artikel in dieser Warengruppe.
-        {% else %}← Warengruppe wählen oder oben suchen.{% endif %}</div>
-      {% endif %}
+      <div class="art-toolbar">
+        <span class="art-info" id="art-info">← Warengruppe oder Merkmal wählen, oder suchen.</span>
+        <button class="btn-cols" id="art-cols-btn">⚙ Spalten</button>
+      </div>
+      <div id="art-result"></div>
+    </div>
+  </div>
+
+  <div class="cx-modal" id="cx-modal">
+    <div class="cx-box">
+      <h3>Sichtbare Spalten</h3>
+      <div class="cx-cols" id="cx-cols"></div>
+      <div class="cx-foot">
+        <button id="cx-reset">Standard</button>
+        <button id="cx-cancel">Abbrechen</button>
+        <button class="ok" id="cx-apply">Übernehmen</button>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-/* Client-Sort der Artikel-Tabelle (zusätzlich zu den Server-Sortlinks) */
+window.ART_COLS = {{ spalten|tojson }};
+window.ART_DATEN_URL = {{ url_for('orga_stammdaten.artikel_daten')|tojson }};
+window.ART_DETAIL_BASE = {{ (url_for('orga_stammdaten.artikel') ~ '/')|tojson }};
 (function(){
-  const t=document.getElementById('art-tab'); if(!t) return;
-  const tb=t.tBodies[0];
-  t.tHead.querySelectorAll('th').forEach(th=>{
-    th.addEventListener('click', e=>{
-      if(e.target.closest('a')) return;            // Server-Sortlink hat Vorrang
-      const i=+th.dataset.i, num=th.dataset.type==='num';
-      const dir=(t.dataset.si==i && t.dataset.sd==='1')?-1:1;
-      t.dataset.si=i; t.dataset.sd=dir>0?'1':'-1';
-      const rows=[...tb.rows];
-      const val=r=>{const c=r.cells[i]; const dv=c.dataset.val;
-        return num?(parseFloat(dv!==undefined?dv:c.textContent)||-1e15):c.textContent.trim().toLowerCase();};
-      rows.sort((a,b)=>{const x=val(a),y=val(b);
-        return num?(x-y)*dir:x.localeCompare(y,'de')*dir;});
-      rows.forEach(r=>tb.appendChild(r));
-    });
+  'use strict';
+  const root=document.getElementById('art-root');
+  const ALL=window.ART_COLS, META={}; ALL.forEach(c=>META[c.key]=c);
+  const DEFAULT=ALL.filter(c=>c.default).map(c=>c.key);
+  const LS='artikel_listen_spalten';
+  function visCols(){try{const v=JSON.parse(localStorage.getItem(LS));
+    if(Array.isArray(v)&&v.length)return v.filter(k=>META[k]);}catch(e){}return DEFAULT.slice();}
+  let cols=visCols();
+  const STATE={wg:root.dataset.wg||'',merk:root.dataset.merk||'',q:root.dataset.q||'',
+    alle:!!root.dataset.alle,aktion:!!root.dataset.aktion,sort:'BEZ',dir:'asc'};
+  let ROWS=[];
+  function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function fmt(v,typ){if(v==null||v==='')return '';
+    if(typ==='num')return Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+    if(typ==='date'){const p=String(v).slice(0,10).split('-');return p.length===3?p[2]+'.'+p[1]+'.'+p[0]:v;}
+    return v;}
+  function effCols(){let c=cols.slice();
+    if(STATE.aktion)['AKT_VK5','AKT_VON','AKT_BIS'].forEach(k=>{if(META[k]&&!c.includes(k))c.push(k);});
+    return c;}
+
+  function render(){
+    const info=document.getElementById('art-info');
+    if(!ROWS.length){const sel=(STATE.q||STATE.wg||STATE.merk||STATE.alle||STATE.aktion);
+      document.getElementById('art-result').innerHTML=
+      '<div class="empty">'+(sel?'Keine Artikel.':'← Warengruppe / Merkmal / Aktionspreise wählen, oder suchen.')+'</div>';
+      info.textContent='';return;}
+    info.textContent=ROWS.length+' Artikel';
+    const VC=effCols();
+    let h='<table class="art-tab"><thead><tr>';
+    VC.forEach(k=>{const m=META[k],num=(m.typ==='num'||m.typ==='int');
+      const ar=STATE.sort===k?(STATE.dir==='asc'?' ▲':' ▼'):'';
+      h+='<th data-k="'+k+'" class="'+(num?'r':'')+'">'+esc(m.label)+'<span class="ind">'+(ar||' ↕')+'</span></th>';});
+    h+='</tr></thead><tbody>';
+    ROWS.forEach(r=>{h+='<tr data-id="'+r.REC_ID+'">';
+      VC.forEach(k=>{const m=META[k];let v=r[k];
+        if(k==='ARTIKELTYP')h+='<td><span class="art-typ">'+esc(v||'')+'</span></td>';
+        else if(k==='ARTNUM'||k==='BARCODE'||k==='WGR_ID')h+='<td class="mono">'+esc(fmt(v,m.typ))+'</td>';
+        else if(m.typ==='num'||m.typ==='int')h+='<td class="r">'+esc(fmt(v,m.typ))+'</td>';
+        else h+='<td>'+esc(fmt(v,m.typ))+'</td>';});
+      h+='</tr>';});
+    h+='</tbody></table>';
+    const res=document.getElementById('art-result');res.innerHTML=h;
+    res.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>{
+      location.href=window.ART_DETAIL_BASE+tr.dataset.id;}));
+    res.querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{
+      const k=th.dataset.k;if(STATE.sort===k)STATE.dir=STATE.dir==='asc'?'desc':'asc';
+      else{STATE.sort=k;STATE.dir='asc';}sortRows();render();}));
+  }
+  function sortRows(){const k=STATE.sort,num=(META[k].typ==='num'||META[k].typ==='int'),d=STATE.dir==='asc'?1:-1;
+    ROWS.sort((a,b)=>{let x=a[k],y=b[k];if(x==null)x=num?-Infinity:'';if(y==null)y=num?-Infinity:'';
+      if(num)return (x-y)*d;return String(x).localeCompare(String(y),'de')*d;});}
+
+  async function lade(){
+    const p=new URLSearchParams();
+    if(STATE.wg)p.set('wg',STATE.wg);if(STATE.merk)p.set('merk',STATE.merk);
+    if(STATE.alle)p.set('alle','1');if(STATE.aktion)p.set('aktion','1');
+    if(STATE.q)p.set('q',STATE.q);p.set('sort',STATE.sort);p.set('dir',STATE.dir);
+    document.getElementById('art-info').textContent='lädt …';
+    try{const r=await fetch(window.ART_DATEN_URL+'?'+p.toString());const d=await r.json();
+      ROWS=d.rows||[];sortRows();render();}
+    catch(e){document.getElementById('art-result').innerHTML='<div class="empty">Fehler: '+esc(e)+'</div>';}
+  }
+  function setAktiv(){
+    root.querySelectorAll('.wg-sel,.mk-sel,.ak-sel').forEach(a=>a.classList.remove('aktiv'));
+    let sel=null;
+    if(STATE.aktion)sel=root.querySelector('.ak-sel');
+    else if(STATE.merk)sel=root.querySelector('.mk-sel[data-merk="'+STATE.merk+'"]');
+    else if(STATE.alle)sel=root.querySelector('.wg-sel[data-alle]');
+    else sel=root.querySelector('.wg-sel[data-wg="'+(STATE.wg||'')+'"]');
+    if(sel){sel.classList.add('aktiv');
+      // Vorfahren öffnen, damit Auswahl sichtbar bleibt
+      let p=sel.closest('details');while(p){p.open=true;p=p.parentElement.closest('details');}}
+  }
+
+  // ── Klicks im Baum / Merkmalen / Sonderfilter (AJAX, kein Reload) ──
+  root.addEventListener('click',e=>{
+    const wg=e.target.closest('.wg-sel'),mk=e.target.closest('.mk-sel'),ak=e.target.closest('.ak-sel');
+    if(ak){e.preventDefault();e.stopPropagation();
+      STATE.aktion=true;STATE.wg='';STATE.merk='';STATE.alle=false;setAktiv();lade();
+      history.replaceState(null,'','?aktion=1');}
+    else if(wg){e.preventDefault();e.stopPropagation();
+      if(wg.dataset.alle){STATE.alle=true;STATE.wg='';}else{STATE.wg=wg.dataset.wg||'';STATE.alle=false;}
+      STATE.merk='';STATE.aktion=false;setAktiv();lade();
+      history.replaceState(null,'',STATE.alle?'?alle=1':(STATE.wg?'?wg='+STATE.wg:'?'));}
+    else if(mk){e.preventDefault();e.stopPropagation();
+      STATE.merk=mk.dataset.merk||'';STATE.wg='';STATE.alle=false;STATE.aktion=false;setAktiv();lade();
+      history.replaceState(null,'','?merk='+STATE.merk);}
   });
+  document.getElementById('art-suchform').addEventListener('submit',e=>{
+    e.preventDefault();STATE.q=document.getElementById('art-q').value.trim();lade();});
+
+  // ── Spalten-Dialog ──
+  const modal=document.getElementById('cx-modal');
+  function renderColDialog(){
+    // Reihenfolge: aktuell sichtbare zuerst (in Reihenfolge), dann der Rest.
+    const order=cols.concat(ALL.map(c=>c.key).filter(k=>!cols.includes(k)));
+    const box=document.getElementById('cx-cols');box.innerHTML='';
+    order.forEach(k=>{const m=META[k];const row=document.createElement('div');row.className='cx-col';
+      row.innerHTML='<button data-up title="nach oben">▲</button><button data-dn title="nach unten">▼</button>'
+        +'<label><input type="checkbox" '+(cols.includes(k)?'checked':'')+'> '+esc(m.label)+'</label>';
+      row.dataset.k=k;box.appendChild(row);});
+    box.querySelectorAll('[data-up],[data-dn]').forEach(b=>b.addEventListener('click',ev=>{
+      const row=ev.target.closest('.cx-col');const sib=ev.target.hasAttribute('data-up')?row.previousElementSibling:row.nextElementSibling;
+      if(sib){if(ev.target.hasAttribute('data-up'))row.parentNode.insertBefore(row,sib);else row.parentNode.insertBefore(sib,row);}}));
+  }
+  document.getElementById('art-cols-btn').addEventListener('click',()=>{renderColDialog();modal.classList.add('on');});
+  document.getElementById('cx-cancel').addEventListener('click',()=>modal.classList.remove('on'));
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.classList.remove('on');});
+  document.getElementById('cx-reset').addEventListener('click',()=>{cols=DEFAULT.slice();localStorage.removeItem(LS);renderColDialog();});
+  document.getElementById('cx-apply').addEventListener('click',()=>{
+    cols=[...document.querySelectorAll('#cx-cols .cx-col')].filter(r=>r.querySelector('input').checked).map(r=>r.dataset.k);
+    if(!cols.length)cols=DEFAULT.slice();
+    localStorage.setItem(LS,JSON.stringify(cols));modal.classList.remove('on');render();});
+
+  // Init
+  setAktiv();
+  if(STATE.wg||STATE.merk||STATE.q||STATE.alle||STATE.aktion)lade();else render();
 })();
 </script>
 {% endblock %}

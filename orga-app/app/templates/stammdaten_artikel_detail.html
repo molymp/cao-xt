@@ -165,6 +165,15 @@ table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
           {{ fe('BARCODE2','Barcode 2') }}
           {{ fe('BARCODE3','Barcode 3') }}
         </dl></fieldset>
+        <fieldset class="fg"><legend>Konten & Kalkulation</legend><dl>
+          {{ fe('RABGRP_ID','Rabattgruppe') }}
+          {{ fe('ERLOES_KTO','Erlöskonto') }}
+          {{ fe('AUFW_KTO','Aufwandskonto') }}
+          {{ fe('INVENTUR_WERT','Inventurwert') }}
+          {{ fe('MAXRABATT','Max. Rabatt %') }}
+          {{ fe('MINGEWINN','Mindestgewinn') }}
+          {{ fe('PROVIS_PROZ','Provision %') }}
+        </dl></fieldset>
       </div>
       {% if a.INFO %}<fieldset class="fg" style="margin-top:12px;"><legend>Info</legend>
         <div class="info-memo">{{ a.INFO|rtf }}</div></fieldset>{% endif %}
@@ -219,6 +228,7 @@ table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
           {{ fe('BREITE','Breite') }}
           {{ fe('HOEHE','Höhe') }}
           {{ fe('GROESSE','Größe') }}
+          {{ fe('DIMENSION','Dimension') }}
         </dl></fieldset>
         <fieldset class="fg"><legend>Kennzeichen</legend><dl>
           {{ fe('NO_RABATT_FLAG','kein Rabatt') }}
@@ -262,27 +272,21 @@ table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
         <div class="pk"><b>{{ '%.2f €'|format(a['VK'~n~'B'] or 0) }}</b><span>VK{{ n }} brutto</span></div>
         {% endfor %}
       </div>
-      {% if aktionspreis %}<fieldset class="fg"><legend>Aktionspreis
-        {% if aktionspreis.GUELTIG_VON %}({{ aktionspreis.GUELTIG_VON }} – {{ aktionspreis.GUELTIG_BIS }}){% endif %}</legend>
-        <dl>{% for n in ['PREIS','PREIS2','PREIS3','PREIS4','PREIS5'] %}
-          {{ f('VK'~loop.index, '%.2f €'|format(aktionspreis[n]) if aktionspreis[n] else '—') }}{% endfor %}</dl>
-      </fieldset>{% endif %}
+      {% if aktionspreis %}
+      <div class="leer-hint">Aktiver CAO-Aktionspreis vorhanden (VK5 {{ '%.2f €'|format(aktionspreis.PREIS5) if aktionspreis.PREIS5 else '–' }}
+        {% if aktionspreis.GUELTIG_VON %}, {{ aktionspreis.GUELTIG_VON }}–{{ aktionspreis.GUELTIG_BIS }}{% endif %}).
+        Aktionen jetzt über <b>Preisplanung</b> unten anlegen.</div>
+      {% endif %}
 
-      <h4 style="margin:14px 0 4px;color:var(--gruen-dunkel,#2e6e1a);">Lieferantenpreise</h4>
-      {% if lieferantenpreise %}
-      <div class="tbl" data-tbl><div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
-      <table class="dt sortable"><thead><tr><th>Lieferant</th><th>Ku-Nr b. Lief.</th><th>Bestell-Nr</th>
-        <th class="rechts" data-type="num">EK-Preis</th><th class="rechts" data-type="num">VPE</th>
-        <th data-type="date">le. Änderung</th><th>geändert von</th></tr></thead><tbody>
-        {% for p in lieferantenpreise %}<tr>
-          <td><b>{{ p.PARTNER or p.ADRESS_ID }}</b></td><td class="mono">{{ p.KUNNUM2 or '' }}</td>
-          <td class="mono">{{ p.BESTNUM or '' }}</td>
-          <td class="rechts" data-val="{{ p.PREIS or 0 }}">{{ '%.4f €'|format(p.PREIS) if p.PREIS is not none else '' }}</td>
-          <td class="rechts" data-val="{{ p.VPE or 0 }}">{{ p.VPE or '' }}</td>
-          <td data-val="{{ p.GEAEND.isoformat() if p.GEAEND else '' }}">{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td>
-          <td>{{ p.GEAEND_NAME or '' }}</td></tr>{% endfor %}
-      </tbody></table></div>
-      {% else %}<div class="leer-hint">Keine Lieferantenpreise.</div>{% endif %}
+      <h4 style="margin:14px 0 4px;color:var(--gruen-dunkel,#2e6e1a);">Lieferantenpreise (editierbar)</h4>
+      <div id="liefpreis-box"></div>
+      <div class="liefadd" style="margin-top:8px;display:flex;gap:8px;align-items:center;position:relative;flex-wrap:wrap;">
+        <input type="search" id="lief-such" placeholder="Lieferant suchen (Name, Nr) …"
+               style="padding:5px 10px;border:1px solid var(--rand,#d8d2c0);border-radius:6px;min-width:18rem;" autocomplete="off">
+        <div id="lief-tref" style="display:none;position:absolute;top:38px;left:0;z-index:8;background:#fff;
+             border:1px solid var(--rand,#d8d2c0);border-radius:8px;box-shadow:var(--schatten);min-width:22rem;max-height:16rem;overflow:auto;"></div>
+        <span id="lief-msg" style="font-size:.85rem;"></span>
+      </div>
 
       {% if kundenpreise %}
       <h4 style="margin:14px 0 4px;color:var(--gruen-dunkel,#2e6e1a);">Kundenpreise</h4>
@@ -297,6 +301,58 @@ table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
           <td data-val="{{ p.GEAEND.isoformat() if p.GEAEND else '' }}">{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td></tr>{% endfor %}
       </tbody></table></div>
       {% endif %}
+
+      {# ── Preisplanung (XT): mehrere geplante Aktionen/Preisänderungen ── #}
+      <h4 style="margin:16px 0 4px;color:var(--gruen-dunkel,#2e6e1a);">Preisplanung
+        <a href="{{ url_for('orga_stammdaten.preisplan') }}" style="font-size:.8rem;font-weight:400;">→ Gesamtübersicht</a></h4>
+      {% if plaene %}
+      <table class="dt"><thead><tr><th>Art</th><th>Stichtag</th><th>bis</th>
+        <th class="rechts">VK1–5 (netto)</th><th>Status</th><th>Notiz</th><th></th></tr></thead><tbody>
+        {% for p in plaene %}<tr>
+          <td>{{ 'Aktion' if p.art=='aktion' else 'Preisänderung' }}</td>
+          <td>{{ p.gueltig_ab.strftime('%d.%m.%Y') if p.gueltig_ab else '' }}</td>
+          <td>{{ p.gueltig_bis.strftime('%d.%m.%Y') if p.gueltig_bis else '—' }}</td>
+          <td class="rechts mono">{% for n in [1,2,3,4,5] %}{{ '%.2f'|format(p['vk'~n]) if p['vk'~n] is not none else '–' }}{{ ' / ' if n<5 }}{% endfor %}</td>
+          <td><span class="q">{{ p.status }}</span></td>
+          <td style="font-size:.82rem;color:var(--text-dim);">{{ p.notiz or '' }}</td>
+          <td style="white-space:nowrap;">
+            {% if p.status=='geplant' %}
+            <form method="post" action="{{ url_for('orga_stammdaten.preisplan_anwenden', rec_id=p.rec_id) }}" style="display:inline;"><input type="hidden" name="next" value="{{ request.path }}#tab-preise"><button style="font-size:.78rem;padding:2px 8px;">Anwenden</button></form>
+            {% else %}
+            <form method="post" action="{{ url_for('orga_stammdaten.preisplan_zuruecksetzen', rec_id=p.rec_id) }}" style="display:inline;"><input type="hidden" name="next" value="{{ request.path }}"><button style="font-size:.78rem;padding:2px 8px;">Rückgängig</button></form>
+            {% endif %}
+            <form method="post" action="{{ url_for('orga_stammdaten.preisplan_loeschen', rec_id=p.rec_id) }}" style="display:inline;" onsubmit="return confirm('Löschen?');"><input type="hidden" name="next" value="{{ request.path }}"><button style="font-size:.78rem;padding:2px 6px;">🗑</button></form>
+          </td></tr>{% endfor %}
+      </tbody></table>
+      {% else %}<div class="leer-hint">Keine geplanten Änderungen.</div>{% endif %}
+
+      {% set rate = {0:0,1:0.19,2:0.07,3:0}.get(a.STEUER_CODE,0) %}
+      <form method="post" action="{{ url_for('orga_stammdaten.preisplan_anlegen') }}" id="pp-form"
+            data-rate="{{ rate }}" data-ek="{{ a.EK_PREIS or 0 }}"
+            style="margin-top:10px;background:var(--creme,#f7f4ec);padding:10px 12px;border-radius:8px;">
+        <input type="hidden" name="artikel_id" value="{{ a.REC_ID }}">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <input type="hidden" name="brutto" value="1">
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:.82rem;">
+          <label>Art <select name="art"><option value="aktion">Aktion (befristet)</option><option value="preis">Preisänderung (dauerhaft)</option></select></label>
+          <span>MwSt: <b>{{ '%.0f'|format(rate*100) }} %</b></span>
+          <span>EK: <b>{{ '%.2f €'|format(a.EK_PREIS or 0) }}</b></span>
+          <span style="color:var(--text-dim);">Preise als <b>Brutto</b> eingeben (Schild-Preis)</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          {% for n in [1,2,3,4,5] %}
+          <label style="font-size:.78rem;">VK{{ n }} brutto<br>
+            <input type="number" step="0.01" min="0" class="pp-vk" data-n="{{ n }}" name="vk{{ n }}" style="width:6rem;text-align:right;">
+            <br><span class="pp-calc" data-n="{{ n }}" style="font-size:.7rem;color:var(--text-dim);"></span></label>
+          {% endfor %}
+        </div>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:8px;">
+          <label style="font-size:.78rem;">Stichtag<br><input type="date" name="gueltig_ab" required></label>
+          <label style="font-size:.78rem;">bis (nur Aktion)<br><input type="date" name="gueltig_bis"></label>
+          <label style="font-size:.78rem;">Notiz<br><input type="text" name="notiz" style="width:12rem;"></label>
+          <button type="submit" style="padding:6px 14px;border:0;border-radius:6px;background:var(--gruen-dunkel,#2e6e1a);color:#fff;font-weight:700;cursor:pointer;">+ Planen</button>
+        </div>
+      </form>
     </section>
 
     {# ═══ DATEIEN ═══ #}
@@ -355,6 +411,11 @@ table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
 <script>
 window.ART_FELD_URL = {{ url_for('orga_stammdaten.artikel_feld_speichern', rec_id=a.REC_ID)|tojson }};
 window.ART_OPTS = {{ {'einheit':opt_lists.einheit,'warengruppe':opt_lists.warengruppe,'hersteller':opt_lists.hersteller,'lager':opt_lists.lager,'artikeltyp':opt_lists.artikeltyp,'steuer':opt_lists.steuer}|tojson }};
+window.ART_LIEFPREISE = {{ lieferantenpreise_json|tojson }};
+window.ART_DEFAULT_LIEF = {{ (default_lief if default_lief is not none else -1)|tojson }};
+window.ART_LIEF_SAVE = {{ url_for('orga_stammdaten.artikel_lieferantenpreis', rec_id=a.REC_ID)|tojson }};
+window.ART_LIEF_DEL = {{ url_for('orga_stammdaten.artikel_lieferantenpreis_loeschen', rec_id=a.REC_ID)|tojson }};
+window.ART_LIEF_SUCHE = {{ url_for('orga_stammdaten.artikel_lieferanten')|tojson }};
 (function(){
   'use strict';
   function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -386,6 +447,65 @@ window.ART_OPTS = {{ {'einheit':opt_lists.einheit,'warengruppe':opt_lists.wareng
   document.addEventListener('click',e=>{const dd=e.target.closest('dd.editbar');
     if(dd&&!dd.querySelector('.fld-edit'))startEdit(dd);});
 
+  /* ── Lieferantenpreise (editierbar) ── */
+  let LP=window.ART_LIEFPREISE||[], DEFLIEF=window.ART_DEFAULT_LIEF;
+  const lpMsg=document.getElementById('lief-msg');
+  function lpFmt(v){return v==null?'':Number(v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function renderLP(){
+    const box=document.getElementById('liefpreis-box');if(!box)return;
+    if(!LP.length){box.innerHTML='<div class="leer-hint">Keine Lieferantenpreise.</div>';return;}
+    let h='<table class="dt"><thead><tr><th>Lieferant</th><th>Ku-Nr b. Lief.</th><th>Bestell-Nr</th>'
+      +'<th class="rechts">EK-Preis</th><th class="rechts">VPE</th><th>Standard</th><th></th></tr></thead><tbody>';
+    LP.forEach(p=>{const id=p.ADRESS_ID;h+='<tr data-adr="'+id+'">'
+      +'<td><b>'+esc(p.PARTNER||id)+'</b></td><td class="mono">'+esc(p.KUNNUM2||'')+'</td>'
+      +'<td><input class="lp-f" data-k="bestnum" value="'+esc(p.BESTNUM||'')+'" style="width:7rem;"></td>'
+      +'<td class="rechts"><input class="lp-f" data-k="ek" type="number" step="0.0001" value="'+(p.PREIS!=null?p.PREIS:'')+'" style="width:7rem;text-align:right;"></td>'
+      +'<td class="rechts"><input class="lp-f" data-k="vpe" type="number" step="0.01" value="'+(p.VPE!=null?p.VPE:'')+'" style="width:5rem;text-align:right;"></td>'
+      +'<td style="text-align:center;"><input type="radio" name="stdlief" class="lp-std" '+(String(id)===String(DEFLIEF)?'checked':'')+'></td>'
+      +'<td style="white-space:nowrap;"><button class="lp-save" title="Speichern">💾</button> <button class="lp-del" title="Löschen">🗑</button></td></tr>';});
+    h+='</tbody></table>';
+    box.innerHTML=h;
+    box.querySelectorAll('tr[data-adr]').forEach(tr=>{
+      const id=tr.dataset.adr;
+      tr.querySelector('.lp-save').addEventListener('click',()=>{
+        const get=k=>tr.querySelector('.lp-f[data-k="'+k+'"]').value;
+        lpSpeichern(id,get('bestnum'),get('ek'),get('vpe'),tr.querySelector('.lp-std').checked);});
+      tr.querySelector('.lp-del').addEventListener('click',()=>{
+        if(confirm('Lieferantenpreis wirklich löschen?'))lpLoeschen(id);});
+    });
+  }
+  function lpApply(d){if(d.ok){LP=d.preise||[];DEFLIEF=d.default_lief;renderLP();
+      lpMsg.textContent='✓ gespeichert';lpMsg.style.color='var(--gruen-dunkel,#2e6e1a)';}
+    else{lpMsg.textContent='Fehler: '+(d.fehler||'');lpMsg.style.color='#b83030';}}
+  function lpSpeichern(adr,bestnum,ek,vpe,std){
+    const fd=new FormData();fd.append('adress_id',adr);fd.append('bestnum',bestnum||'');
+    fd.append('ek',ek||'0');fd.append('vpe',vpe||'0');if(std)fd.append('standard','1');
+    lpMsg.textContent='…';
+    fetch(window.ART_LIEF_SAVE,{method:'POST',body:fd}).then(r=>r.json()).then(lpApply)
+      .catch(e=>{lpMsg.textContent='Fehler: '+e;lpMsg.style.color='#b83030';});}
+  function lpLoeschen(adr){const fd=new FormData();fd.append('adress_id',adr);
+    fetch(window.ART_LIEF_DEL,{method:'POST',body:fd}).then(r=>r.json()).then(lpApply)
+      .catch(e=>{lpMsg.textContent='Fehler: '+e;lpMsg.style.color='#b83030';});}
+  renderLP();
+
+  // Lieferanten-Suche zum Hinzufügen
+  const such=document.getElementById('lief-such'),tref=document.getElementById('lief-tref');
+  let suchTimer=null;
+  such&&such.addEventListener('input',()=>{clearTimeout(suchTimer);const q=such.value.trim();
+    if(q.length<2){tref.style.display='none';return;}
+    suchTimer=setTimeout(()=>{
+      fetch(window.ART_LIEF_SUCHE+'?q='+encodeURIComponent(q)).then(r=>r.json()).then(d=>{
+        const t=d.treffer||[];if(!t.length){tref.style.display='none';return;}
+        tref.innerHTML=t.map(a=>'<div class="lief-opt" data-id="'+a.id+'" style="padding:5px 10px;cursor:pointer;border-bottom:1px solid var(--creme-dunkel);">'
+          +esc(a.name)+(a.KUNNUM1?' <span class="mono">('+esc(a.KUNNUM1)+')</span>':'')+'</div>').join('');
+        tref.style.display='block';
+        tref.querySelectorAll('.lief-opt').forEach(o=>{o.addEventListener('mousedown',ev=>{ev.preventDefault();
+          tref.style.display='none';such.value='';
+          if(LP.some(p=>String(p.ADRESS_ID)===o.dataset.id)){lpMsg.textContent='Lieferant ist bereits gelistet.';return;}
+          lpSpeichern(o.dataset.id,'','0','0',false);});});
+      });},250);});
+  document.addEventListener('click',e=>{if(such&&!such.contains(e.target)&&!tref.contains(e.target))tref.style.display='none';});
+
   /* Tabellen: Suche + Sortierung */
   function cellVal(row,idx,type){const c=row.cells[idx];if(!c)return type==='num'?-Infinity:'';
     const dv=c.dataset.val;
@@ -412,6 +532,21 @@ window.ART_OPTS = {{ {'einheit':opt_lists.einheit,'warengruppe':opt_lists.wareng
         th.classList.add('sorted');th.querySelector('.ind').textContent=dir>0?'▲':'▼';});});
     const s=tbl.querySelector('.tbl-search');if(s)s.addEventListener('input',()=>applyFilter(tbl));
     applyFilter(tbl);});
+
+  /* ── Preisplanung: Brutto-Eingabe → Netto + Faktor live ── */
+  const ppForm=document.getElementById('pp-form');
+  if(ppForm){
+    const rate=parseFloat(ppForm.dataset.rate)||0, ek=parseFloat(ppForm.dataset.ek)||0;
+    ppForm.querySelectorAll('.pp-vk').forEach(inp=>{
+      const span=ppForm.querySelector('.pp-calc[data-n="'+inp.dataset.n+'"]');
+      const upd=()=>{const b=parseFloat(inp.value);
+        if(isNaN(b)||b<=0){span.textContent='';return;}
+        const netto=b/(1+rate), fak=ek>0?(netto/ek):0;
+        span.textContent='netto '+netto.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})
+          +(ek>0?' · F '+fak.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}):'');};
+      inp.addEventListener('input',upd);
+    });
+  }
 })();
 </script>
 {% endblock %}

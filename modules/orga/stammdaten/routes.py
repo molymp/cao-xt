@@ -8,13 +8,14 @@ Hierher verschoben aus dem Lieferantenkatalog (Adressen sind
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from flask import (Blueprint, render_template, request, jsonify,
                    session, abort, redirect, url_for, flash)
 
 from common import cao_adressen as adr
 from common import cao_artikel as art
-from common.picker_data import warengruppen_baum
+from common import preisplan as preisplan_mod
 
 log = logging.getLogger(__name__)
 bp = Blueprint('orga_stammdaten', __name__, template_folder='templates')
@@ -45,6 +46,22 @@ def _art_lookup_list(name: str) -> list[dict]:
     if name == 'steuer':
         return [{'id': k, 'name': v} for k, v in STEUER_LABEL.items()]
     return []
+
+
+def _preise_json(rows: list) -> list:
+    """ARTIKEL_PREIS-Zeilen JSON-tauglich machen (Decimal→float, Datum→ISO)."""
+    out = []
+    for r in rows:
+        d = {}
+        for k, v in r.items():
+            if isinstance(v, Decimal):
+                d[k] = float(v)
+            elif hasattr(v, 'isoformat'):
+                d[k] = v.isoformat()
+            else:
+                d[k] = v
+        out.append(d)
+    return out
 
 
 def _art_anzeige_wert(col: str, val) -> str:
@@ -298,24 +315,17 @@ def api_plz():
 
 @bp.get('/artikel')
 def artikel():
-    """Artikel-Stammdaten: Warengruppen-Baum (ohne Marge) + Artikel-Liste."""
+    """Artikel-Stammdaten: Warengruppen-Baum + Merkmale (Filter); die
+    Artikel-Tabelle lädt per AJAX (artikel_daten), damit der Baum offen
+    bleibt und Spalten konfigurierbar sind."""
     _login_check()
-    q = (request.args.get('q') or '').strip()
-    sort = request.args.get('sort') or 'KURZNAME'
-    sort_dir = request.args.get('dir') or 'asc'
-    wg_raw = (request.args.get('wg') or '').strip()
-    wg_id = int(wg_raw) if wg_raw.isdigit() else None
-    # Artikel nur laden, wenn eine WG gewählt ODER gesucht wird (sonst
-    # wären es ~3000 Zeilen) — CAO verlangt ebenfalls eine WG-Auswahl.
-    rows = (art.artikel_liste(q, wg_id=wg_id, sort=sort, sort_dir=sort_dir,
-                              limit=1000) if (wg_id or q) else [])
-    baum = warengruppen_baum()
-    # Rekursive Artikel-Anzahl je Knoten (inkl. Untergruppen) wie in CAO.
+    baum = art.warengruppen_tree()
+    # Rekursive Artikel-Anzahl je Knoten (inkl. Untergruppen) wie CAO.
     kinder: dict = {}
     for n in baum:
         kinder.setdefault(n['parent_id'], []).append(n)
     def _gesamt(node):
-        s = node['artikel_anzahl']
+        s = node['direkt']
         for c in kinder.get(node['id'], []):
             s += _gesamt(c)
         node['gesamt'] = s
@@ -323,9 +333,53 @@ def artikel():
     for n in baum:
         _gesamt(n)
     return render_template('stammdaten_artikel.html',
-                           rows=rows, suche=q, sort_key=sort, sort_dir=sort_dir,
-                           baum=baum, wg_aktiv=wg_id,
-                           artikeltyp_label=ARTIKELTYP_LABEL)
+                           baum=baum, merkmale=art.merkmale_liste(),
+                           spalten=art.liste_spalten_meta(),
+                           aktion_anzahl=art.aktionspreise_anzahl(),
+                           wg_aktiv=request.args.get('wg', type=int),
+                           merk_aktiv=request.args.get('merk', type=int),
+                           aktion_aktiv=bool(request.args.get('aktion')),
+                           alle_aktiv=bool(request.args.get('alle')),
+                           suche=(request.args.get('q') or '').strip())
+
+
+@bp.get('/artikel/daten')
+def artikel_daten():
+    """JSON: Artikelzeilen für die konfigurierbare Tabelle (Filter via
+    wg / merk / q; Sort via sort / dir)."""
+    _login_check()
+    q = (request.args.get('q') or '').strip()
+    wg_id = request.args.get('wg', type=int)
+    merk_id = request.args.get('merk', type=int)
+    aktion = bool(request.args.get('aktion'))
+    alle = bool(request.args.get('alle'))
+    sort = request.args.get('sort') or 'BEZ'
+    sort_dir = request.args.get('dir') or 'asc'
+    if not (q or wg_id or merk_id or aktion or alle):
+        return jsonify(ok=True, rows=[])
+    rows = art.artikel_liste(q, wg_id=wg_id, merk_id=merk_id,
+                             nur_aktion=aktion, sort=sort, sort_dir=sort_dir,
+                             limit=10000 if alle else 2000)
+    typ = {k: t for k, _l, _s, t, _d in art.LISTE_SPALTEN}
+    out = []
+    for r in rows:
+        d = {'REC_ID': r['REC_ID']}
+        for k, v in r.items():
+            if k == 'REC_ID':
+                continue
+            if v is None or v == '':
+                d[k] = None
+            elif typ.get(k) in ('num', 'int'):
+                try:
+                    d[k] = float(str(v).replace(',', '.'))
+                except (TypeError, ValueError):
+                    d[k] = None
+            elif typ.get(k) == 'date':
+                d[k] = v.isoformat() if hasattr(v, 'isoformat') else str(v)
+            else:
+                d[k] = v
+        out.append(d)
+    return jsonify(ok=True, rows=out)
 
 
 @bp.get('/artikel/<int:rec_id>')
@@ -347,14 +401,16 @@ def artikel_detail(rec_id: int):
         a=a, editierbar=art.EDITIERBAR, lookups=lookups, opt_lists=opt_lists,
         jn_cols=ART_JN_COLS, select_lookup=ART_SELECT_LOOKUP,
         merkmale=art.merkmale(rec_id),
-        lieferantenpreise=art.lieferantenpreise(rec_id),
+        lieferantenpreise_json=_preise_json(art.lieferantenpreise(rec_id)),
+        default_lief=a.get('DEFAULT_LIEF_ID'),
         kundenpreise=art.kundenpreise(rec_id),
         aktionspreis=art.aktionspreis(rec_id),
         lagerbestaende=art.lagerbestaende(rec_id),
         dateien=art.dateien(rec_id),
         historie=art.vorgangs_historie(rec_id),
         bestand_historie=art.bestand_historie(rec_id),
-        quelle_label=art.QUELLE_LABEL)
+        quelle_label=art.QUELLE_LABEL,
+        plaene=preisplan_mod.je_artikel(rec_id))
 
 
 @bp.post('/artikel/<int:rec_id>/feld')
@@ -379,5 +435,172 @@ def artikel_feld_speichern(rec_id: int):
                    anzeige=_art_anzeige_wert(col, neu))
 
 
+@bp.post('/artikel/<int:rec_id>/aktionspreis')
+def artikel_aktionspreis(rec_id: int):
+    """Aktionspreis setzen/löschen (ARTIKEL_PREIS PREIS_TYP=6) wie CAO."""
+    _login_check()
+    from common.cao_lock import CaoLockBelegt
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    if request.form.get('loeschen'):
+        vk, von, bis = [0] * 5, None, None
+    else:
+        vk = [request.form.get(f'vk{i}') for i in range(1, 6)]
+        von = (request.form.get('von') or '').strip() or None
+        bis = (request.form.get('bis') or '').strip() or None
+    try:
+        art.aktionspreis_speichern(rec_id, vk, von, bis, ma_name=ma)
+    except CaoLockBelegt:
+        return jsonify(ok=False, fehler='Artikel ist gerade gesperrt.'), 409
+    except Exception as e:  # noqa: BLE001
+        log.exception('Aktionspreis speichern')
+        return jsonify(ok=False, fehler=str(e)), 400
+    return jsonify(ok=True)
+
+
+@bp.get('/artikel/lieferanten')
+def artikel_lieferanten():
+    """Adress-Suche für den Lieferanten-Picker."""
+    _login_check()
+    return jsonify(ok=True, treffer=art.lieferanten_suche(
+        request.args.get('q') or ''))
+
+
+@bp.post('/artikel/<int:rec_id>/lieferantenpreis')
+def artikel_lieferantenpreis(rec_id: int):
+    """Lieferantenpreis anlegen/ändern (+ optional Standard-Lieferant)."""
+    _login_check()
+    from common.cao_lock import CaoLockBelegt
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    adress_id = request.form.get('adress_id', type=int)
+    if not adress_id:
+        return jsonify(ok=False, fehler='Kein Lieferant gewählt.'), 400
+    try:
+        art.lieferantenpreis_speichern(
+            rec_id, adress_id,
+            bestnum=request.form.get('bestnum') or '',
+            vpe=request.form.get('vpe') or 0,
+            preis=request.form.get('ek') or 0,
+            als_standard=bool(request.form.get('standard')),
+            ma_name=ma)
+    except CaoLockBelegt:
+        return jsonify(ok=False, fehler='Artikel ist gerade gesperrt.'), 409
+    except Exception as e:  # noqa: BLE001
+        log.exception('Lieferantenpreis speichern')
+        return jsonify(ok=False, fehler=str(e)), 400
+    return jsonify(ok=True, preise=_preise_json(art.lieferantenpreise(rec_id)),
+                   default_lief=(art.artikel_holen(rec_id) or {}).get('DEFAULT_LIEF_ID'))
+
+
+@bp.post('/artikel/<int:rec_id>/lieferantenpreis/loeschen')
+def artikel_lieferantenpreis_loeschen(rec_id: int):
+    """Lieferantenpreis löschen."""
+    _login_check()
+    from common.cao_lock import CaoLockBelegt
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    adress_id = request.form.get('adress_id', type=int)
+    if not adress_id:
+        return jsonify(ok=False, fehler='Kein Lieferant.'), 400
+    try:
+        art.lieferantenpreis_loeschen(rec_id, adress_id, ma_name=ma)
+    except CaoLockBelegt:
+        return jsonify(ok=False, fehler='Artikel ist gerade gesperrt.'), 409
+    except Exception as e:  # noqa: BLE001
+        log.exception('Lieferantenpreis löschen')
+        return jsonify(ok=False, fehler=str(e)), 400
+    return jsonify(ok=True, preise=_preise_json(art.lieferantenpreise(rec_id)),
+                   default_lief=(art.artikel_holen(rec_id) or {}).get('DEFAULT_LIEF_ID'))
+
+
+# ── Preisplanung (XT, mehrere Aktionen/Preisänderungen je Artikel) ─────
+
+def _zurueck():
+    return redirect(request.form.get('next') or request.referrer
+                    or url_for('orga_stammdaten.preisplan'))
+
+
+@bp.get('/preisplan')
+def preisplan():
+    """Übersicht geplante Preisänderungen/Aktionen (Schilddruck)."""
+    _login_check()
+    from datetime import date as _date
+    offen = bool(request.args.get('offen'))
+    return render_template('stammdaten_preisplan.html',
+                           rows=preisplan_mod.uebersicht(nur_offen_schild=offen),
+                           nur_offen=offen, heute=_date.today().isoformat())
+
+
+@bp.post('/preisplan/anlegen')
+def preisplan_anlegen():
+    _login_check()
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    aid = request.form.get('artikel_id', type=int)
+    ab = (request.form.get('gueltig_ab') or '').strip()
+    if not aid or not ab:
+        flash('Artikel und Stichtag sind Pflicht.', 'fehler')
+        return _zurueck()
+    vks = [request.form.get(f'vk{i}') for i in range(1, 6)]
+    if request.form.get('brutto'):
+        # Eingabe ist Brutto (Schild-Preis) → in Netto umrechnen (Speicherung
+        # wie CAO-Aktionspreis netto). Satz aus STEUER_CODE des Artikels.
+        a = art.artikel_holen(aid) or {}
+        rate = {0: 0.0, 1: 0.19, 2: 0.07, 3: 0.0}.get(
+            int(a.get('STEUER_CODE') or 0), 0.0)
+        vks = [(round(float(str(v).replace(',', '.')) / (1 + rate), 4)
+                if v not in (None, '') else None) for v in vks]
+    try:
+        preisplan_mod.anlegen(aid, request.form.get('art') or 'aktion', vks, ab,
+                              (request.form.get('gueltig_bis') or '').strip() or None,
+                              notiz=request.form.get('notiz') or '', ma_name=ma)
+        flash('Preisplan-Eintrag angelegt.', 'ok')
+    except Exception as e:  # noqa: BLE001
+        log.exception('Preisplan anlegen')
+        flash(f'Fehler: {e}', 'fehler')
+    return _zurueck()
+
+
+@bp.post('/preisplan/<int:rec_id>/loeschen')
+def preisplan_loeschen(rec_id: int):
+    _login_check()
+    preisplan_mod.loeschen(rec_id)
+    flash('Eintrag gelöscht.', 'ok')
+    return _zurueck()
+
+
+@bp.post('/preisplan/<int:rec_id>/anwenden')
+def preisplan_anwenden(rec_id: int):
+    _login_check()
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    try:
+        preisplan_mod.anwenden(rec_id, ma_name=ma)
+        flash('Änderung angewendet (in CAO geschrieben).', 'ok')
+    except Exception as e:  # noqa: BLE001
+        log.exception('Preisplan anwenden')
+        flash(f'Fehler beim Anwenden: {e}', 'fehler')
+    return _zurueck()
+
+
+@bp.post('/preisplan/<int:rec_id>/zuruecksetzen')
+def preisplan_zuruecksetzen(rec_id: int):
+    _login_check()
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    try:
+        preisplan_mod.zuruecksetzen(rec_id, ma_name=ma)
+        flash('Änderung zurückgesetzt.', 'ok')
+    except Exception as e:  # noqa: BLE001
+        log.exception('Preisplan zuruecksetzen')
+        flash(f'Fehler: {e}', 'fehler')
+    return _zurueck()
+
+
+@bp.post('/preisplan/<int:rec_id>/schild')
+def preisplan_schild(rec_id: int):
+    _login_check()
+    gedruckt = request.form.get('gedruckt') not in (None, '0', 'false')
+    preisplan_mod.schild_setzen(rec_id, gedruckt)
+    return jsonify(ok=True, gedruckt=gedruckt)
+
+
 def create_blueprint():
+    from . import schema as _schema
+    _schema.run_migration()
     return bp

@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import Any
 
 from common.db import get_db, get_db_transaction
+from common.cao_lock import cao_record_lock
+from common.binaerdaten import MODUL_ID_ARTIKEL
 
 # Inline editierbare Stammdatenfelder (Preise/Bestand/Keys bewusst NICHT).
 EDITIERBAR: set[str] = {
@@ -22,6 +24,8 @@ EDITIERBAR: set[str] = {
     'GROESSE', 'BASISPR_FAKTOR', 'BASISPR_ME_ID',
     'HERSTELLER_ID', 'HERST_ARTNUM', 'HERKUNFTSLAND', 'ZOLLNUMMER',
     'LAGERORT', 'MENGE_MIN', 'MENGE_BVOR', 'MENGE_WARN', 'LAGER_ID',
+    'RABGRP_ID', 'ERLOES_KTO', 'AUFW_KTO', 'INVENTUR_WERT', 'DIMENSION',
+    'MAXRABATT', 'MINGEWINN', 'PROVIS_PROZ',
     'NO_RABATT_FLAG', 'NO_VK_FLAG', 'NO_EK_FLAG', 'FSK18_FLAG', 'SN_FLAG',
     'USERFELD_01', 'USERFELD_02', 'USERFELD_03', 'USERFELD_04',
     'USERFELD_05', 'USERFELD_06', 'USERFELD_07', 'USERFELD_08',
@@ -33,7 +37,8 @@ _NUM_COLS = {
     'VPE', 'VPE_EK', 'PR_EINHEIT', 'GEWICHT', 'LAENGE', 'BREITE', 'HOEHE',
     'BASISPR_FAKTOR', 'MENGE_MIN', 'MENGE_BVOR', 'MENGE_WARN',
     'ME_ID', 'BASISPR_ME_ID', 'WARENGRUPPE', 'STEUER_CODE',
-    'HERSTELLER_ID', 'LAGER_ID',
+    'HERSTELLER_ID', 'LAGER_ID', 'RABGRP_ID', 'INVENTUR_WERT',
+    'MAXRABATT', 'MINGEWINN', 'PROVIS_PROZ',
 }
 
 
@@ -58,17 +63,82 @@ def artikel_holen(rec_id: int) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+# ── Listen-Spaltenregister (für konfigurierbare Artikel-Tabelle) ──────
+# key → (Label, SQL-Ausdruck, Typ text|num|int, Default-sichtbar)
+LISTE_SPALTEN: list[tuple] = [
+    ('WGR_ID',     'WG',            'a.WARENGRUPPE',                 'int',  True),
+    ('ARTIKELTYP', 'Typ',           'a.ARTIKELTYP',                  'text', True),
+    ('BEZ',        'Suchbegriff',   "COALESCE(NULLIF(a.KAS_NAME,''),a.KURZNAME,a.MATCHCODE)", 'text', True),
+    ('ARTNUM',     'Art-Nr',        'a.ARTNUM',                      'text', True),
+    ('BARCODE',    'Barcode',       'a.BARCODE',                     'text', True),
+    ('KURZNAME',   'Kurzname',      'a.KURZNAME',                    'text', False),
+    ('MATCHCODE',  'Matchcode',     'a.MATCHCODE',                   'text', False),
+    ('ERSATZ',     'Ersatz-Nr',     'a.ERSATZ_ARTNUM',               'text', False),
+    ('HERST_ARTNUM','Herst-Art-Nr', 'a.HERST_ARTNUM',                'text', False),
+    ('ME_NAME',    'ME',            'me.BEZEICHNUNG',                'text', True),
+    ('VPE',        'VPE VK',        'a.VPE',                         'num',  False),
+    ('VPE_EK',     'VPE EK',        'a.VPE_EK',                      'num',  False),
+    ('PR_EINHEIT', 'Preis-Einh.',   'a.PR_EINHEIT',                  'num',  False),
+    ('EK_PREIS',   'EK-Preis',      'a.EK_PREIS',                    'num',  True),
+    ('VK1',        'VK1 netto',     'a.VK1',                         'num',  False),
+    ('VK1B',       'VK1 brutto',    'a.VK1B',                        'num',  False),
+    ('VK2',        'VK2 netto',     'a.VK2',                         'num',  False),
+    ('VK2B',       'VK2 brutto',    'a.VK2B',                        'num',  False),
+    ('VK3',        'VK3 netto',     'a.VK3',                         'num',  False),
+    ('VK3B',       'VK3 brutto',    'a.VK3B',                        'num',  False),
+    ('VK4',        'VK4 netto',     'a.VK4',                         'num',  False),
+    ('VK4B',       'VK4 brutto',    'a.VK4B',                        'num',  False),
+    ('VK5',        'VK5 netto',     'a.VK5',                         'num',  False),
+    ('VK5B',       'VK5 brutto',    'a.VK5B',                        'num',  True),
+    ('AKT_VK5',    'Aktion VK5',    'ap6.PREIS5',                    'num',  False),
+    ('AKT_VON',    'Aktion von',    'ap6.GUELTIG_VON',               'date', False),
+    ('AKT_BIS',    'Aktion bis',    'ap6.GUELTIG_BIS',               'date', False),
+    ('MENGE_AKT',  'Menge',         'a.MENGE_AKT',                   'num',  True),
+    ('WGR_NAME',   'Warengruppe',   'wg.NAME',                       'text', False),
+    ('HERSTELLER', 'Hersteller',    'h.HERSTELLER_NAME',             'text', False),
+    ('HERKUNFT',   'Herk.-Land',    'a.HERKUNFTSLAND',               'text', False),
+    ('LAGERORT',   'Lagerort',      'a.LAGERORT',                    'text', False),
+    ('VARARTNUM',  'Variant Art-Nr','a.VARARTNUM',                   'text', False),
+    ('BREITE',     'Breite',        'a.BREITE',                      'num',  False),
+    ('HOEHE',      'Höhe',          'a.HOEHE',                       'num',  False),
+    ('GROESSE',    'Größe',         'a.GROESSE',                     'text', False),
+    ('DIMENSION',  'Dimension',     'a.DIMENSION',                   'text', False),
+    ('GEWICHT',    'Gewicht',       'a.GEWICHT',                     'num',  False),
+    ('INVENTUR_WERT','I-Wert',      'a.INVENTUR_WERT',               'num',  False),
+    ('RABGRP_ID',  'Rab.-Gr.',      'a.RABGRP_ID',                   'int',  False),
+    ('SORTIERUNG', 'Sortierung',    'a.USERFELD_01',                 'text', False),
+    ('PLU',        'PLU',           'a.USERFELD_04',                 'text', False),
+    ('PLU2',       'PLU-2',         'a.USERFELD_05',                 'text', False),
+    ('ERLEDIGT',   'erledigt',      'a.USERFELD_02',                 'text', False),
+    ('LOESCH',     'Löschvermerk',  'a.USERFELD_03',                 'text', False),
+    ('UF06',       'Feld 06',       'a.USERFELD_06',                 'text', False),
+    ('UF07',       'Feld 07',       'a.USERFELD_07',                 'text', False),
+    ('UF08',       'Feld 08',       'a.USERFELD_08',                 'text', False),
+    ('UF09',       'Feld 09',       'a.USERFELD_09',                 'text', False),
+    ('UF10',       'Feld 10',       'a.USERFELD_10',                 'text', False),
+    ('ERLOES_KTO', 'E-KTO',         'a.ERLOES_KTO',                  'text', False),
+    ('AUFW_KTO',   'A-KTO',         'a.AUFW_KTO',                    'text', False),
+    ('ERSTELLT',   'erstellt',      'a.ERSTELLT',                    'date', False),
+    ('ERST_NAME',  'erstellt von',  'a.ERST_NAME',                   'text', False),
+    ('GEAEND',     'le. Änderung',  'a.GEAEND',                      'date', False),
+    ('GEAEND_NAME','geändert von',  'a.GEAEND_NAME',                 'text', False),
+]
+_SORT_WHITELIST = {k for k, *_ in LISTE_SPALTEN}
+
+
+def liste_spalten_meta() -> list[dict[str, Any]]:
+    return [{'key': k, 'label': lbl, 'typ': typ, 'default': dflt}
+            for k, lbl, _sql, typ, dflt in LISTE_SPALTEN]
+
+
 def artikel_liste(suche: str = '', *, wg_id: int | None = None,
-                  sort: str = 'KURZNAME', sort_dir: str = 'asc',
-                  limit: int | None = None) -> list[dict[str, Any]]:
-    """Artikel einer Warengruppe (inkl. Untergruppen) bzw. Volltextsuche."""
-    sort_map = {
-        'ARTNUM': 'a.ARTNUM', 'KURZNAME': 'a.KURZNAME',
-        'MATCHCODE': 'a.MATCHCODE', 'WGR_NAME': 'wg.NAME',
-        'ARTIKELTYP': 'a.ARTIKELTYP', 'EK_PREIS': 'a.EK_PREIS',
-        'VK5B': 'a.VK5B', 'MENGE_AKT': 'a.MENGE_AKT', 'ME_NAME': 'me.BEZEICHNUNG',
-    }
-    order = sort_map.get(sort, 'a.KURZNAME')
+                  merk_id: int | None = None, nur_aktion: bool = False,
+                  sort: str = 'BEZ', sort_dir: str = 'asc',
+                  limit: int | None = 1000) -> list[dict[str, Any]]:
+    """Artikel nach Warengruppe (rekursiv), Merkmal, Aktionspreis oder
+    Volltext. Liefert alle Register-Spalten (für konfigurierbare Tabelle)."""
+    cols = ',\n'.join(f'{sql} AS {k}' for k, _l, sql, _t, _d in LISTE_SPALTEN)
+    order = sort if sort in _SORT_WHITELIST else 'BEZ'
     direction = 'DESC' if str(sort_dir).lower() == 'desc' else 'ASC'
     where = ['1=1']
     params: list[Any] = []
@@ -78,28 +148,68 @@ def artikel_liste(suche: str = '', *, wg_id: int | None = None,
                       "OR a.MATCHCODE LIKE %s OR a.BARCODE LIKE %s "
                       "OR a.KAS_NAME LIKE %s)")
         like = f'%{suche}%'
-        params += [like, like, like, like, like]
-    join_wg = ''
-    if wg_id:
-        join_wg = ("JOIN (WITH RECURSIVE t AS ("
-                   "SELECT ID FROM WARENGRUPPEN WHERE ID=%s "
-                   "UNION ALL SELECT w.ID FROM WARENGRUPPEN w "
-                   "JOIN t ON w.TOP_ID=t.ID) SELECT ID FROM t) wt "
-                   "ON wt.ID = a.WARENGRUPPE")
+        params += [like] * 5
+    join = ("LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE\n"
+            "LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID\n"
+            "LEFT JOIN HERSTELLER h ON h.HERSTELLER_ID = a.HERSTELLER_ID\n"
+            "LEFT JOIN ARTIKEL_PREIS ap6 ON ap6.ARTIKEL_ID=a.REC_ID "
+            "AND ap6.ADRESS_ID=-99 AND ap6.PREIS_TYP=6")
+    if nur_aktion:
+        where.append("ap6.ARTIKEL_ID IS NOT NULL")
+    if merk_id:
+        join += ("\nJOIN ARTIKEL_TO_MERK tm ON tm.ARTIKEL_ID=a.REC_ID "
+                 "AND tm.MERKMAL_ID=%s")
+        params.insert(0, int(merk_id))
+    elif wg_id:
+        join += ("\nJOIN (WITH RECURSIVE t AS ("
+                 "SELECT ID FROM WARENGRUPPEN WHERE ID=%s "
+                 "UNION ALL SELECT w.ID FROM WARENGRUPPEN w "
+                 "JOIN t ON w.TOP_ID=t.ID) SELECT ID FROM t) wt "
+                 "ON wt.ID = a.WARENGRUPPE")
         params.insert(0, int(wg_id))
     lim = f' LIMIT {int(limit)}' if limit else ''
-    sql = f"""SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KURZNAME, a.KAS_NAME,
-                     a.BARCODE, a.ARTIKELTYP, a.EK_PREIS, a.VK5B, a.MENGE_AKT,
-                     a.WARENGRUPPE AS WGR_ID, wg.NAME AS WGR_NAME,
-                     me.BEZEICHNUNG AS ME_NAME
-                FROM ARTIKEL a
-                {join_wg}
-                LEFT JOIN WARENGRUPPEN wg ON wg.ID = a.WARENGRUPPE
-                LEFT JOIN MENGENEINHEIT me ON me.REC_ID = a.ME_ID
-               WHERE {' AND '.join(where)}
-               ORDER BY {order} {direction}{lim}"""
+    sql = (f"SELECT a.REC_ID, {cols}\n  FROM ARTIKEL a\n  {join}\n"
+           f" WHERE {' AND '.join(where)}\n"
+           f" ORDER BY {order} {direction}{lim}")
     with get_db() as cur:
         cur.execute(sql, params)
+        return list(cur.fetchall() or [])
+
+
+def warengruppen_tree() -> list[dict[str, Any]]:
+    """Flacher Warengruppen-Baum mit Nummer (=ID, 3-stellig) + direkter
+    Artikel-Anzahl, sortiert wie CAO (SORT, ID)."""
+    sql = """SELECT wg.ID AS id, wg.TOP_ID AS parent_id, wg.NAME AS name,
+                    wg.SORT AS sort,
+                    (SELECT COUNT(*) FROM ARTIKEL a WHERE a.WARENGRUPPE=wg.ID) AS direkt
+               FROM WARENGRUPPEN wg
+              ORDER BY wg.SORT, wg.ID"""
+    with get_db() as cur:
+        cur.execute(sql)
+        rows = list(cur.fetchall() or [])
+    for r in rows:
+        if r['parent_id'] in (-1, 0, '-1', '0', None):
+            r['parent_id'] = None
+        r['nummer'] = f"{int(r['id']):03d}"
+    return rows
+
+
+def aktionspreise_anzahl() -> int:
+    """Anzahl Artikel mit hinterlegtem Aktionspreis (PREIS_TYP=6)."""
+    with get_db() as cur:
+        cur.execute("SELECT COUNT(*) c FROM ARTIKEL_PREIS "
+                    "WHERE ADRESS_ID=-99 AND PREIS_TYP=6")
+        return int((cur.fetchone() or {}).get('c') or 0)
+
+
+def merkmale_liste() -> list[dict[str, Any]]:
+    """Alle Merkmale mit Artikel-Anzahl (ARTIKEL_MERK + ARTIKEL_TO_MERK)."""
+    sql = """SELECT m.MERKMAL_ID AS id, m.NAME AS name,
+                    (SELECT COUNT(*) FROM ARTIKEL_TO_MERK tm
+                      WHERE tm.MERKMAL_ID=m.MERKMAL_ID) AS anzahl
+               FROM ARTIKEL_MERK m ORDER BY m.NAME"""
+    with get_db() as cur:
+        cur.execute(sql)
         return list(cur.fetchall() or [])
 
 
@@ -349,3 +459,123 @@ def artikel_feld_aendern(rec_id: int, feld: str, wert: Any, *,
             f"UPDATE ARTIKEL SET {col}=%s, GEAEND=NOW(), GEAEND_NAME=%s "
             f"WHERE REC_ID=%s",
             (wert, (ma_name or 'CAO-XT')[:50], int(rec_id)))
+
+
+def aktionspreis_speichern(rec_id: int, vk: list, von=None, bis=None, *,
+                           ma_name: str = 'CAO-XT') -> None:
+    """Aktionspreis setzen/ändern/löschen (ARTIKEL_PREIS PREIS_TYP=6,
+    ADRESS_ID=-99) — CAO-Trace: Record-Lock (MOD 1020), DELETE+INSERT,
+    GEAEND-Bump. Leere Werte (alle VK=0 und kein Zeitraum) → nur löschen.
+
+    Hinweis: CAO schreibt zusätzlich einen ARTIKEL_LOG-Eintrag mit
+    (nicht reproduzierbarer) HASHSUM; das lassen wir — wie die übrigen
+    ARTIKEL-Stammdaten-Writes des Projekts — weg.
+    """
+    rec_id = int(rec_id)
+    vals = [float(str(x).replace(',', '.') or 0) if x not in (None, '') else 0.0
+            for x in (list(vk) + [0] * 5)[:5]]
+    von = von or None
+    bis = bis or None
+    hat = any(vals) or (von and bis)
+    ma = (ma_name or 'CAO-XT')[:50]
+    with get_db_transaction() as cur:
+        with cao_record_lock(cur, MODUL_ID_ARTIKEL, rec_id):
+            cur.execute("DELETE FROM ARTIKEL_PREIS WHERE ARTIKEL_ID=%s "
+                        "AND ADRESS_ID=-99 AND PREIS_TYP=6", (rec_id,))
+            if hat:
+                cur.execute(
+                    """INSERT INTO ARTIKEL_PREIS
+                       (ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PT2, BESTNUM,
+                        LIEFERZEIT_ID, VPE, PREIS, RABATT,
+                        MENGE2, PREIS2, PREIS2_AUTO, FAKTOR2,
+                        MENGE3, PREIS3, PREIS3_AUTO, FAKTOR3,
+                        MENGE4, PREIS4, PREIS4_AUTO, FAKTOR4,
+                        MENGE5, PREIS5, PREIS5_AUTO, FAKTOR5,
+                        GUELTIG_VON, GUELTIG_BIS, INFO, GEAEND, GEAEND_NAME,
+                        RABATT2, RABATT3, RABATT4, RABATT5, URL)
+                       VALUES (%s,-99,6,'EK','',1,0,%s,0,
+                               0,%s,'Y',0, 0,%s,'Y',0, 0,%s,'Y',0, 0,%s,'Y',0,
+                               %s,%s,'',NOW(),%s, 0,0,0,0,'')""",
+                    (rec_id, vals[0], vals[1], vals[2], vals[3], vals[4],
+                     von, bis, ma))
+            cur.execute("UPDATE ARTIKEL SET GEAEND=NOW(), GEAEND_NAME=%s "
+                        "WHERE REC_ID=%s", (ma, rec_id))
+
+
+def lieferantenpreis_speichern(rec_id: int, adress_id: int, *,
+                               bestnum: str = '', vpe=0, preis=0,
+                               als_standard: bool = False,
+                               ma_name: str = 'CAO-XT') -> None:
+    """Lieferantenpreis anlegen/ändern (ARTIKEL_PREIS PREIS_TYP=5,
+    ADRESS_ID=Lieferant). CAO-Trace: Upsert + Record-Lock; ``als_standard``
+    setzt ARTIKEL.DEFAULT_LIEF_ID."""
+    rec_id, adress_id = int(rec_id), int(adress_id)
+    vpe = float(str(vpe).replace(',', '.') or 0)
+    preis = float(str(preis).replace(',', '.') or 0)
+    bestnum = (bestnum or '')[:30]
+    ma = (ma_name or 'CAO-XT')[:50]
+    with get_db_transaction() as cur:
+        with cao_record_lock(cur, MODUL_ID_ARTIKEL, rec_id):
+            cur.execute(
+                "UPDATE ARTIKEL_PREIS SET PT2='EK', BESTNUM=%s, VPE=%s, "
+                "PREIS=%s, GEAEND=NOW(), GEAEND_NAME=%s "
+                "WHERE ARTIKEL_ID=%s AND ADRESS_ID=%s AND PREIS_TYP=5",
+                (bestnum, vpe, preis, ma, rec_id, adress_id))
+            if cur.rowcount == 0:
+                cur.execute(
+                    """INSERT INTO ARTIKEL_PREIS
+                       (ARTIKEL_ID, ADRESS_ID, PREIS_TYP, PT2, BESTNUM,
+                        LIEFERZEIT_ID, VPE, PREIS, RABATT,
+                        MENGE2, PREIS2, PREIS2_AUTO, FAKTOR2,
+                        MENGE3, PREIS3, PREIS3_AUTO, FAKTOR3,
+                        MENGE4, PREIS4, PREIS4_AUTO, FAKTOR4,
+                        MENGE5, PREIS5, PREIS5_AUTO, FAKTOR5,
+                        GUELTIG_VON, GUELTIG_BIS, INFO, GEAEND, GEAEND_NAME,
+                        RABATT2, RABATT3, RABATT4, RABATT5, URL)
+                       VALUES (%s,%s,5,'EK',%s,1,%s,%s,0,
+                               0,0,'Y',0, 0,0,'Y',0, 0,0,'Y',0, 0,0,'Y',0,
+                               NULL,NULL,'',NOW(),%s, 0,0,0,0,'')""",
+                    (rec_id, adress_id, bestnum, vpe, preis, ma))
+            if als_standard:
+                cur.execute("UPDATE ARTIKEL SET DEFAULT_LIEF_ID=%s, "
+                            "GEAEND=NOW(), GEAEND_NAME=%s WHERE REC_ID=%s",
+                            (adress_id, ma, rec_id))
+            else:
+                cur.execute("UPDATE ARTIKEL SET GEAEND=NOW(), GEAEND_NAME=%s "
+                            "WHERE REC_ID=%s", (ma, rec_id))
+
+
+def lieferantenpreis_loeschen(rec_id: int, adress_id: int, *,
+                              ma_name: str = 'CAO-XT') -> None:
+    """Lieferantenpreis löschen; war es der Standard-Lieferant, wird
+    ARTIKEL.DEFAULT_LIEF_ID auf -1 gesetzt (CAO-Trace)."""
+    rec_id, adress_id = int(rec_id), int(adress_id)
+    ma = (ma_name or 'CAO-XT')[:50]
+    with get_db_transaction() as cur:
+        with cao_record_lock(cur, MODUL_ID_ARTIKEL, rec_id):
+            cur.execute(
+                "UPDATE ARTIKEL SET DEFAULT_LIEF_ID="
+                "IF(DEFAULT_LIEF_ID=%s,-1,DEFAULT_LIEF_ID), "
+                "GEAEND=NOW(), GEAEND_NAME=%s WHERE REC_ID=%s",
+                (adress_id, ma, rec_id))
+            cur.execute("DELETE FROM ARTIKEL_PREIS WHERE ARTIKEL_ID=%s "
+                        "AND ADRESS_ID=%s AND PREIS_TYP=5",
+                        (rec_id, adress_id))
+
+
+def lieferanten_suche(q: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Adress-Suche für den Lieferanten-Picker (ARTIKEL_PREIS PREIS_TYP=5)."""
+    q = (q or '').strip()
+    if not q:
+        return []
+    like = f'%{q}%'
+    sql = """SELECT REC_ID AS id,
+                    TRIM(CONCAT_WS(' ', NAME1, NAME2)) AS name,
+                    KUNNUM1, KUNNUM2
+               FROM ADRESSEN
+              WHERE NAME1 LIKE %s OR NAME2 LIKE %s OR MATCHCODE LIKE %s
+                    OR KUNNUM1 LIKE %s
+              ORDER BY NAME1 LIMIT %s"""
+    with get_db() as cur:
+        cur.execute(sql, (like, like, like, like, int(limit)))
+        return list(cur.fetchall() or [])

@@ -391,7 +391,7 @@ a { text-decoration: none; color: inherit; }
           <span class="icon">👥</span> Adressen
         </a>
 
-        {% set artikel_aktiv = request.path in ('/orga', '/orga/preispflege') or request.path.startswith('/orga/stammdaten/artikel') %}
+        {% set artikel_aktiv = request.path in ('/orga', '/orga/preispflege') or request.path.startswith('/orga/stammdaten/artikel') or request.path.startswith('/orga/stammdaten/preisplan') %}
         <div class="sidebar-group {% if artikel_aktiv %}open{% endif %}" id="grp-artikel">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-artikel')">
             <span class="icon">📦</span> Artikel
@@ -414,6 +414,12 @@ a { text-decoration: none; color: inherit; }
                class="sidebar-sub-item {% if _ok and request.path == '/orga/preispflege' %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
                {% if not _ok %}title="Keine Berechtigung (orga.preispflege)" aria-disabled="true"{% endif %}>
               <span class="sub-icon">💶</span> Preispflege
+            </a>
+            {% set _ok = hat_recht('orga.artikel') %}
+            <a href="{% if _ok %}/orga/stammdaten/preisplan{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/stammdaten/preisplan') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.artikel)" aria-disabled="true"{% endif %}>
+              <span class="sub-icon">🗓</span> Preisplanung
             </a>
           </div>
         </div>

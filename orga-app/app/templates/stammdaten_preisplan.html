@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Preisplanung – geplante Änderungen{% endblock %}
+
+{% block extra_style %}
+<style>
+.pp-kopf{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 12px}
+.pp-flash{padding:8px 14px;border-radius:6px;margin:8px 0;font-size:.92rem}
+.pp-flash.ok{background:rgba(46,110,26,.12);color:var(--gruen-dunkel,#2e6e1a)}
+.pp-flash.fehler{background:rgba(184,48,48,.12);color:#b83030}
+.pp-filter a{padding:5px 12px;border:1px solid var(--rand,#d8d2c0);border-radius:16px;
+  text-decoration:none;font-size:.85rem;background:var(--creme,#f7f4ec);color:var(--text,#33321b)}
+.pp-filter a.aktiv{background:var(--gruen-dunkel,#2e6e1a);color:#fff;border-color:var(--gruen-dunkel,#2e6e1a)}
+.pp-tab{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:var(--schatten)}
+.pp-tab th{background:var(--gruen-dunkel);color:var(--creme);padding:8px 10px;text-align:left;font-size:.72rem;font-weight:800;text-transform:uppercase;white-space:nowrap}
+.pp-tab td{padding:6px 10px;border-bottom:1px solid var(--creme-dunkel);font-size:.88rem;vertical-align:middle}
+.pp-tab tr:hover td{background:rgba(46,110,26,.04)}
+.rechts{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:monospace;font-size:.84rem;color:var(--text-dim)}
+.pp-art{font-size:.72rem;padding:1px 8px;border-radius:10px;font-weight:700}
+.pp-art.aktion{background:#fef1db;color:#8a5e1a}
+.pp-art.preis{background:#e0eaf5;color:#1a4a7a}
+.pp-st{font-size:.72rem;padding:1px 8px;border-radius:10px}
+.pp-st.geplant{background:var(--creme,#f7f4ec);color:var(--text-dim)}
+.pp-st.aktiv{background:#e8f5e0;color:#2e7a2e;font-weight:700}
+.pp-faellig{color:#b83030;font-weight:700}
+.pp-act button{padding:3px 8px;border:1px solid var(--rand,#d8d2c0);border-radius:5px;background:var(--creme,#f7f4ec);cursor:pointer;font-size:.8rem}
+.pp-act .anw{background:var(--gruen-dunkel,#2e6e1a);color:#fff;border-color:var(--gruen-dunkel,#2e6e1a)}
+.empty{padding:30px;text-align:center;color:var(--text-dim);font-style:italic;background:#fff;border-radius:10px;box-shadow:var(--schatten)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:92rem;">
+  <div class="pp-kopf">
+    <h1 style="margin:0;">🗓 Preisplanung</h1>
+    <div class="pp-filter">
+      <a href="{{ url_for('orga_stammdaten.preisplan') }}" class="{% if not nur_offen %}aktiv{% endif %}">Alle geplanten/aktiven</a>
+      <a href="{{ url_for('orga_stammdaten.preisplan', offen=1) }}" class="{% if nur_offen %}aktiv{% endif %}">Schild offen</a>
+    </div>
+  </div>
+
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for kat, msg in msgs %}<div class="pp-flash {{ 'ok' if kat=='ok' else 'fehler' }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+
+  <p style="color:var(--text-dim);font-size:.85rem;margin:0 0 10px;">
+    Geplante Aktionen und dauerhafte Preisänderungen, nach Stichtag sortiert. Fällige Einträge werden automatisch angewendet;
+    „Anwenden" schreibt sofort in CAO. Haken in „Schild" setzen, wenn das Preisschild gedruckt wurde.</p>
+
+  {% if rows %}
+  <table class="pp-tab">
+    <thead><tr><th>Stichtag</th><th>bis</th><th>Art</th><th>Art-Nr</th><th>Bezeichnung</th>
+      <th class="rechts">neu VK5 (netto/brutto)</th><th class="rechts">aktuell VK5</th>
+      <th>Status</th><th>Schild</th><th>Aktionen</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set rate = {0:0,1:0.19,2:0.07,3:0}.get(r.STEUER_CODE,0) %}
+      {% set faellig = heute and r.gueltig_ab and (r.gueltig_ab|string) <= heute and r.status=='geplant' %}
+      <tr>
+        <td class="{% if faellig %}pp-faellig{% endif %}">{{ r.gueltig_ab.strftime('%d.%m.%Y') if r.gueltig_ab else '' }}{% if faellig %} ⚠{% endif %}</td>
+        <td>{{ r.gueltig_bis.strftime('%d.%m.%Y') if r.gueltig_bis else '—' }}</td>
+        <td><span class="pp-art {{ r.art }}">{{ 'Aktion' if r.art=='aktion' else 'Preis' }}</span></td>
+        <td class="mono">{{ r.ARTNUM }}</td>
+        <td><a href="{{ url_for('orga_stammdaten.artikel_detail', rec_id=r.artikel_id) }}" style="color:var(--gruen-dunkel,#2e6e1a);text-decoration:none;font-weight:600;">{{ r.BEZ }}</a>
+          {% if r.WGR_NAME %}<small style="color:var(--text-dim);"> · {{ r.WGR_NAME }}</small>{% endif %}</td>
+        <td class="rechts">{% if r.vk5 is not none %}{{ '%.2f'|format(r.vk5|float) }} / {{ '%.2f €'|format((r.vk5|float)*(1+rate)) }}{% else %}—{% endif %}</td>
+        <td class="rechts">{{ '%.2f €'|format(r.AKTUELL_VK5B) if r.AKTUELL_VK5B is not none else '' }}</td>
+        <td><span class="pp-st {{ r.status }}">{{ r.status }}</span></td>
+        <td style="text-align:center;"><input type="checkbox" class="pp-schild" data-id="{{ r.rec_id }}" {% if r.schild_gedruckt %}checked{% endif %}></td>
+        <td class="pp-act" style="white-space:nowrap;">
+          {% if r.status=='geplant' %}
+          <form method="post" action="{{ url_for('orga_stammdaten.preisplan_anwenden', rec_id=r.rec_id) }}" style="display:inline;"><button class="anw" title="Jetzt in CAO schreiben">Anwenden</button></form>
+          {% else %}
+          <form method="post" action="{{ url_for('orga_stammdaten.preisplan_zuruecksetzen', rec_id=r.rec_id) }}" style="display:inline;"><button title="In CAO rückgängig">Rückgängig</button></form>
+          {% endif %}
+          <form method="post" action="{{ url_for('orga_stammdaten.preisplan_loeschen', rec_id=r.rec_id) }}" style="display:inline;" onsubmit="return confirm('Eintrag löschen?');"><button title="Löschen">🗑</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">{% if nur_offen %}Keine Einträge mit offenem Schilddruck.{% else %}Keine geplanten Preisänderungen. Lege welche in der Artikel-Detailseite an (Tab „Preisplanung").{% endif %}</div>
+  {% endif %}
+</div>
+
+<script>
+const PP_SCHILD_URL=id=>{{ (url_for('orga_stammdaten.preisplan')~'/')|tojson }}+id+'/schild';
+document.querySelectorAll('.pp-schild').forEach(cb=>cb.addEventListener('change',()=>{
+  const fd=new FormData();fd.append('gedruckt',cb.checked?'1':'0');
+  fetch(PP_SCHILD_URL(cb.dataset.id),{method:'POST',body:fd}).catch(()=>{cb.checked=!cb.checked;});
+}));
+</script>
+{% endblock %}
