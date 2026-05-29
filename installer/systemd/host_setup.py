@@ -156,6 +156,9 @@ def _remove_units(target_dir: str, instance_name: str, *,
     """Loescht alle <prefix>-*.service und <prefix>.target in target_dir."""
     files = [units.unit_name(a, instance_name) for a in units.all_app_names()]
     files.append(units.target_name(instance_name))
+    files.append(units.update_unit_name(instance_name))
+    files.append(units.preisplan_service_name(instance_name))
+    files.append(units.preisplan_timer_name(instance_name))
     paths = [os.path.join(target_dir, f) for f in files]
     paths = [p for p in paths if os.path.lexists(p)]
     if not paths:
@@ -230,6 +233,15 @@ def install_user(install_root: str, *,
         return False
     print_fn(f"  ✓  {target} enabled")
 
+    # Preisplan-Timer aktivieren (taegliche Auto-Anwendung; unkritisch).
+    ptimer = units.preisplan_timer_name(instance_name)
+    print_fn(f"  → systemctl --user enable --now {ptimer} …")
+    r = _run(['systemctl', '--user', 'enable', '--now', ptimer])
+    if r.returncode != 0:
+        print_fn(f"  ⚠  Preisplan-Timer nicht aktiviert: {_err(r)}")
+    else:
+        print_fn(f"  ✓  {ptimer} aktiv")
+
     if start_after_enable:
         print_fn(f"  → systemctl --user start {target} …")
         r = _run(['systemctl', '--user', 'start', target], timeout=180)
@@ -279,6 +291,8 @@ def uninstall_user(*, instance_name: str = '',
     print_fn(f"  → systemctl --user stop/disable {target} …")
     _run(['systemctl', '--user', 'stop',    target], timeout=120)
     _run(['systemctl', '--user', 'disable', target])
+    _run(['systemctl', '--user', 'disable', '--now',
+          units.preisplan_timer_name(instance_name)])
 
     print_fn("  → Unit-Files loeschen …")
     _remove_units(USER_UNIT_DIR, instance_name, sudo=False, print_fn=print_fn)
@@ -507,6 +521,15 @@ def install_system(install_root: str, *,
         return False
     msg = 'enabled + gestartet' if start_after_enable else 'enabled'
     print_fn(f"  ✓  {target} {msg}")
+
+    # Preisplan-Timer aktivieren (taegliche Auto-Anwendung; unkritisch).
+    ptimer = units.preisplan_timer_name(instance_name)
+    print_fn(f"  → systemctl enable --now {ptimer} …")
+    r = _run(_maybe_sudo(['systemctl', 'enable', '--now', ptimer]))
+    if r.returncode != 0:
+        print_fn(f"  ⚠  Preisplan-Timer nicht aktiviert: {_err(r)}")
+    else:
+        print_fn(f"  ✓  {ptimer} aktiv")
     return True
 
 
@@ -556,6 +579,8 @@ def uninstall_system(*, instance_name: str = '',
     print_fn(f"  → systemctl stop/disable {target} …")
     _run(_maybe_sudo(['systemctl', 'stop',    target]), timeout=120)
     _run(_maybe_sudo(['systemctl', 'disable', target]))
+    _run(_maybe_sudo(['systemctl', 'disable', '--now',
+                      units.preisplan_timer_name(instance_name)]))
 
     print_fn("  → Unit-Files loeschen …")
     _remove_units(SYSTEM_UNIT_DIR, instance_name, sudo=True, print_fn=print_fn)

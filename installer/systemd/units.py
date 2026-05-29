@@ -162,6 +162,39 @@ StandardError=journal
 SyslogIdentifier={prefix}-update
 """
 
+# Preisplan: Oneshot-Service + taeglicher Timer. Wendet faellige geplante
+# Preisaenderungen/Aktionen an (common.preisplan_poller). Eigene Unit
+# (kein PartOf=<target>) — laeuft unabhaengig vom App-Target.
+_PREISPLAN_SERVICE_TEMPLATE = """\
+[Unit]
+Description=Dorfkern Preisplan-Anwendung{instance_label}
+{after_block}
+
+[Service]
+Type=oneshot
+{owner_block}WorkingDirectory={install_root}
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH={install_root}
+ExecStart={install_root}/.venv/bin/python3 -m common.preisplan_poller
+TimeoutStartSec=300
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={prefix}-preisplan
+"""
+
+_PREISPLAN_TIMER_TEMPLATE = """\
+[Unit]
+Description=Dorfkern Preisplan taeglich anwenden{instance_label}
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+"""
+
 
 _MODES = ('system', 'user')
 
@@ -197,6 +230,16 @@ def target_name(instance_name: str = '') -> str:
 def update_unit_name(instance_name: str = '') -> str:
     """Name der Oneshot-Update-Unit. Default 'dorfkern-update.service'."""
     return f'{systemd_prefix(instance_name)}-update.service'
+
+
+def preisplan_service_name(instance_name: str = '') -> str:
+    """Name der Preisplan-Oneshot-Unit. Default 'dorfkern-preisplan.service'."""
+    return f'{systemd_prefix(instance_name)}-preisplan.service'
+
+
+def preisplan_timer_name(instance_name: str = '') -> str:
+    """Name des Preisplan-Timers. Default 'dorfkern-preisplan.timer'."""
+    return f'{systemd_prefix(instance_name)}-preisplan.timer'
 
 
 def all_app_names() -> List[str]:
@@ -376,6 +419,30 @@ def render_update_unit(*, mode: str = 'system',
     )
 
 
+def render_preisplan_service(*, mode: str = 'system',
+                             instance_name: str = '',
+                             install_root: str = DEFAULT_INSTALL_ROOT,
+                             user: str = DEFAULT_USER,
+                             group: str = DEFAULT_GROUP) -> str:
+    """Rendert die Preisplan-Oneshot-Unit (vom Timer getriggert)."""
+    if mode not in _MODES:
+        raise ValueError(f'Unbekannter mode: {mode!r}, erwartet einen von {_MODES}')
+    instance_label = f" [{instance_name}]" if instance_name else ''
+    return _PREISPLAN_SERVICE_TEMPLATE.format(
+        instance_label=instance_label,
+        after_block=_render_after_block(mode),
+        owner_block=_render_owner_block(mode, user, group),
+        install_root=install_root,
+        prefix=systemd_prefix(instance_name),
+    )
+
+
+def render_preisplan_timer(*, instance_name: str = '') -> str:
+    """Rendert den taeglichen Preisplan-Timer."""
+    instance_label = f" [{instance_name}]" if instance_name else ''
+    return _PREISPLAN_TIMER_TEMPLATE.format(instance_label=instance_label)
+
+
 def render_all(*, mode: str = 'system',
                instance_name: str = '',
                base_port: int = DEFAULT_BASE_PORT,
@@ -412,6 +479,14 @@ def render_all(*, mode: str = 'system',
         mode=mode, instance_name=instance_name,
         install_root=install_root, user=user, group=group,
     )
+    # Preisplan: Oneshot + Timer (taegliche Auto-Anwendung). Wird beim
+    # Install zusaetzlich per 'enable --now <timer>' aktiviert.
+    rendered[preisplan_service_name(instance_name)] = render_preisplan_service(
+        mode=mode, instance_name=instance_name,
+        install_root=install_root, user=user, group=group,
+    )
+    rendered[preisplan_timer_name(instance_name)] = render_preisplan_timer(
+        instance_name=instance_name)
     if include_target:
         rendered[target_name(instance_name)] = render_target(
             mode=mode, instance_name=instance_name, apps=apps,

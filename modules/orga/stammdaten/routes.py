@@ -435,28 +435,6 @@ def artikel_feld_speichern(rec_id: int):
                    anzeige=_art_anzeige_wert(col, neu))
 
 
-@bp.post('/artikel/<int:rec_id>/aktionspreis')
-def artikel_aktionspreis(rec_id: int):
-    """Aktionspreis setzen/löschen (ARTIKEL_PREIS PREIS_TYP=6) wie CAO."""
-    _login_check()
-    from common.cao_lock import CaoLockBelegt
-    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
-    if request.form.get('loeschen'):
-        vk, von, bis = [0] * 5, None, None
-    else:
-        vk = [request.form.get(f'vk{i}') for i in range(1, 6)]
-        von = (request.form.get('von') or '').strip() or None
-        bis = (request.form.get('bis') or '').strip() or None
-    try:
-        art.aktionspreis_speichern(rec_id, vk, von, bis, ma_name=ma)
-    except CaoLockBelegt:
-        return jsonify(ok=False, fehler='Artikel ist gerade gesperrt.'), 409
-    except Exception as e:  # noqa: BLE001
-        log.exception('Aktionspreis speichern')
-        return jsonify(ok=False, fehler=str(e)), 400
-    return jsonify(ok=True)
-
-
 @bp.get('/artikel/lieferanten')
 def artikel_lieferanten():
     """Adress-Suche für den Lieferanten-Picker."""
