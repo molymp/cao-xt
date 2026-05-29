@@ -1407,9 +1407,9 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
     if not tokens:
         return []
 
-    # Wir filtern nur aktive (NO_VK_FLAG != 'Y' und USERFELD_02 leer)
+    # Wir filtern nur aktive (NO_VK_FLAG != 'Y' und USERFELD_03 leer)
     where = ["a.NO_VK_FLAG <> 'Y'",
-             "(a.USERFELD_02 IS NULL OR a.USERFELD_02 = '')"]
+             "(a.USERFELD_03 IS NULL OR a.USERFELD_03 = '')"]
     params: list = []
     for tok in tokens:
         where.append("(a.MATCHCODE LIKE %s OR a.KAS_NAME LIKE %s "
@@ -1429,7 +1429,7 @@ def cao_artikel_vorschlag(bezeichnung_lief: str,
         SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME, a.KURZNAME,
                a.WARENGRUPPE, a.STEUER_CODE,
                a.EK_PREIS, a.VK5B, a.MENGE_AKT,
-               a.DEFAULT_LIEF_ID, a.NO_VK_FLAG, a.USERFELD_02,
+               a.DEFAULT_LIEF_ID, a.NO_VK_FLAG, a.USERFELD_03,
                TRIM(a.BARCODE)  AS BARCODE,
                TRIM(a.BARCODE2) AS BARCODE2,
                TRIM(a.BARCODE3) AS BARCODE3
@@ -2661,7 +2661,7 @@ def _stueck_ek(roh_ek: Optional[float],
 _ARTIKEL_FELDER = (
     'a.REC_ID, a.ARTNUM, a.MATCHCODE, a.KAS_NAME, a.KURZNAME, '
     'a.WARENGRUPPE, a.STEUER_CODE, a.EK_PREIS, a.VK5B, a.MENGE_AKT, '
-    'a.NO_VK_FLAG, a.USERFELD_02'
+    'a.NO_VK_FLAG, a.USERFELD_03'
 )
 
 
@@ -2988,7 +2988,7 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                 'vk5b':        float(cao_treffer.get('VK5B') or 0),
                 'lager':       float(cao_treffer.get('MENGE_AKT') or 0),
                 'aktiv':       (cao_treffer.get('NO_VK_FLAG') != 'Y'
-                                and not (cao_treffer.get('USERFELD_02') or '').strip()),
+                                and not (cao_treffer.get('USERFELD_03') or '').strip()),
             }
 
         # Bei „kein"-Treffer: Bezeichnungs-Vorschlaege liefern.
@@ -3025,7 +3025,7 @@ def cao_match_positionen(rec_id: int) -> list[dict]:
                                 SELECT a.REC_ID, a.ARTNUM, a.MATCHCODE,
                                        a.KAS_NAME, a.KURZNAME, a.WARENGRUPPE,
                                        a.STEUER_CODE, a.EK_PREIS, a.VK5B,
-                                       a.MENGE_AKT, a.NO_VK_FLAG, a.USERFELD_02
+                                       a.MENGE_AKT, a.NO_VK_FLAG, a.USERFELD_03
                                 FROM ARTIKEL a WHERE a.REC_ID = %s
                             """, (int(ean_match['rec_id']),))
                             row = cur.fetchone()

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% import '_listing.html' as L %}
+{% block title %}Stammdaten – Artikel{% endblock %}
+
+{# Rekursiver Warengruppen-Baum (ohne Marge) #}
+{% macro wgnode(nodes, parent) %}
+  {% for n in nodes if n.parent_id == parent %}
+    {% set kinder = nodes|selectattr('parent_id','equalto',n.id)|list %}
+    {% if kinder %}
+      <details class="wg-grp"{% if wg_aktiv == n.id %} open{% endif %}>
+        <summary>
+          <a href="{{ url_for('orga_stammdaten.artikel', wg=n.id, q=suche or None) }}"
+             class="wg-link {% if wg_aktiv == n.id %}aktiv{% endif %}">{{ n.bezeichnung }}</a>
+          <span class="wg-n">{{ n.gesamt|default(n.artikel_anzahl) }}</span>
+        </summary>
+        <div class="wg-kinder">{{ wgnode(nodes, n.id) }}</div>
+      </details>
+    {% else %}
+      <a href="{{ url_for('orga_stammdaten.artikel', wg=n.id, q=suche or None) }}"
+         class="wg-link wg-leaf {% if wg_aktiv == n.id %}aktiv{% endif %}">
+        <span>{{ n.bezeichnung }}</span><span class="wg-n">{{ n.gesamt|default(n.artikel_anzahl) }}</span></a>
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{% block extra_style %}
+<style>
+.art-layout{display:grid;grid-template-columns:18rem 1fr;gap:14px;align-items:start}
+@media (max-width:900px){.art-layout{grid-template-columns:1fr}}
+.art-side{background:#fff;border-radius:var(--radius,10px);box-shadow:var(--schatten);
+  padding:8px 6px;position:sticky;top:8px;max-height:calc(100vh - 20px);overflow:auto}
+.art-side h3{margin:0 0 4px;padding:6px 10px;font-size:.74rem;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--text-dim,#5a7a3a);font-weight:800}
+.wg-grp{margin:0}
+.wg-grp>summary{list-style:none;display:flex;justify-content:space-between;gap:6px;
+  align-items:center;padding:4px 8px;cursor:pointer;border-radius:6px;font-size:.86rem}
+.wg-grp>summary::-webkit-details-marker{display:none}
+.wg-grp>summary::before{content:'▸';color:var(--text-dim);font-size:.7rem;flex:0 0 auto}
+.wg-grp[open]>summary::before{content:'▾'}
+.wg-grp>summary:hover{background:var(--creme,#f7f4ec)}
+.wg-kinder{padding-left:12px;border-left:1px dotted var(--creme-dunkel)}
+.wg-link{text-decoration:none;color:var(--text,#33321b);flex:1}
+.wg-leaf{display:flex;justify-content:space-between;gap:6px;padding:4px 8px;
+  border-radius:6px;font-size:.86rem}
+.wg-leaf:hover{background:var(--creme,#f7f4ec)}
+.wg-link.aktiv{color:var(--gruen-dunkel,#2e6e1a);font-weight:700}
+.wg-n{color:var(--text-dim,#5a7a3a);font-size:.78rem;font-variant-numeric:tabular-nums}
+.art-kopf{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  flex-wrap:wrap;margin:0 0 12px}
+.art-suche input[type=search]{padding:6px 10px;font-size:.95rem;min-width:18rem;
+  border:1px solid var(--rand,#d8d2c0);border-radius:6px}
+.art-suche button{padding:6px 14px;border:1px solid var(--rand,#d8d2c0);
+  background:var(--creme,#f7f4ec);border-radius:6px;cursor:pointer}
+.art-info{color:var(--text-dim);font-size:.85rem;margin-bottom:8px}
+.art-tab{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;
+  overflow:hidden;box-shadow:var(--schatten)}
+.art-tab th{background:var(--gruen-dunkel);color:var(--creme);padding:8px 10px;
+  text-align:left;font-size:.72rem;font-weight:800;text-transform:uppercase;
+  white-space:nowrap;cursor:pointer;user-select:none}
+.art-tab th .ind{opacity:.4;font-size:.7rem}
+.art-tab td{padding:6px 10px;border-bottom:1px solid var(--creme-dunkel);font-size:.9rem}
+.art-tab tr:hover td{background:rgba(46,110,26,.05);cursor:pointer}
+.art-tab a.name{color:var(--gruen-dunkel,#2e6e1a);font-weight:600;text-decoration:none}
+.rechts{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:monospace;font-size:.84rem;color:var(--text-dim)}
+.art-typ{font-size:.7rem;padding:1px 6px;border-radius:8px;background:var(--creme,#f7f4ec);color:var(--text-dim)}
+.empty{padding:30px;text-align:center;color:var(--text-dim);font-style:italic;
+  background:#fff;border-radius:10px;box-shadow:var(--schatten)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:92rem;">
+  <div class="art-kopf">
+    <h1 style="margin:0;">📦 Artikel</h1>
+    <form method="get" class="art-suche">
+      {% if wg_aktiv %}<input type="hidden" name="wg" value="{{ wg_aktiv }}">{% endif %}
+      <input type="search" name="q" value="{{ suche|e }}"
+             placeholder="Art-Nr, Name, Barcode, Matchcode …" autocomplete="off">
+      <button type="submit">Suchen</button>
+      {% if suche %}<a href="{{ url_for('orga_stammdaten.artikel', wg=wg_aktiv or None) }}"
+         style="font-size:.85rem;color:var(--text-dim);">× zurücksetzen</a>{% endif %}
+    </form>
+  </div>
+
+  <div class="art-layout">
+    <aside class="art-side">
+      <h3>Warengruppen</h3>
+      <a class="wg-leaf {% if not wg_aktiv %}aktiv{% endif %}"
+         href="{{ url_for('orga_stammdaten.artikel', q=suche or None) }}">
+        <span>alle Warengruppen</span></a>
+      {{ wgnode(baum, None) }}
+    </aside>
+
+    <div>
+      <div class="art-info">{{ rows|length }} Artikel{% if suche %} — Suche „<b>{{ suche|e }}</b>"{% endif %}</div>
+      {% if rows %}
+      <table class="art-tab sortable" id="art-tab">
+        <thead><tr>
+          <th data-i="0">{{ L.sortlink('Art-Nr','ARTNUM',sort_key,sort_dir) }}</th>
+          <th data-i="1">{{ L.sortlink('Bezeichnung','KURZNAME',sort_key,sort_dir) }}</th>
+          <th data-i="2">{{ L.sortlink('Warengruppe','WGR_NAME',sort_key,sort_dir) }}</th>
+          <th data-i="3">Typ</th>
+          <th data-i="4">{{ L.sortlink('Einheit','ME_NAME',sort_key,sort_dir) }}</th>
+          <th class="rechts" data-i="5" data-type="num">{{ L.sortlink('EK','EK_PREIS',sort_key,sort_dir) }}</th>
+          <th class="rechts" data-i="6" data-type="num">{{ L.sortlink('VK5','VK5B',sort_key,sort_dir) }}</th>
+          <th class="rechts" data-i="7" data-type="num">{{ L.sortlink('Bestand','MENGE_AKT',sort_key,sort_dir) }}</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+          <tr onclick="location.href='{{ url_for('orga_stammdaten.artikel_detail', rec_id=r.REC_ID) }}'">
+            <td class="mono">{{ r.ARTNUM or '' }}</td>
+            <td><a class="name" href="{{ url_for('orga_stammdaten.artikel_detail', rec_id=r.REC_ID) }}">
+              {{ r.KAS_NAME or r.KURZNAME or r.MATCHCODE or '–' }}</a></td>
+            <td>{{ r.WGR_NAME or '' }}</td>
+            <td><span class="art-typ" title="{{ artikeltyp_label.get(r.ARTIKELTYP, r.ARTIKELTYP) }}">{{ r.ARTIKELTYP or '' }}</span></td>
+            <td>{{ r.ME_NAME or '' }}</td>
+            <td class="rechts" data-val="{{ r.EK_PREIS if r.EK_PREIS is not none else '' }}">{{ '%.2f'|format(r.EK_PREIS) if r.EK_PREIS is not none else '' }}</td>
+            <td class="rechts" data-val="{{ r.VK5B if r.VK5B is not none else '' }}">{{ '%.2f'|format(r.VK5B) if r.VK5B is not none else '' }}</td>
+            <td class="rechts" data-val="{{ r.MENGE_AKT if r.MENGE_AKT is not none else '' }}">{{ '%.0f'|format(r.MENGE_AKT) if r.MENGE_AKT is not none else '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">{% if suche %}Kein Artikel passt zu „<b>{{ suche|e }}</b>".
+        {% elif wg_aktiv %}Keine Artikel in dieser Warengruppe.
+        {% else %}← Warengruppe wählen oder oben suchen.{% endif %}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+/* Client-Sort der Artikel-Tabelle (zusätzlich zu den Server-Sortlinks) */
+(function(){
+  const t=document.getElementById('art-tab'); if(!t) return;
+  const tb=t.tBodies[0];
+  t.tHead.querySelectorAll('th').forEach(th=>{
+    th.addEventListener('click', e=>{
+      if(e.target.closest('a')) return;            // Server-Sortlink hat Vorrang
+      const i=+th.dataset.i, num=th.dataset.type==='num';
+      const dir=(t.dataset.si==i && t.dataset.sd==='1')?-1:1;
+      t.dataset.si=i; t.dataset.sd=dir>0?'1':'-1';
+      const rows=[...tb.rows];
+      const val=r=>{const c=r.cells[i]; const dv=c.dataset.val;
+        return num?(parseFloat(dv!==undefined?dv:c.textContent)||-1e15):c.textContent.trim().toLowerCase();};
+      rows.sort((a,b)=>{const x=val(a),y=val(b);
+        return num?(x-y)*dir:x.localeCompare(y,'de')*dir;});
+      rows.forEach(r=>tb.appendChild(r));
+    });
+  });
+})();
+</script>
+{% endblock %}

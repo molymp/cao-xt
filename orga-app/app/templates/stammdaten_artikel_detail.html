@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% block title %}Artikel {{ a.ARTNUM }} – {{ a.KURZNAME or '?' }}{% endblock %}
+
+{% macro f(label, value) %}
+  <dt>{{ label }}</dt>
+  <dd class="{% if value in (None,'',0,'0') %}leer{% endif %}">{{ value if value not in (None,'') else '—' }}</dd>
+{% endmacro %}
+
+{# Anzeige eines Feldwerts (codierte Felder als „Wert – Klartext") #}
+{% macro anz(col, val) %}
+{%- if col in jn_cols -%}{{ 'Ja' if (val|string) in ('Y','y','1') else 'Nein' }}
+{%- elif col in select_lookup -%}
+  {%- set lk = lookups.get(select_lookup[col], {}) -%}
+  {%- set name = lk.get(val) if val is not none else None -%}
+  {%- if val in (None,'',-1,'-1',0,'0') and col not in ('ARTIKELTYP','STEUER_CODE') -%}—
+  {%- elif name -%}{{ val }} – {{ name }}
+  {%- elif val not in (None,'') -%}{{ val }}{%- else -%}—{%- endif -%}
+{%- else -%}{{ val if val not in (None,'') else '—' }}{%- endif -%}
+{% endmacro %}
+
+{# Feld-Zeile: editierbar (Klick) wenn col in editierbar #}
+{% macro fe(col, label) %}
+{%- set val = a[col] -%}
+{%- set edit = col in editierbar -%}
+{%- set optset = select_lookup[col] if col in select_lookup else None -%}
+{%- set typ = 'jn' if col in jn_cols else ('select' if optset else 'text') -%}
+  <dt>{{ label }}</dt>
+  <dd class="fld{% if edit %} editbar{% endif %}"
+      {%- if edit %} data-col="{{ col }}" data-typ="{{ typ }}"{% if optset %} data-opts="{{ optset }}"{% endif %} data-raw="{{ '' if val in (None,'') else val }}" tabindex="0" title="Klicken zum Bearbeiten"{% endif %}><span class="fld-anz">{{ anz(col, val) }}</span>{% if edit %}<span class="fld-pen">✎</span>{% endif %}</dd>
+{% endmacro %}
+
+{% block extra_style %}
+<style>
+.ad-kopf{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+  flex-wrap:wrap;background:#fff;padding:12px 18px;border-radius:var(--radius,10px);
+  box-shadow:var(--schatten);margin:6px 0 12px 0}
+.ad-name{margin:0 0 4px 0;font-size:1.4rem;color:var(--gruen-dunkel,#2e6e1a)}
+.ad-meta{color:var(--text-dim,#5a7a3a);font-size:.88rem;line-height:1.5}
+.ad-knum{font-family:monospace;background:var(--creme,#f7f4ec);padding:2px 7px;
+  border-radius:8px;font-size:.82rem;margin-right:4px}
+.ad-actions a{padding:6px 12px;border:1px solid var(--rand,#d8d2c0);border-radius:6px;
+  text-decoration:none;font-size:.9rem;background:var(--creme,#f7f4ec);color:var(--gruen-dunkel,#2e6e1a)}
+.ad-hint{font-size:.8rem;color:var(--text-dim,#5a7a3a);margin:0 2px 10px}
+.tabs > input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.tabbar{display:flex;flex-wrap:wrap;gap:2px;border-bottom:2px solid var(--gruen-dunkel,#2e6e1a)}
+.tabbar label{padding:8px 15px;cursor:pointer;font-size:.86rem;font-weight:600;
+  color:var(--text-dim,#5a7a3a);border:1px solid transparent;border-bottom:0;
+  border-radius:8px 8px 0 0;white-space:nowrap}
+.tabbar label:hover{background:var(--creme,#f7f4ec)}
+.tabpanel{display:none;background:#fff;border-radius:0 10px 10px 10px;box-shadow:var(--schatten);padding:16px}
+{% for t in ['allg','lager','erw','shop','preise','dateien','hist','besthist'] %}
+#tab-{{t}}:checked ~ .tabbar label[for=tab-{{t}}]{background:#fff;color:var(--gruen-dunkel,#2e6e1a);
+  border-color:var(--gruen-dunkel,#2e6e1a);border-bottom:2px solid #fff;margin-bottom:-2px}
+#tab-{{t}}:checked ~ .tabpanel.p-{{t}}{display:block}
+{% endfor %}
+.felder{display:grid;grid-template-columns:repeat(auto-fit,minmax(20rem,1fr));gap:12px}
+.fg{border:1px solid var(--creme-dunkel);border-radius:6px;padding:6px 12px 10px;background:var(--creme,#f7f4ec)}
+.fg legend{margin:0 0 4px;padding:0 4px;font-size:.76rem;font-weight:800;
+  color:var(--gruen-dunkel,#2e6e1a);text-transform:uppercase;letter-spacing:.04em}
+.fg dl{display:grid;grid-template-columns:11rem 1fr;gap:1px 10px;margin:0;font-size:.86rem}
+.fg dt{color:var(--text-dim,#5a7a3a);padding:2px 0;border-bottom:1px dotted var(--creme-dunkel)}
+.fg dd{margin:0;padding:2px 0;border-bottom:1px dotted var(--creme-dunkel);word-break:break-word}
+.fg dd.leer{color:#bbb}
+.fg dd.editbar{cursor:pointer;border-radius:4px;padding-left:4px;margin-left:-4px}
+.fg dd.editbar:hover{background:rgba(46,110,26,.09)}
+.fg dd.editbar:focus{outline:2px solid var(--gruen-dunkel,#2e6e1a);outline-offset:-2px}
+.fg dd .fld-pen{opacity:0;font-size:.72rem;margin-left:6px;color:var(--gruen-dunkel,#2e6e1a)}
+.fg dd.editbar:hover .fld-pen,.fg dd.editbar:focus .fld-pen{opacity:.55}
+.fld-edit{width:100%;padding:2px 4px;font-size:.86rem;border:1px solid var(--gruen-dunkel,#2e6e1a);border-radius:4px;box-sizing:border-box}
+.fg dd.ok-flash{background:rgba(46,110,26,.22)}
+.info-memo{white-space:pre-wrap;background:var(--creme,#f7f4ec);padding:8px 12px;border-radius:6px;font-size:.88rem}
+.tbl-tools{display:flex;gap:10px;align-items:center;margin:0 0 8px;flex-wrap:wrap}
+.tbl-search{padding:5px 10px;border:1px solid var(--rand,#d8d2c0);border-radius:6px;font-size:.86rem;min-width:14rem}
+.tbl-count{color:var(--text-dim);font-size:.8rem}
+table.dt{width:100%;border-collapse:collapse;font-size:.86rem}
+table.dt th{text-align:left;font-weight:700;color:var(--text-dim);border-bottom:1px solid var(--creme-dunkel);
+  padding:6px 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+table.dt td{padding:5px 8px;border-bottom:1px solid var(--creme-dunkel);vertical-align:middle}
+table.dt tr:hover td{background:rgba(46,110,26,.04)}
+table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
+table.sortable th[data-nosort]{cursor:default}
+table.sortable th .ind{opacity:.35;font-size:.7rem;margin-left:3px}
+table.sortable th.sorted{color:var(--gruen-dunkel,#2e6e1a)}
+.rechts{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:monospace;font-size:.82rem;color:var(--text-dim)}
+.leer-hint{color:var(--text-dim);font-style:italic;font-size:.9rem;padding:8px 2px}
+.merk{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.merk .tag{padding:2px 10px;border-radius:12px;background:var(--gruen-dunkel,#2e6e1a);color:#fff;font-size:.78rem;font-weight:600}
+.std-preise{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:8px;margin-bottom:12px}
+.std-preise .pk{background:var(--creme,#f7f4ec);border-radius:8px;padding:8px 12px;text-align:center}
+.std-preise .pk b{display:block;font-size:1.1rem;color:var(--gruen-dunkel,#2e6e1a)}
+.std-preise .pk span{font-size:.72rem;color:var(--text-dim);text-transform:uppercase}
+.q{display:inline-block;padding:1px 8px;border-radius:10px;background:var(--creme,#f7f4ec);
+  color:var(--gruen-dunkel,#2e6e1a);font-size:.72rem;font-weight:700;white-space:nowrap}
+.q.q-3,.q.q-13{background:#e0eaf5;color:#1a4a7a}
+.q.q-5,.q.q-15,.q.q-9,.q.q-19{background:#f0e0f5;color:#5a1a7a}
+.q.q-4,.q.q-14{background:#f5e0e0;color:#7a1a1a}
+.q.q-2,.q.q-12{background:#dcf0ef;color:#0f6e66}
+.q.q-6,.q.q-16,.q.q-7,.q.q-17{background:#fef1db;color:#8a5e1a}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:94rem;" data-feld-url="{{ url_for('orga_stammdaten.artikel_feld_speichern', rec_id=a.REC_ID) }}">
+  <div class="ad-kopf">
+    <div>
+      <h1 class="ad-name">{{ a.KURZNAME or a.MATCHCODE or '–' }}</h1>
+      <div class="ad-meta">
+        <span class="ad-knum">Art-Nr {{ a.ARTNUM }}</span>
+        {% if a.WGR_NAME %}<span class="ad-knum">{{ a.WGR_NAME }}</span>{% endif %}
+        {% if a.ME_NAME %}<span class="ad-knum">{{ a.ME_NAME }}</span>{% endif %}
+        <span class="ad-knum">Bestand {{ '%.0f'|format(a.MENGE_AKT or 0) }}</span>
+      </div>
+    </div>
+    <div class="ad-actions">
+      <a href="{{ url_for('orga_stammdaten.artikel') }}">← Liste</a>
+      <a href="/orga/preispflege">💶 Preispflege</a>
+    </div>
+  </div>
+  <p class="ad-hint">Felder mit ✎ direkt anklicken zum Bearbeiten — Enter speichert, Esc bricht ab. Preise werden in der Preispflege gepflegt.</p>
+
+  <div class="tabs">
+    <input type="radio" name="atab" id="tab-allg" checked>
+    <input type="radio" name="atab" id="tab-lager">
+    <input type="radio" name="atab" id="tab-erw">
+    <input type="radio" name="atab" id="tab-shop">
+    <input type="radio" name="atab" id="tab-preise">
+    <input type="radio" name="atab" id="tab-dateien">
+    <input type="radio" name="atab" id="tab-hist">
+    <input type="radio" name="atab" id="tab-besthist">
+    <nav class="tabbar">
+      <label for="tab-allg">Allgemein</label>
+      <label for="tab-lager">Lager</label>
+      <label for="tab-erw">Erweitert</label>
+      <label for="tab-shop">Shop</label>
+      <label for="tab-preise">Preise</label>
+      <label for="tab-dateien">Dateien ({{ dateien|length }})</label>
+      <label for="tab-hist">Historie ({{ historie|length }})</label>
+      <label for="tab-besthist">Bestand-Historie ({{ bestand_historie|length }})</label>
+    </nav>
+
+    {# ═══ ALLGEMEIN ═══ #}
+    <section class="tabpanel p-allg">
+      <div class="felder">
+        <fieldset class="fg"><legend>Bezeichnung</legend><dl>
+          {{ fe('MATCHCODE','Suchbegriff') }}
+          {{ f('Artikel-Nr (fix)', a.ARTNUM) }}
+          {{ fe('ERSATZ_ARTNUM','Ersatz-Nr') }}
+          {{ fe('KURZNAME','Kurztext') }}
+          {{ fe('LANGNAME','Langtext') }}
+          {{ fe('KAS_NAME','Kassenname') }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Zuordnung</legend><dl>
+          {{ fe('WARENGRUPPE','Warengruppe') }}
+          {{ fe('ARTIKELTYP','Artikeltyp') }}
+          {{ fe('ME_ID','Einheit') }}
+          {{ fe('STEUER_CODE','Steuer') }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Mengen / Barcode</legend><dl>
+          {{ fe('VPE','VPE (VK)') }}
+          {{ fe('VPE_EK','VPE (EK)') }}
+          {{ fe('PR_EINHEIT','Preiseinheit') }}
+          {{ fe('GEWICHT','Gewicht') }}
+          {{ fe('BARCODE','Barcode') }}
+          {{ fe('BARCODE2','Barcode 2') }}
+          {{ fe('BARCODE3','Barcode 3') }}
+        </dl></fieldset>
+      </div>
+      {% if a.INFO %}<fieldset class="fg" style="margin-top:12px;"><legend>Info</legend>
+        <div class="info-memo">{{ a.INFO|rtf }}</div></fieldset>{% endif %}
+      {% if a.FREITEXT %}<fieldset class="fg" style="margin-top:12px;"><legend>Freitext</legend>
+        <div class="info-memo">{{ a.FREITEXT|rtf }}</div></fieldset>{% endif %}
+      {% if merkmale %}<fieldset class="fg" style="margin-top:12px;"><legend>Merkmale ({{ merkmale|length }})</legend>
+        <div class="merk">{% for m in merkmale %}<span class="tag">{{ m.NAME }}</span>{% endfor %}</div></fieldset>{% endif %}
+    </section>
+
+    {# ═══ LAGER ═══ #}
+    <section class="tabpanel p-lager">
+      <div class="felder">
+        <fieldset class="fg"><legend>Lagerinformation</legend><dl>
+          {{ fe('LAGER_ID','Standardlager') }}
+          {{ f('Bestand', '%.2f'|format(a.MENGE_AKT or 0)) }}
+          {{ fe('MENGE_MIN','Mindestbestand') }}
+          {{ fe('MENGE_BVOR','Bestellvorschlag') }}
+          {{ fe('MENGE_WARN','Warnmenge') }}
+          {{ fe('LAGERORT','Lager-Ort') }}
+          {{ f('Liefertermin', a.LIEFERTERMIN) }}
+        </dl></fieldset>
+      </div>
+      <fieldset class="fg" style="margin-top:12px;"><legend>Lagerbestände</legend>
+        {% if lagerbestaende %}
+        <table class="dt"><thead><tr><th>Lager</th><th class="rechts">Menge</th>
+          <th class="rechts">Mind.</th><th class="rechts">Best.-Vorschl.</th></tr></thead><tbody>
+          {% for l in lagerbestaende %}<tr><td>{{ l.LAGER_NAME or l.LAGER_ID }}</td>
+            <td class="rechts">{{ '%.2f'|format(l.MENGE or 0) }}</td>
+            <td class="rechts">{{ '%.2f'|format(l.MENGE_MIN or 0) }}</td>
+            <td class="rechts">{{ '%.2f'|format(l.MENGE_BVOR or 0) }}</td></tr>{% endfor %}
+        </tbody></table>
+        {% else %}<div class="leer-hint">Keine Lagerbestände.</div>{% endif %}
+      </fieldset>
+    </section>
+
+    {# ═══ ERWEITERT ═══ #}
+    <section class="tabpanel p-erw">
+      <div class="felder">
+        <fieldset class="fg"><legend>Basispreis / Variante</legend><dl>
+          {{ fe('BASISPR_ME_ID','Basis-Einheit') }}
+          {{ fe('BASISPR_FAKTOR','Faktor') }}
+          {{ f('Variante von', a.VARARTNUM) }}
+          {{ fe('ZOLLNUMMER','Zollnummer') }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Hersteller / Herkunft</legend><dl>
+          {{ fe('HERSTELLER_ID','Hersteller') }}
+          {{ fe('HERST_ARTNUM','Hersteller-Art-Nr') }}
+          {{ fe('HERKUNFTSLAND','Herkunftsland') }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Maße</legend><dl>
+          {{ fe('LAENGE','Länge') }}
+          {{ fe('BREITE','Breite') }}
+          {{ fe('HOEHE','Höhe') }}
+          {{ fe('GROESSE','Größe') }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Kennzeichen</legend><dl>
+          {{ fe('NO_RABATT_FLAG','kein Rabatt') }}
+          {{ fe('NO_VK_FLAG','kein Verkauf') }}
+          {{ fe('NO_EK_FLAG','kein Einkauf') }}
+          {{ fe('FSK18_FLAG','FSK 18') }}
+          {{ fe('SN_FLAG','Seriennummer') }}
+        </dl></fieldset>
+        <fieldset class="fg"><legend>Benutzerfelder</legend><dl>
+          {{ fe('USERFELD_01','Sortierung') }}
+          {{ fe('USERFELD_02','erledigt') }}
+          {{ fe('USERFELD_03','Löschvermerk') }}
+          {{ fe('USERFELD_04','PLU') }}
+          {{ fe('USERFELD_05','PLU-2') }}
+          {{ fe('USERFELD_06','Benutzerfeld 6') }}
+          {{ fe('USERFELD_07','Benutzerfeld 7') }}
+        </dl></fieldset>
+      </div>
+    </section>
+
+    {# ═══ SHOP ═══ #}
+    <section class="tabpanel p-shop">
+      <div class="felder">
+        <fieldset class="fg"><legend>Shop</legend><dl>
+          {{ f('Sichtbar', 'Ja' if (a.SHOP_VISIBLE|string) in ('Y','1') else 'Nein') }}
+          {{ f('Shop-Artikel-Id', a.SHOP_ARTIKEL_ID if a.SHOP_ARTIKEL_ID and a.SHOP_ARTIKEL_ID>0 else None) }}
+          {{ f('Kurztext', a.SHOP_KURZTEXT) }}
+          {{ f('Klick-Zähler', a.SHOP_CLICK_COUNT) }}
+          {{ f('URL', a.URL) }}
+        </dl></fieldset>
+      </div>
+      {% if a.SHOP_LANGTEXT %}<fieldset class="fg" style="margin-top:12px;"><legend>Shop-Langtext</legend>
+        <div class="info-memo">{{ a.SHOP_LANGTEXT|rtf }}</div></fieldset>{% endif %}
+    </section>
+
+    {# ═══ PREISE (read-only, Pflege in Preispflege) ═══ #}
+    <section class="tabpanel p-preise">
+      <div class="std-preise">
+        <div class="pk"><b>{{ '%.2f €'|format(a.EK_PREIS or 0) }}</b><span>EK-Preis</span></div>
+        {% for n in [1,2,3,4,5] %}
+        <div class="pk"><b>{{ '%.2f €'|format(a['VK'~n~'B'] or 0) }}</b><span>VK{{ n }} brutto</span></div>
+        {% endfor %}
+      </div>
+      {% if aktionspreis %}<fieldset class="fg"><legend>Aktionspreis
+        {% if aktionspreis.GUELTIG_VON %}({{ aktionspreis.GUELTIG_VON }} – {{ aktionspreis.GUELTIG_BIS }}){% endif %}</legend>
+        <dl>{% for n in ['PREIS','PREIS2','PREIS3','PREIS4','PREIS5'] %}
+          {{ f('VK'~loop.index, '%.2f €'|format(aktionspreis[n]) if aktionspreis[n] else '—') }}{% endfor %}</dl>
+      </fieldset>{% endif %}
+
+      <h4 style="margin:14px 0 4px;color:var(--gruen-dunkel,#2e6e1a);">Lieferantenpreise</h4>
+      {% if lieferantenpreise %}
+      <div class="tbl" data-tbl><div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+      <table class="dt sortable"><thead><tr><th>Lieferant</th><th>Ku-Nr b. Lief.</th><th>Bestell-Nr</th>
+        <th class="rechts" data-type="num">EK-Preis</th><th class="rechts" data-type="num">VPE</th>
+        <th data-type="date">le. Änderung</th><th>geändert von</th></tr></thead><tbody>
+        {% for p in lieferantenpreise %}<tr>
+          <td><b>{{ p.PARTNER or p.ADRESS_ID }}</b></td><td class="mono">{{ p.KUNNUM2 or '' }}</td>
+          <td class="mono">{{ p.BESTNUM or '' }}</td>
+          <td class="rechts" data-val="{{ p.PREIS or 0 }}">{{ '%.4f €'|format(p.PREIS) if p.PREIS is not none else '' }}</td>
+          <td class="rechts" data-val="{{ p.VPE or 0 }}">{{ p.VPE or '' }}</td>
+          <td data-val="{{ p.GEAEND.isoformat() if p.GEAEND else '' }}">{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td>
+          <td>{{ p.GEAEND_NAME or '' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% else %}<div class="leer-hint">Keine Lieferantenpreise.</div>{% endif %}
+
+      {% if kundenpreise %}
+      <h4 style="margin:14px 0 4px;color:var(--gruen-dunkel,#2e6e1a);">Kundenpreise</h4>
+      <div class="tbl" data-tbl><div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+      <table class="dt sortable"><thead><tr><th>Kunde</th><th>Bestell-Nr</th>
+        <th class="rechts" data-type="num">Preis</th><th class="rechts" data-type="num">Rabatt</th>
+        <th data-type="date">Geändert</th></tr></thead><tbody>
+        {% for p in kundenpreise %}<tr><td><b>{{ p.PARTNER or p.ADRESS_ID }}</b></td>
+          <td class="mono">{{ p.BESTNUM or '' }}</td>
+          <td class="rechts" data-val="{{ p.PREIS or 0 }}">{{ '%.2f €'|format(p.PREIS) if p.PREIS is not none else '' }}</td>
+          <td class="rechts" data-val="{{ p.RABATT or 0 }}">{{ '%.1f %%'|format(p.RABATT) if p.RABATT else '' }}</td>
+          <td data-val="{{ p.GEAEND.isoformat() if p.GEAEND else '' }}">{{ p.GEAEND.strftime('%d.%m.%Y') if p.GEAEND else '' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% endif %}
+    </section>
+
+    {# ═══ DATEIEN ═══ #}
+    <section class="tabpanel p-dateien">
+      {% if dateien %}
+      <table class="dt"><thead><tr><th>Datei</th><th>Pfad</th><th>Bemerkung</th></tr></thead><tbody>
+        {% for d in dateien %}<tr><td><b>{{ d.DATEI or '' }}</b></td><td class="mono">{{ d.PFAD or '' }}</td>
+          <td>{{ d.BEMERKUNG or '' }}</td></tr>{% endfor %}
+      </tbody></table>
+      {% else %}<div class="leer-hint">Keine verknüpften Dateien.</div>{% endif %}
+    </section>
+
+    {# ═══ HISTORIE (Vorgänge) ═══ #}
+    <section class="tabpanel p-hist">
+      {% if historie %}
+      <div class="tbl" data-tbl><div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+      <table class="dt sortable"><thead><tr><th>Beleg</th><th data-type="date">Datum</th><th>Beleg-Nr</th>
+        <th>Partner</th><th class="rechts" data-type="num">Menge</th><th>ME</th>
+        <th class="rechts" data-type="num">E-Preis</th><th class="rechts" data-type="num">Rabatt</th>
+        <th class="rechts" data-type="num">Gesamt</th><th class="rechts">MwSt</th></tr></thead><tbody>
+        {% for h in historie %}<tr>
+          <td><span class="q q-{{ h.QUELLE }}">{{ quelle_label.get(h.QUELLE|int, 'Q'~h.QUELLE) }}</span></td>
+          <td data-val="{{ h.BELEGDATUM.isoformat() if h.BELEGDATUM else '' }}">{{ h.BELEGDATUM.strftime('%d.%m.%Y') if h.BELEGDATUM else '' }}</td>
+          <td class="mono">{{ h.BELEGNUM or '' }}</td>
+          <td style="font-size:.82rem;">{{ h.NAME or '' }}</td>
+          <td class="rechts" data-val="{{ h.MENGE or 0 }}">{{ '%.2f'|format(h.MENGE or 0) }}</td>
+          <td>{{ h.ME_EINHEIT or '' }}</td>
+          <td class="rechts" data-val="{{ h.EPREIS or 0 }}">{{ '%.2f'|format(h.EPREIS or 0) }}</td>
+          <td class="rechts" data-val="{{ h.RABATT or 0 }}">{% if h.RABATT %}{{ '%.1f %%'|format(h.RABATT) }}{% endif %}</td>
+          <td class="rechts" data-val="{{ h.GPREIS or 0 }}">{{ '%.2f'|format(h.GPREIS or 0) }}</td>
+          <td class="rechts">{% if h.STEUER_PROZ %}{{ '%.0f %%'|format(h.STEUER_PROZ) }}{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% else %}<div class="leer-hint">Keine Vorgänge.</div>{% endif %}
+    </section>
+
+    {# ═══ BESTAND-HISTORIE ═══ #}
+    <section class="tabpanel p-besthist">
+      {% if bestand_historie %}
+      <div class="tbl" data-tbl><div class="tbl-tools"><input type="search" class="tbl-search" placeholder="Suchen…"><span class="tbl-count"></span></div>
+      <table class="dt sortable"><thead><tr><th data-type="date">Datum</th><th>Quelle</th><th>Partner</th>
+        <th class="rechts" data-type="num">gebucht</th><th class="rechts" data-type="num">Bestand</th>
+        <th>von</th><th>Info</th></tr></thead><tbody>
+        {% for h in bestand_historie %}<tr>
+          <td data-val="{{ h.DATUM.isoformat() if h.DATUM else '' }}">{{ h.DATUM.strftime('%d.%m.%Y') if h.DATUM else '' }}</td>
+          <td>{{ h.QUELLE_STR or '' }}</td>
+          <td style="font-size:.82rem;">{{ h.PARTNER or '' }}</td>
+          <td class="rechts" data-val="{{ h.MENGE_GEBUCHT or 0 }}">{{ '%.2f'|format(h.MENGE_GEBUCHT or 0) }}</td>
+          <td class="rechts" data-val="{{ h.MENGE_LAGER or 0 }}">{{ '%.2f'|format(h.MENGE_LAGER or 0) }}</td>
+          <td>{{ h.GEAND_NAME or '' }}</td><td style="font-size:.8rem;color:var(--text-dim);">{{ h.INFO or '' }}</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% else %}<div class="leer-hint">Keine Lagerbewegungen.</div>{% endif %}
+    </section>
+  </div>
+</div>
+
+<script>
+window.ART_FELD_URL = {{ url_for('orga_stammdaten.artikel_feld_speichern', rec_id=a.REC_ID)|tojson }};
+window.ART_OPTS = {{ {'einheit':opt_lists.einheit,'warengruppe':opt_lists.warengruppe,'hersteller':opt_lists.hersteller,'lager':opt_lists.lager,'artikeltyp':opt_lists.artikeltyp,'steuer':opt_lists.steuer}|tojson }};
+(function(){
+  'use strict';
+  function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function readView(dd,anzeige,raw){if(raw!==undefined)dd.dataset.raw=raw;
+    dd.innerHTML='<span class="fld-anz">'+esc(anzeige)+'</span><span class="fld-pen">✎</span>';}
+  function cancel(dd){readView(dd,dd.dataset.anz||'');delete dd.dataset.anz;}
+  async function commit(dd,col,val){if(dd.dataset.busy)return;dd.dataset.busy='1';
+    const fd=new FormData();fd.append('feld',col);fd.append('wert',val);
+    try{const r=await fetch(window.ART_FELD_URL,{method:'POST',body:fd,headers:{'X-Requested-With':'fetch'}});
+      const d=await r.json();
+      if(d.ok){readView(dd,d.anzeige,d.wert);dd.classList.add('ok-flash');
+        setTimeout(()=>dd.classList.remove('ok-flash'),700);delete dd.dataset.anz;}
+      else{alert('Nicht gespeichert: '+(d.fehler||'Fehler'));cancel(dd);}}
+    catch(e){alert('Fehler: '+e);cancel(dd);}finally{delete dd.dataset.busy;}}
+  function startEdit(dd){if(dd.querySelector('.fld-edit'))return;
+    const col=dd.dataset.col,typ=dd.dataset.typ,opts=dd.dataset.opts,raw=dd.dataset.raw||'';
+    dd.dataset.anz=dd.querySelector('.fld-anz')?dd.querySelector('.fld-anz').textContent:'';
+    let ed;
+    if(typ==='select'||typ==='jn'){ed=document.createElement('select');
+      if(typ==='jn'){ed.innerHTML='<option value="N">Nein</option><option value="Y">Ja</option>';ed.value=(raw==='Y'?'Y':'N');}
+      else{let o='<option value="">— (keine)</option>';
+        (window.ART_OPTS[opts]||[]).forEach(it=>{o+='<option value="'+esc(it.id)+'">'+esc(it.id)+' – '+esc(it.name)+'</option>';});
+        ed.innerHTML=o;ed.value=raw;}}
+    else{ed=document.createElement('input');ed.type='text';ed.value=raw;}
+    ed.className='fld-edit';dd.innerHTML='';dd.appendChild(ed);ed.focus();if(ed.select)ed.select();
+    let done=false;const save=()=>{if(done)return;done=true;commit(dd,col,ed.value);};
+    ed.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save();}else if(e.key==='Escape'){done=true;cancel(dd);}});
+    ed.addEventListener('blur',()=>{setTimeout(()=>{if(!done&&dd.contains(ed))save();},150);});}
+  document.addEventListener('click',e=>{const dd=e.target.closest('dd.editbar');
+    if(dd&&!dd.querySelector('.fld-edit'))startEdit(dd);});
+
+  /* Tabellen: Suche + Sortierung */
+  function cellVal(row,idx,type){const c=row.cells[idx];if(!c)return type==='num'?-Infinity:'';
+    const dv=c.dataset.val;
+    if(type==='num'){let v=(dv!==undefined&&dv!=='')?parseFloat(dv):parseFloat(c.textContent.replace(/\./g,'').replace(',','.').replace(/[^\d.\-]/g,''));return isNaN(v)?-Infinity:v;}
+    if(type==='date')return (dv!==undefined?dv:c.textContent).trim();
+    return (dv!==undefined?dv:c.textContent).trim().toLowerCase();}
+  function applyFilter(tbl){const table=tbl.querySelector('table');if(!table)return;
+    const q=(tbl.querySelector('.tbl-search')?.value||'').trim().toLowerCase();let n=0;
+    Array.from(table.tBodies[0].rows).forEach(r=>{const show=!q||r.textContent.toLowerCase().includes(q);
+      r.style.display=show?'':'none';if(show)n++;});
+    const c=tbl.querySelector('.tbl-count');if(c)c.textContent=n+(n===1?' Zeile':' Zeilen');}
+  document.querySelectorAll('.tbl[data-tbl]').forEach(tbl=>{
+    const table=tbl.querySelector('table');if(!table)return;
+    Array.from(table.tHead.rows[0].cells).forEach((th,idx)=>{
+      if(th.hasAttribute('data-nosort'))return;
+      th.insertAdjacentHTML('beforeend',' <span class="ind">↕</span>');
+      th.addEventListener('click',()=>{const type=th.dataset.type||'text';
+        const dir=(table.dataset.si==idx&&table.dataset.sd==='1')?-1:1;
+        table.dataset.si=idx;table.dataset.sd=dir>0?'1':'-1';const tb=table.tBodies[0];
+        const rows=Array.from(tb.rows);rows.sort((a,b)=>{const x=cellVal(a,idx,type),y=cellVal(b,idx,type);
+          if(type==='text')return x.localeCompare(y,'de')*dir;if(x<y)return -1*dir;if(x>y)return 1*dir;return 0;});
+        rows.forEach(r=>tb.appendChild(r));
+        Array.from(table.tHead.rows[0].cells).forEach(o=>{o.classList.remove('sorted');const i=o.querySelector('.ind');if(i)i.textContent='↕';});
+        th.classList.add('sorted');th.querySelector('.ind').textContent=dir>0?'▲':'▼';});});
+    const s=tbl.querySelector('.tbl-search');if(s)s.addEventListener('input',()=>applyFilter(tbl));
+    applyFilter(tbl);});
+})();
+</script>
+{% endblock %}

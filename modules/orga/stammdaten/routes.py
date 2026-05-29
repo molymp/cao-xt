@@ -13,9 +13,55 @@ from flask import (Blueprint, render_template, request, jsonify,
                    session, abort, redirect, url_for, flash)
 
 from common import cao_adressen as adr
+from common import cao_artikel as art
+from common.picker_data import warengruppen_baum
 
 log = logging.getLogger(__name__)
 bp = Blueprint('orga_stammdaten', __name__, template_folder='templates')
+
+# ── Artikelpflege: Inline-Edit-Metadaten ──────────────────────────────
+# Codiertes Feld → Lookup-Quelle (Dropdown + Klartext).
+ART_SELECT_LOOKUP = {
+    'ME_ID': 'einheit', 'BASISPR_ME_ID': 'einheit',
+    'WARENGRUPPE': 'warengruppe', 'HERSTELLER_ID': 'hersteller',
+    'LAGER_ID': 'lager', 'ARTIKELTYP': 'artikeltyp', 'STEUER_CODE': 'steuer',
+}
+ART_JN_COLS = {'NO_RABATT_FLAG', 'NO_VK_FLAG', 'NO_EK_FLAG',
+               'FSK18_FLAG', 'SN_FLAG'}
+ARTIKELTYP_LABEL = {'N': 'Normaler Artikel', 'S': 'Stückliste',
+                    'L': 'Lohn', 'F': 'Freier Artikel', 'T': 'Text/Kommentar'}
+# CAO STEUER_CODE → MwSt (Default-Sätze; 0/1/2/3 nach cao_faktura).
+STEUER_LABEL = {0: '0 % (steuerfrei)', 1: '19 % (voll)',
+                2: '7 % (ermäßigt)', 3: '0 % (frei)'}
+
+
+def _art_lookup_list(name: str) -> list[dict]:
+    quelle = {'einheit': art.einheiten, 'warengruppe': art.warengruppen,
+              'hersteller': art.hersteller, 'lager': art.lager}.get(name)
+    if quelle:
+        return quelle()
+    if name == 'artikeltyp':
+        return [{'id': k, 'name': v} for k, v in ARTIKELTYP_LABEL.items()]
+    if name == 'steuer':
+        return [{'id': k, 'name': v} for k, v in STEUER_LABEL.items()]
+    return []
+
+
+def _art_anzeige_wert(col: str, val) -> str:
+    col = col.upper()
+    if col in ART_JN_COLS:
+        return 'Ja' if str(val) in ('Y', 'y', '1') else 'Nein'
+    if col == 'ARTIKELTYP':
+        return ARTIKELTYP_LABEL.get(val, val or '—')
+    if col == 'STEUER_CODE':
+        return STEUER_LABEL.get(int(val), str(val)) if val not in (None, '') else '—'
+    if col in ART_SELECT_LOOKUP:
+        if val in (None, '', -1, '-1', 0, '0'):
+            return '—'
+        lk = {r['id']: r['name'] for r in _art_lookup_list(ART_SELECT_LOOKUP[col])}
+        name = lk.get(int(val)) if str(val).lstrip('-').isdigit() else lk.get(val)
+        return f'{val} – {name}' if name else str(val)
+    return '—' if val in (None, '') else str(val)
 
 # Stamm-Formular: Gruppen → [(Spalte, Label, Typ)]. Spalten müssen in
 # cao_adressen.EDITIERBAR sein.
@@ -148,8 +194,8 @@ def adresse_detail(addr_id: int):
         merkmale=adr.merkmale_zu_adresse(addr_id),
         lieferadressen=adr.lieferadressen(addr_id),
         ansprechpartner=adr.ansprechpartner(addr_id),
-        kundenpreise=adr.sonderpreise(addr_id, 5),       # PREIS_TYP 5 = Kunde
-        lieferantenpreise=adr.sonderpreise(addr_id, 3),  # PREIS_TYP 3 = Lief.
+        kundenpreise=adr.sonderpreise(addr_id, 3),       # PREIS_TYP 3 = Kunde
+        lieferantenpreise=adr.sonderpreise(addr_id, 5),  # PREIS_TYP 5 = Lief.
         wgr_rabatte=adr.wgr_rabatte(addr_id),
         dateien=adr.links_zu_adresse(addr_id),
         historie=adr.vorgangs_historie(addr_id),
@@ -248,6 +294,89 @@ def api_plz():
     return jsonify(ok=True, orte=[
         {'ort': o.get('NAME'), 'bundesland': o.get('BUNDESLAND'),
          'vorwahl': o.get('VORWAHL')} for o in orte])
+
+
+@bp.get('/artikel')
+def artikel():
+    """Artikel-Stammdaten: Warengruppen-Baum (ohne Marge) + Artikel-Liste."""
+    _login_check()
+    q = (request.args.get('q') or '').strip()
+    sort = request.args.get('sort') or 'KURZNAME'
+    sort_dir = request.args.get('dir') or 'asc'
+    wg_raw = (request.args.get('wg') or '').strip()
+    wg_id = int(wg_raw) if wg_raw.isdigit() else None
+    # Artikel nur laden, wenn eine WG gewählt ODER gesucht wird (sonst
+    # wären es ~3000 Zeilen) — CAO verlangt ebenfalls eine WG-Auswahl.
+    rows = (art.artikel_liste(q, wg_id=wg_id, sort=sort, sort_dir=sort_dir,
+                              limit=1000) if (wg_id or q) else [])
+    baum = warengruppen_baum()
+    # Rekursive Artikel-Anzahl je Knoten (inkl. Untergruppen) wie in CAO.
+    kinder: dict = {}
+    for n in baum:
+        kinder.setdefault(n['parent_id'], []).append(n)
+    def _gesamt(node):
+        s = node['artikel_anzahl']
+        for c in kinder.get(node['id'], []):
+            s += _gesamt(c)
+        node['gesamt'] = s
+        return s
+    for n in baum:
+        _gesamt(n)
+    return render_template('stammdaten_artikel.html',
+                           rows=rows, suche=q, sort_key=sort, sort_dir=sort_dir,
+                           baum=baum, wg_aktiv=wg_id,
+                           artikeltyp_label=ARTIKELTYP_LABEL)
+
+
+@bp.get('/artikel/<int:rec_id>')
+def artikel_detail(rec_id: int):
+    """Detail-Ansicht im CAO-Tab-Layout (Allgemein/Lager/Erweitert/Shop/
+    Preise/Dateien/Historie/Bestand-Historie)."""
+    _login_check()
+    a = art.artikel_holen(rec_id)
+    if not a:
+        abort(404)
+    lookups = {n: {r['id']: r['name'] for r in _art_lookup_list(n)}
+               for n in ('einheit', 'warengruppe', 'hersteller', 'lager',
+                         'artikeltyp', 'steuer')}
+    opt_lists = {n: _art_lookup_list(n)
+                 for n in ('einheit', 'warengruppe', 'hersteller', 'lager',
+                           'artikeltyp', 'steuer')}
+    return render_template(
+        'stammdaten_artikel_detail.html',
+        a=a, editierbar=art.EDITIERBAR, lookups=lookups, opt_lists=opt_lists,
+        jn_cols=ART_JN_COLS, select_lookup=ART_SELECT_LOOKUP,
+        merkmale=art.merkmale(rec_id),
+        lieferantenpreise=art.lieferantenpreise(rec_id),
+        kundenpreise=art.kundenpreise(rec_id),
+        aktionspreis=art.aktionspreis(rec_id),
+        lagerbestaende=art.lagerbestaende(rec_id),
+        dateien=art.dateien(rec_id),
+        historie=art.vorgangs_historie(rec_id),
+        bestand_historie=art.bestand_historie(rec_id),
+        quelle_label=art.QUELLE_LABEL)
+
+
+@bp.post('/artikel/<int:rec_id>/feld')
+def artikel_feld_speichern(rec_id: int):
+    """Inline-Edit: ein ARTIKEL-Stammdatenfeld speichern (direktes UPDATE)."""
+    _login_check()
+    col = (request.form.get('feld') or '').strip().upper()
+    wert = (request.form.get('wert') or '').strip()
+    if col not in art.EDITIERBAR:
+        return jsonify(ok=False, fehler='Feld nicht editierbar'), 400
+    ma = (session.get('login_name') or session.get('mitarbeiter') or 'CAO-XT')
+    try:
+        art.artikel_feld_aendern(rec_id, col, wert, ma_name=ma)
+    except (ValueError, LookupError, RuntimeError) as e:
+        return jsonify(ok=False, fehler=str(e)), 400
+    except Exception as e:  # noqa: BLE001
+        log.exception('Artikel-Feld inline speichern')
+        return jsonify(ok=False, fehler=str(e)), 500
+    a = art.artikel_holen(rec_id)
+    neu = a.get(col) if a else wert
+    return jsonify(ok=True, wert='' if neu is None else str(neu),
+                   anzeige=_art_anzeige_wert(col, neu))
 
 
 def create_blueprint():

@@ -391,7 +391,7 @@ a { text-decoration: none; color: inherit; }
           <span class="icon">👥</span> Adressen
         </a>
 
-        {% set artikel_aktiv = request.path in ('/orga', '/orga/preispflege') %}
+        {% set artikel_aktiv = request.path in ('/orga', '/orga/preispflege') or request.path.startswith('/orga/stammdaten/artikel') %}
         <div class="sidebar-group {% if artikel_aktiv %}open{% endif %}" id="grp-artikel">
           <button class="sidebar-group-toggle" onclick="toggleGrp('grp-artikel')">
             <span class="icon">📦</span> Artikel
@@ -399,6 +399,11 @@ a { text-decoration: none; color: inherit; }
           </button>
           <div class="sidebar-group-items">
             {% set _ok = hat_recht('orga.artikel') %}
+            <a href="{% if _ok %}/orga/stammdaten/artikel{% else %}#{% endif %}"
+               class="sidebar-sub-item {% if _ok and request.path.startswith('/orga/stammdaten/artikel') %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
+               {% if not _ok %}title="Keine Berechtigung (orga.artikel)" aria-disabled="true"{% endif %}>
+              <span class="sub-icon">📝</span> Artikelpflege
+            </a>
             <a href="{% if _ok %}/orga{% else %}#{% endif %}"
                class="sidebar-sub-item {% if _ok and request.path == '/orga' %}aktiv{% endif %} {% if not _ok %}ausgegraut{% endif %}"
                {% if not _ok %}title="Keine Berechtigung (orga.artikel)" aria-disabled="true"{% endif %}>
