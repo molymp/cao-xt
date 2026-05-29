@@ -8,10 +8,15 @@ Erzeugt ein Preis-Etikett mit Name, VK5-Brutto, Art-Nr und EAN-13-Barcode.
 """
 from __future__ import annotations
 
+from datetime import date
 from html import escape
 from typing import Any
 
 from common.db import get_db
+from common import cao_artikel as _art
+
+# STEUER_CODE → MwSt-Satz (CAO-Default; Code 2=7% bestätigt).
+_RATE = {0: 0.0, 1: 0.19, 2: 0.07, 3: 0.0}
 
 # ── EAN-13 ─────────────────────────────────────────────────────────────
 _L = ['0001101', '0011001', '0010011', '0111101', '0100011',
@@ -68,38 +73,90 @@ def _ean13_svg(code: str, x: float, y: float, w: float, h: float) -> str:
 # ── Artikel-Etikett ────────────────────────────────────────────────────
 
 def _artikel(rec_id: int) -> dict[str, Any] | None:
-    sql = """SELECT a.REC_ID, a.ARTNUM, a.BARCODE,
+    sql = """SELECT a.REC_ID, a.ARTNUM, a.BARCODE, a.STEUER_CODE,
                     COALESCE(NULLIF(a.KAS_NAME,''),a.KURZNAME,a.MATCHCODE) AS NAME,
-                    a.VK5B, me.BEZEICHNUNG AS ME
+                    a.VK5B, a.GEWICHT, a.BASISPR_FAKTOR,
+                    me.BEZEICHNUNG AS ME, bme.BEZEICHNUNG AS BASIS_ME
                FROM ARTIKEL a
                LEFT JOIN MENGENEINHEIT me ON me.REC_ID=a.ME_ID
+               LEFT JOIN MENGENEINHEIT bme ON bme.REC_ID=a.BASISPR_ME_ID
               WHERE a.REC_ID=%s"""
     with get_db() as cur:
         cur.execute(sql, (int(rec_id),))
         return cur.fetchone()
 
 
+def grundpreis(a: dict[str, Any], preis_brutto: float | None = None) -> str:
+    """Grundpreis-Angabe (PAngV): Preis-Brutto × Basispreis-Faktor / Gewicht,
+    je Basispreis-Einheit. ``preis_brutto`` überschreibt VK5B (→ bei aktivem
+    Angebot auf Angebotsbasis). Leer, wenn keine Füllmenge/Einheit."""
+    g = float(a.get('GEWICHT') or 0)
+    f = float(a.get('BASISPR_FAKTOR') or 0)
+    vk = float(preis_brutto if preis_brutto is not None else (a.get('VK5B') or 0))
+    einheit = a.get('BASIS_ME')
+    if g <= 0 or f <= 0 or not einheit or vk <= 0:
+        return ''
+    cent = f'{vk * f / g:.2f} €'.replace('.', ',')
+    return cent + (f' / {einheit}' if f == 1 else f' / {f:g} {einheit}')
+
+
+def _eur(v: float) -> str:
+    return f'{v:.2f} €'.replace('.', ',')
+
+
+def aktiver_angebotspreis_brutto(rec_id: int, rate: float) -> float | None:
+    """Brutto-Angebotspreis (VK5), falls heute ein CAO-Aktionspreis aktiv ist."""
+    akt = _art.aktionspreis(rec_id)
+    if not akt or not akt.get('PREIS5'):
+        return None
+    heute = date.today()
+    von, bis = akt.get('GUELTIG_VON'), akt.get('GUELTIG_BIS')
+    if (von is None or von <= heute) and (bis is None or heute <= bis):
+        return round(float(akt['PREIS5']) * (1 + rate), 2)
+    return None
+
+
 def artikel_etikett_svg(rec_id: int, *, laden: str = 'Habacher Dorfladen') -> str:
-    """Preis-Etikett (≈ 50×30 mm) als SVG-String."""
+    """Preis-Etikett (~50x30 mm) als SVG. Bei aktivem Angebot wird der
+    Originalpreis durchgestrichen, der Angebotspreis hervorgehoben und der
+    Grundpreis auf Angebotsbasis gerechnet."""
     a = _artikel(rec_id) or {}
-    name = (a.get('NAME') or '–')
-    preis = float(a.get('VK5B') or 0)
+    name = (a.get('NAME') or '-')
+    regular = float(a.get('VK5B') or 0)
     artnum = a.get('ARTNUM') or ''
     barcode = (a.get('BARCODE') or '').strip()
-    # Name ggf. auf zwei Zeilen umbrechen (~22 Zeichen/Zeile).
+    rate = _RATE.get(int(a.get('STEUER_CODE') or 0), 0.0)
+    angebot = aktiver_angebotspreis_brutto(rec_id, rate)
+    eff = angebot if angebot is not None else regular
     if len(name) > 24:
         cut = name.rfind(' ', 0, 24) or 24
         z1, z2 = escape(name[:cut]), escape(name[cut:].strip()[:24])
     else:
         z1, z2 = escape(name), ''
-    preis_txt = f'{preis:.2f} €'.replace('.', ',')
-    bc = _ean13_svg(barcode, 18, 96, 214, 26)
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 150" width="250" height="150">
-<rect x="1" y="1" width="248" height="148" rx="6" fill="#fff" stroke="#cdd5c0"/>
+    gp = grundpreis(a, eff)
+    gp_svg = (f'<text x="238" y="106" text-anchor="end" font-family="sans-serif" '
+              f'font-size="11" fill="#5a7a3a">Grundpreis {escape(gp)}</text>'
+              if gp else '')
+    if angebot is not None:
+        preis_svg = (
+            '<rect x="150" y="6" width="88" height="18" rx="9" fill="#b30000"/>'
+            '<text x="194" y="19" text-anchor="middle" font-family="sans-serif" '
+            'font-size="11" font-weight="800" fill="#fff">ANGEBOT</text>'
+            f'<text x="238" y="58" text-anchor="end" font-family="sans-serif" '
+            f'font-size="16" fill="#999" text-decoration="line-through">{_eur(regular)}</text>'
+            f'<text x="238" y="92" text-anchor="end" font-family="sans-serif" '
+            f'font-size="34" font-weight="800" fill="#b30000">{_eur(angebot)}</text>')
+    else:
+        preis_svg = (f'<text x="238" y="86" text-anchor="end" font-family="sans-serif" '
+                     f'font-size="32" font-weight="800" fill="#2e6e1a">{_eur(regular)}</text>')
+    bc = _ean13_svg(barcode, 18, 118, 214, 24)
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 170" width="250" height="170">
+<rect x="1" y="1" width="248" height="168" rx="6" fill="#fff" stroke="#cdd5c0"/>
 <text x="12" y="18" font-family="sans-serif" font-size="9" fill="#5a7a3a">{escape(laden)}</text>
 <text x="12" y="40" font-family="sans-serif" font-size="15" font-weight="700" fill="#1c1c12">{z1}</text>
 <text x="12" y="57" font-family="sans-serif" font-size="13" fill="#33321b">{z2}</text>
-<text x="238" y="86" text-anchor="end" font-family="sans-serif" font-size="34" font-weight="800" fill="#2e6e1a">{preis_txt}</text>
-<text x="12" y="86" font-family="monospace" font-size="9" fill="#5a7a3a">Art-Nr {escape(artnum)}</text>
+{preis_svg}
+{gp_svg}
+<text x="12" y="94" font-family="monospace" font-size="9" fill="#5a7a3a">Art-Nr {escape(artnum)}</text>
 {bc}
 </svg>'''
