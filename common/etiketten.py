@@ -8,7 +8,7 @@ Erzeugt ein Preis-Etikett mit Name, VK5-Brutto, Art-Nr und EAN-13-Barcode.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from html import escape
 from typing import Any
 
@@ -44,29 +44,30 @@ def _ean13_modules(code: str) -> str | None:
     return bits
 
 
-def _ean13_svg(code: str, x: float, y: float, w: float, h: float) -> str:
-    """EAN-13-Barcode als SVG-Fragment (Balken + Klartextziffern)."""
+def _ean13_svg(code: str, x: float, y: float, w: float, h: float,
+               font_size: float | None = None) -> str:
+    """EAN-13-Barcode als SVG-Fragment (Balken + Klartextziffern).
+    Schriftgröße proportional zur Balkenhöhe (für mm- und px-Einheiten ok)."""
+    fs = font_size if font_size is not None else max(h * 0.32, 1.5)
     bits = _ean13_modules(code)
     if not bits:
-        # Kein valider EAN-13 → Code als Text
         return (f'<text x="{x + w/2}" y="{y + h/2}" text-anchor="middle" '
-                f'font-family="monospace" font-size="9">{escape(code or "")}</text>')
+                f'font-family="monospace" font-size="{fs:.2f}">{escape(code or "")}</text>')
     mod = w / 95.0
-    # Guard-Balken etwas länger (klassisches EAN-Aussehen).
+    guard_ext = h * 0.18
     guard = {*range(0, 3), *range(45, 50), *range(92, 95)}
     rects = []
     for i, b in enumerate(bits):
         if b == '1':
-            bh = h + (4 if i in guard else 0)
-            rects.append(f'<rect x="{x + i*mod:.2f}" y="{y:.2f}" '
-                         f'width="{mod:.2f}" height="{bh:.2f}"/>')
+            bh = h + (guard_ext if i in guard else 0)
+            rects.append(f'<rect x="{x + i*mod:.3f}" y="{y:.3f}" '
+                         f'width="{mod:.3f}" height="{bh:.3f}"/>')
     bars = f'<g fill="#000">{"".join(rects)}</g>'
-    # Klartext: 1. Ziffer links, 6+6 unter den Hälften.
-    ty = y + h + 11
-    txt = (f'<g font-family="monospace" font-size="10" fill="#000">'
-           f'<text x="{x-2:.1f}" y="{ty}" text-anchor="end">{code[0]}</text>'
-           f'<text x="{x + 3*mod + 21*mod:.1f}" y="{ty}" text-anchor="middle">{code[1:7]}</text>'
-           f'<text x="{x + 50*mod + 21*mod:.1f}" y="{ty}" text-anchor="middle">{code[7:]}</text></g>')
+    ty = y + h + fs * 0.95 + 0.4
+    txt = (f'<g font-family="monospace" font-size="{fs:.2f}" fill="#000">'
+           f'<text x="{x - fs*0.2:.2f}" y="{ty:.2f}" text-anchor="end">{code[0]}</text>'
+           f'<text x="{x + 24*mod:.2f}" y="{ty:.2f}" text-anchor="middle">{code[1:7]}</text>'
+           f'<text x="{x + 71*mod:.2f}" y="{ty:.2f}" text-anchor="middle">{code[7:]}</text></g>')
     return bars + txt
 
 
@@ -116,10 +117,78 @@ def aktiver_angebotspreis_brutto(rec_id: int, rate: float) -> float | None:
     return None
 
 
-def artikel_etikett_svg(rec_id: int, *, laden: str = 'Habacher Dorfladen') -> str:
-    """Preis-Etikett (~50x30 mm) als SVG. Bei aktivem Angebot wird der
-    Originalpreis durchgestrichen, der Angebotspreis hervorgehoben und der
-    Grundpreis auf Angebotsbasis gerechnet."""
+def verpackungsmenge(a: dict[str, Any]) -> str:
+    """Verpackungsgröße als Klartext: <1 kg → 'X g', sonst 'X,X kg'."""
+    g = float(a.get('GEWICHT') or 0)
+    if g <= 0:
+        return ''
+    if g < 1:
+        return f'{int(round(g * 1000))} g'
+    s = f'{g:g}'.replace('.', ',')
+    return f'{s} kg'
+
+
+def niedrigster_preis_30tage(rec_id: int, vor: date) -> float | None:
+    """§ 11 PAngV: niedrigster Brutto-VK5 in den 30 Tagen vor ``vor``.
+
+    Quellen: aktueller VK5B + ARTIKEL_LOG (VK5 und AKTION_VK5 mit
+    Gültigkeit im Fenster) + angewendete XT-Aktionen
+    (XT_ARTIKEL_PREISPLAN, art='aktion'). Gibt None zurück, wenn keine.
+    """
+    von_d = vor - timedelta(days=30)
+    bis_d = vor - timedelta(days=1)
+    von_ts = datetime.combine(von_d, datetime.min.time())
+    bis_ts = datetime.combine(bis_d, datetime.max.time())
+    cands: list[float] = []
+    with get_db() as cur:
+        cur.execute("SELECT VK5B, STEUER_CODE FROM ARTIKEL WHERE REC_ID=%s",
+                    (int(rec_id),))
+        a = cur.fetchone() or {}
+    if a.get('VK5B') is not None and float(a['VK5B']) > 0:
+        cands.append(float(a['VK5B']))
+    fb = _RATE.get(int(a.get('STEUER_CODE') or 0), 0.0)
+    with get_db() as cur:
+        cur.execute("""SELECT VK5, AKTION_VK5, AKTION_VON, AKTION_BIS,
+                              STEUER_SATZ
+                       FROM ARTIKEL_LOG
+                       WHERE ARTIKEL_ID=%s AND GEAEND>=%s AND GEAEND<=%s""",
+                    (int(rec_id), von_ts, bis_ts))
+        log_rows = list(cur.fetchall() or [])
+    for r in log_rows:
+        rate = (float(r['STEUER_SATZ']) / 100
+                if r.get('STEUER_SATZ') is not None else fb)
+        if r.get('VK5') and float(r['VK5']) > 0:
+            cands.append(round(float(r['VK5']) * (1 + rate), 2))
+        akt5 = r.get('AKTION_VK5')
+        if akt5 and float(akt5) > 0:
+            av, ab = r.get('AKTION_VON'), r.get('AKTION_BIS')
+            if isinstance(av, datetime):
+                av = av.date()
+            if isinstance(ab, datetime):
+                ab = ab.date()
+            if ((av is None or av <= bis_d)
+                    and (ab is None or ab >= von_d)):
+                cands.append(round(float(akt5) * (1 + rate), 2))
+    with get_db() as cur:
+        cur.execute("""SELECT vk5 FROM XT_ARTIKEL_PREISPLAN
+                       WHERE artikel_id=%s AND art='aktion'
+                         AND status IN ('aktiv','beendet')
+                         AND angewendet_am IS NOT NULL
+                         AND gueltig_ab<=%s
+                         AND (gueltig_bis IS NULL OR gueltig_bis>=%s)""",
+                    (int(rec_id), bis_d, von_d))
+        for r in cur.fetchall() or []:
+            if r['vk5'] and float(r['vk5']) > 0:
+                cands.append(round(float(r['vk5']) * (1 + fb), 2))
+    return min(cands) if cands else None
+
+
+def artikel_etikett_svg(rec_id: int, *, laden: str = '') -> str:
+    """Regaletikett 70x38 mm, monochrom (thermodrucker-tauglich), PAngV-konform:
+    Endpreis (>= 6 mm), Grundpreis (~ 3 mm) auf Angebotsbasis, Verpackungs-
+    menge, Streichpreis = niedrigster Preis der letzten 30 Tage (§ 11 PAngV).
+    Barcode + Nummer oben links, Druckdatum oben rechts.
+    """
     a = _artikel(rec_id) or {}
     name = (a.get('NAME') or '-')
     regular = float(a.get('VK5B') or 0)
@@ -128,35 +197,53 @@ def artikel_etikett_svg(rec_id: int, *, laden: str = 'Habacher Dorfladen') -> st
     rate = _RATE.get(int(a.get('STEUER_CODE') or 0), 0.0)
     angebot = aktiver_angebotspreis_brutto(rec_id, rate)
     eff = angebot if angebot is not None else regular
-    if len(name) > 24:
-        cut = name.rfind(' ', 0, 24) or 24
-        z1, z2 = escape(name[:cut]), escape(name[cut:].strip()[:24])
+    heute = date.today().strftime('%d.%m.%Y')
+    verp = verpackungsmenge(a)
+    # Streichpreis = niedrigster Brutto-VK5 der 30 Tage vor Aktions-Start.
+    streich = None
+    if angebot is not None:
+        akt = _art.aktionspreis(rec_id) or {}
+        vor = akt.get('GUELTIG_VON') or date.today()
+        if isinstance(vor, datetime):
+            vor = vor.date()
+        n30 = niedrigster_preis_30tage(rec_id, vor)
+        if n30 is not None and n30 > angebot + 0.005:
+            streich = n30
+    # Name ggf. 2 Zeilen (~ 30 Zeichen je Zeile bei 66 mm Breite).
+    if len(name) > 30:
+        cut = name.rfind(' ', 0, 30) or 30
+        z1, z2 = escape(name[:cut]), escape(name[cut:].strip()[:34])
     else:
         z1, z2 = escape(name), ''
     gp = grundpreis(a, eff)
-    gp_svg = (f'<text x="238" y="106" text-anchor="end" font-family="sans-serif" '
-              f'font-size="11" fill="#5a7a3a">Grundpreis {escape(gp)}</text>'
-              if gp else '')
+    bc = _ean13_svg(barcode, 2, 2, 30, 7)
+    verp_svg = (f'<text x="2" y="22.5" font-family="sans-serif" font-size="2.7"'
+                f' fill="#000">{escape(verp)}</text>' if verp else '')
     if angebot is not None:
+        strike_svg = (
+            f'<text x="68" y="23" text-anchor="end" font-family="sans-serif"'
+            f' font-size="3" fill="#000" text-decoration="line-through">'
+            f'{_eur(streich)}</text>' if streich is not None else '')
         preis_svg = (
-            '<rect x="150" y="6" width="88" height="18" rx="9" fill="#b30000"/>'
-            '<text x="194" y="19" text-anchor="middle" font-family="sans-serif" '
-            'font-size="11" font-weight="800" fill="#fff">ANGEBOT</text>'
-            f'<text x="238" y="58" text-anchor="end" font-family="sans-serif" '
-            f'font-size="16" fill="#999" text-decoration="line-through">{_eur(regular)}</text>'
-            f'<text x="238" y="92" text-anchor="end" font-family="sans-serif" '
-            f'font-size="34" font-weight="800" fill="#b30000">{_eur(angebot)}</text>')
+            '<rect x="34" y="2.4" width="14" height="4.4" fill="#000"/>'
+            '<text x="41" y="5.8" text-anchor="middle" font-family="sans-serif"'
+            ' font-size="2.7" font-weight="800" fill="#fff">ANGEBOT</text>'
+            + strike_svg +
+            f'<text x="68" y="31" text-anchor="end" font-family="sans-serif"'
+            f' font-size="9" font-weight="800" fill="#000">{_eur(angebot)}</text>')
     else:
-        preis_svg = (f'<text x="238" y="86" text-anchor="end" font-family="sans-serif" '
-                     f'font-size="32" font-weight="800" fill="#2e6e1a">{_eur(regular)}</text>')
-    bc = _ean13_svg(barcode, 18, 118, 214, 24)
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 170" width="250" height="170">
-<rect x="1" y="1" width="248" height="168" rx="6" fill="#fff" stroke="#cdd5c0"/>
-<text x="12" y="18" font-family="sans-serif" font-size="9" fill="#5a7a3a">{escape(laden)}</text>
-<text x="12" y="40" font-family="sans-serif" font-size="15" font-weight="700" fill="#1c1c12">{z1}</text>
-<text x="12" y="57" font-family="sans-serif" font-size="13" fill="#33321b">{z2}</text>
+        preis_svg = (f'<text x="68" y="30" text-anchor="end" font-family="sans-serif"'
+                     f' font-size="8" font-weight="800" fill="#000">{_eur(regular)}</text>')
+    gp_svg = (f'<text x="2" y="36.5" font-family="sans-serif" font-size="3" fill="#000">'
+              f'Grundpreis {escape(gp)}</text>' if gp else '')
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 38" width="70mm" height="38mm">
+<rect x="0.1" y="0.1" width="69.8" height="37.8" fill="#fff" stroke="#000" stroke-width="0.1"/>
+{bc}
+<text x="68" y="4" text-anchor="end" font-family="sans-serif" font-size="2.2" fill="#000">{heute}</text>
+<text x="2" y="16" font-family="sans-serif" font-size="3.5" font-weight="700" fill="#000">{z1}</text>
+<text x="2" y="20" font-family="sans-serif" font-size="2.8" fill="#000">{z2}</text>
+{verp_svg}
 {preis_svg}
 {gp_svg}
-<text x="12" y="94" font-family="monospace" font-size="9" fill="#5a7a3a">Art-Nr {escape(artnum)}</text>
-{bc}
+<text x="68" y="36.5" text-anchor="end" font-family="sans-serif" font-size="2.5" fill="#000">Art-Nr {escape(artnum)}</text>
 </svg>'''
