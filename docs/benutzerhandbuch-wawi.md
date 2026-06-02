@@ -246,6 +246,317 @@ Klick auf Spaltenüberschrift sortiert die Tabelle. Standard: **Marge aufsteigen
 
 ---
 
+## Artikelpflege (`/orga/stammdaten/artikel`)
+
+Vollständige Stammdaten-Pflege aller CAO-Artikel: konfigurierbare
+Tabelle, Warengruppen-Baum, Merkmal-Filter, Inline-Edit und
+CAO-ähnliche Tab-Detail-Ansicht. Sidebar → **Artikel → Artikelpflege**.
+
+### Warengruppen-Baum
+
+Linke Sidebar: hierarchischer Baum aller Warengruppen mit
+**WG-Nummer** (3-stellig, aus `WARENGRUPPEN.ID`) und **rekursiver
+Artikel-Anzahl** (inkl. Untergruppen). Sortierung wie in CAO: nach
+`SORT, ID`.
+
+- Klick auf einen Knoten → Artikelliste lädt rekursiv alle Artikel
+  dieser Gruppe und ihrer Untergruppen.
+- Aufgeklappte Äste **bleiben offen** beim Wechsel der Auswahl
+  (AJAX-Update, kein Seiten-Reload).
+- **„alle Warengruppen"** ganz oben lädt sämtliche Artikel (~3000).
+
+### Merkmale (Sidebar)
+
+Unter dem Warengruppen-Baum: alle CAO-Merkmale (`ARTIKEL_MERK`) mit
+Artikelanzahl je Merkmal. Klick filtert quer durch alle Warengruppen
+— z. B. „Aus der Region", „Bio".
+
+### Sonderfilter
+
+- **★ Aktionspreise (N)** — zeigt alle Artikel mit aktuell aktivem
+  CAO-Aktionspreis (`ARTIKEL_PREIS` PREIS_TYP=6). Die Spalten
+  *Aktion VK5*, *Aktion von*, *Aktion bis* werden in dieser Ansicht
+  automatisch eingeblendet.
+
+### Suche
+
+Oben rechts ein Suchfeld für **Art-Nr, Name, Barcode, Matchcode** —
+Volltext, kombinierbar mit aktivem WG- oder Merkmal-Filter.
+
+### Spalten konfigurieren (`⚙ Spalten`)
+
+Klick auf das Zahnrad öffnet den Spalten-Dialog:
+
+- Häkchen für sichtbare Spalten.
+- ▲/▼-Buttons für die Reihenfolge.
+- **53 Spalten** verfügbar (u. a. VPE-EK, PLU/PLU-2, VK1–5
+  brutto/netto, Hersteller, Lagerort, Erlös-/Aufwandskonto,
+  Aktion VK5, Sortierung, Löschvermerk, …).
+- Standard-Auswahl: WG · Typ · Suchbegriff · Art-Nr · Barcode · ME ·
+  EK-Preis · VK5 brutto · Menge.
+- **Persistiert pro Browser** (`localStorage`).
+- Sortierung per Klick auf den Spaltenkopf (▲/▼).
+
+### Artikel-Detail (`/orga/stammdaten/artikel/<id>`)
+
+Klick auf eine Zeile öffnet die Detailseite im CAO-Tab-Layout:
+
+| Tab | Inhalt |
+|-----|--------|
+| **Allgemein** | Bezeichnung (Suchbegriff, Art-Nr fix, Ersatz-Nr, Kurz/Langtext, Kassenname), Zuordnung (Warengruppe, Typ, Einheit, Steuer), Mengen/Barcode (VPE, Preiseinheit, Gewicht, Barcode 1–3), Konten & Kalkulation (Rabattgruppe, Erlös-/Aufwandskonto, Inventurwert, Max-Rabatt, Mindestgewinn, Provision), Info-Memo, Merkmale |
+| **Lager** | Standardlager, Bestand, Mind-Bestand, Bestellvorschlag, Warnmenge, Lager-Ort, Lagerbestände-Tabelle |
+| **Erweitert** | Basispreis (Einheit + Faktor), Variante von, Hersteller / Herkunft, Maße / Dimension, Kennzeichen-Flags, Benutzerfelder 01–10 |
+| **Shop** | Shop-sichtbar, Shop-Artikel-Id, Shop-Texte, URL |
+| **Preise** | Standard-Preise (read-only), **Etikett-Vorschau**, Lieferantenpreise (editierbar), Kundenpreise, **Preisplanung** (s. nächstes Kapitel) |
+| **Dateien** | Verknüpfte Dateien (`LINK` MODUL_ID=2) |
+| **Historie** | Vorgangs-Positionshistorie (JOURNALPOS / LIEFERSCHEIN_POS / EKBESTELL_POS) |
+| **Bestand-Historie** | Lagerbewegungen (`ARTIKEL_HISTORIE`) |
+
+### Inline-Edit
+
+Bearbeitbare Felder per Klick direkt editieren — kein separates
+Bearbeiten-Formular:
+
+- **Text** → Eingabefeld; Enter = Speichern, Esc = Abbrechen.
+- **Codierte Felder** (Warengruppe, Einheit, Hersteller, Lager,
+  Artikeltyp, Steuer) → Dropdown mit Klartext.
+- **Ja/Nein-Flags** (NO_RABATT, NO_VK, FSK18, SN-Flag) →
+  Ja/Nein-Dropdown.
+- Nicht-editierbare Felder (Art-Nr, EK-Preis, Bestand, Marge) sind
+  visuell gesperrt.
+- Schreibvorgang direkt in `ARTIKEL` mit `GEAEND/GEAEND_NAME`-Bump
+  (CAO-konform).
+
+### Lieferantenpreise (Tab Preise)
+
+Pro Lieferant eine Zeile, alle inline editierbar:
+
+- **Bestell-Nr** (BESTNUM), **EK-Preis** (PREIS), **VPE** —
+  Klick + Eingabe.
+- **Standard**-Radio markiert den Standard-Lieferanten
+  (schreibt `ARTIKEL.DEFAULT_LIEF_ID`).
+- 💾 Speichern, 🗑 Löschen (Record-Lock MOD_1020 wie CAO).
+- **Hinzufügen**: Suchfeld unter der Tabelle → Lieferantenname tippen
+  → Trefferdropdown → Klick fügt eine leere Zeile ein, dann ausfüllen
+  + speichern.
+
+### Aktionspreise
+
+Read-only im Preise-Tab. Pflege erfolgt **ausschließlich über die
+Preisplanung** (mehrere Zeiträume planbar) — siehe nächstes Kapitel.
+
+---
+
+## Preisplanung (`/orga/stammdaten/preisplan`)
+
+XT-Erweiterung zur CAO-Aktion: **mehrere geplante Aktionen und
+dauerhafte Preisänderungen je Artikel** mit Stichtag-Steuerung,
+Schilddruck-Tracking und automatischer Anwendung.
+
+CAO speichert nur **eine** aktive Aktion je Artikel
+(`ARTIKEL_PREIS` PRIMARY KEY = `ARTIKEL_ID, ADRESS_ID, PREIS_TYP`).
+Unsere XT-Tabelle `XT_ARTIKEL_PREISPLAN` plant beliebig viele
+Einträge im Voraus; angewendet wird jeweils nur der aktuell fällige
+Eintrag in den CAO-Slot.
+
+### Plan anlegen (Artikel-Detail → Tab Preise → Preisplanung)
+
+Eingabemaske unter der Preise-Übersicht. Pflichtfelder: **Art**,
+**Stichtag**.
+
+| Feld | Beschreibung |
+|------|--------------|
+| Art | **Aktion** (befristet, von–bis) **oder** **Preisänderung** (dauerhaft ab Stichtag, alter Preis wird überschrieben) |
+| VK1–5 **brutto** | Preise als Schild-Preis eingeben (üblich im Handel). Live-Anzeige der berechneten Netto + Faktor (Netto / EK) |
+| Stichtag | Datum, ab dem die Aktion / Änderung gilt |
+| bis (nur Aktion) | Enddatum; leer = unbefristet (nicht empfohlen) |
+| Notiz | Freitext (max. 255 Zeichen) |
+
+Beim Speichern werden die Brutto-Preise mit dem Artikel-Steuersatz
+(`STEUER_CODE`) in Netto umgerechnet (CAO-Aktionspreis ist netto).
+Die Header-Zeile zeigt **MwSt-Satz** und **EK** zur Orientierung.
+
+### Sofortige Anwendung bei Stichtag heute
+
+Plan mit `gueltig_ab ≤ heute` (und im Gültigkeitsfenster) wird beim
+Anlegen **sofort** in CAO geschrieben — Kasse und Etikett zeigen das
+Angebot ohne Wartezeit. Zukünftige Pläne warten auf den Tages-Timer.
+
+### Übersicht-Seite
+
+Sidebar → **Artikel → 🗓 Preisplanung**.
+
+Tabellarische Sicht aller geplanten / aktiven Einträge, sortiert
+nach **Stichtag aufsteigend**:
+
+| Spalte | Inhalt |
+|--------|--------|
+| Stichtag | `gueltig_ab` (rot ⚠ wenn fällig und noch nicht angewendet) |
+| bis | Enddatum bei Aktionen |
+| Art | Aktion / Preisänderung |
+| Art-Nr / Bezeichnung | Link zum Artikel-Detail |
+| neu VK5 (netto / brutto) | geplanter Preis |
+| aktuell VK5 | aktueller `ARTIKEL.VK5B` zum Vergleich |
+| Status | geplant / aktiv / beendet / storniert |
+| **Schild** | Häkchen „Schilddruck erledigt" (AJAX-Toggle) |
+| Aktionen | Anwenden / Rückgängig / Löschen |
+
+**Filter „Schild offen"** zeigt nur Einträge, deren Preisschild noch
+nicht gedruckt wurde — damit nichts vergessen wird.
+
+### Anwenden
+
+- **Manuell**: Klick auf „Anwenden" in der Übersicht. Schreibt sofort
+  in CAO:
+  - **Aktion** → `ARTIKEL_PREIS` (PREIS_TYP=6, ADRESS_ID=-99) mit
+    Gültigkeit (Record-Lock MOD_1020).
+  - **Preisänderung** → `ARTIKEL.VK1–5` (netto) + `VK1B–5B` (brutto
+    = netto × (1 + MwSt-Satz)); alter Zustand wird in `vorher_json`
+    gesichert.
+- **Automatisch** über den systemd-Timer
+  **`dorfkern-preisplan.timer`** (täglich 05:30): wendet alle
+  fälligen Pläne an und beendet abgelaufene Aktionen (entfernt die
+  `ARTIKEL_PREIS`-Zeile, setzt Status *beendet*). Wird vom Installer
+  pro Instanz angelegt und aktiviert; manueller Test:
+
+  ```bash
+  systemctl --user start dorfkern-preisplan.service     # User-Mode
+  sudo systemctl start dorfkern-preisplan.service       # System-Mode
+  ```
+
+### Rückgängig
+
+- **Aktion**: entfernt die CAO-Aktion (DELETE `ARTIKEL_PREIS`).
+- **Preisänderung**: stellt den vorherigen VK aus `vorher_json` wieder
+  her (alle VK1–5 netto und brutto).
+- Plan-Status → *storniert*.
+
+---
+
+## Regaletiketten (PAngV-konform)
+
+Vorschau und Druckvorlage für das Regaletikett im Artikel-Detail
+(Tab Preise → „Etikett-Vorschau"). Endpoint:
+`/orga/stammdaten/artikel/<id>/etikett.svg` (`image/svg+xml`).
+
+### Format und Layout
+
+- **Format**: 70 × 38 mm (Standard für Endkundenregale). Geliefert als
+  `width=70mm height=38mm` mit `viewBox=0 0 70 38` — physikalischer
+  Druck ohne Skalierung.
+- **Monochrom**: nur Schwarz (`#000`) und Weiß (`#fff`) — kompatibel
+  mit Thermodruckern (kein Farbband, keine Graustufen).
+
+### Aufteilung
+
+| Bereich | Inhalt |
+|---------|--------|
+| Oben links | **EAN-13-Barcode** (Balken + Klartextziffern) — Encoder aus `ARTIKEL.BARCODE`; ungültige Codes als Klartext |
+| Oben rechts | **Druckdatum** (heutiger Tag, dd.mm.yyyy) |
+| Mitte links | Artikelname (zweizeilig falls > 30 Zeichen), Verpackungsmenge („500 g" / „1,5 kg" aus `ARTIKEL.GEWICHT`) |
+| Mitte rechts | **Endpreis** (VK5 brutto), ca. 8 mm |
+| Unten links | **Grundpreis** (ca. 3 mm) — „X,XX € / kg" |
+| Unten rechts | Art-Nr (klein, intern) |
+
+### Bei aktivem Angebot
+
+- **Schwarzes „ANGEBOT"-Badge** mit weißer Schrift (druckt als
+  invertierter Block).
+- **Streichpreis** = niedrigster Brutto-Preis der letzten 30 Tage
+  (§ 11 PAngV, s. u.) — klein durchgestrichen rechts oben.
+- **Angebotspreis** (brutto) groß und fett rechts (ca. 9 mm).
+- **Grundpreis auf Angebotsbasis** berechnet.
+
+### Pflicht-Inhalte nach PAngV
+
+Maßgeblich: Preisangabenverordnung (PAngV, idF v. 03.02.2026).
+
+#### § 3 PAngV — Endpreis (Gesamtpreis)
+Pflicht zur Angabe des Endpreises inkl. USt und aller Bestandteile.
+Eindeutige Zuordnung zur Ware, leicht erkennbar, deutlich lesbar.
+
+#### § 4 PAngV — Grundpreis
+Pflicht beim Verkauf nach **Gewicht, Volumen, Länge oder Fläche** (z. B.
+Lebensmittel, Kosmetik, Reiniger). Bezugseinheit grundsätzlich
+**1 kg / 1 l / 1 m / 1 m²**. Im Etikett berechnet als
+`VK_brutto × BASISPR_FAKTOR / GEWICHT`, je `BASISPR_ME` (üblich „Kg"
+bei Lebensmitteln).
+
+> **Ausnahme**: Geschäfte mit Verkaufsfläche < 200 m² und < 5
+> Filialen können von der Grundpreis-Pflicht ausgenommen sein. Der
+> Habacher Dorfladen fällt prinzipiell darunter — wir weisen den
+> Grundpreis trotzdem aus (Best Practice, Kundeninfo).
+
+#### § 11 PAngV — Streichpreis (30-Tage-Regel)
+**Seit Mai 2022**: Bei Werbung mit einer Preisermäßigung muss als
+Vergleichspreis der **niedrigste Gesamtpreis der letzten 30 Tage**
+vor Beginn der Reduktion angegeben werden — nicht der „normale" UVP.
+
+Im Etikett-Generator:
+
+- Quelle 1: aktueller `ARTIKEL.VK5B` (Baseline).
+- Quelle 2: `ARTIKEL_LOG` (CAO-Preisänderungs-Historie mit `VK5` und
+  `AKTION_VK5`) — Einträge mit `GEAEND` im 30-Tage-Fenster.
+- Quelle 3: angewendete XT-Aktionen (`XT_ARTIKEL_PREISPLAN` mit
+  `art='aktion'`, Status `aktiv`/`beendet`, Gültigkeit im Fenster).
+- Vergleichspreis = **Minimum** über alle Quellen.
+- Streich wird nur angezeigt, wenn er **echt höher** ist als der
+  aktuelle Angebotspreis (sonst keine echte Reduktion — kein Strike).
+
+#### Ausnahmen § 11
+- Leicht verderbliche Lebensmittel nahe MHD.
+- Kombi-Angebote / Werbung mit UVP-Vergleich.
+
+### Schriftgrößen
+
+Die PAngV nennt **keine Mindest-Schrifthöhe**. Maßstab ist „klar
+erkennbar und gut lesbar". Maßgeblich sind Schriftgröße, Druckbild,
+Wort-/Zahlenanordnung, Kontrast, Papier, Hintergrund und Leseabstand.
+
+- **BGH I ZR 30/12 (07.03.2013)**: Eine Schrifthöhe von **2 mm** für
+  den Grundpreis im Supermarkt ist „deutlich lesbar" iSd § 1 Abs. 6
+  PAngV — lesbar aus ~50 cm Abstand.
+- **Praxis-Richtwerte für Regaletiketten**:
+  - Mindestschrifthöhe gesamt: **≥ 4 mm**
+  - **Endpreis: ≈ 6 mm**
+  - **Grundpreis: ≈ 3 mm**
+
+Unser Etikett: Endpreis 8 mm (Angebot 9 mm), Grundpreis 3 mm,
+Verpackungsmenge 2,7 mm, Druckdatum 2,2 mm — entspricht den
+Praxis-Richtwerten.
+
+### Quellen
+
+- [§ 3 PAngV (Gesamtpreis) – gesetze-im-internet.de](https://www.gesetze-im-internet.de/pangv_2022/__3.html)
+- [§ 4 PAngV (Grundpreis) – gesetze-im-internet.de](https://www.gesetze-im-internet.de/pangv_2022/__4.html)
+- [§ 11 PAngV (Preisermäßigung / 30-Tage-Regel)](https://www.gesetze-im-internet.de/pangv_2022/__11.html)
+- [Volltext PAngV – gesetze-im-internet.de](https://www.gesetze-im-internet.de/pangv_2022/BJNR492110021.html)
+- [BGH I ZR 30/12 (Grundpreis 2 mm „deutlich lesbar")](https://www.damm-legal.de/bgh-grundpreisangabe-in-supermarkt-mit-2mm-grosser-schrift-ist-deutlich-lesbar-im-sinne-von-1-abs-6-pangv)
+- [BGH: Grundpreis aus 50 cm lesbar](https://www.ratgeberrecht.eu/aktuell/bgh-grundpreisangabe-muss-aus-50-cm-entfernung-lesbar-sein/)
+- [IHK München – Neue PAngV](https://www.ihk-muenchen.de/ratgeber/recht/werbung-fairer-wettbewerb/preisangabenverordnung/)
+- [Praxis-Richtwerte Regaletiketten – etiketten-drucken.de](https://www.etiketten-drucken.de/branchen/etiketten/einzelhandel/)
+- [Ausnahmen Grundpreispflicht – IT-Recht-Kanzlei](https://www.it-recht-kanzlei.de/10-ausnahmen-pflicht-zur-grundpreisangabe.html)
+
+### Implementierung
+
+- Modul: `common/etiketten.py`
+  - `artikel_etikett_svg(rec_id)` — komplettes Etikett.
+  - `_ean13_modules` / `_ean13_svg` — EAN-13-Encoder (Module +
+    SVG-Balken).
+  - `grundpreis(a, preis_brutto)` — PAngV-konforme Berechnung,
+    optional auf Angebotsbasis.
+  - `niedrigster_preis_30tage(rec_id, vor)` — § 11-Vergleichspreis
+    aus drei Quellen (s. o.).
+  - `aktiver_angebotspreis_brutto(rec_id, rate)` — aktive CAO-Aktion
+    im Zeitraum heute.
+  - `verpackungsmenge(a)` — formatiert „g" / „kg".
+- Route: `GET /orga/stammdaten/artikel/<id>/etikett.svg` →
+  `image/svg+xml` (eingebettet als `<img>` im Tab Preise).
+- Konvertierung zu PDF / Druck: `chromium --headless --print-to-pdf`
+  oder direktes Drucken der SVG-Datei.
+
+---
+
 ## DATEV-Export (`/wawi/datev-export`) (HAB-372)
 
 Erreichbar über Sidebar → **Buchhaltung → Datev-Export** oder direkt unter `/wawi/datev-export`.

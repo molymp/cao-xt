@@ -175,6 +175,32 @@ mehr „optional"): `dorfkern.target` ist boot-persistent (`systemctl
 enable`), Apps starten ohne Login und nach Crash neu
 (`Restart=on-failure`). Details: `installer/systemd/README.md`.
 
+### Tages-Timer: Preisplan-Auto-Anwendung
+
+Pro Instanz legt der Installer zusätzlich ein systemd-Timer-Paar an
+(neben den App-Services):
+
+- **`dorfkern-preisplan.service`** — One-Shot, ruft
+  `python -m common.preisplan apply` auf. Wendet alle fälligen
+  XT-Preisplan-Einträge (`XT_ARTIKEL_PREISPLAN`) in CAO an und
+  beendet abgelaufene Aktionen.
+- **`dorfkern-preisplan.timer`** — feuert täglich **05:30** mit
+  `Persistent=true` (holt verpasste Runs nach Wartung/Strom-Aus nach).
+
+Im **User-Mode** als `--user`-Unit (kein Linger nötig, weil der
+User-Manager unter dorfkern bereits für die Apps läuft); im
+**System-Mode** als systemweite Unit unter `User=dorfkern`. Im
+**Multi-Instance-Setup** als `dorfkern-<inst>-preisplan.{service,timer}`.
+
+Status & manueller Test:
+
+```bash
+systemctl --user list-timers | grep preisplan
+systemctl --user status dorfkern-preisplan.timer
+systemctl --user start  dorfkern-preisplan.service   # einmaliger Lauf
+journalctl --user -u dorfkern-preisplan -e           # letzter Lauf
+```
+
 ---
 
 ## 6. Updates

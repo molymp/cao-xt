@@ -374,6 +374,22 @@ function uploadScreenshot(inputEl, targetId, beschrId) {
     <a href="#preispflege-filter" class="unter">Filtern</a>
     <a href="#preispflege-edit" class="unter">VK5 bearbeiten</a>
     <a href="#preispflege-farben" class="unter">Farbkennzeichnung</a>
+    <a href="#artikelpflege" class="kapitel">Artikelpflege</a>
+    <a href="#artikelpflege-wg" class="unter">Warengruppen-Baum</a>
+    <a href="#artikelpflege-merkmale" class="unter">Merkmale</a>
+    <a href="#artikelpflege-spalten" class="unter">Spalten konfigurieren</a>
+    <a href="#artikelpflege-detail" class="unter">Artikel-Detail (Tabs)</a>
+    <a href="#artikelpflege-edit" class="unter">Inline-Edit</a>
+    <a href="#artikelpflege-lieferantenpreise" class="unter">Lieferantenpreise</a>
+    <a href="#preisplanung" class="kapitel">Preisplanung</a>
+    <a href="#preisplanung-anlegen" class="unter">Plan anlegen</a>
+    <a href="#preisplanung-uebersicht" class="unter">Übersicht</a>
+    <a href="#preisplanung-anwenden" class="unter">Anwenden &amp; Rückgängig</a>
+    <a href="#regaletiketten" class="kapitel">Regaletiketten</a>
+    <a href="#regaletikett-format" class="unter">Format &amp; Layout</a>
+    <a href="#regaletikett-pangv" class="unter">PAngV-Vorgaben</a>
+    <a href="#regaletikett-schrift" class="unter">Schriftgrößen</a>
+    <a href="#regaletikett-quellen" class="unter">Quellen</a>
     <a href="#datev" class="kapitel">DATEV-Export</a>
     <a href="#datev-ausfuehren" class="unter">Export auslösen</a>
     <a href="#datev-dateien" class="unter">Dateiliste</a>
@@ -453,6 +469,8 @@ auf 100 % zurück. Die Einstellung bleibt pro Gerät gespeichert.</p>
     <tbody>
       <tr><td>Dashboard</td><td><code>/</code></td><td>Tageseinnahmen, Monatsumsatz, offene Vorgänge</td></tr>
       <tr><td>Stammdaten → Artikel</td><td><code>/orga</code></td><td>Artikelsuche &amp; Detailansicht</td></tr>
+      <tr><td>Stammdaten → Artikelpflege</td><td><code>/orga/stammdaten/artikel</code></td><td>Vollständige Artikel-Stammdatenpflege mit Tab-Detail und Inline-Edit</td></tr>
+      <tr><td>Stammdaten → Preisplanung</td><td><code>/orga/stammdaten/preisplan</code></td><td>Geplante Aktionen / Preisänderungen, automatische Anwendung</td></tr>
       <tr><td>Stammdaten → Preispflege</td><td><code>/orga/preispflege</code></td><td>EK / VK5 / Faktor aller aktiven Artikel (N/F/S)</td></tr>
       <tr><td>Buchhaltung → Datev-Export</td><td><code>/orga/datev-export</code></td><td>DATEV-Buchungsstapel erzeugen, herunterladen und prüfen</td></tr>
       <tr><td>Weitere → Reporting</td><td><code>/reporting</code></td><td>CFO-Reports: MwSt, Warengruppen-Umsatz</td></tr>
@@ -514,10 +532,214 @@ auf 100 % zurück. Die Einstellung bleibt pro Gerät gespeichert.</p>
 
 <hr>
 
+<!-- ══════ ARTIKELPFLEGE ══════ -->
+<div class="abschnitt" id="artikelpflege">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">4</div>
+    <div><h1>Artikelpflege</h1><div class="untertitel">Stammdaten-Pflege mit Tab-Detail, Inline-Edit, Warengruppen-Baum</div></div>
+  </div>
+
+  <p>Vollständige Stammdaten-Pflege aller CAO-Artikel unter Sidebar → <strong>Artikel → Artikelpflege</strong> (<code>/orga/stammdaten/artikel</code>): konfigurierbare Tabelle, Warengruppen-Baum, Merkmal-Filter, Inline-Edit und CAO-ähnliche Tab-Detail-Ansicht.</p>
+
+  <h2 id="artikelpflege-wg">Warengruppen-Baum</h2>
+  <p>Linke Sidebar: hierarchischer Baum aller Warengruppen mit <strong>WG-Nummer</strong> (3-stellig, aus <code>WARENGRUPPEN.ID</code>) und <strong>rekursiver Artikel-Anzahl</strong> inkl. Untergruppen. Sortierung wie in CAO (<code>SORT, ID</code>).</p>
+  <ul>
+    <li>Klick auf einen Knoten → Artikelliste lädt rekursiv alle Artikel dieser Gruppe und ihrer Untergruppen.</li>
+    <li>Aufgeklappte Äste <strong>bleiben offen</strong> beim Wechsel der Auswahl (AJAX-Update, kein Seiten-Reload).</li>
+    <li><strong>„alle Warengruppen"</strong> ganz oben lädt sämtliche Artikel.</li>
+  </ul>
+
+  <h2 id="artikelpflege-merkmale">Merkmale</h2>
+  <p>Unter dem Warengruppen-Baum: alle CAO-Merkmale (<code>ARTIKEL_MERK</code>) mit Artikelanzahl je Merkmal. Klick filtert quer durch alle Warengruppen — z. B. „Aus der Region", „Bio".</p>
+
+  <h2 id="artikelpflege-sonderfilter">Sonderfilter</h2>
+  <p><strong>★ Aktionspreise (N)</strong> zeigt alle Artikel mit aktuell aktivem CAO-Aktionspreis (<code>ARTIKEL_PREIS</code> PREIS_TYP=6). Die Spalten <em>Aktion VK5</em>, <em>Aktion von</em>, <em>Aktion bis</em> werden in dieser Ansicht automatisch eingeblendet.</p>
+
+  <h2 id="artikelpflege-spalten">Spalten konfigurieren</h2>
+  <p>Klick auf <code>⚙ Spalten</code> öffnet den Spalten-Dialog:</p>
+  <ul>
+    <li>Häkchen für sichtbare Spalten.</li>
+    <li>▲/▼-Buttons für die Reihenfolge.</li>
+    <li><strong>53 Spalten</strong> verfügbar (u. a. VPE-EK, PLU/PLU-2, VK1–5 brutto/netto, Hersteller, Lagerort, Erlös-/Aufwandskonto, Aktion VK5, Sortierung, Löschvermerk).</li>
+    <li>Standard-Auswahl: WG · Typ · Suchbegriff · Art-Nr · Barcode · ME · EK-Preis · VK5 brutto · Menge.</li>
+    <li><strong>Persistiert pro Browser</strong> (<code>localStorage</code>).</li>
+  </ul>
+
+  <h2 id="artikelpflege-detail">Artikel-Detail (Tabs)</h2>
+  <p>Klick auf eine Zeile öffnet <code>/orga/stammdaten/artikel/&lt;id&gt;</code> mit CAO-Tab-Layout:</p>
+  <table>
+    <thead><tr><th>Tab</th><th>Inhalt</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Allgemein</strong></td><td>Bezeichnung, Zuordnung, Mengen/Barcode, Konten &amp; Kalkulation, Info-Memo, Merkmale</td></tr>
+      <tr><td><strong>Lager</strong></td><td>Standardlager, Bestand, Mind-Bestand, Bestellvorschlag, Warnmenge, Lager-Ort, Lagerbestände</td></tr>
+      <tr><td><strong>Erweitert</strong></td><td>Basispreis, Variante von, Hersteller / Herkunft, Maße, Kennzeichen-Flags, Benutzerfelder 01–10</td></tr>
+      <tr><td><strong>Shop</strong></td><td>Shop-sichtbar, Shop-Artikel-Id, Shop-Texte, URL</td></tr>
+      <tr><td><strong>Preise</strong></td><td>Standard-Preise, <strong>Etikett-Vorschau</strong>, Lieferantenpreise (editierbar), Kundenpreise, <strong>Preisplanung</strong></td></tr>
+      <tr><td><strong>Dateien</strong></td><td>Verknüpfte Dateien (<code>LINK</code> MODUL_ID=2)</td></tr>
+      <tr><td><strong>Historie</strong></td><td>Vorgangs-Positionshistorie (JOURNALPOS / LIEFERSCHEIN_POS / EKBESTELL_POS)</td></tr>
+      <tr><td><strong>Bestand-Historie</strong></td><td>Lagerbewegungen (<code>ARTIKEL_HISTORIE</code>)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="artikelpflege-edit">Inline-Edit</h2>
+  <p>Bearbeitbare Felder per Klick direkt editieren — kein separates Bearbeiten-Formular:</p>
+  <ul>
+    <li><strong>Text</strong> → Eingabefeld; <span class="taste">Enter</span> = Speichern, <span class="taste grau">Esc</span> = Abbrechen.</li>
+    <li><strong>Codierte Felder</strong> (Warengruppe, Einheit, Hersteller, Lager, Artikeltyp, Steuer) → Dropdown mit Klartext.</li>
+    <li><strong>Ja/Nein-Flags</strong> (NO_RABATT, NO_VK, FSK18) → Ja/Nein-Dropdown.</li>
+    <li>Nicht-editierbare Felder (Art-Nr, EK, Bestand, Marge) sind visuell gesperrt.</li>
+    <li>Schreibt direkt in <code>ARTIKEL</code> mit <code>GEAEND/GEAEND_NAME</code>-Bump (CAO-konform).</li>
+  </ul>
+
+  <h2 id="artikelpflege-lieferantenpreise">Lieferantenpreise (Tab Preise)</h2>
+  <ul>
+    <li><strong>Bestell-Nr</strong>, <strong>EK-Preis</strong>, <strong>VPE</strong> inline editierbar.</li>
+    <li><strong>Standard</strong>-Radio markiert den Standard-Lieferanten (schreibt <code>ARTIKEL.DEFAULT_LIEF_ID</code>).</li>
+    <li>💾 Speichern, 🗑 Löschen (Record-Lock MOD_1020 wie CAO).</li>
+    <li><strong>Hinzufügen</strong>: Suchfeld unter der Tabelle → Lieferantenname tippen → Trefferdropdown → Klick fügt leere Zeile ein, dann ausfüllen + speichern.</li>
+  </ul>
+
+  <p><strong>Aktionspreise</strong> im Preise-Tab sind read-only. Pflege erfolgt <em>ausschließlich</em> über die Preisplanung — siehe nächstes Kapitel.</p>
+</div>
+
+<hr>
+
+<!-- ══════ PREISPLANUNG ══════ -->
+<div class="abschnitt" id="preisplanung">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">5</div>
+    <div><h1>Preisplanung</h1><div class="untertitel">Mehrere Aktionen/Preisänderungen je Artikel mit Stichtag-Steuerung</div></div>
+  </div>
+
+  <p>XT-Erweiterung zur CAO-Aktion: <strong>mehrere geplante Aktionen und dauerhafte Preisänderungen je Artikel</strong> mit Stichtag-Steuerung, Schilddruck-Tracking und automatischer Anwendung. CAO selbst kennt nur <em>eine</em> aktive Aktion je Artikel — unsere XT-Tabelle <code>XT_ARTIKEL_PREISPLAN</code> plant beliebig viele Einträge im Voraus; angewendet wird jeweils nur der aktuell fällige in den CAO-Slot.</p>
+
+  <h2 id="preisplanung-anlegen">Plan anlegen</h2>
+  <p>Artikel-Detail → Tab Preise → Preisplanung → Eingabemaske. Pflichtfelder: <strong>Art</strong>, <strong>Stichtag</strong>.</p>
+  <table>
+    <thead><tr><th>Feld</th><th>Beschreibung</th></tr></thead>
+    <tbody>
+      <tr><td>Art</td><td><strong>Aktion</strong> (befristet, von–bis) <strong>oder</strong> <strong>Preisänderung</strong> (dauerhaft ab Stichtag)</td></tr>
+      <tr><td>VK1–5 <strong>brutto</strong></td><td>Schild-Preis eingeben. Live-Anzeige der berechneten Netto + Faktor (Netto/EK)</td></tr>
+      <tr><td>Stichtag</td><td>Datum, ab dem die Aktion/Änderung gilt</td></tr>
+      <tr><td>bis (nur Aktion)</td><td>Enddatum; leer = unbefristet (nicht empfohlen)</td></tr>
+      <tr><td>Notiz</td><td>Freitext (max. 255 Zeichen)</td></tr>
+    </tbody>
+  </table>
+  <p>Brutto wird mit dem Artikel-Steuersatz (<code>STEUER_CODE</code>) in Netto umgerechnet. Pläne mit <code>gueltig_ab ≤ heute</code> werden <strong>sofort</strong> angewendet — Kasse und Etikett zeigen das Angebot ohne Wartezeit.</p>
+
+  <h2 id="preisplanung-uebersicht">Übersicht (<code>/orga/stammdaten/preisplan</code>)</h2>
+  <p>Sidebar → <strong>Artikel → 🗓 Preisplanung</strong>: alle Einträge sortiert nach Stichtag aufsteigend, mit Status, Schilddruck-Häkchen und Aktionen.</p>
+  <ul>
+    <li><strong>⚠ rote Markierung</strong> bei überfälligem Stichtag (geplant, noch nicht angewendet).</li>
+    <li><strong>Schild-Toggle</strong>: AJAX-Häkchen „Preisschild gedruckt".</li>
+    <li><strong>Filter „Schild offen"</strong>: zeigt nur Einträge mit ungedrucktem Schild.</li>
+  </ul>
+
+  <h2 id="preisplanung-anwenden">Anwenden &amp; Rückgängig</h2>
+  <ul>
+    <li><strong>Manuell</strong> über „Anwenden": <strong>Aktion</strong> → <code>ARTIKEL_PREIS</code> (PREIS_TYP=6); <strong>Preisänderung</strong> → <code>ARTIKEL.VK1–5</code> + <code>VK1B–5B</code> (alter Stand in <code>vorher_json</code> gesichert).</li>
+    <li><strong>Automatisch</strong> über systemd-Timer <code>dorfkern-preisplan.timer</code> (täglich 05:30): wendet fällige Pläne an, beendet abgelaufene Aktionen (entfernt <code>ARTIKEL_PREIS</code>-Zeile, Status <em>beendet</em>).</li>
+    <li><strong>Rückgängig</strong>: Aktion → DELETE der CAO-Aktion; Preisänderung → stellt vorherigen VK aus <code>vorher_json</code> wieder her; Status <em>storniert</em>.</li>
+  </ul>
+</div>
+
+<hr>
+
+<!-- ══════ REGALETIKETTEN ══════ -->
+<div class="abschnitt" id="regaletiketten">
+  <div class="kapitel-header">
+    <div class="kapitel-nr">6</div>
+    <div><h1>Regaletiketten</h1><div class="untertitel">PAngV-konformes Etikett 70 × 38 mm mit EAN-13, Grundpreis und 30-Tage-Streichpreis</div></div>
+  </div>
+
+  <p>Vorschau und Druckvorlage im Artikel-Detail (Tab Preise → „Etikett-Vorschau"). Endpoint: <code>GET /orga/stammdaten/artikel/&lt;id&gt;/etikett.svg</code> (<code>image/svg+xml</code>).</p>
+
+  <h2 id="regaletikett-format">Format und Layout</h2>
+  <ul>
+    <li><strong>Format</strong>: 70 × 38 mm (Standard für Endkundenregale). Geliefert als <code>width=70mm height=38mm</code> mit <code>viewBox=0 0 70 38</code> — physikalischer Druck ohne Skalierung.</li>
+    <li><strong>Monochrom</strong>: nur Schwarz und Weiß — kompatibel mit Thermodruckern (kein Farbband, keine Graustufen).</li>
+  </ul>
+
+  <h2 id="regaletikett-aufteilung">Aufteilung</h2>
+  <table>
+    <thead><tr><th>Bereich</th><th>Inhalt</th></tr></thead>
+    <tbody>
+      <tr><td>Oben links</td><td><strong>EAN-13-Barcode</strong> (Balken + Klartextziffern) aus <code>ARTIKEL.BARCODE</code></td></tr>
+      <tr><td>Oben rechts</td><td><strong>Druckdatum</strong> (heutiger Tag, dd.mm.yyyy)</td></tr>
+      <tr><td>Mitte links</td><td>Artikelname (zweizeilig falls > 30 Zeichen), Verpackungsmenge („500 g" / „1,5 kg" aus <code>ARTIKEL.GEWICHT</code>)</td></tr>
+      <tr><td>Mitte rechts</td><td><strong>Endpreis</strong> (VK5 brutto), ca. 8 mm</td></tr>
+      <tr><td>Unten links</td><td><strong>Grundpreis</strong> (ca. 3 mm) — „X,XX € / kg"</td></tr>
+      <tr><td>Unten rechts</td><td>Art-Nr (klein, intern)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="regaletikett-angebot">Bei aktivem Angebot</h2>
+  <ul>
+    <li><strong>Schwarzes „ANGEBOT"-Badge</strong> mit weißer Schrift (druckt invertiert).</li>
+    <li><strong>Streichpreis</strong> = niedrigster Brutto-Preis der letzten 30 Tage (§ 11 PAngV) — klein durchgestrichen rechts oben.</li>
+    <li><strong>Angebotspreis</strong> (brutto) groß und fett rechts (ca. 9 mm).</li>
+    <li><strong>Grundpreis</strong> automatisch auf Angebotsbasis berechnet.</li>
+  </ul>
+
+  <h2 id="regaletikett-pangv">PAngV-Vorgaben</h2>
+  <p>Maßgeblich: Preisangabenverordnung (PAngV, idF v. 03.02.2026).</p>
+
+  <h3>§ 3 PAngV — Endpreis (Gesamtpreis)</h3>
+  <p>Pflicht zur Angabe des Endpreises inkl. USt und aller Bestandteile. Eindeutige Zuordnung zur Ware, leicht erkennbar, deutlich lesbar.</p>
+
+  <h3>§ 4 PAngV — Grundpreis</h3>
+  <p>Pflicht beim Verkauf nach <strong>Gewicht, Volumen, Länge oder Fläche</strong> (Lebensmittel, Kosmetik, Reiniger). Bezugseinheit grundsätzlich <strong>1 kg / 1 l / 1 m / 1 m²</strong>. Im Etikett berechnet als <code>VK_brutto × BASISPR_FAKTOR / GEWICHT</code>, je <code>BASISPR_ME</code>.</p>
+  <blockquote>
+    <strong>Ausnahme</strong>: Geschäfte mit Verkaufsfläche &lt; 200 m² und &lt; 5 Filialen können von der Grundpreis-Pflicht ausgenommen sein. Der Habacher Dorfladen fällt prinzipiell darunter — wir weisen den Grundpreis trotzdem aus (Best Practice, Kundeninfo).
+  </blockquote>
+
+  <h3>§ 11 PAngV — Streichpreis (30-Tage-Regel)</h3>
+  <p><strong>Seit Mai 2022</strong>: Bei Werbung mit einer Preisermäßigung muss als Vergleichspreis der <strong>niedrigste Gesamtpreis der letzten 30 Tage</strong> vor Beginn der Reduktion angegeben werden — nicht der „normale" UVP.</p>
+  <p>Quellen im Etikett-Generator:</p>
+  <ul>
+    <li>Aktueller <code>ARTIKEL.VK5B</code> (Baseline).</li>
+    <li><code>ARTIKEL_LOG</code> (CAO-Preisänderungs-Historie mit <code>VK5</code> und <code>AKTION_VK5</code>) — Einträge mit <code>GEAEND</code> im 30-Tage-Fenster.</li>
+    <li>Angewendete XT-Aktionen (<code>XT_ARTIKEL_PREISPLAN</code> mit <code>art='aktion'</code>, Status <code>aktiv</code>/<code>beendet</code>, Gültigkeit im Fenster).</li>
+    <li>Vergleichspreis = <strong>Minimum</strong> über alle Quellen.</li>
+    <li>Streich wird nur angezeigt, wenn er <strong>echt höher</strong> als der aktuelle Angebotspreis ist.</li>
+  </ul>
+  <p>Ausnahmen § 11: leicht verderbliche Lebensmittel nahe MHD; Kombi-Angebote / UVP-Vergleich.</p>
+
+  <h2 id="regaletikett-schrift">Schriftgrößen</h2>
+  <p>Die PAngV nennt <strong>keine Mindest-Schrifthöhe</strong>. Maßstab ist „klar erkennbar und gut lesbar".</p>
+  <ul>
+    <li><strong>BGH I ZR 30/12 (07.03.2013)</strong>: Schrifthöhe von <strong>2 mm</strong> für den Grundpreis im Supermarkt ist „deutlich lesbar" iSd § 1 Abs. 6 PAngV — lesbar aus ~50 cm.</li>
+    <li>Praxis-Richtwerte: Mindestschrifthöhe ≥ 4 mm · <strong>Endpreis ≈ 6 mm</strong> · <strong>Grundpreis ≈ 3 mm</strong>.</li>
+  </ul>
+  <p>Unser Etikett: Endpreis 8 mm (Angebot 9 mm), Grundpreis 3 mm, Verpackungsmenge 2,7 mm, Druckdatum 2,2 mm — entspricht den Praxis-Richtwerten.</p>
+
+  <h2 id="regaletikett-quellen">Quellen</h2>
+  <ul>
+    <li><a href="https://www.gesetze-im-internet.de/pangv_2022/__3.html">§ 3 PAngV (Gesamtpreis) – gesetze-im-internet.de</a></li>
+    <li><a href="https://www.gesetze-im-internet.de/pangv_2022/__4.html">§ 4 PAngV (Grundpreis) – gesetze-im-internet.de</a></li>
+    <li><a href="https://www.gesetze-im-internet.de/pangv_2022/__11.html">§ 11 PAngV (Preisermäßigung / 30-Tage-Regel)</a></li>
+    <li><a href="https://www.gesetze-im-internet.de/pangv_2022/BJNR492110021.html">Volltext PAngV</a></li>
+    <li><a href="https://www.damm-legal.de/bgh-grundpreisangabe-in-supermarkt-mit-2mm-grosser-schrift-ist-deutlich-lesbar-im-sinne-von-1-abs-6-pangv">BGH I ZR 30/12 (Grundpreis 2 mm „deutlich lesbar")</a></li>
+    <li><a href="https://www.ratgeberrecht.eu/aktuell/bgh-grundpreisangabe-muss-aus-50-cm-entfernung-lesbar-sein/">BGH: Grundpreis aus 50 cm lesbar</a></li>
+    <li><a href="https://www.ihk-muenchen.de/ratgeber/recht/werbung-fairer-wettbewerb/preisangabenverordnung/">IHK München — Neue PAngV</a></li>
+    <li><a href="https://www.etiketten-drucken.de/branchen/etiketten/einzelhandel/">Praxis-Richtwerte Regaletiketten — etiketten-drucken.de</a></li>
+    <li><a href="https://www.it-recht-kanzlei.de/10-ausnahmen-pflicht-zur-grundpreisangabe.html">Ausnahmen Grundpreispflicht — IT-Recht-Kanzlei</a></li>
+  </ul>
+
+  <h2 id="regaletikett-impl">Implementierung</h2>
+  <ul>
+    <li>Modul: <code>common/etiketten.py</code> mit <code>artikel_etikett_svg(rec_id)</code>, <code>_ean13_svg</code>, <code>grundpreis</code>, <code>niedrigster_preis_30tage</code>, <code>aktiver_angebotspreis_brutto</code>, <code>verpackungsmenge</code>.</li>
+    <li>Route: <code>GET /orga/stammdaten/artikel/&lt;id&gt;/etikett.svg</code> → <code>image/svg+xml</code> (eingebettet als <code>&lt;img&gt;</code> im Tab Preise).</li>
+    <li>Druck-Pipeline: <code>chromium --headless --print-to-pdf</code> oder direkter SVG-Druck.</li>
+  </ul>
+</div>
+
+<hr>
+
 <!-- ══════ DATEV-EXPORT ══════ -->
 <div class="abschnitt" id="datev">
   <div class="kapitel-header">
-    <div class="kapitel-nr">4</div>
+    <div class="kapitel-nr">7</div>
     <div><h1>DATEV-Export</h1><div class="untertitel">Buchungsstapel für DATEV erzeugen und prüfen</div></div>
   </div>
 
@@ -617,7 +839,7 @@ auf 100 % zurück. Die Einstellung bleibt pro Gerät gespeichert.</p>
 <!-- ══════ ARTIKEL-SUCHE ══════ -->
 <div class="abschnitt" id="artikel">
   <div class="kapitel-header">
-    <div class="kapitel-nr">5</div>
+    <div class="kapitel-nr">8</div>
     <div><h1>Artikel-Suche</h1><div class="untertitel">Artikelstammdaten durchsuchen</div></div>
   </div>
 
@@ -630,7 +852,7 @@ auf 100 % zurück. Die Einstellung bleibt pro Gerät gespeichert.</p>
 <!-- ══════ REPORTING ══════ -->
 <div class="abschnitt" id="reporting">
   <div class="kapitel-header">
-    <div class="kapitel-nr">6</div>
+    <div class="kapitel-nr">9</div>
     <div><h1>Reporting</h1><div class="untertitel">Finanzübersicht und Warengruppen-Analyse</div></div>
   </div>
 
@@ -647,7 +869,7 @@ auf 100 % zurück. Die Einstellung bleibt pro Gerät gespeichert.</p>
 <!-- ══════ CFO-BERICHTE ══════ -->
 <div class="abschnitt" id="cfo-berichte">
   <div class="kapitel-header">
-    <div class="kapitel-nr">7</div>
+    <div class="kapitel-nr">10</div>
     <div><h1>CFO-Berichte</h1><div class="untertitel">Detaillierte Finanzberichte mit Export</div></div>
   </div>
 
@@ -734,7 +956,7 @@ auf 100 % zurück. Die Einstellung bleibt pro Gerät gespeichert.</p>
 <!-- ══════ PERSONAL ══════ -->
 <div class="abschnitt" id="personal">
   <div class="kapitel-header">
-    <div class="kapitel-nr">7</div>
+    <div class="kapitel-nr">11</div>
     <div><h1>Personal</h1><div class="untertitel">Mitarbeiter-Stammdaten · CAO-Login · RFID-Tag</div></div>
   </div>
 
