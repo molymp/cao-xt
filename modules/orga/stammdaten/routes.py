@@ -17,6 +17,7 @@ from common import cao_adressen as adr
 from common import cao_artikel as art
 from common import preisplan as preisplan_mod
 from common import etiketten as etiketten_mod
+from common.druck import routing as druck_routing
 
 log = logging.getLogger(__name__)
 bp = Blueprint('orga_stammdaten', __name__, template_folder='templates')
@@ -320,6 +321,9 @@ def artikel():
     Artikel-Tabelle lädt per AJAX (artikel_daten), damit der Baum offen
     bleibt und Spalten konfigurierbar sind."""
     _login_check()
+    # Dokumenttyp im zentralen Druck-Katalog registrieren (best-effort).
+    # Orga druckt die Artikel-Liste nicht via ESC/POS (Browser/HTML).
+    druck_routing.register_doktyp('artikelliste', 'Artikel-Liste', 'orga')
     baum = art.warengruppen_tree()
     # Rekursive Artikel-Anzahl je Knoten (inkl. Untergruppen) wie CAO.
     kinder: dict = {}
@@ -440,6 +444,9 @@ def artikel_feld_speichern(rec_id: int):
 def artikel_etikett(rec_id: int):
     """Artikel-Preis-Etikett als SVG (Vektor; druck-/PDF-fähig)."""
     _login_check()
+    # Dokumenttyp im zentralen Druck-Katalog registrieren (best-effort).
+    # Regaletikett wird als SVG ausgeliefert, nicht via ESC/POS gedruckt.
+    druck_routing.register_doktyp('regaletikett', 'Regaletikett', 'orga')
     if not art.artikel_holen(rec_id):
         abort(404)
     svg = etiketten_mod.artikel_etikett_svg(rec_id)

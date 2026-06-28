@@ -20,6 +20,7 @@ import db as db_modul
 from db import get_db, get_db_transaction, test_verbindung, reset_pool
 from common.auth import mitarbeiter_login_karte
 from common.permission import flask_helpers as _perm_flask_helpers
+from common.druck import routing
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -331,6 +332,13 @@ _permission_initialisieren()
 _aktivierung_initialisieren()
 _einkauf_initialisieren()
 
+# Druck-Routing: 3 Tabellen idempotent anlegen + einmalig seeden
+# (uebernimmt den heutigen Einzeldrucker). Best-effort beim Start.
+try:
+    routing.ensure_schema()
+except Exception as exc:
+    log.warning("Druck-Routing-Schema-Init fehlgeschlagen: %s", exc)
+
 
 def _cao_hashsum_initialisieren():
     """Trägt die CAO-HASHSUM-Salt-Schluessel in DORFKERN_KONFIG ein
@@ -428,6 +436,8 @@ _ADMIN_PERMISSION_MAP: list[tuple[str, str]] = [
     ('/api/system/banking',          'admin.system.banking'),
     ('/drucker',                     'admin.system.drucker'),
     ('/api/drucker',                 'admin.system.drucker'),
+    ('/api/doktypen',                'admin.system.drucker'),
+    ('/api/routing',                 'admin.system.drucker'),
     ('/terminals',                   'admin.system.terminals'),
     ('/api/terminals',               'admin.system.terminals'),
     ('/tse',                         'admin.system.tse'),
@@ -845,7 +855,13 @@ def db_config_test():
     return jsonify(ok=ok, msg='Verbindung erfolgreich.' if ok else 'Verbindung fehlgeschlagen.')
 
 
-# ── Phase C: Bondrucker-Admin ──────────────────────────────
+# ── Phase C: Druck-Routing-Admin ───────────────────────────
+#
+# Loest die alte XT_DRUCKER_CONFIG-Verwaltung ab. Drei Bereiche, alle
+# gegen das neue Datenmodell (siehe common/druck/routing.py):
+#   * XT_DRUCKER        – Geraete-Verzeichnis (CRUD)
+#   * XT_DRUCK_DOKTYP   – self-registering Dokumenttyp-Katalog (nur Liste)
+#   * XT_DRUCK_ROUTING  – Matrix Terminal x Dokumenttyp -> Drucker
 
 @app.route('/drucker')
 @_login_required
@@ -853,12 +869,17 @@ def drucker():
     return render_template('drucker.html')
 
 
+# --- Geraete-Verzeichnis: XT_DRUCKER ---------------------------
+
 @app.get('/api/drucker')
 @_login_required
 def api_drucker_list():
     try:
         with get_db() as cur:
-            cur.execute("SELECT * FROM XT_DRUCKER_CONFIG ORDER BY terminal_nr")
+            cur.execute(
+                "SELECT id, name, ip_adresse, port, technik, host, aktiv "
+                "FROM XT_DRUCKER ORDER BY name"
+            )
             return jsonify(ok=True, drucker=cur.fetchall())
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
@@ -867,29 +888,44 @@ def api_drucker_list():
 @app.post('/api/drucker')
 @_login_required
 def api_drucker_create():
-    d = request.get_json(force=True)
+    d = request.get_json(force=True) or {}
+    name = (d.get('name') or '').strip()
+    ip   = (d.get('ip_adresse') or '').strip()
+    if not name or not ip:
+        return jsonify(ok=False, msg='Name und IP-Adresse sind Pflichtfelder.'), 400
     try:
         with get_db() as cur:
             cur.execute(
-                "INSERT INTO XT_DRUCKER_CONFIG (terminal_nr, ip_adresse, port, bezeichnung) "
-                "VALUES (%s, %s, %s, %s)",
-                (d['terminal_nr'], d['ip_adresse'], d.get('port', 9100), d.get('bezeichnung', '')),
+                "INSERT INTO XT_DRUCKER "
+                "(name, ip_adresse, port, technik, host, aktiv) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (name, ip, int(d.get('port') or 9100),
+                 (d.get('technik') or 'escpos80').strip(),
+                 (d.get('host') or '').strip(),
+                 1 if d.get('aktiv', True) else 0),
             )
         return jsonify(ok=True, msg='Drucker angelegt.')
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
 
 
-@app.put('/api/drucker/<int:drucker_id>')
+@app.route('/api/drucker/<int:drucker_id>', methods=['PUT', 'POST'])
 @_login_required
 def api_drucker_update(drucker_id):
-    d = request.get_json(force=True)
+    d = request.get_json(force=True) or {}
+    name = (d.get('name') or '').strip()
+    ip   = (d.get('ip_adresse') or '').strip()
+    if not name or not ip:
+        return jsonify(ok=False, msg='Name und IP-Adresse sind Pflichtfelder.'), 400
     try:
         with get_db() as cur:
             cur.execute(
-                "UPDATE XT_DRUCKER_CONFIG SET terminal_nr=%s, ip_adresse=%s, port=%s, bezeichnung=%s "
-                "WHERE id=%s",
-                (d['terminal_nr'], d['ip_adresse'], d.get('port', 9100), d.get('bezeichnung', ''), drucker_id),
+                "UPDATE XT_DRUCKER SET name=%s, ip_adresse=%s, port=%s, "
+                "technik=%s, host=%s, aktiv=%s WHERE id=%s",
+                (name, ip, int(d.get('port') or 9100),
+                 (d.get('technik') or 'escpos80').strip(),
+                 (d.get('host') or '').strip(),
+                 1 if d.get('aktiv', True) else 0, drucker_id),
             )
         return jsonify(ok=True, msg='Drucker aktualisiert.')
     except Exception as e:
@@ -901,8 +937,11 @@ def api_drucker_update(drucker_id):
 def api_drucker_delete(drucker_id):
     try:
         with get_db() as cur:
-            cur.execute("DELETE FROM XT_DRUCKER_CONFIG WHERE id=%s", (drucker_id,))
-        return jsonify(ok=True, msg='Drucker gelöscht.')
+            # zugehoerige Routing-Regeln mit entfernen (keine Waisen).
+            cur.execute(
+                "DELETE FROM XT_DRUCK_ROUTING WHERE drucker_id=%s", (drucker_id,))
+            cur.execute("DELETE FROM XT_DRUCKER WHERE id=%s", (drucker_id,))
+        return jsonify(ok=True, msg='Drucker geloescht.')
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
 
@@ -910,20 +949,111 @@ def api_drucker_delete(drucker_id):
 @app.post('/api/drucker/<int:drucker_id>/test')
 @_login_required
 def api_drucker_test(drucker_id):
-    """Socket-Ping auf den Drucker (Verbindungstest)."""
+    """Kurzer ESC/POS-Testdruck an den gewaehlten Drucker."""
     try:
         with get_db() as cur:
-            cur.execute("SELECT ip_adresse, port FROM XT_DRUCKER_CONFIG WHERE id=%s", (drucker_id,))
+            cur.execute(
+                "SELECT name, ip_adresse, port FROM XT_DRUCKER WHERE id=%s",
+                (drucker_id,))
             row = cur.fetchone()
         if not row:
             return jsonify(ok=False, msg='Drucker nicht gefunden.'), 404
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(3)
-        result = s.connect_ex((row['ip_adresse'], row['port']))
-        s.close()
-        if result == 0:
-            return jsonify(ok=True, msg=f"Verbindung zu {row['ip_adresse']}:{row['port']} erfolgreich.")
-        return jsonify(ok=False, msg=f"Keine Verbindung zu {row['ip_adresse']}:{row['port']}.")
+        from common.druck.escpos import (
+            ESC_INIT, ALIGN_CENTER, ALIGN_LEFT, BOLD_ON, BOLD_OFF, CUT, tcp_send)
+        jetzt = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        buf = (
+            ESC_INIT + ALIGN_CENTER + BOLD_ON
+            + b'CAO-XT Testdruck\n' + BOLD_OFF
+            + (row['name'] or '').encode('cp1252', 'replace') + b'\n'
+            + f"{row['ip_adresse']}:{row['port']}\n".encode('cp1252', 'replace')
+            + jetzt.encode('cp1252', 'replace') + b'\n'
+            + ALIGN_LEFT + b'\n\n\n' + CUT
+        )
+        tcp_send(row['ip_adresse'], int(row['port'] or 9100), buf, timeout=5)
+        return jsonify(ok=True, msg=f"Testdruck an {row['name']} gesendet.")
+    except Exception as e:
+        return jsonify(ok=False, msg=f'Testdruck fehlgeschlagen: {e}'), 500
+
+
+# --- Dokumenttyp-Katalog: XT_DRUCK_DOKTYP (nur Liste) ----------
+
+@app.get('/api/doktypen')
+@_login_required
+def api_doktypen_list():
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT dok_key, bezeichnung, bereich, aktiv, zuletzt_gesehen "
+                "FROM XT_DRUCK_DOKTYP ORDER BY bereich, dok_key"
+            )
+            return jsonify(ok=True, doktypen=cur.fetchall())
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+# --- Routing-Matrix: XT_DRUCK_ROUTING --------------------------
+
+@app.get('/api/routing')
+@_login_required
+def api_routing_list():
+    try:
+        with get_db() as cur:
+            cur.execute(
+                "SELECT r.id, r.terminal_nr, r.dok_key, r.drucker_id, "
+                "       d.name AS drucker_name, d.aktiv AS drucker_aktiv, "
+                "       t.bezeichnung AS doktyp_bezeichnung "
+                "FROM XT_DRUCK_ROUTING r "
+                "LEFT JOIN XT_DRUCKER d ON d.id = r.drucker_id "
+                "LEFT JOIN XT_DRUCK_DOKTYP t ON t.dok_key = r.dok_key "
+                "ORDER BY r.terminal_nr IS NULL, r.dok_key IS NULL, "
+                "         r.terminal_nr, r.dok_key"
+            )
+            return jsonify(ok=True, routing=cur.fetchall())
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.post('/api/routing')
+@_login_required
+def api_routing_create():
+    d = request.get_json(force=True) or {}
+    # Normalisieren: leer/None -> NULL (Wildcard 'alle').
+    t_raw = d.get('terminal_nr')
+    terminal_nr = None
+    if t_raw not in (None, '', 'null'):
+        try:
+            terminal_nr = int(t_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, msg='Terminal-Nr. muss eine Zahl sein.'), 400
+    dok_key = (d.get('dok_key') or '').strip() or None
+    try:
+        drucker_id = int(d.get('drucker_id'))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, msg='Bitte einen Drucker waehlen.'), 400
+    try:
+        with get_db() as cur:
+            # Pro (Terminal, Dokumenttyp) genau eine Regel: bestehende mit
+            # gleicher Kombination ersetzen (NULL-sicherer Vergleich <=>).
+            cur.execute(
+                "DELETE FROM XT_DRUCK_ROUTING "
+                "WHERE terminal_nr <=> %s AND dok_key <=> %s",
+                (terminal_nr, dok_key))
+            cur.execute(
+                "INSERT INTO XT_DRUCK_ROUTING (terminal_nr, dok_key, drucker_id) "
+                "VALUES (%s, %s, %s)",
+                (terminal_nr, dok_key, drucker_id))
+        return jsonify(ok=True, msg='Zuordnung gespeichert.')
+    except Exception as e:
+        return jsonify(ok=False, msg=str(e)), 500
+
+
+@app.delete('/api/routing/<int:routing_id>')
+@_login_required
+def api_routing_delete(routing_id):
+    try:
+        with get_db() as cur:
+            cur.execute("DELETE FROM XT_DRUCK_ROUTING WHERE id=%s", (routing_id,))
+        return jsonify(ok=True, msg='Zuordnung geloescht.')
     except Exception as e:
         return jsonify(ok=False, msg=str(e)), 500
 

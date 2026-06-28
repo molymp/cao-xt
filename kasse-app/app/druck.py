@@ -30,6 +30,7 @@ from common.druck.escpos import (
     DRAWER_PIN5   as _DRAWER_PIN5,
     tcp_send,
 )
+from common.druck import routing
 from datetime import datetime
 import logging
 
@@ -81,19 +82,6 @@ class _Bon:
 
     def bytes(self) -> bytes:
         return bytes(self._buf)
-
-
-def _drucker_addr(terminal_nr: int) -> tuple[str, int]:
-    with get_db() as cur:
-        cur.execute(
-            "SELECT DRUCKER_IP, DRUCKER_PORT FROM XT_KASSE_TERMINALS "
-            "WHERE TERMINAL_NR = %s AND AKTIV = 1",
-            (terminal_nr,)
-        )
-        row = cur.fetchone()
-    if not row or not row['DRUCKER_IP']:
-        raise RuntimeError(f"Kein Drucker für Terminal {terminal_nr} konfiguriert.")
-    return row['DRUCKER_IP'], row['DRUCKER_PORT']
 
 
 def _kassenlade_pin(terminal_nr: int) -> int:
@@ -404,8 +392,8 @@ def drucke_bon(vorgang: dict, positionen: list, zahlungen: list,
     daten = _bon_bytes(vorgang, positionen, zahlungen, mwst_saetze,
                        terminal_nr, ist_kopie, ist_storno, qr_code,
                        trainings_modus, nicht_produktiv)
-    ip, port = _drucker_addr(terminal_nr)
-    _sende(ip, port, daten)
+    routing.register_doktyp('bon', 'Kassenbon', 'kasse')
+    routing.drucke(terminal_nr, 'bon', daten)
 
 
 def oeffne_kassenlade(terminal_nr: int):
@@ -415,8 +403,8 @@ def oeffne_kassenlade(terminal_nr: int):
         return   # keine Lade konfiguriert
     cmd = _DRAWER_PIN2 if pin == 1 else _DRAWER_PIN5
     try:
-        ip, port = _drucker_addr(terminal_nr)
-        _sende(ip, port, _ESC_INIT + cmd)
+        # Kassenlade haengt am Bon-Drucker -> ueber dessen Routing aufloesen
+        routing.drucke(terminal_nr, 'bon', _ESC_INIT + cmd)
     except Exception as e:
         log.warning("Kassenlade öffnen fehlgeschlagen: %s", e)
 
@@ -434,8 +422,8 @@ def drucke_xbon(terminal_nr: int, daten: dict, mwst_saetze: dict):
     b.trenn()
     _print_abschluss_zeilen(b, daten, mwst_saetze)
     b.nl(6).raw(_CUT)
-    ip, port = _drucker_addr(terminal_nr)
-    _sende(ip, port, b.bytes())
+    routing.register_doktyp('x_bon', 'X-Bon (Zwischenabschluss)', 'kasse')
+    routing.drucke(terminal_nr, 'x_bon', b.bytes())
 
 
 def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict,
@@ -516,8 +504,8 @@ def drucke_zbon(terminal_nr: int, tagesabschluss: dict, mwst_saetze: dict,
         b.raw(_NORMAL_SIZE).raw(_ALIGN_LEFT)
 
     b.nl(6).raw(_CUT)
-    ip, port = _drucker_addr(terminal_nr)
-    _sende(ip, port, b.bytes())
+    routing.register_doktyp('kassenabschluss', 'Z-Bon (Tagesabschluss)', 'kasse')
+    routing.drucke(terminal_nr, 'kassenabschluss', b.bytes())
 
 
 def _print_abschluss_zeilen(b: _Bon, d: dict, mwst_saetze: dict):
@@ -651,7 +639,8 @@ def drucke_lieferschein(terminal_nr: int, lieferschein_id: int,
     """Druckt einen Lieferschein-Bon mit Unterschriftszeile (ohne Preise).
     Bei mit_kopie=True wird ein zweiter Bon als Kundenkopie gedruckt."""
     firma = _firma_info(terminal_nr)
-    ip, port = _drucker_addr(terminal_nr)
+    routing.register_doktyp('lieferschein', 'Lieferschein', 'kasse')
+    d = routing.drucker_fuer(terminal_nr, 'lieferschein')
 
     with get_db() as cur:
         cur.execute("SELECT * FROM LIEFERSCHEIN WHERE REC_ID = %s", (lieferschein_id,))
@@ -684,11 +673,11 @@ def drucke_lieferschein(terminal_nr: int, lieferschein_id: int,
         positionen = cur.fetchall()
 
     daten = _lieferschein_bytes(ls, positionen, firma)
-    _sende(ip, port, daten)
+    _sende(d['ip_adresse'], d['port'], daten)
 
     if mit_kopie:
         daten_kopie = _lieferschein_bytes(ls, positionen, firma, kopie=True)
-        _sende(ip, port, daten_kopie)
+        _sende(d['ip_adresse'], d['port'], daten_kopie)
 
 
 def drucke_lieferschein_bon(terminal_nr: int, vorgang_id: int,
@@ -701,7 +690,8 @@ def drucke_lieferschein_bon(terminal_nr: int, vorgang_id: int,
     noch in XT_KASSE_VORGAENGE / XT_KASSE_VORGAENGE_POS.
     """
     firma = _firma_info(terminal_nr)
-    ip, port = _drucker_addr(terminal_nr)
+    routing.register_doktyp('lieferschein', 'Lieferschein', 'kasse')
+    d = routing.drucker_fuer(terminal_nr, 'lieferschein')
 
     with get_db() as cur:
         cur.execute(
@@ -747,19 +737,19 @@ def drucke_lieferschein_bon(terminal_nr: int, vorgang_id: int,
     }
 
     daten = _lieferschein_bytes(ls, positionen, firma)
-    _sende(ip, port, daten)
+    _sende(d['ip_adresse'], d['port'], daten)
 
     if mit_kopie:
         daten_kopie = _lieferschein_bytes(ls, positionen, firma, kopie=True)
-        _sende(ip, port, daten_kopie)
+        _sende(d['ip_adresse'], d['port'], daten_kopie)
 
 
 def test_drucker(terminal_nr: int) -> bool:
     try:
-        ip, port = _drucker_addr(terminal_nr)
+        d = routing.drucker_fuer(terminal_nr, 'bon')
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(3)
-        sock.connect((ip, port))
+        sock.connect((d['ip_adresse'], d['port']))
         sock.close()
         return True
     except Exception:

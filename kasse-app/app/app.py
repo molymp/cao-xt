@@ -1699,35 +1699,24 @@ def admin_export_lokal():
 @app.post('/admin/drucker/test')
 @_login_required
 def admin_drucker_test():
-    ok = druck.test_drucker(config.TERMINAL_NR)
-    if ok:
-        # Testseite senden
-        import socket
-        try:
-            with get_db() as cur:
-                cur.execute(
-                    "SELECT DRUCKER_IP, DRUCKER_PORT FROM XT_KASSE_TERMINALS "
-                    "WHERE TERMINAL_NR = %s", (config.TERMINAL_NR,)
-                )
-                row = cur.fetchone()
-            if row:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
-                sock.connect((row['DRUCKER_IP'], row['DRUCKER_PORT']))
-                sock.sendall(
-                    b'\x1b\x40'                          # Reset
-                    b'\x1b\x61\x01'                      # zentriert
-                    b'\x1b\x45\x01'                      # Fett
-                    b'CAO-XT Kassen-App\n'
-                    b'\x1b\x45\x00'
-                    b'Druckertest erfolgreich!\n'
-                    b'\n\n\n\n\n\n'
-                    b'\x1d\x56\x01'                      # Schnitt
-                )
-                sock.close()
-        except Exception:
-            pass
-    return jsonify({'ok': ok})
+    # Testseite ueber das zentrale Druck-Routing (common.druck.routing),
+    # NICHT mehr direkt aus XT_KASSE_TERMINALS — eine Quelle fuer alle Apps.
+    from common.druck import routing
+    testseite = (
+        b'\x1b\x40'                          # Reset
+        b'\x1b\x61\x01'                      # zentriert
+        b'\x1b\x45\x01'                      # Fett
+        b'CAO-XT Kassen-App\n'
+        b'\x1b\x45\x00'
+        b'Druckertest erfolgreich!\n'
+        b'\n\n\n\n\n\n'
+        b'\x1d\x56\x01'                      # Schnitt
+    )
+    try:
+        routing.drucke(config.TERMINAL_NR, 'bon', testseite)
+        return jsonify({'ok': True})
+    except Exception:
+        return jsonify({'ok': False})
 
 
 # ── Tagesabschluss-Übersicht ──────────────────────────────────

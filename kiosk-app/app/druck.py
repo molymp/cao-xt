@@ -5,7 +5,7 @@ Nur Standard-ESC/POS-Befehle die alle Thermal-Drucker unterstützen.
 
 import config
 from db import get_db, cent_zu_euro_str
-from common.druck.escpos import tcp_send
+from common.druck import routing
 from datetime import datetime
 
 # ── Zeichensatz-Tabelle: Umlaute → CP437 ─────────────────────
@@ -138,26 +138,9 @@ def _bon_bytes(warenkorb_id, positionen, gesamtbetrag_cent,
     return bytes(b)
 
 
-def _sende_an_drucker(terminal_nr: int, daten: bytes):
-    """Sendet alle Bytes in EINEM TCP-Write."""
-    with get_db() as cursor:
-        cursor.execute(
-            """SELECT d.ip_adresse, d.port
-               FROM XT_KIOSK_TERMINAL_DRUCKER td
-               JOIN XT_KIOSK_DRUCKER d ON d.id = td.drucker_id
-               WHERE td.terminal_nr = %s AND d.aktiv = 1""",
-            (terminal_nr,)
-        )
-        row = cursor.fetchone()
-        if not row:
-            cursor.execute(
-                "SELECT ip_adresse, port FROM XT_KIOSK_DRUCKER WHERE standard=1 AND aktiv=1 LIMIT 1"
-            )
-            row = cursor.fetchone()
-        if not row:
-            raise RuntimeError("Kein aktiver Drucker konfiguriert.")
-
-    tcp_send(row["ip_adresse"], row["port"], daten, timeout=10)
+def _sende_an_drucker(terminal_nr: int, dok_key: str, daten: bytes):
+    """Sendet alle Bytes ueber das zentrale Druck-Routing (EIN TCP-Write)."""
+    routing.drucke(terminal_nr, dok_key, daten)
 
 
 def generiere_bon_bytes(
@@ -238,9 +221,10 @@ def drucke_bon(
 ):
     if zeitpunkt is None:
         zeitpunkt = datetime.now()
+    routing.register_doktyp('kiosk_bon', 'Kiosk-Bon', 'kiosk')
     daten = _bon_bytes(warenkorb_id, positionen, gesamtbetrag_cent,
                        ean_barcode, terminal_nr, ist_kopie, zeitpunkt)
-    _sende_an_drucker(terminal_nr, daten)
+    _sende_an_drucker(terminal_nr, 'kiosk_bon', daten)
 
 
 def drucke_pickliste(
@@ -268,6 +252,7 @@ def drucke_pickliste(
                              = 0 → 'Keine Nachzahlung'
                              < 0 → 'Auszuzahlender Betrag: €X' (kein Barcode)
     """
+    routing.register_doktyp('pickliste', 'Pickliste', 'kiosk')
     b = bytearray()
 
     def raw(data: bytes):
@@ -485,31 +470,21 @@ def drucke_pickliste(
     raw(b'\n\n\n\n\n\n')            # 6 Leerzeilen vor Schnitt
     raw(b'\x1d\x56\x01')          # Teilschnitt
 
-    _sende_an_drucker(terminal_nr, bytes(b))
+    _sende_an_drucker(terminal_nr, 'pickliste', bytes(b))
 
 
 def test_drucker(terminal_nr: int = None) -> bool:
-    nr = terminal_nr or config.TERMINAL_NR
-    with get_db() as cursor:
-        cursor.execute(
-            """SELECT d.ip_adresse, d.port
-               FROM XT_KIOSK_TERMINAL_DRUCKER td
-               JOIN XT_KIOSK_DRUCKER d ON d.id = td.drucker_id
-               WHERE td.terminal_nr = %s AND d.aktiv = 1""",
-            (nr,)
-        )
-        row = cursor.fetchone()
-        if not row:
-            cursor.execute(
-                "SELECT ip_adresse, port FROM XT_KIOSK_DRUCKER WHERE standard=1 AND aktiv=1 LIMIT 1"
-            )
-            row = cursor.fetchone()
-    if not row:
+    # Konnektivitaets-Check ueber das zentrale Druck-Routing (eine Quelle).
+    import socket
+    nr = terminal_nr if terminal_nr is not None else config.TERMINAL_NR
+    try:
+        d = routing.drucker_fuer(nr, 'kiosk_bon')
+    except Exception:
         return False
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(3)
-        sock.connect((row["ip_adresse"], row["port"]))
+        sock.connect((d["ip_adresse"], d["port"]))
         sock.close()
         return True
     except Exception:

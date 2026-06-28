@@ -1,37 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Bondrucker{% endblock %}
+{% block title %}Drucker &amp; Routing{% endblock %}
 {% block content %}
 <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
-  <h1>🖨️ Bondrucker</h1>
-  <button class="btn btn-primary btn-sm" onclick="showAdd()">+ Neuer Drucker</button>
+  <h1>🖨️ Drucker &amp; Routing</h1>
 </div>
 
-<div class="card">
+<!-- ── Bereich 1: Geraete-Verzeichnis ─────────────────────── -->
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+  <h2 style="font-size:20px;margin:0;">Drucker</h2>
+  <button class="btn btn-primary btn-sm" onclick="showAddDrucker()">+ Neuer Drucker</button>
+</div>
+
+<div class="card" style="margin-bottom:32px;">
   <table class="tbl" id="druckerTbl">
     <thead>
       <tr>
-        <th>Terminal</th>
+        <th>Name</th>
         <th>IP-Adresse</th>
         <th>Port</th>
-        <th>Bezeichnung</th>
+        <th>Technik</th>
+        <th>Host</th>
+        <th>Aktiv</th>
         <th>Aktionen</th>
       </tr>
     </thead>
     <tbody id="druckerBody"></tbody>
   </table>
-  <div id="leer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+  <div id="druckerLeer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
     Keine Drucker konfiguriert.
   </div>
 </div>
 
-<!-- Modal -->
+<!-- ── Bereich 2: Zuordnungs-Matrix ───────────────────────── -->
+<div style="margin-bottom:12px;">
+  <h2 style="font-size:20px;margin:0 0 4px;">Zuordnungs-Matrix</h2>
+  <div style="color:var(--text-dim);font-size:13px;">
+    Welcher Drucker bekommt welches Dokument von welchem Terminal.
+    Spezifischste Regel gewinnt. „alle“ = Platzhalter (Wildcard).
+  </div>
+</div>
+
+<div class="card">
+  <!-- Anlege-Zeile -->
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:16px;">
+    <div class="form-group" style="margin:0;">
+      <label>Terminal-Nr.</label>
+      <input class="form-control" id="rTerminal" type="number" min="1" max="99"
+             placeholder="alle" style="width:120px;">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Dokumenttyp</label>
+      <select class="form-control" id="rDoktyp" style="width:220px;"></select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Drucker</label>
+      <select class="form-control" id="rDrucker" style="width:220px;"></select>
+    </div>
+    <button class="btn btn-primary" onclick="saveRouting()">Anlegen</button>
+  </div>
+
+  <table class="tbl" id="routingTbl">
+    <thead>
+      <tr>
+        <th>Terminal</th>
+        <th>Dokumenttyp</th>
+        <th>Drucker</th>
+        <th>Aktion</th>
+      </tr>
+    </thead>
+    <tbody id="routingBody"></tbody>
+  </table>
+  <div id="routingLeer" class="hidden" style="text-align:center;color:var(--text-dim);padding:32px;">
+    Keine Zuordnungen konfiguriert.
+  </div>
+</div>
+
+<!-- Modal: Drucker anlegen/bearbeiten -->
 <div id="modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;display:none;align-items:center;justify-content:center;">
   <div class="card" style="width:min(440px,95vw);padding:24px;">
     <h2 id="modalTitle" style="margin-bottom:16px;font-size:20px;">Drucker</h2>
     <input type="hidden" id="editId">
     <div class="form-group">
-      <label>Terminal-Nr.</label>
-      <input class="form-control" id="fTerminal" type="number" min="1" max="99">
+      <label>Name</label>
+      <input class="form-control" id="fName" placeholder="z.B. Kasse 1 Bondrucker">
     </div>
     <div class="form-group">
       <label>IP-Adresse</label>
@@ -42,8 +93,20 @@
       <input class="form-control" id="fPort" type="number" value="9100">
     </div>
     <div class="form-group">
-      <label>Bezeichnung</label>
-      <input class="form-control" id="fBez" placeholder="z.B. Kasse 1 Bondrucker">
+      <label>Technik</label>
+      <select class="form-control" id="fTechnik">
+        <option value="escpos80">escpos80 (Bon 80mm)</option>
+        <option value="escpos58">escpos58 (Bon 58mm)</option>
+        <option value="etikett">etikett</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Host <span style="color:var(--text-dim);font-weight:normal;">(leer = im LAN erreichbar)</span></label>
+      <input class="form-control" id="fHost" placeholder="z.B. marc-MINIX">
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="fAktiv" checked style="width:auto;">
+      <label for="fAktiv" style="margin:0;">Aktiv</label>
     </div>
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button class="btn btn-primary" onclick="saveDrucker()">Speichern</button>
@@ -54,18 +117,42 @@
 {% endblock %}
 {% block extra_script %}
 <script>
-let drucker = [];
+let drucker  = [];
+let doktypen = [];
+let routing  = [];
 
-async function load() {
-  const r = await api('GET', '/api/drucker');
-  if (!r.ok) { toast(r.msg, 'err'); return; }
-  drucker = r.drucker;
-  render();
+// ── Laden ───────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadDrucker(), loadDoktypen()]);
+  await loadRouting();
 }
 
-function render() {
+async function loadDrucker() {
+  const r = await api('GET', '/api/drucker');
+  if (!r.ok) { toast(r.msg, 'err'); return; }
+  drucker = r.drucker || [];
+  renderDrucker();
+  fuelleDruckerSelect();
+}
+
+async function loadDoktypen() {
+  const r = await api('GET', '/api/doktypen');
+  if (!r.ok) { toast(r.msg, 'err'); return; }
+  doktypen = r.doktypen || [];
+  fuelleDoktypSelect();
+}
+
+async function loadRouting() {
+  const r = await api('GET', '/api/routing');
+  if (!r.ok) { toast(r.msg, 'err'); return; }
+  routing = r.routing || [];
+  renderRouting();
+}
+
+// ── Drucker-Tabelle ─────────────────────────────────────────
+function renderDrucker() {
   const body = document.getElementById('druckerBody');
-  const leer = document.getElementById('leer');
+  const leer = document.getElementById('druckerLeer');
   if (!drucker.length) {
     body.innerHTML = '';
     leer.classList.remove('hidden');
@@ -73,13 +160,15 @@ function render() {
   }
   leer.classList.add('hidden');
   body.innerHTML = drucker.map(d => `
-    <tr>
-      <td>${d.terminal_nr}</td>
-      <td>${d.ip_adresse}</td>
+    <tr style="${d.aktiv ? '' : 'opacity:.5;'}">
+      <td>${esc(d.name)}</td>
+      <td>${esc(d.ip_adresse)}</td>
       <td>${d.port}</td>
-      <td>${d.bezeichnung || '–'}</td>
+      <td>${esc(d.technik)}</td>
+      <td>${d.host ? esc(d.host) : '<span style="color:var(--text-dim);">LAN</span>'}</td>
+      <td>${d.aktiv ? '✓' : '–'}</td>
       <td style="display:flex;gap:6px;">
-        <button class="btn btn-neutral btn-sm" onclick="testDrucker(${d.id})">🔌 Test</button>
+        <button class="btn btn-neutral btn-sm" onclick="testDrucker(${d.id})">🖨 Test</button>
         <button class="btn btn-neutral btn-sm" onclick="editDrucker(${d.id})">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="delDrucker(${d.id})">🗑️</button>
       </td>
@@ -87,30 +176,36 @@ function render() {
   `).join('');
 }
 
-function showAdd() {
+function showAddDrucker() {
   document.getElementById('editId').value = '';
-  document.getElementById('fTerminal').value = '';
+  document.getElementById('fName').value = '';
   document.getElementById('fIp').value = '';
   document.getElementById('fPort').value = '9100';
-  document.getElementById('fBez').value = '';
+  document.getElementById('fTechnik').value = 'escpos80';
+  document.getElementById('fHost').value = '';
+  document.getElementById('fAktiv').checked = true;
   document.getElementById('modalTitle').textContent = 'Neuer Drucker';
-  document.getElementById('modal').classList.remove('hidden');
-  document.getElementById('modal').style.display = 'flex';
+  openModal();
 }
 
 function editDrucker(id) {
   const d = drucker.find(x => x.id === id);
   if (!d) return;
   document.getElementById('editId').value = id;
-  document.getElementById('fTerminal').value = d.terminal_nr;
-  document.getElementById('fIp').value = d.ip_adresse;
-  document.getElementById('fPort').value = d.port;
-  document.getElementById('fBez').value = d.bezeichnung || '';
+  document.getElementById('fName').value = d.name || '';
+  document.getElementById('fIp').value = d.ip_adresse || '';
+  document.getElementById('fPort').value = d.port || 9100;
+  document.getElementById('fTechnik').value = d.technik || 'escpos80';
+  document.getElementById('fHost').value = d.host || '';
+  document.getElementById('fAktiv').checked = !!d.aktiv;
   document.getElementById('modalTitle').textContent = 'Drucker bearbeiten';
+  openModal();
+}
+
+function openModal() {
   document.getElementById('modal').classList.remove('hidden');
   document.getElementById('modal').style.display = 'flex';
 }
-
 function closeModal() {
   document.getElementById('modal').classList.add('hidden');
   document.getElementById('modal').style.display = 'none';
@@ -119,35 +214,125 @@ function closeModal() {
 async function saveDrucker() {
   const id = document.getElementById('editId').value;
   const data = {
-    terminal_nr: parseInt(document.getElementById('fTerminal').value),
-    ip_adresse:  document.getElementById('fIp').value.trim(),
-    port:        parseInt(document.getElementById('fPort').value) || 9100,
-    bezeichnung: document.getElementById('fBez').value.trim(),
+    name:       document.getElementById('fName').value.trim(),
+    ip_adresse: document.getElementById('fIp').value.trim(),
+    port:       parseInt(document.getElementById('fPort').value) || 9100,
+    technik:    document.getElementById('fTechnik').value,
+    host:       document.getElementById('fHost').value.trim(),
+    aktiv:      document.getElementById('fAktiv').checked,
   };
-  if (!data.terminal_nr || !data.ip_adresse) {
-    toast('Terminal-Nr. und IP sind Pflichtfelder.', 'err');
+  if (!data.name || !data.ip_adresse) {
+    toast('Name und IP-Adresse sind Pflichtfelder.', 'err');
     return;
   }
   const r = id
     ? await api('PUT', '/api/drucker/' + id, data)
     : await api('POST', '/api/drucker', data);
   toast(r.msg, r.ok ? 'ok' : 'err');
-  if (r.ok) { closeModal(); load(); }
+  if (r.ok) { closeModal(); await loadDrucker(); await loadRouting(); }
 }
 
 async function delDrucker(id) {
-  if (!confirm('Drucker wirklich löschen?')) return;
+  if (!confirm('Drucker wirklich löschen? Zugehörige Zuordnungen werden ebenfalls entfernt.')) return;
   const r = await api('DELETE', '/api/drucker/' + id);
   toast(r.msg, r.ok ? 'ok' : 'err');
-  if (r.ok) load();
+  if (r.ok) { await loadDrucker(); await loadRouting(); }
 }
 
 async function testDrucker(id) {
-  toast('Teste Verbindung...', 'ok', 5000);
+  toast('Sende Testdruck…', 'ok', 5000);
   const r = await api('POST', '/api/drucker/' + id + '/test');
   toast(r.msg, r.ok ? 'ok' : 'err');
 }
 
-load();
+// ── Routing-Matrix ──────────────────────────────────────────
+function fuelleDoktypSelect() {
+  const sel = document.getElementById('rDoktyp');
+  let html = '<option value="">alle Dokumenttypen</option>';
+  html += doktypen.map(t => {
+    const label = t.bezeichnung ? `${t.dok_key} – ${t.bezeichnung}` : t.dok_key;
+    return `<option value="${esc(t.dok_key)}">${esc(label)}</option>`;
+  }).join('');
+  sel.innerHTML = html;
+}
+
+function fuelleDruckerSelect() {
+  const sel = document.getElementById('rDrucker');
+  const aktive = drucker.filter(d => d.aktiv);
+  if (!aktive.length) {
+    sel.innerHTML = '<option value="">– kein aktiver Drucker –</option>';
+    return;
+  }
+  sel.innerHTML = aktive.map(d =>
+    `<option value="${d.id}">${esc(d.name)} (${esc(d.ip_adresse)})</option>`
+  ).join('');
+}
+
+function renderRouting() {
+  const body = document.getElementById('routingBody');
+  const leer = document.getElementById('routingLeer');
+  if (!routing.length) {
+    body.innerHTML = '';
+    leer.classList.remove('hidden');
+    return;
+  }
+  leer.classList.add('hidden');
+  body.innerHTML = routing.map(r => {
+    const fallback = (r.terminal_nr === null && r.dok_key === null);
+    const term = (r.terminal_nr === null)
+      ? '<span style="color:var(--text-dim);">alle</span>' : r.terminal_nr;
+    let dok;
+    if (r.dok_key === null) {
+      dok = '<span style="color:var(--text-dim);">alle</span>';
+    } else {
+      dok = r.doktyp_bezeichnung
+        ? `${esc(r.dok_key)} – ${esc(r.doktyp_bezeichnung)}` : esc(r.dok_key);
+    }
+    let dru = r.drucker_name ? esc(r.drucker_name)
+      : `<span style="color:var(--danger,#c00);">#${r.drucker_id} (fehlt)</span>`;
+    if (r.drucker_name && !r.drucker_aktiv) {
+      dru += ' <span style="color:var(--text-dim);">(inaktiv)</span>';
+    }
+    return `
+    <tr style="${fallback ? 'background:rgba(255,200,0,.10);font-weight:600;' : ''}">
+      <td>${term}</td>
+      <td>${dok}</td>
+      <td>${dru}${fallback ? ' <span style="color:var(--text-dim);font-weight:normal;">· Standard/Fallback</span>' : ''}</td>
+      <td>
+        <button class="btn btn-danger btn-sm" onclick="delRouting(${r.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveRouting() {
+  const drId = document.getElementById('rDrucker').value;
+  if (!drId) { toast('Bitte einen Drucker wählen.', 'err'); return; }
+  const term = document.getElementById('rTerminal').value.trim();
+  const data = {
+    terminal_nr: term === '' ? null : parseInt(term),
+    dok_key:     document.getElementById('rDoktyp').value || null,
+    drucker_id:  parseInt(drId),
+  };
+  const r = await api('POST', '/api/routing', data);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) { document.getElementById('rTerminal').value = ''; await loadRouting(); }
+}
+
+async function delRouting(id) {
+  if (!confirm('Zuordnung wirklich löschen?')) return;
+  const r = await api('DELETE', '/api/routing/' + id);
+  toast(r.msg, r.ok ? 'ok' : 'err');
+  if (r.ok) await loadRouting();
+}
+
+// ── Hilfen ──────────────────────────────────────────────────
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+loadAll();
 </script>
 {% endblock %}

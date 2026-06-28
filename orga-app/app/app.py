@@ -16,6 +16,7 @@ import db as db_modul
 import berichte as bericht_modul
 import datev as datev_modul
 from db import get_db, test_verbindung
+from common.druck import routing as druck_routing
 from common.auth import (login_required as _login_required,
                          mitarbeiter_login as _mitarbeiter_login,
                          mitarbeiter_login_karte)
@@ -854,6 +855,9 @@ def monatsuebersicht_export():
 @app.get('/orga/berichte/kassenbuch')
 def kassenbuch_seite():
     """Kassenbuch-Bericht (HTML)."""
+    # Dokumenttyp im zentralen Druck-Katalog registrieren (best-effort).
+    # Orga gibt das Kassenbuch als HTML/CSV aus, nicht via ESC/POS.
+    druck_routing.register_doktyp('kassenbuch', 'Kassenbuch', 'orga')
     heute = date.today()
     von   = _parse_datum(request.args.get('von'), heute.replace(day=1))
     bis   = _parse_datum(request.args.get('bis'), heute)
