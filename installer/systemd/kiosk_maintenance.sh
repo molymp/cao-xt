@@ -39,19 +39,20 @@ CONF=/etc/lightdm/lightdm.conf.d/50-dorfkern-kiosk.conf
 DESKTOP_USER=kasse
 DESKTOP_HOME="/home/${DESKTOP_USER}"
 RUECK_ICON="${DESKTOP_HOME}/Desktop/Zurueck-zum-Kiosk.desktop"
+APP_LAUNCHER="/usr/share/applications/dorfkern-zurueck-kiosk.desktop"
 
 
 # Erste verfuegbare Desktop-Session ermitteln (ohne Kiosk-Custom).
 # Praeferenz: LXDE-pi-x > openbox > lightdm-xsession > erste beste.
 _detect_desktop_session() {
-    local prefs=(LXDE-pi-x openbox lightdm-xsession LXDE gnome)
+    local prefs=(ubuntu ubuntu-xorg gnome LXDE-pi-x openbox lightdm-xsession LXDE)
     for s in "${prefs[@]}"; do
-        if [ -f "/usr/share/xsessions/${s}.desktop" ]; then
+        if [ -f "/usr/share/xsessions/${s}.desktop" ] || [ -f "/usr/share/wayland-sessions/${s}.desktop" ]; then
             echo "$s"; return 0
         fi
     done
     # Fallback: irgendeine x-Session die nicht Kiosk ist
-    for f in /usr/share/xsessions/*.desktop; do
+    for f in /usr/share/xsessions/*.desktop /usr/share/wayland-sessions/*.desktop; do
         name=$(basename "$f" .desktop)
         [ "$name" = "dorfkern-kiosk" ] && continue
         echo "$name"; return 0
@@ -63,7 +64,7 @@ _detect_desktop_session() {
 _write_conf() {
     local session="$1"
     local note="$2"
-    cat <<EOF | install -m 0644 -o root -g root /dev/stdin "$CONF"
+    cat <<EOF | { _t=$(mktemp); cat >"$_t"; install -m 0644 -o root -g root "$_t" "$CONF"; rm -f "$_t"; }
 # Auto-generiert von dorfkern-maintenance-mode.
 # Modus: ${note}
 [Seat:*]
@@ -76,7 +77,7 @@ EOF
 
 _write_conf_greeter() {
     # Im Greeter-Modus KEIN autologin (kein User-Eintrag = greeter).
-    cat <<'EOF' | install -m 0644 -o root -g root /dev/stdin "$CONF"
+    cat <<'EOF' | { _t=$(mktemp); cat >"$_t"; install -m 0644 -o root -g root "$_t" "$CONF"; rm -f "$_t"; }
 # Auto-generiert von dorfkern-maintenance-mode.
 # Modus: greeter (manueller Login)
 [Seat:*]
@@ -91,7 +92,7 @@ _ensure_back_icon() {
     # Klick fuehrt das Skript via passwortloses sudo (sudoers-Snippet
     # erlaubt kasse '/usr/local/bin/dorfkern-maintenance-mode --kiosk').
     install -d -o "$DESKTOP_USER" -g "$DESKTOP_USER" "${DESKTOP_HOME}/Desktop"
-    cat <<'EOF' | install -m 0755 -o "$DESKTOP_USER" -g "$DESKTOP_USER" /dev/stdin "$RUECK_ICON"
+    cat <<'EOF' | { _t=$(mktemp); cat >"$_t"; install -m 0755 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$_t" "$RUECK_ICON"; rm -f "$_t"; }
 [Desktop Entry]
 Type=Application
 Name=Zurück zum Kiosk
@@ -110,11 +111,28 @@ EOF
     # Plus: Executable-Bit via gio nochmal sicherstellen (manche
     # GNOME-Builds entfernen es bei nicht-trusted Files).
     chmod +x "$RUECK_ICON"
+
+    # GNOME (Desktop Icons NG) startet Desktop-.desktop-Files nur mit
+    # "trusted"-Flag, das vor dem User-Login nicht zuverlaessig gesetzt
+    # werden kann. Darum zusaetzlich ein App-Grid-Starter (immer
+    # startbar, ohne Trust): Super-Taste -> "Kiosk".
+    cat <<'EOF' | { _t=$(mktemp); cat >"$_t"; install -m 0644 -o root -g root "$_t" "$APP_LAUNCHER"; rm -f "$_t"; }
+[Desktop Entry]
+Type=Application
+Name=Zurück zum Kiosk
+Comment=LightDM auf Kiosk-Auto-Login zurueckschalten und neu starten
+Icon=system-shutdown
+Exec=sudo -n /usr/local/bin/dorfkern-maintenance-mode --kiosk
+Terminal=false
+Categories=System;
+Keywords=kiosk;wartung;zurueck;
+EOF
 }
 
 
 _remove_back_icon() {
     [ -f "$RUECK_ICON" ] && rm -f "$RUECK_ICON" || true
+    [ -f "$APP_LAUNCHER" ] && rm -f "$APP_LAUNCHER" || true
 }
 
 

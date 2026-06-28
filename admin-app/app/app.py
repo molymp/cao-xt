@@ -2595,6 +2595,41 @@ def api_system_maintenance_set():
     return jsonify({'ok': True, 'output': out})
 
 
+# ── Kiosk-User-Passwort aendern ──────────────────────────────
+
+_KIOSK_PW_SCRIPT = '/usr/local/bin/dorfkern-set-kiosk-password'
+
+
+@app.route('/api/system/kiosk-password', methods=['POST'])
+@_login_required
+def api_system_kiosk_password():
+    """Setzt das Passwort des Kiosk-/Wartungs-Users 'kasse'.
+
+    Body (JSON oder Form): password=<neues Passwort>.
+    Ruft das eng begrenzte Helfer-Skript via passwortloses sudo; das
+    Passwort geht ueber stdin (nie als Argument oder in Logs).
+    Absicherung: globaler Admin-Permission-Guard (@before_request) +
+    @_login_required, identisch zu Shutdown/Wartung.
+    """
+    payload = request.get_json(silent=True) or request.form
+    pw = (payload.get('password', '') if payload else '') or ''
+    if not pw.strip():
+        return jsonify({'ok': False, 'error': 'Leeres Passwort'}), 400
+    if len(pw) < 4:
+        return jsonify({'ok': False, 'error': 'Passwort zu kurz (min. 4 Zeichen)'}), 400
+    try:
+        r = subprocess.run(['sudo', '-n', _KIOSK_PW_SCRIPT],
+                           input=pw, capture_output=True, text=True, timeout=20)
+    except FileNotFoundError:
+        return jsonify({'ok': False, 'error': f'Skript fehlt: {_KIOSK_PW_SCRIPT}'}), 500
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+    if r.returncode != 0:
+        return jsonify({'ok': False,
+                        'error': (r.stderr or '').strip() or f'exit {r.returncode}'}), 500
+    return jsonify({'ok': True, 'output': (r.stdout or '').strip()})
+
+
 # ── Zeiten-CSV Import (ShiftJuggler Attendance-Export) ───────────
 
 @app.route('/zeiten-import', methods=['GET', 'POST'])

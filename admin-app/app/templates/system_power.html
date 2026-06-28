@@ -91,6 +91,21 @@
     → „Alle Apps neu starten" der richtige Knopf.
   </p>
 </div>
+
+<div class="card power-card" style="margin-top:24px;">
+  <h2 style="margin:0 0 6px;font-size:18px;">🔑 Kiosk-Passwort</h2>
+  <p style="color:var(--text-dim);font-size:14px;margin-bottom:14px;">
+    Passwort des Kiosk-/Wartungs-Users <code>kasse</code> (Anmeldung am
+    Wartungs-Desktop). Mindestens 4 Zeichen.
+  </p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+    <input type="password" id="kiosk-pw" placeholder="Neues Passwort" autocomplete="new-password"
+           style="flex:1 1 240px;padding:10px 12px;border-radius:var(--radius-klein);border:1px solid var(--border);background:var(--bg-dunkel);color:var(--text,#eee);font-size:15px;">
+    <button class="power-btn reboot" id="btn-kiosk-pw" onclick="setKioskPw()"
+            style="flex:0 0 auto;min-height:0;padding:10px 18px;font-size:15px;">Passwort setzen</button>
+  </div>
+  <div id="kiosk-pw-box" style="margin-top:12px;font-size:14px;display:none;"></div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -138,6 +153,26 @@ async function triggerPower(url, statusMsg) {
     // Shutdowns wegbricht — das ist der Erfolgsfall.
     box.textContent = statusMsg;
   }
+}
+
+async function setKioskPw() {
+  const inp = document.getElementById('kiosk-pw');
+  const box = document.getElementById('kiosk-pw-box');
+  const btn = document.getElementById('btn-kiosk-pw');
+  const pw = inp.value || '';
+  box.style.display = 'block';
+  if (pw.length < 4) { box.style.color = '#f08080'; box.textContent = '✗ Passwort zu kurz (min. 4 Zeichen)'; return; }
+  btn.disabled = true; box.style.color = 'var(--text-dim)'; box.textContent = '⏳ wird gesetzt …';
+  try {
+    const r = await fetch('/api/system/kiosk-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await r.json();
+    if (data.ok) { box.style.color = '#5fbf6f'; box.textContent = '✓ Passwort für kasse gesetzt'; inp.value = ''; }
+    else { box.style.color = '#f08080'; box.textContent = '✗ Fehler: ' + (data.error || 'unbekannt'); }
+  } catch (e) { box.style.color = '#f08080'; box.textContent = '✗ Fehler: ' + e; }
+  btn.disabled = false;
 }
 </script>
 {% endblock %}
