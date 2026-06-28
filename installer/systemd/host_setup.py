@@ -358,49 +358,74 @@ def _ensure_system_dirs(user: str, group: str, instance_name: str,
 # ueber alle Instanzen genutzt (nicht instanz-suffigiert), da der User
 # immer 'dorfkern' ist.
 _SUDOERS_SHUTDOWN_PATH = '/etc/sudoers.d/dorfkern-shutdown'
-_SUDOERS_SHUTDOWN_CONTENT = (
-    "# Auto-generiert von installer/systemd/host_setup.py\n"
-    "# Erlaubt dem dorfkern-Service-User, den Rechner herunterzufahren,\n"
-    "# neu zu starten oder den Wartungs-Modus zu toggeln — ohne Passwort,\n"
-    "# aber strikt nur diese Befehle.\n"
-    "dorfkern ALL=(root) NOPASSWD: /sbin/shutdown -h now, "
-    "/sbin/shutdown -r now, /sbin/poweroff, /sbin/reboot, "
-    "/usr/local/bin/dorfkern-maintenance-mode, "
-    "/usr/local/bin/dorfkern-maintenance-mode --kiosk, "
-    "/usr/local/bin/dorfkern-maintenance-mode --maintenance, "
-    "/usr/local/bin/dorfkern-maintenance-mode --greeter, "
-    "/usr/local/bin/dorfkern-maintenance-mode --status\n"
-    "# App-Steuerung (Admin-App /system/apps + Updater): dorfkern darf\n"
-    "# die eigenen Units start/stop/restart + daemon-reload. Nur\n"
-    "# 'dorfkern*'-Units (dorfkern.target, dorfkern-admin.service,\n"
-    "# dorfkern-<instanz>-*.service). Read-only-Abfragen (is-active/\n"
-    "# show/...) brauchen KEIN sudo und stehen darum hier nicht.\n"
-    "# Beide systemctl-Pfade gelistet (usrmerge: /bin -> /usr/bin).\n"
-    "dorfkern ALL=(root) NOPASSWD: "
-    "/usr/bin/systemctl start dorfkern*, "
-    "/usr/bin/systemctl stop dorfkern*, "
-    "/usr/bin/systemctl restart dorfkern*, "
-    "/usr/bin/systemctl daemon-reload, "
-    "/bin/systemctl start dorfkern*, "
-    "/bin/systemctl stop dorfkern*, "
-    "/bin/systemctl restart dorfkern*, "
-    "/bin/systemctl daemon-reload\n"
-    "# Unit-Write bei Updates: dorfkern rendert Units als sich selbst\n"
-    "# nach /tmp/dorfkern-units-stage/ und kopiert sie hiermit nach\n"
-    "# /etc/systemd/system. Strikt begrenzt: Quelle nur aus dem festen\n"
-    "# Stage-Verzeichnis, Ziel nur 'dorfkern*'-Units. Ohne diese Regel\n"
-    "# bleiben systemd-Unit-Aenderungen aus Updates wirkungslos.\n"
-    "dorfkern ALL=(root) NOPASSWD: "
-    "/usr/bin/install -m 0644 -o root -g root "
-    "/tmp/dorfkern-units-stage/* /etc/systemd/system/dorfkern*, "
-    "/bin/install -m 0644 -o root -g root "
-    "/tmp/dorfkern-units-stage/* /etc/systemd/system/dorfkern*\n"
-    "# Hinweis: der GUI-Login-User (z.B. 'kasse') bekommt das Recht\n"
-    "# 'dorfkern-maintenance-mode --kiosk' separat via\n"
-    "# /etc/sudoers.d/dorfkern-kiosk-user (von install_kiosk angelegt) —\n"
-    "# damit der Desktop-Icon 'Zurueck zum Kiosk' im Wartungs-Desktop\n"
-    "# ohne Passwort-Prompt funktioniert.\n"
+# Eigene systemd-Units (Default-Instanz, Praefix 'dorfkern'). sudo-rs
+# (Default ab Ubuntu 24.10 / 26.04) erlaubt KEINE Wildcards in
+# Command-Argumenten — 'systemctl start dorfkern*' wird abgelehnt
+# ("wildcards are not allowed in command arguments"). Darum die Units
+# explizit aufzaehlen statt des frueheren 'dorfkern*'.
+_SUDOERS_DORFKERN_UNITS = (
+    'dorfkern.target',
+    'dorfkern-admin.service',
+    'dorfkern-orga.service',
+    'dorfkern-haccp-poller.service',
+    'dorfkern-einkauf-poller.service',
+    'dorfkern-kasse.service',
+    'dorfkern-kiosk.service',
+    'dorfkern-update.service',
+    'dorfkern-preisplan.service',
+    'dorfkern-preisplan.timer',
 )
+
+
+def _build_shutdown_sudoers() -> str:
+    """Inhalt von /etc/sudoers.d/dorfkern-shutdown (sudo-rs-kompatibel).
+
+    Erlaubt dem dorfkern-Service-User passwortfreies Shutdown/Reboot, den
+    Wartungs-Toggle, das Setzen des Kiosk-Passworts sowie Start/Stop/
+    Restart + Unit-Write der eigenen Units. Ohne Wildcards: systemctl-
+    Verben und Unit-Writes werden je Unit explizit gelistet, beide
+    Binaer-Pfade (usrmerge: /bin -> /usr/bin) sind enthalten.
+    """
+    sysctl = []
+    for base in ('/usr/bin/systemctl', '/bin/systemctl'):
+        for verb in ('start', 'stop', 'restart'):
+            for unit in _SUDOERS_DORFKERN_UNITS:
+                sysctl.append(f'{base} {verb} {unit}')
+        sysctl.append(f'{base} daemon-reload')
+    unit_install = []
+    for base in ('/usr/bin/install', '/bin/install'):
+        for unit in _SUDOERS_DORFKERN_UNITS:
+            unit_install.append(
+                f'{base} -m 0644 -o root -g root '
+                f'/tmp/dorfkern-units-stage/{unit} /etc/systemd/system/{unit}')
+    return (
+        "# Auto-generiert von installer/systemd/host_setup.py\n"
+        "# Passwortfreies Shutdown/Reboot, Wartungs-Toggle, Kiosk-Passwort\n"
+        "# und App-Steuerung fuer den dorfkern-Service-User. Wildcards\n"
+        "# bewusst vermieden (sudo-rs ab Ubuntu 24.10/26.04 lehnt Wildcards\n"
+        "# in Command-Argumenten ab).\n"
+        "dorfkern ALL=(root) NOPASSWD: /sbin/shutdown -h now, "
+        "/sbin/shutdown -r now, /sbin/poweroff, /sbin/reboot, "
+        "/usr/local/bin/dorfkern-maintenance-mode, "
+        "/usr/local/bin/dorfkern-maintenance-mode --kiosk, "
+        "/usr/local/bin/dorfkern-maintenance-mode --maintenance, "
+        "/usr/local/bin/dorfkern-maintenance-mode --greeter, "
+        "/usr/local/bin/dorfkern-maintenance-mode --status, "
+        "/usr/local/bin/dorfkern-set-kiosk-password\n"
+        "# App-Steuerung (Admin-App /system/apps + Updater): eigene Units\n"
+        "# start/stop/restart + daemon-reload. Read-only (is-active/show/...)\n"
+        "# braucht kein sudo. Je Unit explizit (kein Wildcard).\n"
+        "dorfkern ALL=(root) NOPASSWD: " + ", ".join(sysctl) + "\n"
+        "# Unit-Write bei Updates: dorfkern kopiert gerenderte Units aus dem\n"
+        "# festen Stage-Verzeichnis nach /etc/systemd/system. Je Unit explizit.\n"
+        "dorfkern ALL=(root) NOPASSWD: " + ", ".join(unit_install) + "\n"
+        "# Hinweis: der GUI-Login-User (z.B. 'kasse') bekommt das Recht\n"
+        "# 'dorfkern-maintenance-mode --kiosk' separat via\n"
+        "# /etc/sudoers.d/dorfkern-kiosk-user (von install_kiosk angelegt).\n"
+    )
+
+
+_SUDOERS_SHUTDOWN_CONTENT = _build_shutdown_sudoers()
 
 
 def _ensure_shutdown_sudoers(*, print_fn: PrintFn) -> bool:
@@ -607,6 +632,7 @@ _KIOSK_LIGHTDM_CONF      = f'{_KIOSK_LIGHTDM_DIR}/50-dorfkern-kiosk.conf'
 _KIOSK_SESSION_DESKTOP   = '/usr/share/xsessions/dorfkern-kiosk.desktop'
 _KIOSK_SESSION_SCRIPT    = '/usr/local/bin/dorfkern-kiosk-session'
 _KIOSK_MAINTENANCE_SCRIPT = '/usr/local/bin/dorfkern-maintenance-mode'
+_KIOSK_PW_SCRIPT = '/usr/local/bin/dorfkern-set-kiosk-password'
 _KIOSK_CHROMIUM_POLICY_DIR  = '/etc/chromium/policies/managed'
 _KIOSK_CHROMIUM_POLICY_FILE = f'{_KIOSK_CHROMIUM_POLICY_DIR}/dorfkern-kiosk.json'
 _KIOSK_USER_SUDOERS_FILE = '/etc/sudoers.d/dorfkern-kiosk-user'
@@ -660,7 +686,7 @@ xset s noblank   # kein Blanking
 # ~/.config/chromium). Verhindert, dass Chromium das gespeicherte
 # Fenster-Placement aus Desktop-Sitzungen uebernimmt und mit schwarzen
 # Raendern statt Vollbild startet. Persistent in $HOME des Login-Users.
-CHROMIUM_DIR="$HOME/.config/dorfkern-chromium-kiosk"
+CHROMIUM_DIR="$HOME/dorfkern-chromium-kiosk"
 mkdir -p "$CHROMIUM_DIR"
 
 # Display-Groesse dynamisch ermitteln. Hintergrund: --kiosk und
@@ -1018,6 +1044,26 @@ def install_kiosk(*, base_port: int = units.DEFAULT_BASE_PORT,
                 )
             if not _install_file_sudo(_KIOSK_MAINTENANCE_SCRIPT,
                                        maintenance_content,
+                                       mode='0755', print_fn=print_fn):
+                return False
+
+    # ── 3b2) Kiosk-Passwort-Helfer installieren ──────────────────
+    # Erlaubt der Admin-App (laeuft als 'dorfkern'), das Passwort des
+    # Kiosk-/Wartungs-Users zu setzen — via passwortloses sudo (Regel in
+    # /etc/sudoers.d/dorfkern-shutdown). Das Skript liest das neue Passwort
+    # ueber stdin (nie als Argument/Log) und aendert nur den Kiosk-User.
+    pw_src = os.path.join(os.path.dirname(__file__), 'set_kiosk_password.sh')
+    if os.path.isfile(pw_src):
+        try:
+            with open(pw_src, 'r', encoding='utf-8') as f:
+                pw_content = f.read()
+        except OSError as exc:
+            print_fn(f"  ⚠  set_kiosk_password.sh nicht lesbar: {exc}")
+        else:
+            if kiosk_user:
+                pw_content = pw_content.replace(
+                    'KIOSK_USER=kasse', f'KIOSK_USER={kiosk_user}')
+            if not _install_file_sudo(_KIOSK_PW_SCRIPT, pw_content,
                                        mode='0755', print_fn=print_fn):
                 return False
 
